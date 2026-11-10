@@ -430,6 +430,7 @@ export function BoardComposerPopover({
   onDeleteComment,
   onViewAllComments,
   commentsView,
+  compact = false,
   onBackToComment,
   images = [],
   existingImages = [],
@@ -466,6 +467,7 @@ export function BoardComposerPopover({
   onHoverMember?: (elementId: string | null) => void;
   onDeleteComment?: (commentId: string) => void | Promise<boolean | void>;
   commentsView?: ReactNode;
+  compact?: boolean;
   onBackToComment?: () => void;
   /** Switches this popover to its all-comments page. */
   onViewAllComments?: (returnFocusTarget?: HTMLElement | null) => void;
@@ -511,6 +513,9 @@ export function BoardComposerPopover({
   const podMembers = target.podMembers ?? [];
   const composingRef = useRef(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const targetTitle = compact
+    ? (target.text?.trim().replace(/\s+/g, ' ') || target.label || target.elementId)
+    : (target.label || target.elementId);
   const backButtonRef = useRef<HTMLButtonElement | null>(null);
   const viewAllButtonRef = useRef<HTMLButtonElement | null>(null);
   const listWasVisible = useRef(false);
@@ -692,8 +697,8 @@ export function BoardComposerPopover({
             <Button ref={backButtonRef} size="icon" variant="ghost" onClick={onBackToComment} aria-label={t('designBrowser.goBack')} title={t('designBrowser.goBack')}><Icon name="chevron-left" size={16} /></Button>
             <span className="comment-popover-title">{t('chat.tabComments')}</span>
             <Button size="icon" variant="ghost" onClick={onClose} aria-label={t('common.close')} title={t('common.close')}><Icon name="close" size={16} /></Button>
-          </> : <><span className="comment-popover-title" title={target.label || target.elementId}>
-            {target.label || target.elementId}
+          </> : <><span className={`comment-popover-title${compact ? ' comment-popover-quote' : ''}`} title={targetTitle}>
+            {targetTitle}
           </span>
           {onViewAllComments ? (
             <button

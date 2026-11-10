@@ -74,6 +74,8 @@ import { ANNOTATED_SELECTOR_HELPERS } from './annotated-selector';
 import { COMMENT_IDENTITY_HELPERS } from '@open-design/contracts';
 
 export type SrcdocOptions = {
+  /** Frozen dashboard: allow only app-owned preview bridge scripts. */
+  staticSnapshot?: boolean;
   /** Host-scoped local progress, seeded before authored scripts by the lazy shell. */
   previewStorage?: boolean;
   previewStorageSeed?: { generation: string; values: Record<string, string> };
@@ -358,6 +360,7 @@ export function buildSrcdoc(
   html: string,
   options: SrcdocOptions = {}
 ): string {
+  if (options.staticSnapshot) return buildStaticSnapshotSrcdoc(html, options);
   const head = html.trimStart().slice(0, 64).toLowerCase();
   const isFullDoc = head.startsWith("<!doctype") || head.startsWith("<html");
   const wrapped = isFullDoc
@@ -446,6 +449,39 @@ export function buildSrcdoc(
   return options.reloadKey !== undefined
     ? withTransport.replace(/(<html\b)([^>]*>)/i, `$1 data-od-reload-key="${options.reloadKey}"$2`)
     : withTransport;
+}
+
+/** Preserve the snapshot's no-author-script policy while enabling our bridges.
+ * Only code generated from an EMPTY document receives the fresh nonce. Original
+ * scripts and nonce attributes are removed; CSP also blocks inline event
+ * handlers, network access and parser-created script mutations.
+ */
+function buildStaticSnapshotSrcdoc(html: string, options: SrcdocOptions): string {
+  if (typeof DOMParser === 'undefined') throw new Error('Static snapshot previews require a browser.');
+  const settings = { ...options, staticSnapshot: false, editBridge: false, paletteBridge: false,
+    previewStorage: false, baseHref: undefined, deferFontStylesheets: false, motionPreview: false, freezeMotion: true };
+  const parser = new DOMParser();
+  const bridges = parser.parseFromString(buildSrcdoc('', settings), 'text/html');
+  const allowed = new Set(Array.from(bridges.querySelectorAll('script:not([src])'), script => script.textContent));
+  const document = parser.parseFromString(buildSrcdoc(html, settings), 'text/html');
+  const nonce = crypto.randomUUID().replaceAll('-', '');
+  for (const element of Array.from(document.querySelectorAll('[nonce]'))) element.removeAttribute('nonce');
+  for (const script of Array.from(document.querySelectorAll('script'))) {
+    if (!script.hasAttribute('src') && allowed.has(script.textContent)) script.setAttribute('nonce', nonce);
+    else script.remove();
+  }
+  for (const meta of Array.from(document.querySelectorAll('meta[http-equiv]'))) {
+    if (['refresh', 'content-security-policy'].includes(meta.getAttribute('http-equiv')!.trim().toLowerCase())) meta.remove();
+  }
+  const policy = document.createElement('meta');
+  policy.httpEquiv = 'Content-Security-Policy';
+  policy.content = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; connect-src 'none'`;
+  const navigationGuard = document.createElement('script');
+  navigationGuard.setAttribute('nonce', nonce);
+  navigationGuard.textContent = "document.addEventListener('click',function(event){var target=event.target;if(target&&target.closest&&target.closest('a[href],area[href]'))event.preventDefault();},true);document.addEventListener('submit',function(event){event.preventDefault();},true);";
+  document.head.prepend(navigationGuard);
+  document.head.prepend(policy);
+  return '<!doctype html>' + document.documentElement.outerHTML;
 }
 
 /**

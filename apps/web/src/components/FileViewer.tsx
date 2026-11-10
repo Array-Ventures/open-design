@@ -1,3 +1,4 @@
+import { ArtifactAnnotationControls } from './embedded/ArtifactAnnotationControls';
 import { SpeakerNotesDrawer } from './embedded/SpeakerNotesDrawer';
 import { DashboardControls } from './embedded/DashboardControls';
 import type { EmbeddedDashboard } from './embedded/dashboards';
@@ -1771,6 +1772,9 @@ interface Props {
   projectKind: TrackingProjectKind;
   file: ProjectFile;
   liveHtml?: string;
+  previewFrameTestId?: string;
+  inlineAnnotations?: boolean;
+  staticSnapshot?: boolean;
   filesRefreshKey?: number;
   isDeck?: boolean;
   streaming?: boolean;
@@ -1889,6 +1893,9 @@ export const FileViewer = memo(function FileViewer({
   projectKind,
   file,
   liveHtml,
+  previewFrameTestId = 'artifact-preview-frame',
+  inlineAnnotations = false,
+  staticSnapshot = false,
   filesRefreshKey = 0,
   isDeck,
   streaming,
@@ -2008,6 +2015,9 @@ export const FileViewer = memo(function FileViewer({
         loginUpdateRequest={loginUpdateRequest}
         onLoginUpdateRequestHandled={onLoginUpdateRequestHandled}
         liveHtml={liveHtml}
+        previewFrameTestId={previewFrameTestId}
+        inlineAnnotations={inlineAnnotations}
+        staticSnapshot={staticSnapshot}
         filesRefreshKey={filesRefreshKey}
         isDeck={rendererMatch.renderer.id === 'deck-html'}
         streaming={Boolean(streaming)}
@@ -2109,6 +2119,7 @@ export const FileViewer = memo(function FileViewer({
 
 export function LiveArtifactViewer({
   chrome = true,
+  previewRenderer,
   projectId,
   liveArtifact,
   liveArtifactEvents = [],
@@ -2117,6 +2128,7 @@ export function LiveArtifactViewer({
   projectId: string;
   liveArtifact: LiveArtifactWorkspaceEntry;
   chrome?: boolean;
+  previewRenderer?: (input: { url: string; source: { sourceDirectory: string; templateFile: string } }) => ReactNode;
   liveArtifactEvents?: LiveArtifactEventItem[];
   onRefreshArtifacts?: () => Promise<void> | void;
 }) {
@@ -2627,6 +2639,11 @@ export function LiveArtifactViewer({
             action={t('liveArtifact.refresh.failureAction')}
           />
         ) : null}
+        {previewRenderer ? <div className="live-artifact-inline-preview" hidden={mode !== 'preview'}>
+          {detail?.status === 'archived' ? <div className="viewer-empty">This dashboard is archived. Restore it to open the preview.</div>
+            : hostSourceState ? previewRenderer({ url: previewUrl, source: hostSourceState.paths })
+              : <div role="status" className="inline-preview-status">Loading preview…</div>}
+        </div> : <>
         <div
           className={`live-artifact-preview-layer preview-viewport preview-viewport-${previewViewport}`}
           data-active={mode === 'preview' ? 'true' : 'false'}
@@ -2647,6 +2664,7 @@ export function LiveArtifactViewer({
             </div>
           </div>
         </div>
+        </>}
         {mode !== 'preview' && loading ? (
           <div className="viewer-empty">{t('fileViewer.loading')}</div>
         ) : mode === 'code' ? (
@@ -7289,6 +7307,9 @@ function HtmlViewer({
   file,
   pendingShareUpdateAfterLoginRef,
   liveHtml,
+  previewFrameTestId = 'artifact-preview-frame',
+  inlineAnnotations = false,
+  staticSnapshot = false,
   filesRefreshKey = 0,
   isDeck,
   streaming,
@@ -7331,6 +7352,9 @@ function HtmlViewer({
   manualEditEntryAllowed = true,
 }: {
   embedded?: boolean;
+  previewFrameTestId?: string;
+  inlineAnnotations?: boolean;
+  staticSnapshot?: boolean;
   projectId: string;
   projectKind: TrackingProjectKind;
   file: ProjectFile;
@@ -7804,7 +7828,7 @@ function HtmlViewer({
   const [source, setSource] = useState<string | null>(initialSource);
   const [routingSource, setRoutingSource] = useState<string | null>(initialSource);
   const srcDocPreviewBaseIdentity =
-    `${sourceAuthorizationScopeKey ?? 'pending'}\0${projectId}\0${file.name}`;
+    `${sourceAuthorizationScopeKey ?? 'pending'}\0${projectId}\0${file.name}\0${staticSnapshot ? 'snapshot' : 'authored'}`;
   const currentSourceIdentity =
     `${srcDocPreviewBaseIdentity}\0${liveHtml === undefined ? 'raw' : 'live'}`;
   const [routingSourceIdentity, setRoutingSourceIdentity] = useState<string | null>(
@@ -10239,6 +10263,7 @@ function HtmlViewer({
     file.name,
     file.mtime,
     liveHtml,
+    staticSnapshot,
     reloadKey,
     filesRefreshKey,
     sourceSnapshotRefreshKey,
@@ -10520,7 +10545,7 @@ function HtmlViewer({
   // Edit is handled by its own freeze just below; these are the non-edit
   // passes (Mark/Draw, Inspect) that also must not be yanked out
   // from under the user by a background file change.
-  const annotationFreezeActive = drawOverlayOpen || inspectMode;
+  const annotationFreezeActive = drawOverlayOpen || inspectMode || (staticSnapshot && boardMode);
   // Freeze the iframe input on the snapshot taken at Edit-mode entry. Any
   // source rewrite during edit (1.5s debounced set-style patches) stays
   // invisible to the iframe — live updates flow through od-edit-preview-style
@@ -10604,7 +10629,7 @@ function HtmlViewer({
     const s = routingHtmlSource;
     return s != null && htmlNeedsRedirectGuard(s);
   }, [passiveLargeHtmlPreview, routingHtmlSource]);
-  const needsPersistentStorage = Boolean(routingHtmlSource && /\blocalStorage\b/.test(routingHtmlSource));
+  const needsPersistentStorage = !staticSnapshot && Boolean(routingHtmlSource && /\blocalStorage\b/.test(routingHtmlSource));
   const urlDocumentGuardsAvailable =
     liveHtml === undefined && file.size <= PREVIEW_URL_GUARD_MAX_HTML_BYTES;
   // Set by the injected guard's `od:redirect-loop-blocked` postMessage. The
@@ -10732,10 +10757,11 @@ function HtmlViewer({
   // tweaks/comment) still win — they require host-injected bridges powered mode
   // can't carry.
   const needsPowered = useMemo(() => {
+    if (staticSnapshot) return false;
     if (serverPoweredPreviewRequired) return true;
     const s = routingHtmlSource;
     return s != null && htmlNeedsPoweredPreview(s);
-  }, [routingHtmlSource, serverPoweredPreviewRequired]);
+  }, [routingHtmlSource, serverPoweredPreviewRequired, staticSnapshot]);
   const previewBridgeQuery = useMemo(() => {
     const query = [BASE_PREVIEW_BRIDGE_QUERY];
     // Preserve the old URL-load behavior for ordinary passive documents. Only
@@ -10759,7 +10785,7 @@ function HtmlViewer({
     urlModeBridge,
     inspectMode,
     drawMode: drawOverlayOpen,
-    forceInline: (forceInline || needsPersistentStorage) && !needsPowered,
+    forceInline: staticSnapshot || ((forceInline || needsPersistentStorage) && !needsPowered),
     needsSandboxShim: needsSandboxShim && !needsPowered,
     needsLocalInteractionBridge: needsLocalInteractionBridge && !needsPowered,
     // Daemon guards wrap the settled on-disk response. Streaming/in-memory
@@ -11410,6 +11436,7 @@ function HtmlViewer({
         sourceFingerprint: sourceFingerprint ?? '',
         generation,
         srcDoc: previewSource ? buildSrcdoc(previewSource, {
+          staticSnapshot,
           motionPreview: true,
           previewStorage: Boolean(previewStorageScopeKey),
           deck: effectiveDeck,
@@ -11442,6 +11469,7 @@ function HtmlViewer({
       return entry;
     },
     [
+      staticSnapshot,
       previewSource,
       effectiveDeck,
       srcDocTransportIdentity,
@@ -16119,7 +16147,7 @@ function HtmlViewer({
       // tracked `.slide` decks still render off-screen.
       const trackedActive = slideState?.active ?? htmlPreviewSlideState.get(previewStateKey)?.active ?? null;
       const plan = planDeckImageCapture({ deck: imageDeckSignal, wholeDeck, trackedActive });
-      if (plan.useOffscreen) {
+      if (!staticSnapshot && plan.useOffscreen) {
         const exportViewport = !imageDeckSignal && previewViewport !== 'desktop'
           ? PREVIEW_VIEWPORT_PRESETS.find((preset) => preset.id === previewViewport)
           : null;
@@ -16206,6 +16234,7 @@ function HtmlViewer({
       restoreVisibility();
     }
   }, [
+    staticSnapshot,
     activateSrcDocSnapshotTransport,
     srcDocShellReady,
     useLazySrcDocTransport,
@@ -17204,6 +17233,7 @@ function HtmlViewer({
   ) : null;
   const commentComposerNode = boardMode && activeCommentTarget && activeCommentTargetVisible ? (
     <BoardComposerPopover
+      compact={inlineAnnotations}
       target={activeCommentTarget}
       existing={activeComposerComment}
       canEditComment={canEditActiveComment}
@@ -18145,6 +18175,12 @@ function HtmlViewer({
             </div>
       </>)}
       <div className="viewer-body" ref={previewBodyRef}>
+        {inlineAnnotations ? <ArtifactAnnotationControls commenting={boardMode} marking={drawOverlayOpen} disabled={sendingBoardBatch}
+          onComment={() => {
+            if (!boardMode) { activateCommentTool(); return; }
+            requestComposerRetarget(() => { setCommentPanelOpen(false); setCommentCreateMode(false); setBoardMode(false); clearBoardComposer(); });
+          }}
+          onMark={() => { requestComposerRetarget(activateDrawTool); }} /> : null}
         {initialPreviewLoading ? (
           <FileViewerLoadingSkeleton />
         ) : (
@@ -18190,6 +18226,7 @@ function HtmlViewer({
                 >
                   <PreviewDrawOverlay
                     active={drawOverlayOpen}
+                    draftOnly={embedded}
                     onActiveChange={setDrawOverlayOpen}
                     captureViewport
                     captureSnapshot={captureExportImageSnapshot}
@@ -18206,7 +18243,7 @@ function HtmlViewer({
                           ref={urlPreviewIframeRef}
                           cacheKey={urlPreviewKeepAliveKey}
                           data-testid={workspaceActive
-                            ? (useUrlLoadPreview ? 'artifact-preview-frame' : 'artifact-preview-frame-url-load')
+                            ? (useUrlLoadPreview ? previewFrameTestId : 'artifact-preview-frame-url-load')
                             : `artifact-preview-frame-retained-${file.name}`}
                           data-od-render-mode="url-load"
                           data-od-active={mode === 'preview' && useUrlLoadPreview ? 'true' : 'false'}
@@ -18258,7 +18295,7 @@ function HtmlViewer({
                         <iframe
                           ref={setUnpooledUrlPreviewIframe}
                           data-testid={workspaceActive
-                            ? (useUrlLoadPreview ? 'artifact-preview-frame' : 'artifact-preview-frame-url-load')
+                            ? (useUrlLoadPreview ? previewFrameTestId : 'artifact-preview-frame-url-load')
                             : `artifact-preview-frame-retained-${file.name}`}
                           data-od-render-mode="url-load"
                           data-od-active={mode === 'preview' && useUrlLoadPreview ? 'true' : 'false'}
@@ -18314,7 +18351,7 @@ function HtmlViewer({
                         ref={setSrcDocPreviewIframe}
                         name={srcDocPreviewFrameName}
                         data-testid={workspaceActive
-                          ? (useUrlLoadPreview ? 'artifact-preview-frame-srcdoc' : 'artifact-preview-frame')
+                          ? (useUrlLoadPreview ? 'artifact-preview-frame-srcdoc' : previewFrameTestId)
                           : `artifact-preview-frame-srcdoc-retained-${file.name}`}
                         data-od-render-mode="srcdoc"
                         data-od-active={mode === 'preview' && !useUrlLoadPreview ? 'true' : 'false'}
@@ -18325,7 +18362,7 @@ function HtmlViewer({
                         aria-hidden={workspaceActive && mode === 'preview' && !useUrlLoadPreview ? undefined : true}
                         tabIndex={workspaceActive && mode === 'preview' && !useUrlLoadPreview ? 0 : -1}
                         title={file.name}
-                        sandbox={HTML_PREVIEW_SANDBOX}
+                        sandbox={staticSnapshot ? 'allow-scripts' : HTML_PREVIEW_SANDBOX}
                         src={srcDocTransportUrl ?? 'about:blank'}
                         srcDoc={srcDocTransportUrl ? undefined : srcDocTransportContent}
                         onLoad={() => {

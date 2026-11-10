@@ -1,3 +1,4 @@
+import { LiveArtifactFeedbackPreview } from './embedded/LiveArtifactFeedbackPreview';
 import { useExperienceError } from '../observability/use-experience-error';
 import type { RecoveryActionBlockReason } from '../runtime/chat/recovery-gating';
 import {
@@ -4684,6 +4685,10 @@ export function FileWorkspace({
           />
         ) : activeLiveArtifact ? (
           <LiveArtifactViewer
+            previewRenderer={embedded ? ({ url, source }) => <LiveArtifactFeedbackPreview projectId={projectId} previewUrl={url} source={source} files={files} feedback={{
+              previewComments, previewCommentsState, onRetryPreviewComments, onSavePreviewComment,
+              onRemovePreviewComment, onReorderPreviewComment, onSendBoardCommentAttachments,
+            }} /> : undefined}
             projectId={projectId}
             liveArtifact={activeLiveArtifact}
             liveArtifactEvents={liveArtifactEvents}

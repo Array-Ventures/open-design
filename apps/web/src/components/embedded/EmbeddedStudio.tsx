@@ -1,3 +1,4 @@
+import { useEmbeddedMarkup } from './useEmbeddedMarkup';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, ButtonRendererProvider, InputRendererProvider, TextareaRendererProvider, ValueSelectRendererProvider } from '@open-design/components';
 import { renderEmbeddedButton, renderEmbeddedInput, renderEmbeddedTextarea, renderEmbeddedValueSelect } from './boardui/controls';
@@ -49,6 +50,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
   const comments = useEmbeddedComments(projectId);
   const [project, setProject] = useState<Project | null>(null);
   const [files, setFiles] = useState<ProjectFile[]>([]);
+  const markupNotice = useEmbeddedMarkup(projectId, files.map(file => file.name));
   const [dashboards, setDashboards] = useState<LiveArtifactSummary[]>([]);
   const [dashboardError, setDashboardError] = useState(false);
   const [generation, setGeneration] = useState(0);
@@ -120,9 +122,14 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
   }
   return (
     <main className={styles.workspace} data-testid="embedded-studio">
-      {comments.notice ? <div role="status">{comments.notice}</div> : null}
+      {markupNotice || comments.notice ? <div role="status">{markupNotice ?? comments.notice}</div> : null}
       {dashboardError ? <div role="alert">Dashboards unavailable. Retrying…</div> : null}
-      {new URLSearchParams(window.location.search).get('surface') === 'artifact' ? <ArtifactSurface project={project} files={files} dashboards={dashboards} fileName={fileName} generation={generation} onRefresh={refresh} /> : <FileWorkspace
+      {new URLSearchParams(window.location.search).get('surface') === 'artifact' ? <ArtifactSurface project={project} files={files} dashboards={dashboards} fileName={fileName} generation={generation} onRefresh={refresh} feedback={{
+        previewComments: comments.comments, previewCommentsState: comments.state,
+        onRetryPreviewComments: () => { void comments.refresh(); }, onSavePreviewComment: comments.save,
+        onRemovePreviewComment: comments.remove, onReorderPreviewComment: comments.reorder,
+        onSendBoardCommentAttachments: comments.send,
+      }} /> : <FileWorkspace
         embedded
         projectId={projectId}
         projectName={project.name}

@@ -1,3 +1,4 @@
+import { Button } from '@open-design/components';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type CSSProperties, type PointerEvent, type ReactNode, type WheelEvent } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 
@@ -70,6 +71,7 @@ interface Props {
   captureFrameRect?: () => CaptureFrameRect | null;
   filePath?: string;
   hideChrome?: boolean;
+  draftOnly?: boolean;
   sendDisabled?: boolean;
   sendDisabledReason?: string;
   onToolbarClick?: (element: DrawToolbarElement, submitAction?: AnnotationAction) => void;
@@ -135,6 +137,7 @@ export function PreviewDrawOverlay({
   captureFrameRect,
   filePath,
   hideChrome = false,
+  draftOnly = false,
   sendDisabled = false,
   sendDisabledReason,
   onToolbarClick,
@@ -1265,6 +1268,11 @@ export function PreviewDrawOverlay({
     { tool: 'text', label: t('fileViewer.textTool'), icon: 'text' },
   ];
 
+  const controlStyle = (style: CSSProperties, selected = false): CSSProperties => draftOnly
+    ? { ...style, width: 32, minWidth: 32, height: 32, flexBasis: 32, padding: 0, borderRadius: 8,
+        background: selected ? 'var(--color-background-secondary-default)' : 'transparent',
+        color: 'var(--color-foreground-icon-primary)', borderColor: 'var(--color-separator-border)' }
+    : style;
   return (
     <div
       ref={wrapRef}
@@ -1427,6 +1435,7 @@ export function PreviewDrawOverlay({
             style={{
               ...previewDrawDockBaseStyle,
               ...dockPlacement.style,
+              ...(draftOnly && dockPlacement.layout === 'docked' ? { left: '50%', maxWidth: 'calc(100% - 24px)' } : {}),
             }}
           >
           {captureWarning ? (
@@ -1531,20 +1540,22 @@ export function PreviewDrawOverlay({
           <div
             className="preview-draw-toolbar"
             style={{
-              display: 'flex',
+              display: draftOnly ? 'grid' : 'flex',
+              gridTemplateColumns: draftOnly ? 'minmax(0, 1fr) auto' : undefined,
               alignItems: 'center',
               justifyContent: 'center',
               alignContent: 'center',
               flexWrap: 'nowrap',
               gap: 6,
               boxSizing: 'border-box',
-              width: 'max-content',
+              width: draftOnly ? 'min(560px, calc(100vw - 24px))' : 'max-content',
               maxWidth: '100%',
               overflow: 'visible',
               padding: 6,
-              background: 'rgba(20,20,20,0.92)',
-              color: '#fff',
-              borderRadius: 22,
+              background: draftOnly ? 'var(--color-background-primary-default)' : 'rgba(20,20,20,0.92)',
+              color: draftOnly ? 'var(--color-text-primary)' : '#fff',
+              borderRadius: draftOnly ? 12 : 22,
+              border: draftOnly ? '1px solid var(--color-separator-border)' : undefined,
               boxShadow: '0 6px 24px rgba(0,0,0,0.18)',
               backdropFilter: 'blur(8px)',
               zIndex: 91,
@@ -1553,7 +1564,7 @@ export function PreviewDrawOverlay({
               visibility: chromeHidden ? 'hidden' : undefined,
             }}
           >
-          <div className="preview-draw-tool-cluster" style={drawToolbarClusterStyle}>
+          <div className="preview-draw-tool-cluster" style={draftOnly ? { ...drawToolbarClusterStyle, justifyContent: 'flex-start' } : drawToolbarClusterStyle}>
             {/* Segmented tool group: every mark tool is one click away and the
                 active one is visible without opening anything. A dropdown here
                 cost a click per switch and hid which tool was armed — the two
@@ -1567,7 +1578,7 @@ export function PreviewDrawOverlay({
               {markToolOptions.map((item) => {
                 const activeTool = markTool === item.tool;
                 return (
-                  <button
+                  <Button size="icon" variant="ghost"
                     key={item.tool}
                     type="button"
                     onClick={() => selectMarkTool(item.tool)}
@@ -1577,33 +1588,33 @@ export function PreviewDrawOverlay({
                     title={item.label}
                     data-tooltip={item.label}
                     className="preview-draw-subtool-action"
-                    style={subToolButtonStyle(activeTool)}
+                    style={controlStyle(subToolButtonStyle(activeTool), activeTool)}
                   >
                     <RemixIcon name={item.icon} size={14} />
-                  </button>
+                  </Button>
                 );
               })}
             </div>
-            <button
+            <Button size="icon" variant="ghost"
               type="button"
               onClick={undoStroke}
               disabled={!canUndo}
-              style={historyButtonStyle(canUndo)}
+              style={controlStyle(historyButtonStyle(canUndo))}
               aria-label={t('manualEdit.undo')}
               title={t('manualEdit.undo')}
             >
               <RemixIcon name="arrow-go-back-line" size={14} />
-            </button>
-            <button
+            </Button>
+            <Button size="icon" variant="ghost"
               type="button"
               onClick={redoStroke}
               disabled={!canRedo}
-              style={historyButtonStyle(canRedo)}
+              style={controlStyle(historyButtonStyle(canRedo))}
               aria-label={t('manualEdit.redo')}
               title={t('manualEdit.redo')}
             >
               <RemixIcon name="arrow-go-forward-line" size={14} />
-            </button>
+            </Button>
             <input
               ref={fileInputRef}
               type="file"
@@ -1612,7 +1623,7 @@ export function PreviewDrawOverlay({
               style={{ display: 'none' }}
               onChange={onFileInputChange}
             />
-            <button
+            <Button size="icon" variant="ghost"
               type="button"
               onClick={() => {
                 onToolbarClick?.('attach_image');
@@ -1626,9 +1637,9 @@ export function PreviewDrawOverlay({
               style={historyButtonStyle(!sending)}
             >
               <RemixIcon name="image-add-line" size={14} />
-            </button>
+            </Button>
           </div>
-          <div className="preview-draw-note-actions" style={drawToolbarNoteActionsStyle}>
+          <div className="preview-draw-note-actions" style={draftOnly ? { ...drawToolbarNoteActionsStyle, gridColumn: '1 / -1', gridRow: 2, maxWidth: '100%', width: '100%' } : drawToolbarNoteActionsStyle}>
             <input
               className="preview-draw-note-input"
               value={note}
@@ -1637,7 +1648,7 @@ export function PreviewDrawOverlay({
               disabled={sending}
               placeholder={t('chat.annotationNotePlaceholder')}
               style={{
-                background: 'rgba(218, 97, 56, 0.18)',
+                background: draftOnly ? 'var(--color-background-secondary-default)' : 'rgba(218, 97, 56, 0.18)',
                 border: '1px solid rgba(248, 150, 104, 0.82)',
                 borderRadius: 999,
                 outline: 'none',
@@ -1670,6 +1681,7 @@ export function PreviewDrawOverlay({
                 read the icon to find out what clicking would do. Here each
                 destination is its own target and its own disabled state. */}
             {submitOptions
+              .filter(option => !draftOnly || option.action === 'draft')
               .slice()
               .sort((a, b) => SUBMIT_ORDER.indexOf(a.action) - SUBMIT_ORDER.indexOf(b.action))
               .map((opt) => {
@@ -1677,7 +1689,7 @@ export function PreviewDrawOverlay({
                 const label = pending ? opt.pendingLabel : opt.label;
                 const title = pending ? opt.pendingLabel : opt.title;
                 return (
-                  <button
+                  <Button size="icon" variant="ghost"
                     key={opt.action}
                     type="button"
                     onClick={() => void send(opt.action)}
@@ -1687,17 +1699,18 @@ export function PreviewDrawOverlay({
                     data-tooltip={title}
                     className="preview-draw-icon-action"
                     style={{
-                      ...drawActionButtonStyle(opt.action === 'send'),
+                      ...controlStyle(drawActionButtonStyle(opt.action === 'send')),
+                      ...(draftOnly ? { background: 'var(--color-accent-600)', color: 'var(--color-text-on-accent)' } : {}),
                       opacity: opt.enabled ? 1 : 0.4,
                       cursor: sending ? 'wait' : (opt.enabled ? 'pointer' : 'not-allowed'),
                     }}
                   >
                     {pending ? <Icon name="spinner" size={14} /> : opt.icon}
-                  </button>
+                  </Button>
                 );
               })}
           </div>
-          <button
+          <Button size="icon" variant="ghost"
             type="button"
             onClick={() => {
               onToolbarClick?.('exit');
@@ -1706,10 +1719,10 @@ export function PreviewDrawOverlay({
             disabled={sending}
             aria-label={t('common.close')}
             title={t('common.close')}
-            style={closeButtonStyle}
+            style={draftOnly ? { ...controlStyle(closeButtonStyle), gridColumn: 2, gridRow: 1 } : closeButtonStyle}
           >
             <Icon name="close" size={13} />
-          </button>
+          </Button>
           </div>
           </div>
           {activePreview ? createPortal(

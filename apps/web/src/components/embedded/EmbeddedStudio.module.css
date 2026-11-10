@@ -322,3 +322,13 @@
   font-weight: var(--text-body-medium--font-weight);
   letter-spacing: var(--text-body-medium--letter-spacing);
 }
+
+/* Feedback belongs to the canvas, with no editor chrome or layout shift. */
+.workspace :global(.artifact-inline-actions) { position: absolute; z-index: 48; top: 12px; inset-inline-end: 12px; display: flex; gap: 4px; padding: 4px; border: 1px solid var(--color-separator-border); border-radius: 12px; background: var(--color-background-primary-default); box-shadow: var(--shadow-sm); }
+.workspace :global(.live-artifact-inline-preview) { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; width: 100%; }
+.workspace :global(.live-artifact-inline-preview[hidden]) { display: none; }
+.workspace :global(.live-artifact-inline-preview > .viewer) { flex: 1; min-height: 0; width: 100%; }
+.workspace :global(.inline-preview-status) { padding: 12px 16px; color: var(--color-text-secondary); }
+.workspace :global(.live-artifact-inline-preview .viewer-toolbar) { display: none; }
+
+.workspace :global(.comment-popover-quote) { color: var(--color-text-secondary); font-size: var(--text-caption-1-regular); line-height: var(--text-caption-1-regular--line-height); font-weight: var(--text-caption-1-regular--font-weight); letter-spacing: var(--text-caption-1-regular--letter-spacing); }
