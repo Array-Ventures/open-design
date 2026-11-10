@@ -269,7 +269,16 @@
 .workspace :global(.comment-popover-actions) { gap: 8px; padding: 8px 12px; }
 .workspace :global(.comment-popover-actions-start), .workspace :global(.comment-popover-actions-end) { gap: 8px; }
 .workspace :global(.comment-popover-close) { width: 32px; height: 32px; border-radius: 8px; }
-.workspace :global(.comment-side-new-comment textarea) { min-height: 64px; max-height: 120px; }
+/* A comment is a compact message field, not the main chat composer. */
+.workspace :global(.comment-popover textarea) { height: 48px; min-height: 48px; max-height: 48px; overflow-y: auto; resize: none; }
+.workspace :global(.comment-side-new-comment) { padding: 8px 12px; }
+.workspace :global(.comment-side-new-comment-shell) { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 8px; padding: 0; align-items: center; }
+.workspace :global(.comment-side-new-comment .composer-input-wrap) { min-width: 0; }
+.workspace :global(.comment-side-new-comment textarea) { height: 20px; min-height: 20px; max-height: 20px; overflow-y: auto; resize: none; }
+.workspace :global(.comment-side-new-comment textarea:focus) { height: 40px; min-height: 40px; max-height: 40px; }
+.workspace :global(.comment-side-new-comment .composer-row) { padding: 0; gap: 0; }
+.workspace :global(.comment-side-new-comment .composer-row .icon-btn), .workspace :global(.comment-side-new-comment .composer-spacer) { display: none; }
+.workspace :global(.comment-side-new-comment .composer-send) { width: 32px; height: 32px; padding: 0; }
 
 /* Target metrics belong to the inspector; comments keep the message in view. */
 .workspace :global(.comment-popover-section-params) { display: none; }
