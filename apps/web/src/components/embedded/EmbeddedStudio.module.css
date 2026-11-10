@@ -315,3 +315,10 @@
 .workspace :global(.df-card-sub) { color: var(--color-text-secondary); }
 .workspace :global(.df-card:hover) { border-color: var(--color-border-button-hover); }
 .workspace :global(.df-card:is(.selected, .active)) { border-color: var(--color-accent-600); }
+/* Full BoardUI line boxes leave room for descenders inside ellipsis labels. */
+.workspace :global(.ws-tab-label) {
+  font-size: var(--text-body-medium);
+  line-height: var(--text-body-medium--line-height);
+  font-weight: var(--text-body-medium--font-weight);
+  letter-spacing: var(--text-body-medium--letter-spacing);
+}
