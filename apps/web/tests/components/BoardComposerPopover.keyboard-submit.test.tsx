@@ -23,6 +23,7 @@ const target: PreviewCommentSnapshot = {
 
 function renderPopover({
   onSaveComment = () => {},
+  compact = false,
   onSendBatch = () => {},
   sending = false,
   selectionKind = 'element',
@@ -31,7 +32,8 @@ function renderPopover({
   existingImages = [],
   bounds,
 }: {
-  onSaveComment?: () => void;
+  onSaveComment?: (addToChat?: boolean) => void;
+  compact?: boolean;
   onSendBatch?: () => void;
   sending?: boolean;
   selectionKind?: PreviewCommentSnapshot['selectionKind'];
@@ -42,6 +44,7 @@ function renderPopover({
 } = {}) {
   return render(
     <BoardComposerPopover
+      compact={compact}
       target={{ ...target, ...targetOverride, selectionKind }}
       existing={null}
       draft={draft}
@@ -62,6 +65,19 @@ function renderPopover({
 }
 
 describe('BoardComposerPopover keyboard submit', () => {
+  it('keeps compact comments save-only until the person opts into adding them to chat', () => {
+    const onSaveComment = vi.fn();
+    const onSendBatch = vi.fn();
+    renderPopover({ compact: true, onSaveComment, onSendBatch });
+    fireEvent.keyDown(screen.getByTestId('comment-popover-input'), { key: 'Enter' });
+    expect(onSaveComment).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Add to chat' }));
+    expect(screen.getByRole('checkbox', { name: 'Add to chat' })).toBeChecked();
+    fireEvent.keyDown(screen.getByTestId('comment-popover-input'), { key: 'Enter' });
+    expect(onSaveComment).toHaveBeenLastCalledWith(true);
+    expect(onSendBatch).not.toHaveBeenCalled();
+  });
+
   it('saves an element comment with Enter and keeps Shift+Enter for multiline text', () => {
     const onSaveComment = vi.fn();
     renderPopover({ onSaveComment });

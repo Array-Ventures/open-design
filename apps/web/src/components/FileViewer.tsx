@@ -1,3 +1,4 @@
+import { CommentThreadMenu } from './embedded/CommentThreadMenu';
 import { ArtifactAnnotationControls } from './embedded/ArtifactAnnotationControls';
 import { SpeakerNotesDrawer } from './embedded/SpeakerNotesDrawer';
 import { DashboardControls } from './embedded/DashboardControls';
@@ -4840,6 +4841,7 @@ export function CommentSidePanel({
   onSendSelected,
   onCreateComment,
   canSendComment,
+  threadActions,
   currentUser,
   sending,
   queueOnSend = false,
@@ -4872,6 +4874,7 @@ export function CommentSidePanel({
   onToggleSelect: (commentId: string) => void;
   onSelectAll: () => void;
   canSendComment?: (comment: PreviewComment) => boolean;
+  threadActions?: { canEdit(comment: PreviewComment): boolean; canDelete(comment: PreviewComment): boolean; remove(comment: PreviewComment): void | Promise<unknown> };
   /** The viewer's own directory entry, so their comments show their avatar +
    *  name even when the member roster is empty (personal workspace / cold
    *  roster window). Supplied from the workspace context the caller already
@@ -5140,7 +5143,7 @@ export function CommentSidePanel({
                   displayNumber={displayCommentNumber(comment, index)}
                   t={t}
                 />
-                {sendable ? (
+                {threadActions ? <CommentThreadMenu canEdit={threadActions.canEdit(comment)} canDelete={threadActions.canDelete(comment)} onEdit={() => onReply(comment)} onDelete={() => threadActions.remove(comment)} /> : sendable ? (
                   <button
                     type="button"
                     className={`comment-side-check${selected ? ' checked' : ''}`}
@@ -5358,6 +5361,7 @@ function CommentSideDock({
   onSendSelected,
   onCreateComment,
   canSendComment,
+  threadActions,
   currentUser,
   sending,
   queueOnSend = false,
@@ -5391,6 +5395,7 @@ function CommentSideDock({
   /** Team-collab gate: which comments the viewer may send to the agent (author
    * OR project owner). Defaults to all-sendable when absent (single-user). */
   canSendComment?: (comment: PreviewComment) => boolean;
+  threadActions?: { canEdit(comment: PreviewComment): boolean; canDelete(comment: PreviewComment): boolean; remove(comment: PreviewComment): void | Promise<unknown> };
   /** The viewer's own directory entry — see `CommentSidePanel`. */
   currentUser?: CollabCloudMemberDirectoryEntry | null;
   sending: boolean;
@@ -5429,6 +5434,7 @@ function CommentSideDock({
         onSendSelected={onSendSelected}
         onCreateComment={onCreateComment}
         canSendComment={canSendComment}
+        threadActions={threadActions}
         currentUser={currentUser}
         sending={sending}
         queueOnSend={queueOnSend}
@@ -17110,9 +17116,20 @@ function HtmlViewer({
       )
     : null;
   const unavailableCommentId = boardMode ? lostSelectedCommentId : null;
+  const removeComment = onRemovePreviewComment ? async (commentId: string) => {
+    if (!await onRemovePreviewComment(commentId)) return;
+    clearBoardComposer();
+    setSelectedSideCommentIds(current => { const next = new Set(current); next.delete(commentId); return next; });
+    setActivePreviewCommentId(current => current === commentId ? null : current);
+  } : undefined;
   const commentSidePanel = workspaceActive && (commentPanelOpen || commentListInPopover) ? (
     <CommentSideDock
       comments={visibleSideComments}
+      threadActions={inlineAnnotations && onRemovePreviewComment ? {
+        canEdit: comment => canEditComment(comment, commentAuthority),
+        canDelete: comment => canDeleteComment(comment, commentAuthority),
+        remove: comment => removeComment?.(comment.id),
+      } : undefined}
       loadState={previewCommentsState}
       onRetry={onRetryPreviewComments}
       projectId={projectId}
@@ -17288,18 +17305,7 @@ function HtmlViewer({
         setCommentPanelOpen(false);
         setCommentListInPopover(true);
       }}
-      onDeleteComment={onRemovePreviewComment ? async (commentId) => {
-        const removed = await onRemovePreviewComment(commentId);
-        if (!removed) return;
-        clearBoardComposer();
-        setSelectedSideCommentIds((current) => {
-          if (!current.has(commentId)) return current;
-          const next = new Set(current);
-          next.delete(commentId);
-          return next;
-        });
-        setActivePreviewCommentId((current) => (current === commentId ? null : current));
-      } : undefined}
+      onDeleteComment={removeComment}
       sending={sendingBoardBatch}
       queueOnSend={commentQueueOnSend}
       sendDisabled={commentSendDisabled || viewerOnly}

@@ -8,6 +8,7 @@ import type { PreviewComment, PreviewCommentMember } from '../types';
 import { isImeComposing } from '../utils/imeComposing';
 
 import { Icon } from './Icon';
+import { CommentThreadMenu } from './embedded/CommentThreadMenu';
 import { Checkbox } from './embedded/boardui/checkbox';
 import { TextareaBase } from './embedded/boardui/textarea';
 
@@ -705,6 +706,7 @@ export function BoardComposerPopover({
           </> : <><span className={`comment-popover-title${compact ? ' comment-popover-quote' : ''}`} title={targetTitle}>
             {targetTitle}
           </span>
+          {compact && existing ? <CommentThreadMenu canEdit={canEditComment} canDelete={Boolean(canDeleteComment && onDeleteComment)} onEdit={() => popoverRef.current?.querySelector<HTMLTextAreaElement>('textarea')?.focus()} onDelete={() => onDeleteComment?.(existing.id)} /> : null}
           {onViewAllComments ? (
             <button
               type="button"
