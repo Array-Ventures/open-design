@@ -124,3 +124,10 @@
 .hostTypography :global(.modal-head .subtitle) {
   color: var(--color-text-secondary);
 }
+
+/* The upstream category strip assumes a body inset, but df-body has padding 0.
+   Inset the strip itself so Sketches and the other pills clear the panel edge. */
+.workspace :global(.df-tabs) {
+  padding: 8px 16px;
+  gap: 8px;
+}
