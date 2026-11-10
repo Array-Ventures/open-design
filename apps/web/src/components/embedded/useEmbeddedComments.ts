@@ -53,7 +53,7 @@ export function useEmbeddedComments(projectId: string) {
     generation.current++;
     setComments((current) => [...current.filter((item) => item.id !== saved.id), saved]);
     if (attach) {
-      const accepted = await stageHostContext(projectId, `File: ${target.filePath}\nSelector: ${target.selector}\nRequested change: ${note}\n${attachments.map((image) => `Attached image: ${image.path}`).join('\n')}`);
+      const accepted = await stageHostContext(projectId, `File: ${target.filePath}\nSelector: ${target.selector}\nCurrent text: ${target.text}\nRequested change: ${note}\n${attachments.map((image) => `Attached image: ${image.path}`).join('\n')}`);
       setNotice(accepted ? 'Comment saved and added to your Evebot draft.' : 'Comment saved. Open a chat to add it to a draft.');
     }
     return saved;

@@ -8,6 +8,8 @@ import type { PreviewComment, PreviewCommentMember } from '../types';
 import { isImeComposing } from '../utils/imeComposing';
 
 import { Icon } from './Icon';
+import { Checkbox } from './embedded/boardui/checkbox';
+import { TextareaBase } from './embedded/boardui/textarea';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
 
@@ -461,7 +463,7 @@ export function BoardComposerPopover({
   onAddDraft: () => void;
   onRemoveQueuedNote: (index: number) => void;
   onClose: () => void;
-  onSaveComment: () => void | Promise<void>;
+  onSaveComment: (addToChat?: boolean) => void | Promise<void>;
   onSendBatch: () => void | Promise<void>;
   onRemoveMember: (elementId: string) => void;
   onHoverMember?: (elementId: string | null) => void;
@@ -516,6 +518,9 @@ export function BoardComposerPopover({
   const targetTitle = compact
     ? (target.text?.trim().replace(/\s+/g, ' ') || target.label || target.elementId)
     : (target.label || target.elementId);
+  const [addToChat, setAddToChat] = useState(false);
+  useEffect(() => { setAddToChat(false); }, [target.elementId]);
+  const ComposerTextarea = compact ? TextareaBase : Textarea;
   const backButtonRef = useRef<HTMLButtonElement | null>(null);
   const viewAllButtonRef = useRef<HTMLButtonElement | null>(null);
   const listWasVisible = useRef(false);
@@ -668,7 +673,7 @@ export function BoardComposerPopover({
   return (
     <div
       ref={popoverRef}
-      className={`comment-popover comment-popover-composer${commentsView ? ' comment-popover-list' : ''}${docked ? ' comment-popover-docked' : ''}${dragging ? ' comment-popover-dragging' : ''}`}
+      className={`comment-popover comment-popover-composer${compact ? ' comment-popover-compact' : ''}${commentsView ? ' comment-popover-list' : ''}${docked ? ' comment-popover-docked' : ''}${dragging ? ' comment-popover-dragging' : ''}`}
       data-testid="comment-popover"
       role="dialog"
       aria-modal="false"
@@ -712,7 +717,7 @@ export function BoardComposerPopover({
             >
               <Icon name="comment" size={16} />
             </button>
-          ) : null}</>}
+          ) : null}{compact ? <Button size="icon" variant="ghost" onClick={onClose} aria-label={t('common.close')} title={t('common.close')}><Icon name="close" size={16} /></Button> : null}</>}
         </div>
       ) : null}
       {/* Everything above the action row scrolls; the action row itself lives
@@ -810,7 +815,8 @@ export function BoardComposerPopover({
                 ))}
               </div>
             ) : null}
-            <Textarea
+            <ComposerTextarea
+              {...(compact ? { fieldClassName: "annotation-input-shell", rows: 2, resize: "none" as const } : {})}
               data-testid="comment-popover-input"
               className={!canEditComment ? 'composer-note--readonly' : undefined}
               value={draft}
@@ -841,7 +847,8 @@ export function BoardComposerPopover({
                   if (isPodSelection) {
                     if (canSendToAgent && !sendBlocked) void onSendBatch();
                   } else if (canEditComment && !saveDisabled) {
-                    void onSaveComment();
+                    if (compact) void onSaveComment(addToChat);
+                    else void onSaveComment();
                   }
                 }
               }}
@@ -862,7 +869,12 @@ export function BoardComposerPopover({
         ) : null}
         </>}
       </div>
-      {commenting && !commentsView ? (
+      {commenting && !commentsView && compact ? (
+        <div className="comment-popover-actions">
+          {canEditComment && canSendToAgent && allowSendToChat ? <Checkbox size="sm" isSelected={addToChat} onChange={setAddToChat} isDisabled={sending || sendDisabled}>Add to chat</Checkbox> : <span />}
+          {canEditComment ? <Button size="icon" variant="ghost" data-testid="comment-popover-save" aria-label="Add comment" title="Add comment" disabled={saveDisabled || (addToChat && sendBlocked)} onClick={() => void onSaveComment(addToChat)}><Icon name="arrow-up" size={16} /></Button> : canSendToAgent && allowSendToChat ? <Button size="icon" variant="ghost" data-testid="comment-add-send" aria-label="Add to chat" title="Add to chat" disabled={sendBlocked} onClick={() => void onSendBatch()}><Icon name="arrow-up" size={16} /></Button> : null}
+        </div>
+      ) : commenting && !commentsView ? (
         <div className="comment-popover-actions">
           <div className="comment-popover-actions-start">
             {onAttachImages && canEditComment ? (

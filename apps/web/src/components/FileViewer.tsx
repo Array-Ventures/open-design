@@ -15764,7 +15764,7 @@ function HtmlViewer({
     return checked;
   }
 
-  async function savePersistentComment() {
+  async function savePersistentComment(addToChat = false) {
     if (!activeCommentTarget || !onSavePreviewComment) return;
     // Allow saving when there is text OR an attached image (image-only notes).
     if (!commentDraft.trim() && boardImages.length === 0 && currentActiveComposerAttachments().length === 0) return;
@@ -15777,7 +15777,7 @@ function HtmlViewer({
       const saved = await onSavePreviewComment(
         target,
         commentDraft.trim(),
-        false,
+        addToChat,
         boardImages,
         activeComposerComment?.id,
       );
@@ -17251,7 +17251,7 @@ function HtmlViewer({
         setQueuedBoardNotes((current) => current.filter((_, currentIndex) => currentIndex !== index))
       }
       onClose={clearBoardComposer}
-      onSaveComment={() => { fireCommentPopoverClick('save_comment'); return savePersistentComment(); }}
+      onSaveComment={(addToChat) => { fireCommentPopoverClick('save_comment'); return savePersistentComment(addToChat); }}
       onSendBatch={() => {
         observeAnalytics(() => {
           const saved = currentActiveComposerComment();
@@ -18175,7 +18175,7 @@ function HtmlViewer({
             </div>
       </>)}
       <div className="viewer-body" ref={previewBodyRef}>
-        {inlineAnnotations ? <ArtifactAnnotationControls commenting={boardMode} marking={drawOverlayOpen} disabled={sendingBoardBatch}
+        {inlineAnnotations ? <ArtifactAnnotationControls projectId={projectId} commenting={boardMode} marking={drawOverlayOpen} disabled={sendingBoardBatch}
           onComment={() => {
             if (!boardMode) { activateCommentTool(); return; }
             requestComposerRetarget(() => { setCommentPanelOpen(false); setCommentCreateMode(false); setBoardMode(false); clearBoardComposer(); });

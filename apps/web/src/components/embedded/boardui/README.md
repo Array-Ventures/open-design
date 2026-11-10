@@ -1,6 +1,6 @@
 # Embedded BoardUI source
 
-The button, input, label, hint text, `cx`, directional-icon helper, theme and typography sources here are
+The button, checkbox, input, label, hint text, `cx`, directional-icon helper, theme and typography sources here are
 adapted from the installed free BoardUI components and styles in Evebot's
 `apps/web`. They are kept in this explicit embedded boundary, separate from
 Open Design's standalone component styling. No Pro source is included.
