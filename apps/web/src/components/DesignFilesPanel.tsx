@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { FileCategoryTabs } from './embedded/FileCategoryTabs';
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { TrackingProjectKind } from '@open-design/contracts/analytics';
 import { useAnalytics } from '../analytics/provider';
 import { trackFileManagerClick } from '../analytics/events';
@@ -51,6 +52,7 @@ export interface DesignFilesNavState {
 }
 
 interface Props {
+  embedded?: boolean;
   projectId: string;
   projectKind: TrackingProjectKind;
   filesRefreshKey?: number;
@@ -483,6 +485,7 @@ const makeInert = (node: HTMLElement | null) => {
 };
 
 export function DesignFilesPanel({
+  embedded = false,
   projectId,
   projectKind,
   filesRefreshKey = 0,
@@ -1462,6 +1465,20 @@ export function DesignFilesPanel({
     </div>
   );
 
+  const categoryTabs = availableTabs.length > 0 ? (
+    <div className="df-tabs" role="tablist" data-testid="design-files-tabs">
+      {availableTabs.map(tab => (
+        <button key={tab.id} type="button" role="tab" aria-selected={resolvedTab === tab.id}
+          className={`df-tab ${resolvedTab === tab.id ? 'active' : ''}`}
+          data-testid={`design-files-tab-${tab.id}`} onClick={() => setActiveTab(tab.id)}>
+          {tab.label}<span className="df-tab-count">{tab.count}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
+  const wrapCategories = (children: ReactNode) => embedded
+    ? <FileCategoryTabs tabs={availableTabs} selected={resolvedTab} onChange={setActiveTab} label={t('designFiles.title')}>{children}</FileCategoryTabs>
+    : <>{categoryTabs}{children}</>;
   const breadcrumbs = (
     <nav className="df-breadcrumbs" aria-label={t('designFiles.crumbs')}>
       {currentDir === '' ? (
@@ -1594,7 +1611,7 @@ export function DesignFilesPanel({
   );
 
   return (
-    <div className={`df-panel ${hasSelection ? 'has-selection' : ''}`}>
+    <div className={`df-panel ${hasSelection ? 'has-selection' : ''}`} data-root={currentDir === ''}>
       {reloading ? (
         <div className="df-reloading-overlay" data-testid="design-files-reloading">
           <span className="loading-spinner">
@@ -1750,24 +1767,7 @@ export function DesignFilesPanel({
             )
           ) : (
             <>
-              {availableTabs.length > 0 ? (
-                <div className="df-tabs" role="tablist" data-testid="design-files-tabs">
-                  {availableTabs.map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={resolvedTab === tab.id}
-                      className={`df-tab ${resolvedTab === tab.id ? 'active' : ''}`}
-                      data-testid={`design-files-tab-${tab.id}`}
-                      onClick={() => setActiveTab(tab.id)}
-                    >
-                      {tab.label}
-                      <span className="df-tab-count">{tab.count}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+              {wrapCategories(<>
               {resolvedTab === 'live-artifacts' ? (
                 <div className="df-section" key="live-artifacts">
                   {liveArtifacts.map((artifact) => (
@@ -1902,6 +1902,7 @@ export function DesignFilesPanel({
                   </div>
                 ) : null,
               )}
+              </>)}
             </>
           )}
           {/* #5517 drops the always-on footer drop-hint strip — drag & drop

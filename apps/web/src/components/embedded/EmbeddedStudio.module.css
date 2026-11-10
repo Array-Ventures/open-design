@@ -291,3 +291,16 @@
 .workspace :global(.comment-side-select-all) { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; }
 .workspace :global(.comment-popover-list .comment-side-header:has(.comment-side-select-all)) { display: flex; justify-content: flex-end; height: 32px; min-height: 32px; padding: 0; }
 .workspace :global(.comment-popover-list .comment-side-title), .workspace :global(.comment-popover-list .comment-side-collapse) { display: none; }
+
+/* One content inset aligns category navigation, cards and file rows. */
+.workspace :global(.df-panel) { background: var(--color-background-primary-default); }
+.workspace :global(.df-body) { padding: 12px 16px 16px; }
+.workspace :global(.df-panel[data-root='true'] .df-topbar:has(.df-topbar-right:empty)) { display: none; }
+.workspace :global(.df-topbar) { margin: 8px 16px 0; padding: 0; }
+.workspace :global(.df-breadcrumbs) { padding: 0; }
+.workspace :global(.df-category-tabs) { gap: 12px; min-width: 0; }
+.workspace :global(.df-category-strip) { overflow-x: auto; scrollbar-width: thin; padding: 2px; }
+.workspace :global(.df-category-strip [role='tablist']) { flex-wrap: nowrap; }
+.workspace :global(.df-category-strip [role='tab']) { flex: 0 0 auto; }
+.workspace :global(.df-category-content) { min-width: 0; }
+.workspace :global(.df-card-grid), .workspace :global(.df-image-masonry) { padding: 0 0 12px; gap: 16px; }

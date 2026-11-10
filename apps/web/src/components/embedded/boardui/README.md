@@ -74,3 +74,8 @@ the upstream dialog.
 Dashboard overflow actions use the installed free BoardUI Dropdown source,
 with relative imports and React 18 RefObject compatibility. Embedded icon
 controls use the small size and center opaque upstream icon children.
+
+The file-category tabs use the installed free BoardUI underline Tabs source.
+The embedded copy omits the unused React 19 ref prop API for React 18, reads
+React Aria's locale directly, and uses semantic inactive count surfaces. The
+Tab/TabPanel association and arrow-key navigation remain owned by React Aria.

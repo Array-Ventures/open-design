@@ -4429,6 +4429,7 @@ export function FileWorkspace({
         )) : null}
         {initialMaterializationPending ? (
           <DesignFilesPanel
+            embedded={embedded}
             projectId={projectId}
             projectKind={projectKind}
             viewerOnly
@@ -4474,6 +4475,7 @@ export function FileWorkspace({
           />
         ) : designFilesTabActive ? (
           <DesignFilesPanel
+            embedded={embedded}
             key={projectId}
             projectId={projectId}
             projectKind={projectKind}
