@@ -295,7 +295,7 @@
 /* One content inset aligns category navigation, cards and file rows. */
 .workspace :global(.df-panel) { background: var(--color-background-primary-default); }
 .workspace :global(.df-body) { padding: 12px 16px 16px; }
-.workspace :global(.df-panel[data-root='true'] .df-topbar:has(.df-topbar-right:empty)) { display: none; }
+.workspace :global(.df-panel[data-root='true'] .df-topbar:has(.df-topbar-right:not(:has(button, input)))) { display: none; }
 .workspace :global(.df-topbar) { margin: 8px 16px 0; padding: 0; }
 .workspace :global(.df-breadcrumbs) { padding: 0; }
 .workspace :global(.df-category-tabs) { gap: 12px; min-width: 0; }
@@ -304,3 +304,6 @@
 .workspace :global(.df-category-strip [role='tab']) { flex: 0 0 auto; }
 .workspace :global(.df-category-content) { min-width: 0; }
 .workspace :global(.df-card-grid), .workspace :global(.df-image-masonry) { padding: 0 0 12px; gap: 16px; }
+
+.workspace :global(.df-panel[data-root='true'] .df-topbar-left) { display: none; }
+.workspace :global(.df-topbar-right) { margin-inline-start: auto; }
