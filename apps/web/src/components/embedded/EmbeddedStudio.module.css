@@ -167,6 +167,8 @@
 
 /* Live artifact entries are whole-row targets, with one shared hover surface. */
 .workspace :global(.df-row-live-artifact) {
+  height: auto;
+  min-height: 64px;
   box-sizing: border-box;
   width: calc(100% - 16px);
   margin-inline: 8px;
