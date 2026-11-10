@@ -17017,8 +17017,9 @@ function HtmlViewer({
     return {
       host: commentComposerHost,
       bounds: {
-        width: hostRect.width,
-        height: hostRect.height,
+        // Keep an annotation popup clear of the local comments list.
+        width: localCommentSideDockActive ? Math.max(1, canvasRect.right - hostRect.left) : hostRect.width,
+        height: localCommentSideDockActive ? Math.max(1, canvasRect.bottom - hostRect.top) : hostRect.height,
         scrollLeft: commentComposerHost.scrollLeft,
         scrollTop: commentComposerHost.scrollTop,
       },
@@ -17264,7 +17265,7 @@ function HtmlViewer({
       sendDisabled={commentSendDisabled || viewerOnly}
       sendDisabledReason={viewerOnly ? viewerOnlyDisabledTitle : undefined}
       allowSendToChat={!viewerOnly}
-      renderCreateForm={!commentPortalHost}
+      renderCreateForm={!commentPortalHost && !activeCommentTarget}
       t={t}
       composer={null}
     />
