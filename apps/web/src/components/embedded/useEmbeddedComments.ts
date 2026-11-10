@@ -8,6 +8,11 @@ export function useEmbeddedComments(projectId: string) {
   const [comments, setComments] = useState<PreviewComment[]>([]);
   const [state, setState] = useState<'loading' | 'error' | 'success'>('loading');
   const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 5000);
+    return () => clearTimeout(timer);
+  }, [notice]);
   const generation = useRef(0);
   const mounted = useRef(true);
   const refresh = useCallback(async () => {
@@ -32,7 +37,7 @@ export function useEmbeddedComments(projectId: string) {
       extra = '\n' + result.uploaded.map((image) => `Attached image: ${image.path}`).join('\n');
     }
     const accepted = await stageHostContext(projectId, commentContextText(attachments) + extra);
-    setNotice(accepted ? 'Added to your Evebot draft. Review it in chat and send when ready.' : 'Open a bot or group chat beside Studio, then try adding this request again.');
+    setNotice(accepted ? 'Added to your chat draft.' : 'Open a bot or group chat beside Studio, then try adding this request again.');
     return { status: accepted ? 'queued' : 'rejected', commentIds: accepted ? attachments.map((item) => item.id) : [] };
   }, [projectId]);
   const save = useCallback(async (target: PreviewCommentTarget, note: string, attach: boolean, images: File[] = [], commentId?: string) => {

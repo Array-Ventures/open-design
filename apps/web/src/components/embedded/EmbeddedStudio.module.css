@@ -34,6 +34,7 @@
   font-weight: var(--text-body-regular--font-weight);
 }
 .workspace {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -334,3 +335,22 @@
 .workspace :global(.comment-popover-quote) { color: var(--color-text-secondary); font-size: var(--text-caption-1-regular); line-height: var(--text-caption-1-regular--line-height); font-weight: var(--text-caption-1-regular--font-weight); letter-spacing: var(--text-caption-1-regular--letter-spacing); }
 /* The outer live viewer's body must give the nested canvas a real flex height. */
 .workspace :global(.viewer-body:has(> .live-artifact-inline-preview)) { display: flex; flex-direction: column; overflow: hidden; }
+
+.feedbackNotice {
+  position: absolute;
+  z-index: 60;
+  top: 12px;
+  inset-inline-start: 12px;
+  max-width: calc(100% - 116px);
+  padding: 8px 12px;
+  border: 1px solid var(--color-separator-border);
+  border-radius: 12px;
+  background: var(--color-background-primary-default);
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption-1-regular);
+  line-height: var(--text-caption-1-regular--line-height);
+  font-weight: var(--text-caption-1-regular--font-weight);
+  letter-spacing: var(--text-caption-1-regular--letter-spacing);
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+}

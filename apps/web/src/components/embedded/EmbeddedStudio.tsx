@@ -122,7 +122,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
   }
   return (
     <main className={styles.workspace} data-testid="embedded-studio">
-      {markupNotice || comments.notice ? <div role="status">{markupNotice ?? comments.notice}</div> : null}
+      {markupNotice || comments.notice ? <div role="status" className={styles.feedbackNotice}>{markupNotice ?? comments.notice}</div> : null}
       {dashboardError ? <div role="alert">Dashboards unavailable. Retrying…</div> : null}
       {new URLSearchParams(window.location.search).get('surface') === 'artifact' ? <ArtifactSurface project={project} files={files} dashboards={dashboards} fileName={fileName} generation={generation} onRefresh={refresh} feedback={{
         previewComments: comments.comments, previewCommentsState: comments.state,
