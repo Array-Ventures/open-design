@@ -11,3 +11,5 @@
 .shield { position: fixed; inset: 0; z-index: 2147483646; cursor: col-resize; touch-action: none; user-select: none; }
 @media (pointer: coarse) { .rail[data-collapsed='true'] .handle span { opacity: .4; } }
 @media (prefers-reduced-motion: reduce) { .handle span { transition: none; } }
+/* Scale the row floor with the thumbnail, avoiding overlaps in a wider rail. */
+.rail :global(.deck-thumbnail-button) { min-height: max(30px, calc((var(--deck-rail-width, 194px) - 49px) * 9 / 16)); }
