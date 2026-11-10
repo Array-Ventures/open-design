@@ -194,3 +194,6 @@
 .artifactSurface :global(.viewer-toolbar),
 .artifactSurface :global(.live-artifact-toolbar) { display: none; }
 .artifactSurface :global(.viewer) { border: 0; border-radius: 0; }
+.artifactSurface :global(.chrome-action),
+.artifactSurface :global(.chrome-present-wrap),
+.artifactSurface :global(.chrome-file-action-menus) { display: none; }
