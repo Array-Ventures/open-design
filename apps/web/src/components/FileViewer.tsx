@@ -5034,6 +5034,12 @@ export function CommentSidePanel({
           <span>{commentsLabel}</span>
         </div>
         <div className="comment-side-header-actions">
+          {sendableCount > 0 ? (
+            <button type="button" className="comment-side-select-all" disabled={allSelected}
+              onClick={onSelectAll} aria-label={t('chat.comments.selectAll')} title={t('chat.comments.selectAll')}>
+              <Icon name="check" size={14} />
+            </button>
+          ) : null}
           {/* The header's right slot owns collapse; select all moved below
               the divider. */}
           <button
@@ -5051,18 +5057,6 @@ export function CommentSidePanel({
         </div>
       </div>
       <CommentSyncBanner projectId={projectId} workspaceContext={workspaceContext} filePath={filePath} includeBackfill={false} />
-      {sendableCount > 0 ? (
-        <div className="comment-side-toolbar">
-          <button
-            type="button"
-            className="comment-side-select-all"
-            disabled={allSelected}
-            onClick={onSelectAll}
-          >
-            {t('chat.comments.selectAll')}
-          </button>
-        </div>
-      ) : null}
       <div
         className="comment-side-list"
         onDragLeave={(event) => {

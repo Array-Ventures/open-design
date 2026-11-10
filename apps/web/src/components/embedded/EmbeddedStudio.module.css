@@ -287,3 +287,7 @@
 .workspace :global(.comment-popover-list .comment-side-panel) { width: 100%; border: 0; border-radius: 0; }
 .workspace :global(.comment-popover-list .comment-side-header) { display: none; }
 .workspace :global(.comment-popover-list .comment-side-list) { padding: 8px; }
+
+.workspace :global(.comment-side-select-all) { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; }
+.workspace :global(.comment-popover-list .comment-side-header:has(.comment-side-select-all)) { display: flex; justify-content: flex-end; height: 32px; min-height: 32px; padding: 0; }
+.workspace :global(.comment-popover-list .comment-side-title), .workspace :global(.comment-popover-list .comment-side-collapse) { display: none; }
