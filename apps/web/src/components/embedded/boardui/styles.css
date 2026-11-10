@@ -11,3 +11,19 @@
 @source "./menu-styles.ts";
 
 @source "./dropdown.tsx";
+
+/* Keep standalone global button rules out of portalled BoardUI menu rows. */
+:root[data-host-theme="boardui"] button[data-boardui-menu-item] {
+  display: flex !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 8px 10px !important;
+  height: auto !important;
+  min-height: 32px;
+}
+:root[data-host-theme="boardui"] button[data-boardui-menu-item]:hover {
+  background: var(--color-background-secondary-hover) !important;
+}

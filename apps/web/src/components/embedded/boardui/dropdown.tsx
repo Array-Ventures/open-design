@@ -207,6 +207,7 @@ export function DropdownItem({ selected, onSelect, keepOpen, className, children
   return (
     <button
       type="button"
+      data-boardui-menu-item=""
       aria-pressed={selected}
       onClick={() => {
         onSelect?.();
