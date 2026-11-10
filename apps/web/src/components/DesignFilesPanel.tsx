@@ -2408,6 +2408,8 @@ function kindGlyph(kind: ProjectFileKind): string {
 }
 
 function kindLabel(kind: ProjectFileKind, t: TranslateFn): string {
+  if (kind === 'video') return t('project.typeVideo');
+  if (kind === 'audio') return t('project.typeAudio');
   if (kind === 'html') return t('designFiles.kindHtml');
   if (kind === 'image') return t('designFiles.kindImage');
   if (kind === 'sketch') return t('designFiles.kindSketch');

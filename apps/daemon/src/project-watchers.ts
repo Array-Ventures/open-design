@@ -1,3 +1,4 @@
+import { subscribeEmbeddedFiles } from './embedded-files/watcher.js';
 import type { Stats } from 'node:fs';
 import path from 'node:path';
 import chokidar, { type FSWatcher } from 'chokidar';
@@ -169,6 +170,7 @@ function makeEntry(dir: string, opts: Required<Pick<ProjectWatcherOptions, 'igno
  *   last; `ready` resolves once chokidar has finished its initial scan.
  */
 export function subscribe(projectsRoot: string, projectId: string, onEvent: ProjectWatchCallback, opts: ProjectWatcherOptions = {}) {
+  if (opts.metadata && typeof opts.metadata === 'object' && 'embeddedHost' in opts.metadata && opts.metadata.embeddedHost === 'evebot') return subscribeEmbeddedFiles(projectId, opts.metadata as Record<string, unknown>, onEvent);
   // Resolve to the project's actual root: for folder-imported projects
   // (metadata.baseDir set) we watch the user's folder so the live-reload
   // SSE stream actually fires when their files change. The registry is

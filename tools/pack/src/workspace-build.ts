@@ -12,6 +12,7 @@ export const WORKSPACE_BUILD_PACKAGES = [
   { directory: "packages/release", name: "@open-design/release" },
   { directory: "packages/components", name: "@open-design/components" },
   { directory: "packages/contracts", name: "@open-design/contracts" },
+  { directory: "packages/deck-export", name: "@open-design/deck-export" },
   { directory: "packages/registry-protocol", name: "@open-design/registry-protocol" },
   { directory: "packages/sidecar-proto", name: "@open-design/sidecar-proto" },
   { directory: "packages/launcher-proto", name: "@open-design/launcher-proto" },
@@ -47,7 +48,7 @@ export const WORKSPACE_BUILD_COMMANDS = [
   { args: ["--filter", "@open-design/packaged", "run", "build"] },
 ] as const;
 
-export const WORKSPACE_BUILD_CACHE_SCHEMA_VERSION = 12;
+export const WORKSPACE_BUILD_CACHE_SCHEMA_VERSION = 13;
 
 /**
  * V8 old-space ceiling (MB) for the packaged closure build, the stage that runs
@@ -197,6 +198,8 @@ function workspaceBuildOutputFiles(config: ToolPackConfig): string[] {
     "packages/release/dist/index.d.ts",
     "packages/contracts/dist/index.mjs",
     "packages/contracts/dist/index.d.ts",
+    "packages/deck-export/dist/index.js",
+    "packages/deck-export/dist/index.d.ts",
     "packages/registry-protocol/dist/index.mjs",
     "packages/registry-protocol/dist/index.d.ts",
     "packages/sidecar-proto/dist/index.mjs",
@@ -239,6 +242,7 @@ function workspaceBuildArtifacts(config: ToolPackConfig): WorkspaceBuildArtifact
     "packages/components/dist",
     "packages/release/dist",
     "packages/contracts/dist",
+    "packages/deck-export/dist",
     "packages/registry-protocol/dist",
     "packages/sidecar-proto/dist",
     "packages/launcher-proto/dist",
@@ -295,8 +299,9 @@ async function stripBrokenSymlinks(rootPath: string): Promise<void> {
     if (entry.isSymbolicLink()) {
       try {
         await stat(childPath);
-      } catch {
-        await unlink(childPath).catch(() => undefined);
+      } catch (error) {
+        if (!['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+        await unlink(childPath);
       }
     } else if (entry.isDirectory()) {
       await stripBrokenSymlinks(childPath);
@@ -357,6 +362,12 @@ async function hoistStandaloneNextPeerDeps(standaloneRoot: string): Promise<void
   }
 }
 
+/** Apply the same traced dependency repairs for desktop and embedded hosts. */
+export async function prepareStandaloneWebArtifact(standaloneRoot: string): Promise<void> {
+  await stripBrokenSymlinks(standaloneRoot);
+  await hoistStandaloneNextPeerDeps(standaloneRoot);
+}
+
 async function copyWorkspaceBuildArtifactsToCache(config: ToolPackConfig, entryRoot: string): Promise<void> {
   for (const artifact of workspaceBuildArtifacts(config)) {
     const sourcePath = join(config.workspaceRoot, artifact.workspacePath);
@@ -364,10 +375,9 @@ async function copyWorkspaceBuildArtifactsToCache(config: ToolPackConfig, entryR
     // previous build whose target moved (e.g. a renamed `.pnpm/<pkg>@<ver>`
     // after a dependency bump), so the subsequent hoist step starts
     // from a clean slot and can safely (re-)create its symlinks.
-    await stripBrokenSymlinks(sourcePath);
     if (artifact.workspacePath === WEB_STANDALONE_ARTIFACT) {
-      await hoistStandaloneNextPeerDeps(sourcePath);
-    }
+      await prepareStandaloneWebArtifact(sourcePath);
+    } else await stripBrokenSymlinks(sourcePath);
     const targetPath = join(entryRoot, artifact.cachePath);
     await mkdir(dirname(targetPath), { recursive: true });
     await cp(sourcePath, targetPath, { dereference: true, recursive: true });

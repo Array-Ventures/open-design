@@ -1,5 +1,5 @@
-export { Button } from './button';
-export type { ButtonProps, ButtonSize, ButtonVariant } from './button';
+export { Button, ButtonRendererProvider } from './button';
+export type { ButtonProps, ButtonSize, ButtonVariant, ButtonRenderer } from './button';
 export {
   Dialog,
   DialogBody,
@@ -9,8 +9,11 @@ export {
   DialogTitle,
 } from './dialog';
 export type { DialogProps } from './dialog';
-export { Input, Select, Textarea } from './form-controls';
-export type { InputProps, SelectProps, TextareaProps } from './form-controls';
+export { Input, InputRendererProvider, Select, Textarea, TextareaRendererProvider } from './form-controls';
+export type { InputProps, InputRenderer, SelectProps, TextareaProps, TextareaRenderer } from './form-controls';
 export { VisuallyHidden } from './visually-hidden';
 export type { VisuallyHiddenProps } from './visually-hidden';
 export { getModalDialogsInStackOrder, getTopModalDialog, observeModalStack } from './modal-stack';
+
+export { ValueSelect, ValueSelectRendererProvider } from './value-select';
+export type { ValueSelectProps, ValueSelectRenderer } from './value-select';

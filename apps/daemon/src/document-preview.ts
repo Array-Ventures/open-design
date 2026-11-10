@@ -3,10 +3,13 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { inflateRaw } from 'node:zlib';
 import JSZip from 'jszip';
 import { kindFor } from './projects.js';
 
 const execFileP = promisify(execFile);
+const inflateRawP = promisify(inflateRaw);
+const zipPreviewBytes = new WeakMap<JSZip, number>();
 const MAX_COMPRESSED_PREVIEW_BYTES = 10 * 1024 * 1024;
 const MAX_UNCOMPRESSED_PREVIEW_BYTES = 50 * 1024 * 1024;
 const MAX_XML_ENTRY_BYTES = 5 * 1024 * 1024;
@@ -19,7 +22,7 @@ type PreviewFile = { name: string; buffer: Buffer };
 type XmlAttrs = Record<string, string>;
 type WorkbookSheet = { name: string; path: string };
 type ZipEntryWithSize = JSZip.JSZipObject & {
-  _data?: { uncompressedSize?: number };
+  _data?: { uncompressedSize?: number; compressedContent?: Uint8Array; compression?: { magic?: string } };
 };
 
 class PreviewHttpError extends Error {
@@ -47,6 +50,7 @@ export async function buildDocumentPreview(file: PreviewFile) {
   assertPreviewInputSize(file.buffer.length);
   const zip = await JSZip.loadAsync(file.buffer);
   assertZipPreviewSize(zip);
+  zipPreviewBytes.set(zip, 0);
   if (previewKind === 'document') {
     return {
       kind: previewKind,
@@ -134,7 +138,7 @@ async function previewXlsx(zip: JSZip): Promise<PreviewSection[]> {
   const workbook = await readWorkbook(zip);
   const sections: PreviewSection[] = [];
   for (const sheet of workbook) {
-    const xml = await readZipText(zip, sheet.path).catch(() => '');
+    const xml = await readOptionalZipText(zip, sheet.path);
     const lines = extractWorksheetRows(xml, sharedStrings);
     sections.push({
       title: sheet.name,
@@ -147,7 +151,7 @@ async function previewXlsx(zip: JSZip): Promise<PreviewSection[]> {
 }
 
 async function readSharedStrings(zip: JSZip): Promise<string[]> {
-  const xml = await readZipText(zip, 'xl/sharedStrings.xml').catch(() => '');
+  const xml = await readOptionalZipText(zip, 'xl/sharedStrings.xml');
   if (!xml) return [];
   return Array.from(xml.matchAll(/<si\b[\s\S]*?<\/si>/g)).map((m) =>
     extractTextRuns(m[0]).join(''),
@@ -155,8 +159,8 @@ async function readSharedStrings(zip: JSZip): Promise<string[]> {
 }
 
 async function readWorkbook(zip: JSZip): Promise<WorkbookSheet[]> {
-  const workbookXml = await readZipText(zip, 'xl/workbook.xml').catch(() => '');
-  const relsXml = await readZipText(zip, 'xl/_rels/workbook.xml.rels').catch(() => '');
+  const workbookXml = await readOptionalZipText(zip, 'xl/workbook.xml');
+  const relsXml = await readOptionalZipText(zip, 'xl/_rels/workbook.xml.rels');
   const rels = new Map<string, string>();
   for (const rel of relsXml.matchAll(/<Relationship\b([^>]*)\/?>/g)) {
     const attrs = parseAttrs(rel[1] ?? '');
@@ -218,13 +222,41 @@ function extractTextRuns(xml: string): string[] {
 async function readZipText(zip: JSZip, name: string): Promise<string> {
   const entry = zip.file(name);
   if (!entry) throw new Error(`missing ${name}`);
-  const size = (entry as ZipEntryWithSize)._data?.uncompressedSize ?? 0;
-  if (size > MAX_XML_ENTRY_BYTES) {
-    throw new PreviewHttpError('document section too large to preview', 413);
+  const data = (entry as ZipEntryWithSize)._data;
+  const size = data?.uncompressedSize;
+  if (!data || typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0 || !(data.compressedContent instanceof Uint8Array)) {
+    throw new PreviewHttpError('unsupported document archive entry', 415);
   }
-  const xml = await entry.async('text');
+  if (size > MAX_XML_ENTRY_BYTES) throw new PreviewHttpError('document section too large to preview', 413);
+  const used = zipPreviewBytes.get(zip) ?? 0;
+  const remaining = Math.min(MAX_XML_ENTRY_BYTES, MAX_UNCOMPRESSED_PREVIEW_BYTES - used);
+  if (size > remaining) throw new PreviewHttpError('document too large to preview', 413);
+  let bytes: Buffer;
+  if (data.compression?.magic === '\x00\x00') {
+    if (data.compressedContent.byteLength > remaining) throw new PreviewHttpError('document section too large to preview', 413);
+    bytes = Buffer.from(data.compressedContent);
+  } else if (data.compression?.magic === '\x08\x00') {
+    try {
+      // JSZip's declared size is attacker-controlled. Native inflation enforces
+      // an actual output ceiling before constructing a complete XML buffer.
+      bytes = await inflateRawP(data.compressedContent, { maxOutputLength: Math.max(1, remaining) });
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ERR_BUFFER_TOO_LARGE') throw new PreviewHttpError('document section too large to preview', 413);
+      throw error;
+    }
+  } else throw new PreviewHttpError('unsupported document archive compression', 415);
+  if (bytes.length > remaining) throw new PreviewHttpError('document too large to preview', 413);
+  if (bytes.length !== size) throw new PreviewHttpError('invalid document archive size', 415);
+  zipPreviewBytes.set(zip, used + bytes.length);
+  const xml = bytes.toString('utf8');
   assertSafeXml(xml);
   return xml;
+}
+
+function readOptionalZipText(zip: JSZip, name: string): Promise<string> {
+  // Missing optional workbook parts are normal; corrupt/oversized/unsupported
+  // existing parts must not masquerade as empty successful previews.
+  return zip.file(name) ? readZipText(zip, name) : Promise.resolve('');
 }
 
 function parseAttrs(raw: string): XmlAttrs {

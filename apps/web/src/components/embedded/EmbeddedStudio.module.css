@@ -1,0 +1,126 @@
+@font-face {
+  font-family: "Evebot Studio latin";
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Evebot Studio latin-ext";
+  src: url("/fonts/inter-latin-ext.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Evebot Studio cyrillic";
+  src: url("/fonts/inter-cyrillic.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Evebot Studio greek";
+  src: url("/fonts/inter-greek.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+.hostTypography {
+  font-family: "Evebot Studio latin", "Evebot Studio latin-ext", "Evebot Studio cyrillic", "Evebot Studio greek", ui-sans-serif, system-ui, sans-serif;
+  font-size: var(--text-body-regular);
+  line-height: var(--text-body-regular--line-height);
+  letter-spacing: var(--text-body-regular--letter-spacing);
+  font-weight: var(--text-body-regular--font-weight);
+}
+.workspace {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg-panel);
+  color: var(--text-strong);
+}
+.status {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  color: var(--text-muted);
+}
+/* Authored HTML with a transparent body needs a paper canvas independent of
+   workspace dark mode. The document can still paint its own background. */
+.workspace :global(.artifact-preview-transport-stack iframe) {
+  background-color: var(--color-white);
+  color-scheme: light;
+}
+
+/* The embedded Select supplies its own chevron; standalone keeps its native row marker. */
+.hostTypography :global(.cc-select > .cc-chevron) {
+  display: none;
+}
+
+/* Compact paired fields need their own label line at the editor's 320px width. */
+.hostTypography :global(.cc-pair .cc-row) {
+  height: auto;
+  min-height: 64px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 8px;
+}
+.hostTypography :global(.cc-pair .cc-label) {
+  max-width: none;
+  padding-inline-end: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+.hostTypography :global(.cc-pair .cc-value) {
+  flex: 1;
+  width: 100%;
+}
+/* Keep history and draft actions on separate lines instead of letting the
+   optional Reset button push the two groups into each other. */
+.hostTypography :global(.manual-edit-footer-actions) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.hostTypography :global(.manual-edit-footer-left) {
+  flex: none;
+  gap: 8px;
+}
+.hostTypography :global(.manual-edit-footer-right) {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hostTypography :global(.manual-edit-modal) {
+  --manual-edit-field-bg: var(--color-background-tertiary-default);
+  --manual-edit-field-bg-hover: var(--color-background-tertiary-hover);
+  --manual-edit-field-border: var(--color-border-button-default);
+  --manual-edit-field-text: var(--color-text-primary);
+  --manual-edit-field-muted: var(--color-text-secondary);
+  --blue: var(--color-border-focus-ring);
+}
+
+.hostTypography :global(.cc-label) {
+  font-size: var(--text-caption-1-medium);
+  line-height: var(--text-caption-1-medium--line-height);
+  letter-spacing: var(--text-caption-1-medium--letter-spacing);
+  font-weight: var(--text-caption-1-medium--font-weight);
+}
+
+/* Export dialogs retain upstream form semantics; their heading uses the host ramp. */
+.hostTypography :global(.modal-head h2) {
+  font-size: var(--text-title-3-semibold);
+  line-height: var(--text-title-3-semibold--line-height);
+  letter-spacing: var(--text-title-3-semibold--letter-spacing);
+  font-weight: var(--text-title-3-semibold--font-weight);
+  color: var(--color-text-primary);
+}
+.hostTypography :global(.modal-head .subtitle) {
+  color: var(--color-text-secondary);
+}

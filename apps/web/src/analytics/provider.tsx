@@ -428,3 +428,13 @@ export function useAnalytics(): AnalyticsContextValue {
   }
   return value;
 }
+
+/** Embedded hosts own observability; do not bootstrap upstream tracking. */
+export function EmbeddedAnalyticsProvider({ children }: { children: ReactNode }) {
+  const value = useMemo<AnalyticsContextValue>(() => ({
+    track: () => {}, setConsent: () => {}, setIdentity: () => {},
+    setConfigureGlobals: () => {}, setUserId: () => {},
+    anonymousId: '', sessionId: '', newRequestId: () => crypto.randomUUID(),
+  }), []);
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}

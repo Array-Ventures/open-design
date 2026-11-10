@@ -1,4 +1,6 @@
 import { ClientApp } from './client-app';
+import { connection } from 'next/server';
+import { notFound } from 'next/navigation';
 
 // The whole product is a client-driven SPA: project IDs and file paths are
 // unbounded user input, so we route every URL through this single optional
@@ -13,6 +15,11 @@ export function generateStaticParams() {
   return [{ slug: [] }];
 }
 
-export default function Page() {
-  return <ClientApp />;
+export default async function Page({ params }: { params: Promise<{ slug?: string[] }> }) {
+  // Missing static font files must not become successful SPA documents.
+  if (process.env.OD_EMBEDDED_STUDIO === '1' && (await params).slug?.[0] === 'fonts') notFound();
+  // Embedded project IDs are live workspace state. Do not materialize an ISR
+  // page per UUID inside the immutable deployed application directory.
+  if (process.env.OD_EMBEDDED_STUDIO === '1') await connection();
+  return <ClientApp embedded={process.env.OD_EMBEDDED_STUDIO === '1'} />;
 }

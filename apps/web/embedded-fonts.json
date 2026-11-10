@@ -1,0 +1,15 @@
+{
+  "fonts": [
+    "AlbertSans-VariableFont_wght.ttf",
+    "AlbertSans-Italic-VariableFont_wght.ttf",
+    "inter-latin.woff2",
+    "inter-latin-ext.woff2",
+    "inter-cyrillic.woff2",
+    "inter-greek.woff2"
+  ],
+  "notices": [
+    "AlbertSans-OFL.txt",
+    "FONT-NOTICES.md",
+    "LICENSE-Inter.txt"
+  ]
+}

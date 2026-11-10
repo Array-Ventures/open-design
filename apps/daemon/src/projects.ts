@@ -35,6 +35,8 @@ import {
   SANDBOX_IMPORTED_PROJECT_UNAVAILABLE_MESSAGE,
 } from './sandbox-mode.js';
 import { isOrchestratorScratchWorkspace } from './workspace-contract.js';
+import { withEmbeddedProject } from './embedded-files/pinned-project.js';
+import type { ResolvedProjectFile, ProjectDeleteAccess } from './project-file-access.js';
 
 const FORBIDDEN_SEGMENT = /^$|^\.\.?$/;
 const RESERVED_PROJECT_FILE_SEGMENTS = new Set(['.file-versions', '.live-artifacts']);
@@ -146,8 +148,36 @@ export async function ensureProject(projectsRoot, projectId, metadata?) {
   return dir;
 }
 
+async function boundedListingEntries(project, prefix, budget: { remaining: number }) {
+  const entries = await project.entries(prefix);
+  // Count directories and hidden/unsupported entries too, before recursing.
+  // A limit on returned files alone does not bound a wide empty tree.
+  budget.remaining -= entries.length;
+  if (budget.remaining < 0) throw new Error('Project listing entry limit exceeded.');
+  return entries;
+}
+
 export async function listFiles(projectsRoot, projectId, opts = {}) {
   const metadata = opts?.metadata;
+  if (metadata?.embeddedHost === 'evebot') return withEmbeddedProject(projectId, metadata, async (project) => {
+    const out = [];
+    const budget = { remaining: 10_000 };
+    async function walk(prefix) {
+      for (const entry of await boundedListingEntries(project, prefix, budget)) {
+        if (entry.name.startsWith('.')) continue;
+        const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) { if (!isIgnoredProjectDirName(entry.name)) await walk(name); continue; }
+        if (!entry.isFile() || entry.name.endsWith('.artifact.json')) continue;
+        if (out.length >= 10_000) throw new Error('Project exceeds its file listing limit.');
+        const info = await project.stat(name);
+        const manifest = await readPinnedManifest(project, name);
+        out.push({ name, path: name, localPath: path.join(metadata.baseDir, name), type: 'file', size: info.size, mtime: info.mtimeMs, kind: kindFor(name), mime: mimeFor(name), artifactKind: manifest?.kind, artifactManifest: manifest });
+      }
+    }
+    await walk(''); out.sort((a, b) => b.mtime - a.mtime);
+    const since = Number(opts.since);
+    return Number.isFinite(since) && since > 0 ? out.filter((file) => file.mtime > since) : out;
+  });
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
   const out = [];
   // Skip generated dependency/build trees for all project roots. Standard OD
@@ -165,6 +195,21 @@ export async function listFiles(projectsRoot, projectId, opts = {}) {
 
 export async function listProjectFolders(projectsRoot, projectId, opts = {}) {
   const metadata = opts?.metadata;
+  if (metadata?.embeddedHost === 'evebot') return withEmbeddedProject(projectId, metadata, async (project) => {
+    const out = [];
+    const budget = { remaining: 10_000 };
+    async function walk(prefix) {
+      for (const entry of await boundedListingEntries(project, prefix, budget)) {
+        if (!entry.isDirectory() || entry.name.startsWith('.') || isIgnoredProjectDirName(entry.name)) continue;
+        const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (out.length >= 10_000) throw new Error('Project exceeds its folder listing limit.');
+        const info = await project.stat(name);
+        out.push({ name, path: name, type: 'dir', size: 0, mtime: info.mtimeMs });
+        await walk(name);
+      }
+    }
+    await walk(''); out.sort((a, b) => a.name.localeCompare(b.name)); return out;
+  });
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
   const out = [];
   await collectFolders(dir, '', out, isIgnoredProjectDirName);
@@ -206,6 +251,10 @@ async function collectFolders(dir, relDir, out, shouldSkipDir?: (name: string) =
 
 export async function createProjectFolder(projectsRoot, projectId, name, metadata?) {
   assertVisibleForImportedProject(name, metadata);
+  if (metadata?.embeddedHost === 'evebot') return withEmbeddedProject(projectId, metadata, async (project) => {
+    const safeName = sanitizePath(name); const info = await project.mkdir(safeName);
+    return { name: safeName, path: safeName, type: 'dir', size: 0, mtime: info.mtimeMs };
+  });
   const dir = await ensureProject(projectsRoot, projectId, metadata);
   const safeName = sanitizePath(name);
   const target = await resolveSafeReal(dir, safeName);
@@ -245,6 +294,7 @@ export async function ensureProjectSubdir(projectsRoot, projectId, subdir, metad
 // the target to the project tree even across descendant symlinks.
 export async function deleteProjectFolder(projectsRoot, projectId, name, metadata?) {
   assertVisibleForImportedProject(name, metadata);
+  if (metadata?.embeddedHost === 'evebot') return withEmbeddedProject(projectId, metadata, (project) => project.remove(sanitizePath(name), true));
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
   const safeName = sanitizePath(name);
   const target = await resolveSafeReal(dir, safeName);
@@ -806,6 +856,12 @@ ${list(assetFiles)}
 
 export async function readProjectFile(projectsRoot, projectId, name, metadata?) {
   assertVisibleForImportedProject(name, metadata);
+  if (metadata?.embeddedHost === 'evebot') return withEmbeddedProject(projectId, metadata, async (project) => {
+    const safeName = sanitizePath(name);
+    const result = await project.read(safeName);
+    const manifest = await readPinnedManifest(project, safeName, result.buffer);
+    return { buffer: result.buffer, name: safeName, path: safeName, size: result.stat.size, mtime: result.stat.mtimeMs, mime: mimeFor(safeName), kind: kindFor(safeName), artifactKind: manifest?.kind, artifactManifest: manifest };
+  });
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
   const file = await resolveSafeReal(dir, name);
   const buf = await readFile(file);
@@ -828,8 +884,14 @@ export async function readProjectFile(projectsRoot, projectId, name, metadata?) 
 
 /** Managed deletion needs a canonical, confined path even on retry after unlink.
  * Unlike preview/media resolution this does not require surviving bytes. */
-export async function resolveProjectDeletePath(projectsRoot, projectId, name, metadata?) {
+export function resolveProjectDeletePath(projectsRoot: string, projectId: string, name: string, metadata?: undefined): Promise<ProjectDeleteAccess & { filePath: string }>;
+export function resolveProjectDeletePath(projectsRoot: string, projectId: string, name: string, metadata: unknown): Promise<ProjectDeleteAccess>;
+export async function resolveProjectDeletePath(projectsRoot, projectId, name, metadata?): Promise<ProjectDeleteAccess> {
   assertVisibleForImportedProject(name, metadata);
+  if (metadata?.embeddedHost === 'evebot') return withEmbeddedProject(projectId, metadata, async () => {
+    const safeName = sanitizePath(name);
+    return { name: safeName, stat: () => withEmbeddedProject(projectId, metadata, (project) => project.stat(safeName)) };
+  });
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
   const filePath = await resolveSafeReal(dir, name);
   const rootReal = await realpath(dir).catch(() => dir);
@@ -844,8 +906,26 @@ export async function resolveProjectWritePath(projectsRoot, projectId, name, met
   return resolveSafeReal(resolveProjectDir(projectsRoot, projectId, metadata), name);
 }
 
-export async function resolveProjectFilePath(projectsRoot, projectId, name, metadata?) {
+export function resolveProjectFilePath(projectsRoot: string, projectId: string, name: string, metadata?: undefined): Promise<ResolvedProjectFile & { filePath: string }>;
+export function resolveProjectFilePath(projectsRoot: string, projectId: string, name: string, metadata: unknown): Promise<ResolvedProjectFile>;
+export async function resolveProjectFilePath(projectsRoot, projectId, name, metadata?): Promise<ResolvedProjectFile> {
   assertVisibleForImportedProject(name, metadata);
+  if (metadata?.embeddedHost === 'evebot') return withEmbeddedProject(projectId, metadata, async (project) => {
+    const safeName = sanitizePath(name);
+    const initial = await project.stat(safeName);
+    if (!initial.isFile()) throw new Error('Project path is not an ordinary file.');
+    return {
+      name: safeName, size: initial.size, mtime: initial.mtimeMs, mime: mimeFor(safeName), kind: kindFor(safeName),
+      openFile: () => withEmbeddedProject(projectId, metadata, async (current) => {
+        const file = await current.openFile(safeName);
+        try {
+          const info = await file.stat();
+          if (info.dev !== initial.dev || info.ino !== initial.ino || info.size !== initial.size || info.mtimeMs !== initial.mtimeMs) throw new Error('Project file changed before it could be opened.');
+          return file;
+        } catch (error) { await file.close(); throw error; }
+      }),
+    };
+  });
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
   const file = await resolveSafeReal(dir, name);
   const st = await stat(file);
@@ -866,17 +946,30 @@ export async function writeProjectFile(
   projectId,
   name,
   body,
-  { overwrite = true, artifactManifest = null } = {},
+  options: { overwrite?: boolean; artifactManifest?: unknown } = {},
   metadata?,
 ) {
   assertVisibleForImportedProject(name, metadata);
-  const dir = await ensureProject(projectsRoot, projectId, metadata);
+  if (metadata?.embeddedHost === 'evebot') return withEmbeddedProject(projectId, metadata, (project) => writeProjectFileWithAccess(projectsRoot, projectId, name, body, options, metadata, project));
+  return writeProjectFileWithAccess(projectsRoot, projectId, name, body, options, metadata);
+}
+
+async function writeProjectFileWithAccess(
+  projectsRoot,
+  projectId,
+  name,
+  body,
+  { overwrite = true, artifactManifest = null }: { overwrite?: boolean; artifactManifest?: unknown } = {},
+  metadata?,
+  pinned?,
+) {
+  const dir = pinned ? metadata.baseDir : await ensureProject(projectsRoot, projectId, metadata);
   const safeName = sanitizePath(name);
-  const target = await resolveSafeReal(dir, safeName);
+  const target = pinned ? path.join(dir, safeName) : await resolveSafeReal(dir, safeName);
   body = normalizeArtifactRuntimeImports(safeName, body);
   if (!overwrite) {
     try {
-      await stat(target);
+      if (pinned) await pinned.stat(safeName); else await stat(target);
       const err = new Error('file already exists');
       err.code = 'EEXIST';
       throw err;
@@ -884,7 +977,7 @@ export async function writeProjectFile(
       if (!err || err.code !== 'ENOENT') throw err;
     }
   }
-  await mkdir(path.dirname(target), { recursive: true });
+  if (!pinned) await mkdir(path.dirname(target), { recursive: true });
   let stubGuardWarning = null;
   let validatedManifest = null;
   if (artifactManifest && typeof artifactManifest === 'object') {
@@ -915,6 +1008,11 @@ export async function writeProjectFile(
           identifier,
           newSize: Buffer.byteLength(body),
           config: readArtifactStubGuardConfigFromEnv(),
+          ...(pinned ? { files: {
+            readFile: async (name) => (await pinned.read(toProjectPath(path.relative(dir, name)), 2 * 1024 * 1024)).buffer.toString('utf8'),
+            readdir: (name) => pinned.entries(toProjectPath(path.relative(dir, name))),
+            stat: (name) => pinned.stat(toProjectPath(path.relative(dir, name))),
+          } } : {}),
         });
         if ((guard.outcome === 'reject' || guard.outcome === 'warn') && guard.warning) {
           // Operator-visible signal regardless of mode, so on-call can see
@@ -939,15 +1037,21 @@ export async function writeProjectFile(
       }
     }
   }
-  await writeFile(target, body);
+  if (pinned) await pinned.write(safeName, body, overwrite); else await writeFile(target, body);
   await projectFileWriteTestHooks.afterCommit?.({ safeName, target, body });
   if (validatedManifest) {
     const manifestFileName = artifactManifestNameFor(safeName);
-    const manifestTarget = await resolveSafeReal(dir, manifestFileName);
-    await writeFile(manifestTarget, JSON.stringify(validatedManifest, null, 2));
+    if (pinned) await pinned.write(manifestFileName, JSON.stringify(validatedManifest, null, 2));
+    else {
+      const manifestTarget = await resolveSafeReal(dir, manifestFileName);
+      await writeFile(manifestTarget, JSON.stringify(validatedManifest, null, 2));
+    }
   }
-  const st = await stat(target);
-  const persistedManifest = await readManifestForPath(dir, safeName);
+  const st = pinned ? await pinned.stat(safeName) : await stat(target);
+  let persistedManifest;
+  if (pinned) {
+    persistedManifest = await readPinnedManifest(pinned, safeName);
+  } else persistedManifest = await readManifestForPath(dir, safeName);
   const result = {
     name: safeName,
     path: safeName,
@@ -967,6 +1071,11 @@ function artifactManifestNameFor(name) {
 }
 
 export async function reconcileHtmlArtifactManifest(projectsRoot, projectId, name, metadata?) {
+  if (metadata?.embeddedHost === 'evebot') return withEmbeddedProject(projectId, metadata, (project) => reconcileHtmlArtifactManifestWithAccess(projectsRoot, projectId, name, metadata, project));
+  return reconcileHtmlArtifactManifestWithAccess(projectsRoot, projectId, name, metadata);
+}
+
+async function reconcileHtmlArtifactManifestWithAccess(projectsRoot, projectId, name, metadata?, project?) {
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
   const safeName = validateProjectPath(name);
   if (containsIgnoredProjectDirSegment(safeName)) return null;
@@ -975,7 +1084,7 @@ export async function reconcileHtmlArtifactManifest(projectsRoot, projectId, nam
 
   let target;
   try {
-    target = await resolveSafeReal(dir, safeName);
+    target = project ? safeName : await resolveSafeReal(dir, safeName);
   } catch (err) {
     if (err && err.code === 'ENOENT') return null;
     throw err;
@@ -983,18 +1092,21 @@ export async function reconcileHtmlArtifactManifest(projectsRoot, projectId, nam
 
   let targetStat;
   try {
-    targetStat = await stat(target);
+    targetStat = project ? await project.stat(safeName) : await stat(target);
   } catch (err) {
     if (err && err.code === 'ENOENT') return null;
     throw err;
   }
   if (!targetStat.isFile()) return null;
-  if (await isViteDevHtmlEntry(dir, safeName, target)) return null;
+  if (await isViteDevHtmlEntry(project ? '' : dir, safeName, target, project ? {
+    readFile: async (entry) => (await project.read(entry, entry === safeName ? undefined : 2 * 1024 * 1024)).buffer.toString('utf8'),
+    stat: (entry) => project.stat(entry),
+  } : undefined)) return null;
 
   const manifestFileName = artifactManifestNameFor(safeName);
-  const manifestTarget = await resolveSafeReal(dir, manifestFileName);
+  const manifestTarget = project ? manifestFileName : await resolveSafeReal(dir, manifestFileName);
   try {
-    const raw = await readFile(manifestTarget, 'utf8');
+    const raw = project ? (await project.read(manifestTarget, 2 * 1024 * 1024)).buffer.toString('utf8') : await readFile(manifestTarget, 'utf8');
     return parseManifest(raw);
   } catch (err) {
     if (!err || err.code !== 'ENOENT') throw err;
@@ -1021,7 +1133,8 @@ export async function reconcileHtmlArtifactManifest(projectsRoot, projectId, nam
     { preserveUpdatedAt: true },
   );
   if (!validated.ok || !validated.value) return null;
-  await writeFile(manifestTarget, JSON.stringify(validated.value, null, 2));
+  if (project) await project.write(manifestTarget, JSON.stringify(validated.value, null, 2), false);
+  else await writeFile(manifestTarget, JSON.stringify(validated.value, null, 2));
   return validated.value;
 }
 
@@ -1042,12 +1155,27 @@ async function readManifestForPath(projectDirPath, relPath) {
   return inferLegacyManifest(relPath);
 }
 
+async function readPinnedManifest(project, name, body?) {
+  if (containsIgnoredProjectDirSegment(name)) return null;
+  const developmentEntry = await isViteDevHtmlEntry('', name, '', {
+    readFile: async (entry) => entry === name && body ? body.toString('utf8') : (await project.read(entry, entry === name ? undefined : 2 * 1024 * 1024)).buffer.toString('utf8'),
+    stat: (entry) => project.stat(entry),
+  });
+  if (developmentEntry) return null;
+  try {
+    const manifest = parseManifest((await project.read(artifactManifestNameFor(name), 2 * 1024 * 1024)).buffer.toString('utf8'));
+    if (manifest) return manifest;
+  } catch { /* Missing/invalid side metadata cannot widen a project read. */ }
+  return inferLegacyManifest(name);
+}
+
 function parseManifest(raw) {
   return parsePersistedManifest(raw, '');
 }
 
 export async function deleteProjectFile(projectsRoot, projectId, name, metadata?) {
   assertVisibleForImportedProject(name, metadata);
+  if (metadata?.embeddedHost === 'evebot') return withEmbeddedProject(projectId, metadata, (project) => project.remove(sanitizePath(name)));
   const dir = resolveProjectDir(projectsRoot, projectId, metadata);
   const file = await resolveSafeReal(dir, name);
   await unlink(file);
@@ -1056,11 +1184,15 @@ export async function deleteProjectFile(projectsRoot, projectId, name, metadata?
 export async function renameProjectFile(projectsRoot, projectId, fromName, toName, metadata?) {
   assertVisibleForImportedProject(fromName, metadata);
   assertVisibleForImportedProject(toName, metadata);
-  const dir = resolveProjectDir(projectsRoot, projectId, metadata);
+  if (metadata?.embeddedHost === 'evebot') return withEmbeddedProject(projectId, metadata, (project) => renameProjectFileWithAccess(projectsRoot, projectId, fromName, toName, metadata, project));
+  return renameProjectFileWithAccess(projectsRoot, projectId, fromName, toName, metadata);
+}
+async function renameProjectFileWithAccess(projectsRoot, projectId, fromName, toName, metadata?, pinned?) {
+  const dir = pinned ? metadata.baseDir : resolveProjectDir(projectsRoot, projectId, metadata);
   const oldName = validateProjectPath(fromName);
   const newName = sanitizePath(toName);
   try {
-    await stat(dir);
+    if (!pinned) await stat(dir);
   } catch (err) {
     if (err && err.code === 'ENOENT') {
       const missing = new Error('source file not found');
@@ -1069,8 +1201,8 @@ export async function renameProjectFile(projectsRoot, projectId, fromName, toNam
     }
     throw err;
   }
-  const source = await resolveSafeReal(dir, oldName);
-  const sourceStat = await stat(source);
+  const source = pinned ? path.join(dir, oldName) : await resolveSafeReal(dir, oldName);
+  const sourceStat = pinned ? await pinned.stat(oldName) : await stat(source);
   if (!sourceStat.isFile()) {
     const err = new Error('source is not a regular file');
     err.code = 'EISDIR';
@@ -1078,7 +1210,7 @@ export async function renameProjectFile(projectsRoot, projectId, fromName, toNam
   }
 
   if (oldName === newName) {
-    const manifest = await readManifestForPath(dir, oldName);
+    const manifest = pinned ? await readPinnedManifest(pinned, oldName) : await readManifestForPath(dir, oldName);
     return {
       file: {
         name: oldName,
@@ -1095,12 +1227,12 @@ export async function renameProjectFile(projectsRoot, projectId, fromName, toNam
     };
   }
 
-  const target = await resolveSafeReal(dir, newName);
+  const target = pinned ? path.join(dir, newName) : await resolveSafeReal(dir, newName);
   const targetPath = source === target ? resolveSafe(dir, newName) : target;
 
   if (source !== target) {
     try {
-      await stat(target);
+      if (pinned) await pinned.stat(newName); else await stat(target);
       const err = new Error('target file already exists');
       err.code = 'EEXIST';
       throw err;
@@ -1109,16 +1241,16 @@ export async function renameProjectFile(projectsRoot, projectId, fromName, toNam
     }
   }
 
-  const manifestRename = await prepareArtifactManifestRename(dir, oldName, newName);
+  const manifestRename = await prepareArtifactManifestRename(dir, oldName, newName, pinned);
 
-  await mkdir(path.dirname(targetPath), { recursive: true });
+  if (!pinned) await mkdir(path.dirname(targetPath), { recursive: true });
   await projectFileRenameTestHooks.beforeCommit?.({ source, target: targetPath });
-  await renameFilePath(source, targetPath, { noOverwrite: true });
+  if (pinned) await pinned.renameFile(oldName, newName); else await renameFilePath(source, targetPath, { noOverwrite: true });
   await commitArtifactManifestRename(manifestRename, newName);
-  await updateArtifactManifestRefsForRename(dir, oldName, newName);
+  await updateArtifactManifestRefsForRename(dir, oldName, newName, pinned);
 
-  const st = await stat(targetPath);
-  const manifest = await readManifestForPath(dir, newName);
+  const st = pinned ? await pinned.stat(newName) : await stat(targetPath);
+  const manifest = pinned ? await readPinnedManifest(pinned, newName) : await readManifestForPath(dir, newName);
   return {
     file: {
       name: newName,
@@ -1178,9 +1310,9 @@ async function uniqueRenameTempPath(source) {
   throw err;
 }
 
-async function prepareArtifactManifestRename(dir, oldName, newName) {
+async function prepareArtifactManifestRename(dir, oldName, newName, pinned?) {
   const oldManifestName = artifactManifestNameFor(oldName);
-  const oldManifestPath = await resolveSafeReal(dir, oldManifestName).catch((err) => {
+  const oldManifestPath = pinned ? path.join(dir, oldManifestName) : await resolveSafeReal(dir, oldManifestName).catch((err) => {
     if (err && err.code === 'ENOENT') return null;
     throw err;
   });
@@ -1188,20 +1320,20 @@ async function prepareArtifactManifestRename(dir, oldName, newName) {
 
   let raw = null;
   try {
-    raw = await readFile(oldManifestPath, 'utf8');
+    raw = pinned ? (await pinned.read(oldManifestName, 2 * 1024 * 1024)).buffer.toString('utf8') : await readFile(oldManifestPath, 'utf8');
   } catch (err) {
     if (err && err.code === 'ENOENT') return null;
     throw err;
   }
 
   const newManifestName = artifactManifestNameFor(newName);
-  const newManifestPath = await resolveSafeReal(dir, newManifestName);
+  const newManifestPath = pinned ? path.join(dir, newManifestName) : await resolveSafeReal(dir, newManifestName);
   const targetManifestPath = oldManifestPath === newManifestPath
     ? resolveSafe(dir, newManifestName)
     : newManifestPath;
   if (oldManifestPath !== newManifestPath) {
     try {
-      await stat(newManifestPath);
+      if (pinned) await pinned.stat(newManifestName); else await stat(newManifestPath);
       const err = new Error('target artifact manifest already exists');
       err.code = 'EEXIST';
       throw err;
@@ -1210,13 +1342,15 @@ async function prepareArtifactManifestRename(dir, oldName, newName) {
     }
   }
 
-  return { oldManifestPath, newManifestPath: targetManifestPath, raw, oldName };
+  return { oldManifestPath, newManifestPath: targetManifestPath, raw, oldName, pinned, dir };
 }
 
 async function commitArtifactManifestRename(manifestRename, newName) {
   if (!manifestRename) return;
-  const { oldManifestPath, newManifestPath, raw, oldName } = manifestRename;
-  await mkdir(path.dirname(newManifestPath), { recursive: true });
+  const { oldManifestPath, newManifestPath, raw, oldName, pinned, dir } = manifestRename;
+  if (!pinned) await mkdir(path.dirname(newManifestPath), { recursive: true });
+  const oldRelative = pinned ? toProjectPath(path.relative(dir, oldManifestPath)) : null;
+  const newRelative = pinned ? toProjectPath(path.relative(dir, newManifestPath)) : null;
   const parsed = parseManifest(raw);
   if (parsed) {
     const parsedEntry = typeof parsed.entry === 'string'
@@ -1227,23 +1361,23 @@ async function commitArtifactManifestRename(manifestRename, newName) {
       : parsed;
     const validated = validateArtifactManifestInput(renamedManifest, newName);
     if (validated.ok && validated.value) {
-      await writeFile(oldManifestPath, JSON.stringify(validated.value, null, 2));
-      await renameFilePath(oldManifestPath, newManifestPath, { noOverwrite: true });
+      if (pinned) { await pinned.write(oldRelative, JSON.stringify(validated.value, null, 2)); await pinned.renameFile(oldRelative, newRelative); }
+      else { await writeFile(oldManifestPath, JSON.stringify(validated.value, null, 2)); await renameFilePath(oldManifestPath, newManifestPath, { noOverwrite: true }); }
       return;
     }
   }
-  await renameFilePath(oldManifestPath, newManifestPath, { noOverwrite: true });
+  if (pinned) await pinned.renameFile(oldRelative, newRelative); else await renameFilePath(oldManifestPath, newManifestPath, { noOverwrite: true });
 }
 
-async function updateArtifactManifestRefsForRename(dir, oldName, newName) {
+async function updateArtifactManifestRefsForRename(dir, oldName, newName, pinned?) {
   const manifests = [];
-  await collectArtifactManifestFiles(dir, '', manifests);
+  await collectArtifactManifestFiles(dir, '', manifests, pinned);
   for (const manifestFile of manifests) {
     const ownerName = ownerNameForArtifactManifest(manifestFile.relPath);
     if (!ownerName) continue;
     let raw;
     try {
-      raw = await readFile(manifestFile.fullPath, 'utf8');
+      raw = pinned ? (await pinned.read(manifestFile.relPath, 2 * 1024 * 1024)).buffer.toString('utf8') : await readFile(manifestFile.fullPath, 'utf8');
     } catch (err) {
       if (err && err.code === 'ENOENT') continue;
       throw err;
@@ -1260,14 +1394,14 @@ async function updateArtifactManifestRefsForRename(dir, oldName, newName) {
 
     const validated = validateArtifactManifestInput(updated.manifest, ownerName);
     if (!validated.ok || !validated.value) continue;
-    await writeFile(manifestFile.fullPath, JSON.stringify(validated.value, null, 2));
+    if (pinned) await pinned.write(manifestFile.relPath, JSON.stringify(validated.value, null, 2)); else await writeFile(manifestFile.fullPath, JSON.stringify(validated.value, null, 2));
   }
 }
 
-async function collectArtifactManifestFiles(dir, relDir, out) {
+async function collectArtifactManifestFiles(dir, relDir, out, pinned?) {
   let entries = [];
   try {
-    entries = await readdir(dir, { withFileTypes: true });
+    entries = pinned ? await pinned.entries(relDir) : await readdir(dir, { withFileTypes: true });
   } catch (err) {
     if (err && err.code === 'ENOENT') return;
     throw err;
@@ -1277,20 +1411,22 @@ async function collectArtifactManifestFiles(dir, relDir, out) {
     const relPath = relDir ? `${relDir}/${entry.name}` : entry.name;
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      await collectArtifactManifestFiles(fullPath, relPath, out);
+      if (pinned && isIgnoredProjectDirName(entry.name)) continue;
+      await collectArtifactManifestFiles(fullPath, relPath, out, pinned);
       continue;
     }
     if (entry.isFile() && entry.name.endsWith('.artifact.json')) {
+      if (pinned && out.length >= 10_000) throw new Error('Project exceeds its manifest listing limit.');
       out.push({ relPath, fullPath });
     }
   }
 }
 
-async function isViteDevHtmlEntry(projectDirPath, safeName, targetPath) {
+async function isViteDevHtmlEntry(projectDirPath, safeName, targetPath, access?) {
   if (!/(^|\/)index\.html?$/i.test(safeName)) return false;
   let body = '';
   try {
-    body = await readFile(targetPath, 'utf8');
+    body = access ? await access.readFile(safeName) : await readFile(targetPath, 'utf8');
   } catch {
     return false;
   }
@@ -1307,14 +1443,14 @@ async function isViteDevHtmlEntry(projectDirPath, safeName, targetPath) {
   ];
   for (const candidate of viteConfigCandidates) {
     try {
-      const st = await stat(path.join(projectDirPath, candidate));
+      const st = access ? await access.stat(candidate) : await stat(path.join(projectDirPath, candidate));
       if (st.isFile()) return true;
     } catch (err) {
       if (!err || err.code !== 'ENOENT') return false;
     }
   }
   try {
-    const raw = await readFile(path.join(projectDirPath, 'package.json'), 'utf8');
+    const raw = access ? await access.readFile('package.json') : await readFile(path.join(projectDirPath, 'package.json'), 'utf8');
     const pkg = JSON.parse(raw);
     return Boolean(pkg?.dependencies?.vite || pkg?.devDependencies?.vite);
   } catch {
@@ -1699,7 +1835,9 @@ export async function searchProjectFiles(projectsRoot, projectId, query, opts = 
     if (pattern && !globMatch(f.name, pattern)) continue;
     let content;
     try {
-      content = await readFile(path.join(dir, f.name), 'utf8');
+      content = metadata?.embeddedHost === 'evebot'
+        ? (await readProjectFile(projectsRoot, projectId, f.name, metadata)).buffer.toString('utf8')
+        : await readFile(path.join(dir, f.name), 'utf8');
     } catch {
       continue;
     }

@@ -49,7 +49,7 @@ function erroredFamilies(doc: Document): Set<string> {
 
 async function recoverFont(doc: Document, font: RecoverableFont): Promise<boolean> {
   try {
-    const resp = await fetch(font.url);
+    const resp = await fetch(`${process.env.NEXT_PUBLIC_OD_STUDIO_BASE_PATH ?? ''}${font.url}`);
     if (!resp.ok) return false;
     const bytes = await resp.arrayBuffer();
     const face = new FontFace(font.family, bytes, font.descriptors);

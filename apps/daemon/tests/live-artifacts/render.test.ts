@@ -323,3 +323,27 @@ describe('renderHtmlTemplateV1', () => {
     })).toThrow(/invalid data-od-repeat directive/i);
   });
 });
+
+describe('optional contained-worker output budget', () => {
+  it('bounds repeated row expansion before constructing oversized output', () => {
+    expect(() => renderHtmlTemplateV1({ templateHtml: '<div data-od-repeat="item in data.rows"><p>{{item.label}}</p></div>', dataJson: { rows: Array.from({ length: 500 }, () => ({ label: 'A moderately sized row' })) }, maxOutputBytes: 100 })).toThrow('byte limit');
+  });
+  it('counts UTF-8 and escaped scalar bytes rather than string characters', () => {
+    expect(() => renderHtmlTemplateV1({ templateHtml: '<p>{{data.value}}</p>', dataJson: { value: 'é' }, maxOutputBytes: 8 })).toThrow('byte limit');
+    expect(renderHtmlTemplateV1({ templateHtml: '<p>{{data.value}}</p>', dataJson: { value: 'é' }, maxOutputBytes: 9 }).html).toBe('<p>é</p>');
+    expect(() => renderHtmlTemplateV1({ templateHtml: '<p>{{data.value}}</p>', dataJson: { value: '&&&' }, maxOutputBytes: 21 })).toThrow('byte limit');
+  });
+});
+
+describe('rendered binding security', () => {
+  it.each(['javascript:alert(1)', 'java\tscript:alert(1)', 'vbscript:msgbox(1)'])('rejects an executable bound URL: %s', (url) => {
+    expect(() => renderHtmlTemplateV1({ templateHtml: '<a href="{{data.url}}">Link</a>', dataJson: { url } })).toThrow('Active URL');
+  });
+  it('rejects active elements and attributes constructed by otherwise escaped bindings', () => {
+    expect(() => renderHtmlTemplateV1({ templateHtml: '<{{data.tag}}>alert(1)</{{data.tag}}>', dataJson: { tag: 'script' } })).toThrow('Active embedded');
+    expect(() => renderHtmlTemplateV1({ templateHtml: '<button {{data.attr}}>Click</button>', dataJson: { attr: 'onclick=alert(1)' } })).toThrow('Executable attributes');
+  });
+  it('preserves escaped data text and ordinary bound links without rewriting markup', () => {
+    expect(renderHtmlTemplateV1({ templateHtml: '<p>{{data.text}}</p><a href="{{data.url}}">Link</a>', dataJson: { text: 'onclick=example <script>data</script>', url: 'https://example.fixture.invalid/?a=1&b=2' } }).html).toBe('<p>onclick=example &lt;script&gt;data&lt;/script&gt;</p><a href="https://example.fixture.invalid/?a=1&amp;b=2">Link</a>');
+  });
+});

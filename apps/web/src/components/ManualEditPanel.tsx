@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { Button, ValueSelect } from '@open-design/components';
+import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import type { ProjectDesignTokenSuggestion, ProjectDesignTokenSuggestionProp } from '../providers/registry';
 import { useT } from '../i18n';
 import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
@@ -307,7 +308,7 @@ export function ManualEditPanel({
         <div className="manual-edit-footer">
           <div className="manual-edit-footer-actions">
             <div className="manual-edit-footer-left">
-              <button
+              <Button unstyled variant="ghost" size="icon"
                 type="button"
                 className="manual-edit-history-btn"
                 aria-label={t('manualEdit.undo')}
@@ -316,8 +317,8 @@ export function ManualEditPanel({
                 onClick={onUndo}
               >
                 <Icon name="undo" size={15} />
-              </button>
-              <button
+              </Button>
+              <Button unstyled variant="ghost" size="icon"
                 type="button"
                 className="manual-edit-history-btn"
                 aria-label={t('manualEdit.redo')}
@@ -326,9 +327,9 @@ export function ManualEditPanel({
                 onClick={onRedo}
               >
                 <Icon name="redo" size={15} />
-              </button>
+              </Button>
               {targetForInspector ? (
-                <button
+                <Button unstyled variant="ghost" size="icon"
                   type="button"
                   className="manual-edit-delete-btn"
                   aria-label={t('manualEdit.deleteElement')}
@@ -342,36 +343,36 @@ export function ManualEditPanel({
                   }}
                 >
                   <Icon name="trash" size={15} />
-                </button>
+                </Button>
               ) : null}
             </div>
             <div className="manual-edit-footer-right">
               {resetAvailable ? (
-                <button
+                <Button unstyled variant="secondary" size="sm"
                   type="button"
                   className="manual-edit-footer-btn subtle"
                   disabled={busy}
                   onClick={onResetDraft}
                 >
                   {t('ds.reset')}
-                </button>
+                </Button>
               ) : null}
-              <button
+              <Button unstyled variant="secondary" size="sm"
                 type="button"
                 className="manual-edit-footer-btn subtle"
                 disabled={busy}
                 onClick={onCancelDraft}
               >
                 {t('common.cancel')}
-              </button>
-              <button
+              </Button>
+              <Button unstyled variant="primary" size="sm"
                 type="button"
                 className="manual-edit-footer-btn primary"
                 disabled={busy}
                 onClick={onSaveDraft}
               >
                 {t('common.save')}
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -1029,21 +1030,21 @@ function DropdownRow({ label, value, onChange, options, placeholder, disabled, o
   label: string; value: string; onChange: (v: string) => void;
   options: ReadonlyArray<DropdownOption>; placeholder?: string; disabled?: boolean; onFocus?: () => void;
 }) {
+  const id = useId();
   const optionValues = options.map(dropdownOptionValue);
   return (
-    <label className="cc-row">
+    <div className="cc-row">
       <span className="cc-label">{label}</span>
       <span className="cc-value cc-select">
-        <select value={value} disabled={disabled} onFocus={onFocus} onChange={(e) => onChange(e.currentTarget.value)}>
-          {!optionValues.includes(value) && value ? <option value={value}>{value}</option> : null}
-          {options.map((opt) => {
-            const optionValue = dropdownOptionValue(opt);
-            return <option key={optionValue || '__'} value={optionValue}>{dropdownOptionLabel(opt, placeholder)}</option>;
-          })}
-        </select>
+        <ValueSelect id={id} label={label} hideLabel value={value} disabled={disabled} onFocus={onFocus} onValueChange={onChange}
+          options={[
+            ...(!optionValues.includes(value) && value ? [{ value, label: value }] : []),
+            ...options.map(option => ({ value: dropdownOptionValue(option), label: dropdownOptionLabel(option, placeholder) })),
+          ]}
+        />
         <em className="cc-chevron">▾</em>
       </span>
-    </label>
+    </div>
   );
 }
 
@@ -1063,24 +1064,23 @@ function FontRow({ label, value, placeholder, onChange, onFocus }: {
   onChange: (v: string) => void;
   onFocus?: () => void;
 }) {
+  const id = useId();
   const normalizedValue = normalizeFontFamilyForSelect(value);
   const customValue = normalizedValue === value ? value : '';
   return (
-    <label className="cc-row">
+    <div className="cc-row">
       <span className="cc-label">{label}</span>
       <span className="cc-value cc-select">
-        <select value={normalizedValue} onFocus={onFocus} onChange={(event) => onChange(event.currentTarget.value)}>
-          {!normalizedValue && placeholder ? <option value="">{fontFamilyLabel(placeholder)}</option> : null}
-          {customValue && !FONT_OPTS.some((option) => option.value === customValue) ? (
-            <option value={customValue}>{fontFamilyLabel(customValue)}</option>
-          ) : null}
-          {FONT_OPTS.map((option) => (
-            <option key={option.label} value={option.value}>{option.label}</option>
-          ))}
-        </select>
+        <ValueSelect id={id} label={label} hideLabel value={normalizedValue} onFocus={onFocus} onValueChange={onChange}
+          options={[
+            ...(!normalizedValue && placeholder ? [{ value: '', label: fontFamilyLabel(placeholder) }] : []),
+            ...(customValue && !FONT_OPTS.some(option => option.value === customValue) ? [{ value: customValue, label: fontFamilyLabel(customValue) }] : []),
+            ...FONT_OPTS,
+          ]}
+        />
         <em className="cc-chevron">▾</em>
       </span>
-    </label>
+    </div>
   );
 }
 

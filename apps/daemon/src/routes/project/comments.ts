@@ -405,6 +405,14 @@ export function registerProjectCommentRoutes(app: Express, ctx: RegisterProjectC
     req: Request,
     context: WorkspaceCollabContext | null,
   ): Promise<string | undefined> {
+    // Embedded requests have already passed the mandatory service credential
+    // gate. The host replaces this header with its authenticated human; an
+    // author supplied in a request body is still stripped below.
+    if (process.env.OD_EMBEDDED_STUDIO === '1') {
+      const human = req.get('x-od-host-human');
+      if (!human || human.length > 200 || /[\r\n\0]/.test(human)) throw new Error('Host identity required');
+      return `evebot:${human}`;
+    }
     if (ctx.resolveWorkspaceContext) {
       return context?.workspaceMemberId || undefined;
     }
@@ -648,7 +656,9 @@ export function registerProjectCommentRoutes(app: Express, ctx: RegisterProjectC
         }
       } else if (authorMemberId) {
         body.authorMemberId = authorMemberId;
-        const authorDisplayName = ctx.resolveCurrentAuthorDisplayName?.();
+        const authorDisplayName = process.env.OD_EMBEDDED_STUDIO === '1'
+          ? decodeURIComponent(req.get('x-od-host-human-name') ?? '')
+          : ctx.resolveCurrentAuthorDisplayName?.();
         if (authorDisplayName?.trim()) body.authorDisplayName = authorDisplayName.trim();
       }
       if (existing?.sourceFileId) body.sourceFileId = existing.sourceFileId;
@@ -892,6 +902,7 @@ export function registerProjectCommentRoutes(app: Express, ctx: RegisterProjectC
           workspaceContext,
         );
         if (!existing) return res.status(404).json({ error: 'comment not found' });
+        if (process.env.OD_EMBEDDED_STUDIO === '1' && !await callerMayMutate(req, req.params.id, existing, workspaceContext)) return res.status(403).json({ error: 'not permitted' });
         const comment = reorderPreviewComment(
           db,
           req.params.id,

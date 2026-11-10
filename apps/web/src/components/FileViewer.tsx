@@ -1,4 +1,7 @@
+import { DashboardControls } from './embedded/DashboardControls';
+import type { EmbeddedDashboard } from './embedded/dashboards';
 import { validateCommentSaveTarget } from '../comments/validate-save-target';
+import { useEmbeddedViewer } from './embedded/host-viewer';
 import { previewStorageKey, readPreviewStorage, savePreviewStorageMessage } from '../runtime/preview-storage';
 import { commentSelectorsMatch, commentUsesIdentity, ownerCommentNeedsLocation, resolveOwnerCommentAnchor } from '../comments/owner-anchor';
 import { indexCommentTargets } from '../comments/target-index';
@@ -25,7 +28,7 @@ import { ShareMoreMenu } from './share/ShareMoreMenu';
 import shareEntryStyles from './share/ShareEntry.module.css';
 import { AnchoredMenuShell } from './chat/AnchoredMenuShell';
 import { createPortal, flushSync } from 'react-dom';
-import { Button, Input, Select } from '@open-design/components';
+import { Button, Input, ValueSelect, Textarea } from '@open-design/components';
 import {
   getLatestHostPreviewNavigationFailure,
   subscribeHostPreviewNavigationFailure,
@@ -1761,6 +1764,7 @@ function getPreviewDocumentEpoch(key: string): string {
 }
 
 interface Props {
+  embedded?: boolean;
   projectId: string;
   projectKind: TrackingProjectKind;
   file: ProjectFile;
@@ -1878,6 +1882,7 @@ type PendingShareUpdateAfterLogin = {
 };
 
 export const FileViewer = memo(function FileViewer({
+  embedded = false,
   projectId,
   projectKind,
   file,
@@ -1988,6 +1993,7 @@ export const FileViewer = memo(function FileViewer({
   if (rendererMatch?.renderer.id === 'html' || rendererMatch?.renderer.id === 'deck-html') {
     return (
       <HtmlViewer
+        embedded={embedded}
         projectId={projectId}
         projectKind={projectKind}
         file={file}
@@ -2039,6 +2045,7 @@ export const FileViewer = memo(function FileViewer({
   if (rendererMatch?.renderer.id === 'react-component') {
     return (
       <ReactComponentViewer
+        embedded={embedded}
         projectId={projectId}
         projectKind={projectKind}
         file={file}
@@ -2291,12 +2298,27 @@ export function LiveArtifactViewer({
     };
   }, [projectId, liveArtifact.artifactId, liveArtifact.updatedAt, workspaceContext]);
 
+  useEffect(() => {
+    if (!process.env.NEXT_PUBLIC_OD_STUDIO_BASE_PATH) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const readCurrentSource = async () => {
+      if (document.visibilityState !== 'hidden') {
+        const next = await fetchLiveArtifact(projectId, liveArtifact.artifactId, workspaceContext);
+        if (!cancelled) setDetail(next);
+      }
+      if (!cancelled) timer = setTimeout(() => { void readCurrentSource(); }, 2500);
+    };
+    timer = setTimeout(() => { void readCurrentSource(); }, 2500);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [projectId, liveArtifact.artifactId, workspaceContext]);
+
   const previewUrl = useMemo(
     () => appendResourceQuery(
       liveArtifactPreviewUrl(projectId, liveArtifact.artifactId, 'rendered', workspaceContext),
-      `v=${reloadKey}`,
+      `v=${encodeURIComponent(liveArtifact.updatedAt)}-${reloadKey}`,
     ),
-    [projectId, liveArtifact.artifactId, reloadKey, workspaceContext],
+    [projectId, liveArtifact.artifactId, liveArtifact.updatedAt, reloadKey, workspaceContext],
   );
   const previewScale = zoom / 100;
 
@@ -2356,7 +2378,9 @@ export function LiveArtifactViewer({
     }
   }
 
-  const dataPayload = detail?.document?.dataJson ?? null;
+  const hostSourceState = detail && 'hostSourceState' in detail
+    ? (detail as EmbeddedDashboard).hostSourceState : null;
+  const dataPayload = hostSourceState?.dataAvailable === false ? null : detail?.document?.dataJson ?? null;
   const currentRefreshStatus = detail?.refreshStatus ?? liveArtifact.refreshStatus;
   const isRunning = refreshing || currentRefreshStatus === 'running';
 
@@ -2533,7 +2557,9 @@ export function LiveArtifactViewer({
             <span className="viewer-divider" aria-hidden />
             <a
               className="ghost-link"
-              href={liveArtifactPreviewUrl(
+              aria-disabled={detail?.status === 'archived' || undefined}
+              onClick={(event) => { if (detail?.status === 'archived') event.preventDefault(); }}
+              href={detail?.status === 'archived' ? undefined : liveArtifactPreviewUrl(
                 projectId,
                 liveArtifact.artifactId,
                 'rendered',
@@ -2552,7 +2578,7 @@ export function LiveArtifactViewer({
             className="viewer-action primary"
             data-running={isRunning ? 'true' : 'false'}
             onClick={() => void handleRefresh()}
-            disabled={isRunning}
+            disabled={isRunning || detail?.status === 'archived'}
             aria-busy={isRunning}
             aria-label={isRunning ? t('liveArtifact.refresh.running') : t('liveArtifact.refresh.button')}
             title={
@@ -2566,7 +2592,10 @@ export function LiveArtifactViewer({
           </button>
         </div>
       </div>
+      {hostSourceState && detail ? <DashboardControls key={`${projectId}:${liveArtifact.artifactId}`} artifact={detail} onSaved={(next) => { setDetail(next); setReloadKey((value) => value + 1); void onRefreshArtifacts?.(); }} /> : null}
       <div className="viewer-body" ref={previewBodyRef}>
+        {detail?.status === 'archived' ? null : hostSourceState?.sourceError ? <div role="alert">{hostSourceState.sourceError} The preview retains the last successful snapshot.</div>
+          : hostSourceState?.sourceChanged ? <div role="status">Local source files have changed. Refresh to update the preview. Data shows the current JSON; preview shows the last successful snapshot.</div> : null}
         {refreshError ? (
           <LiveArtifactRefreshNotice
             tone="error"
@@ -2602,7 +2631,7 @@ export function LiveArtifactViewer({
         >
           <div className="preview-frame-clip">
             <div style={previewScaleShellStyle(previewViewport, previewScale)}>
-              <PreviewDrawOverlay>
+              {hostSourceState && detail?.status === 'archived' ? <div className="viewer-empty">This dashboard is archived. Restore it to open the preview.</div> : <PreviewDrawOverlay>
                 <iframe
                   ref={iframeRef}
                   data-testid="live-artifact-preview-frame"
@@ -2610,7 +2639,7 @@ export function LiveArtifactViewer({
                   sandbox="allow-scripts allow-popups allow-downloads"
                   src={previewUrl}
                 />
-              </PreviewDrawOverlay>
+              </PreviewDrawOverlay>}
             </div>
           </div>
         </div>
@@ -2779,6 +2808,7 @@ function JsonPanel({ value, emptyLabel }: { value: unknown; emptyLabel: string }
 }
 
 function liveArtifactMetadataPayload(liveArtifact: LiveArtifact): Record<string, unknown> {
+  const nativePaths = 'hostSourceState' in liveArtifact ? (liveArtifact as EmbeddedDashboard).hostSourceState.paths : null;
   return {
     artifact: {
       id: liveArtifact.id,
@@ -2795,9 +2825,9 @@ function liveArtifactMetadataPayload(liveArtifact: LiveArtifact): Record<string,
     document: liveArtifact.document
       ? {
           format: liveArtifact.document.format,
-          templatePath: liveArtifact.document.templatePath,
-          generatedPreviewPath: liveArtifact.document.generatedPreviewPath,
-          dataPath: liveArtifact.document.dataPath,
+          templatePath: nativePaths?.templateFile ?? liveArtifact.document.templatePath,
+          ...(nativePaths ? { sourceDirectory: nativePaths.sourceDirectory } : { generatedPreviewPath: liveArtifact.document.generatedPreviewPath }),
+          dataPath: nativePaths?.dataFile ?? liveArtifact.document.dataPath,
           dataSchemaJson: liveArtifact.document.dataSchemaJson,
           sourceJson: liveArtifact.document.sourceJson,
         }
@@ -3123,7 +3153,7 @@ export function LiveArtifactRefreshHistoryPanel({
         <header className="live-artifact-refresh-section-header">
           <h4>{t('liveArtifact.refresh.persistedTitle')}</h4>
           <span className="live-artifact-refresh-hint">
-            {t('liveArtifact.refresh.persistedHint')}
+            {process.env.NEXT_PUBLIC_OD_STUDIO_BASE_PATH ? 'Saved refresh attempts' : t('liveArtifact.refresh.persistedHint')}
           </span>
         </header>
         {reversedPersistedEvents.length === 0 ? (
@@ -5189,7 +5219,7 @@ export function CommentSidePanel({
           <div className="composer-shell comment-side-new-comment-shell">
             <div className="composer-input-wrap">
               <div className="composer-textarea-layer">
-                <textarea
+                <Textarea unstyled
                   value={newCommentDraft}
                   placeholder={t('chat.comments.placeholder')}
                   aria-label={t('chat.comments.placeholder')}
@@ -5216,6 +5246,7 @@ export function CommentSidePanel({
               <span className="composer-spacer" />
               <button
                 type="submit"
+                aria-label={sending ? t('chat.comments.sending') : t('chat.send')}
                 className={`composer-send${sending ? ' is-sending' : ''}`}
                 disabled={!canCreateComment}
               >
@@ -5593,28 +5624,22 @@ function InspectPanel({
           <span className="inspect-row-value">{Math.round(fontSizeNum)}px</span>
         </div>
         <div className="inspect-row">
-          <label htmlFor="ip-fw">{t('inspect.weight')}</label>
-          <Select
+          <ValueSelect
             id="ip-fw"
+            label={t('inspect.weight')}
             value={fontWeight}
-            onChange={(e) => setVal('font-weight', e.target.value)}
-          >
-            {['100', '300', '400', '500', '600', '700', '800', '900'].map((w) => (
-              <option key={w} value={w}>{w}</option>
-            ))}
-          </Select>
+            onValueChange={value => setVal('font-weight', value)}
+            options={['100', '300', '400', '500', '600', '700', '800', '900'].map(value => ({ value, label: value }))}
+          />
         </div>
         <div className="inspect-row">
-          <label htmlFor="ip-ta">{t('inspect.align')}</label>
-          <Select
+          <ValueSelect
             id="ip-ta"
+            label={t('inspect.align')}
             value={textAlign}
-            onChange={(e) => setVal('text-align', e.target.value)}
-          >
-            {['left', 'center', 'right', 'justify'].map((a) => (
-              <option key={a} value={a}>{a}</option>
-            ))}
-          </Select>
+            onValueChange={value => setVal('text-align', value)}
+            options={['left', 'center', 'right', 'justify'].map(value => ({ value, label: value }))}
+          />
         </div>
       </section>
 
@@ -6760,6 +6785,7 @@ function ReactModulePointer({
 }
 
 function ReactComponentViewer({
+  embedded = false,
   projectId,
   projectKind,
   file,
@@ -6774,6 +6800,7 @@ function ReactComponentViewer({
   viewerOnly = false,
   workspaceActive = true,
 }: {
+  embedded?: boolean;
   projectId: string;
   projectKind: TrackingProjectKind;
   file: ProjectFile;
@@ -7091,7 +7118,7 @@ function ReactComponentViewer({
                   </div>
                 ) : null}
               </div>
-              {viewerOnly ? null : (
+              {embedded || viewerOnly ? null : (
                 <HandoffButton
                   projectId={projectId}
                   projectKind={projectKind}
@@ -7259,6 +7286,7 @@ function srcDocLoadRequiresFreshParseOnReturnToVisible(state: {
 }
 
 function HtmlViewer({
+  embedded = false,
   projectId,
   projectKind,
   file,
@@ -7305,6 +7333,7 @@ function HtmlViewer({
   onManualEditExitHandlerChange,
   manualEditEntryAllowed = true,
 }: {
+  embedded?: boolean;
   projectId: string;
   projectKind: TrackingProjectKind;
   file: ProjectFile;
@@ -15776,7 +15805,7 @@ function HtmlViewer({
   // guards the actual export/publish handlers.
   // Preview memory policy does not determine publication eligibility. The share
   // plan and POST validate the original file, never the routing-only preview.
-  const rawCanShare = isShareableArtifact;
+  const rawCanShare = !embedded && isShareableArtifact;
   const shareGuideAppUserId = useShareGuideAppUserId();
   const projectShareHistoryState = useProjectShareHistoryState(projectId, workspaceContext, JSON.stringify([file.name, publishedFileSlug, publishedFileUrl]));
   const projectShareHistory = projectShareHistoryState.history;
@@ -15792,7 +15821,9 @@ function HtmlViewer({
   const rawCanDownload = source !== null && (isShareableArtifact || isMarkdownArtifact);
   const canShare = rawCanShare && !viewerOnly;
   const canDownload = rawCanDownload && !viewerOnly;
-  const canExportHtml = canShare && source !== null;
+  // Embedded hosting disables upstream publication, but its native render
+  // carrier still exports the same authorized artifact.
+  const canExportHtml = isShareableArtifact && !viewerOnly && source !== null;
   // PPTX export is slide-based, so show it only for explicit decks plus
   // structured deck runtimes. Do not key this off plain `.slide`: ordinary
   // parallax/long pages may use that class but must remain page-mode exports.
@@ -16936,11 +16967,12 @@ function HtmlViewer({
   // current user's to act on, so it reads as "mine". Only the author may EDIT
   // their own note; the author OR the project owner may delete it or send it to
   // the agent. The B lane enforces the same rules server-side.
-  const myMemberId = collab.member?.memberId ?? null;
+  const embeddedViewer = useEmbeddedViewer();
+  const myMemberId = embedded ? embeddedViewer?.memberId ?? null : collab.member?.memberId ?? null;
   const commentAuthority: CommentAuthorityContext = {
     viewerMemberId: myMemberId,
-    collabEnabled: collab.enabled,
-    isProjectOwner: collab.isOwner,
+    collabEnabled: embedded || collab.enabled,
+    isProjectOwner: !embedded && collab.isOwner,
   };
   const canSendCommentToAgent = (comment: PreviewComment | null | undefined): boolean =>
     canSendCommentToAgentPure(comment, commentAuthority);
@@ -16953,10 +16985,10 @@ function HtmlViewer({
   // on a personal workspace and on an unshared project, i.e. exactly the cases
   // where a comment lost its avatar and name.
   const commentAuthorSelf = useMemo(
-    () => currentUserDirectoryEntry(
+    () => embedded ? embeddedViewer : currentUserDirectoryEntry(
       projectResourceReadBlocked ? null : workspaceContext,
     ),
-    [workspaceContext, projectResourceReadBlocked],
+    [workspaceContext, projectResourceReadBlocked, embedded, embeddedViewer],
   );
   const commentComposerPortalMetrics = (() => {
     if (!commentComposerHost || !commentPreviewCanvasNode) return null;
@@ -17246,7 +17278,7 @@ function HtmlViewer({
       </div>
       {speakerNotesEditMode ? (
         <div className="speaker-notes-editor">
-          <textarea
+          <Textarea unstyled
             ref={speakerNotesTextareaRef}
             value={speakerNotesDraft}
             onChange={(event) => setSpeakerNotesDraft(event.currentTarget.value)}
@@ -17397,7 +17429,7 @@ function HtmlViewer({
         <div className="viewer-toolbar-actions">
           {showPreviewToolbarControls ? (
             <div className="viewer-toolbar-inline-actions">
-              {mode === 'preview' ? (
+              {mode === 'preview' && !embedded ? (
                 <button
                   type="button"
                   className="viewer-action viewer-action-icon od-tooltip"
@@ -18056,7 +18088,7 @@ function HtmlViewer({
                   </AnchoredMenuShell>
                 ) : null}
               </div>
-              {viewerOnly || !(rawCanShare || rawCanDownload) ? null : (
+              {embedded || viewerOnly || !(rawCanShare || rawCanDownload) ? null : (
                 <HandoffButton
                   projectId={projectId}
                   projectKind={projectKind}
@@ -18757,14 +18789,14 @@ function HtmlViewer({
               </fieldset>
             </div>
             <div className="modal-foot">
-              <button
+              <Button unstyled variant="secondary" size="sm"
                 type="button"
                 className="ghost-link button-like"
                 onClick={() => setPptxExportModalOpen(false)}
               >
                 {t('common.cancel')}
-              </button>
-              <button
+              </Button>
+              <Button unstyled variant="primary" size="sm"
                 type="button"
                 className="viewer-action primary"
                 disabled={!canPptx}
@@ -18801,7 +18833,7 @@ function HtmlViewer({
                 }}
               >
                 {t('fileViewer.exportPptxConfirm')}
-              </button>
+              </Button>
             </div>
           </div>
         </div>,
@@ -18853,7 +18885,7 @@ function HtmlViewer({
               ) : null}
             </div>
             <div className="modal-foot">
-              <button
+              <Button unstyled variant="secondary" size="sm"
                 type="button"
                 className="ghost-link button-like"
                 onClick={() => {
@@ -18865,8 +18897,8 @@ function HtmlViewer({
                 }}
               >
                 {t('common.cancel')}
-              </button>
-              <button
+              </Button>
+              <Button unstyled variant="primary" size="sm"
                 type="button"
                 className="viewer-action primary"
                 onClick={() => {
@@ -18874,7 +18906,7 @@ function HtmlViewer({
                 }}
               >
                 {t('common.save')}
-              </button>
+              </Button>
             </div>
           </div>
         </div>,
@@ -18902,7 +18934,7 @@ function HtmlViewer({
               </label>
               <label className="field" htmlFor={templateDescriptionId}>
                 <span className="field-label">{t('fileViewer.templateDescPrompt')}</span>
-                <textarea
+                <Textarea unstyled
                   id={templateDescriptionId}
                   rows={3}
                   value={templateDescription}
@@ -18913,7 +18945,7 @@ function HtmlViewer({
               {templateSaveError ? <p className="deploy-error">{templateSaveError}</p> : null}
             </div>
             <div className="modal-foot">
-              <button
+              <Button unstyled variant="secondary" size="sm"
                 type="button"
                 className="ghost-link button-like"
                 disabled={savingTemplate}
@@ -18926,8 +18958,8 @@ function HtmlViewer({
                 }}
               >
                 {t('common.cancel')}
-              </button>
-              <button
+              </Button>
+              <Button unstyled variant="primary" size="sm"
                 type="button"
                 className="viewer-action primary"
                 disabled={savingTemplate || !templateName.trim()}
@@ -18936,7 +18968,7 @@ function HtmlViewer({
                 }}
               >
                 {savingTemplate ? t('fileViewer.savingTemplate') : t('common.save')}
-              </button>
+              </Button>
             </div>
           </div>
         </div>,
@@ -20667,7 +20699,7 @@ function MarkdownViewer({
           <>
             {showEditor ? (
               <section className="markdown-editor-pane" aria-label={t('fileViewer.markdownEditor')}>
-                <textarea
+                <Textarea unstyled
                   ref={editorRef}
                   className="markdown-editor"
                   value={text}

@@ -1,4 +1,8 @@
 // @ts-nocheck
+import { createProjectPreviewScopeRegistry } from './project-preview-scopes.js';
+import { createSseResponse } from './http/sse.js';
+export { createSseResponse } from './http/sse.js';
+import { embeddedUploadStorage } from './embedded-files/upload-storage.js';
 import { recordStrategyTaskRunLifecycle } from './strategies/task-display.js';
 import { observeDiscoveryEvent } from './strategies/od-next/discovery-observation.js';
 import { assertCommentFileNotPending } from './collab/comment-file-retirements.js';
@@ -1857,7 +1861,7 @@ const critiqueWarnedAdapters = new Set<string>();
 // can cascade an AbortController to the matching orchestrator invocation.
 // Created once per process; not persisted across daemon restarts.
 const critiqueRunRegistry = createRunRegistry();
-export const SSE_KEEPALIVE_INTERVAL_MS = 25_000;
+export { SSE_KEEPALIVE_INTERVAL_MS } from './http/sse.js';
 
 export function createAgentRuntimeEnv(
   baseEnv: NodeJS.ProcessEnv | Record<string, string | undefined>,
@@ -2619,158 +2623,10 @@ export function shouldReportRunCompletionTelemetryFallbackStatus(status: unknown
   return status === 'failed' || status === 'canceled' || (status === 'succeeded' && taskOwned);
 }
 
-const PROJECT_PREVIEW_SCOPE_TTL_MS = 60 * 60 * 1000;
 const PROJECT_PREVIEW_ASSET_PATH_RE = /^\/projects\/([^/]+)\/preview\/([^/]+)\/.+$/u;
 const PROJECT_RUN_SCOPED_EXPORT_PATH_RE =
   /^\/projects\/[^/]+\/export(?:\/(?:pptx|pdf-image|image))?$/u;
 
-function createProjectPreviewScopeRegistry() {
-  const scopes = new Map();
-
-  function pruneExpired(now = Date.now()) {
-    for (const [scope, entry] of scopes) {
-      if (entry.expiresAt <= now) scopes.delete(scope);
-    }
-  }
-
-  // A scope is either one-shot or reusable, and the two must never be
-  // confused. One-shot scopes belong to a single job that owns their whole
-  // lifetime -- a screenshot/PDF export mints one for the render and `revoke`s
-  // it in its `finally`. Reusable scopes belong to whatever live preview is
-  // currently showing an artifact and are released only by expiry.
-  //
-  // The distinction has to live on the ENTRY, not on the call site: `acquire`
-  // searches by (project, workspace), and an export shares that tuple with the
-  // preview it runs alongside. Without a marker, a preview could adopt an
-  // export's scope and lose it the moment that export finished.
-  function create(projectId, workspace, options, reusable) {
-    pruneExpired();
-    const scope = randomUUID();
-    const expiresAt = Date.now() + (options.ttlMs ?? PROJECT_PREVIEW_SCOPE_TTL_MS);
-    scopes.set(scope, {
-      projectId: String(projectId),
-      workspace,
-      reusable,
-      expiresAt,
-      // The expiry this scope's DOCUMENTS report, frozen at creation.
-      // `expiresAt` floats as the client renews; anything embedded in a served
-      // body must not, or the same artifact comes back with different bytes and
-      // the iframe reloads. The host only needs this as the seed for its first
-      // renewal — every renewal after that is driven by the renew response.
-      documentExpiresAt: expiresAt,
-    });
-    return scope;
-  }
-
-  return {
-    mint(projectId, workspace = null, options = {}) {
-      return create(projectId, workspace, options, false);
-    },
-    // Reuse the live scope for this exact (project, workspace) instead of
-    // minting a new one, and do NOT renew it while doing so. The preview
-    // transport injects the scope into a `<base href>` AND serializes its
-    // expiry into the bridge script, so anything that moves per request --
-    // a fresh id or a bumped expiry -- makes the SAME artifact serve different
-    // bytes every read: the web client rebuilds its srcDoc, React assigns a
-    // new string, and the iframe reloads; the artifact visibly disappears and
-    // comes back (OPEND-2283). `options.ttlMs` applies only to a scope this
-    // call has to create; keeping one alive is `renew`'s job.
-    //
-    // Deliberately NOT folded into `mint`: export flows mint a scope and
-    // `revoke` it when the render finishes, and sharing one id with a live
-    // preview would revoke the preview out from under it. That is why only
-    // entries this method created are eligible below -- see `create`.
-    acquire(projectId, workspace = null, options = {}) {
-      pruneExpired();
-      const wantedProject = String(projectId);
-      const wantedWorkspace = workspace
-        ? `${workspace.workspaceId}\u0000${workspace.workspaceMemberId}`
-        : '';
-      for (const [scope, entry] of scopes) {
-        // A one-shot scope's owner will revoke it; adopting it here would let
-        // that teardown blank a preview that is still using it.
-        if (entry.reusable !== true) continue;
-        if (entry.projectId !== wantedProject) continue;
-        const entryWorkspace = entry.workspace
-          ? `${entry.workspace.workspaceId}\u0000${entry.workspace.workspaceMemberId}`
-          : '';
-        if (entryWorkspace !== wantedWorkspace) continue;
-        // Deliberately does NOT renew `expiresAt`. The expiry is serialized
-        // into the bridge script of the document this scope is about to be
-        // injected into, so bumping it here changes the served bytes on every
-        // read -- which reloads the iframe just as surely as a fresh scope id
-        // would, defeating the whole point of reusing one. Lifetime extension
-        // has its own path: the client renews explicitly
-        // (`x-od-preview-scope-renewal`), and that response is not a document.
-        return scope;
-      }
-      return create(projectId, workspace, options, true);
-    },
-    revoke(scope) {
-      scopes.delete(String(scope || ''));
-    },
-    /**
-     * The expiry to embed in a served document. Stable for the scope's whole
-     * life, unlike `expiresAt`, which renewal moves. JSON responses should
-     * keep using `expiresAt`; only bodies whose bytes must not change use this.
-     */
-    documentExpiresAt(projectId, scope) {
-      const key = String(scope || '');
-      const entry = scopes.get(key);
-      if (!entry) return undefined;
-      if (entry.expiresAt <= Date.now()) {
-        scopes.delete(key);
-        return undefined;
-      }
-      if (entry.projectId !== String(projectId)) return undefined;
-      return entry.documentExpiresAt ?? entry.expiresAt;
-    },
-    expiresAt(projectId, scope) {
-      const key = String(scope || '');
-      const entry = scopes.get(key);
-      if (!entry) return undefined;
-      if (entry.expiresAt <= Date.now()) {
-        scopes.delete(key);
-        return undefined;
-      }
-      if (entry.projectId !== String(projectId)) return undefined;
-      return entry.expiresAt;
-    },
-    renew(projectId, scope, options = {}) {
-      const key = String(scope || '');
-      const entry = scopes.get(key);
-      if (!entry) return undefined;
-      if (entry.expiresAt <= Date.now()) {
-        scopes.delete(key);
-        return undefined;
-      }
-      if (entry.projectId !== String(projectId)) return undefined;
-      entry.expiresAt = Date.now() + (options.ttlMs ?? PROJECT_PREVIEW_SCOPE_TTL_MS);
-      return entry.expiresAt;
-    },
-    validate(projectId, scope) {
-      const key = String(scope || '');
-      const entry = scopes.get(key);
-      if (!entry) return false;
-      if (entry.expiresAt <= Date.now()) {
-        scopes.delete(key);
-        return false;
-      }
-      return entry.projectId === String(projectId);
-    },
-    resolve(projectId, scope) {
-      const key = String(scope || '');
-      const entry = scopes.get(key);
-      if (!entry) return undefined;
-      if (entry.expiresAt <= Date.now()) {
-        scopes.delete(key);
-        return undefined;
-      }
-      if (entry.projectId !== String(projectId)) return undefined;
-      return entry.workspace ?? null;
-    },
-  };
-}
 
 function parseProjectPreviewAssetPath(pathname) {
   const match = PROJECT_PREVIEW_ASSET_PATH_RE.exec(String(pathname || ''));
@@ -2980,7 +2836,7 @@ function queueProjectUploadNaming(req) {
 }
 
 const projectUpload = multer({
-  storage: multer.diskStorage({
+  storage: embeddedUploadStorage({ metadata: (id) => projectMetadataLookup?.(id) ?? null, decodeName: decodeMultipartFilename, sanitizeName, sanitizePath, fallback: multer.diskStorage({
     destination: async (req, _file, cb) => {
       const naming = queueProjectUploadNaming(req);
       try {
@@ -3030,7 +2886,7 @@ const projectUpload = multer({
         : ((req as any)._uploadReservedNames = new Set());
       cb(null, uniqueUploadFileName(uploadDir, safe, reserved));
     },
-  }),
+  }) }),
   limits: { fileSize: 200 * 1024 * 1024 },  // 200MB — covers the largest design assets we expect (PPTX/PDF/raw images)
 });
 
@@ -3100,64 +2956,6 @@ function sendMulterError(res, err) {
   return sendApiError(res, 500, 'INTERNAL_ERROR', 'upload failed');
 }
 
-export function createSseResponse(
-  res,
-  { keepAliveIntervalMs = SSE_KEEPALIVE_INTERVAL_MS } = {},
-) {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-  res.flushHeaders?.();
-
-  const canWrite = () => !res.destroyed && !res.writableEnded;
-  const writeKeepAlive = () => {
-    if (canWrite()) {
-      res.write(': keepalive\n\n');
-      return true;
-    }
-    return false;
-  };
-
-  let heartbeat = null;
-  if (keepAliveIntervalMs > 0) {
-    heartbeat = setInterval(writeKeepAlive, keepAliveIntervalMs);
-    heartbeat.unref?.();
-  }
-
-  const cleanup = () => {
-    if (heartbeat) {
-      clearInterval(heartbeat);
-      heartbeat = null;
-    }
-  };
-
-  res.on('close', cleanup);
-  res.on('finish', cleanup);
-
-  return {
-    /** @param {ChatSseEvent['event'] | ProxySseEvent['event'] | string} event */
-    send(event, data, id: string | number | null | undefined = null) {
-      if (!canWrite()) return false;
-      // Assemble the full SSE event into a single write so id/event/data land
-      // in one TCP chunk. Three separate writes would let `event: <type>` flush
-      // ahead of the `data:` payload, which produces partial events for
-      // consumers that read chunk-by-chunk (e.g. tests using a Response body
-      // reader with a substring marker).
-      const idLine = id !== null && id !== undefined ? `id: ${id}\n` : '';
-      res.write(`${idLine}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-      return true;
-    },
-    writeKeepAlive,
-    cleanup,
-    end() {
-      cleanup();
-      if (canWrite()) {
-        res.end();
-      }
-    },
-  };
-}
 
 export type DesktopPdfExporter = (input: DesktopExportPdfInput) => Promise<DesktopExportPdfResult>;
 export type DesktopFrameRenderer = (input: DesktopRenderFramesInput) => Promise<DesktopRenderFramesResult>;
@@ -3224,6 +3022,7 @@ export async function startServer({
   staticDir = STATIC_DIR,
   inheritedEnvironment = () => ({}),
 }: StartServerOptions = {}) {
+  if (process.env.OD_EMBEDDED_STUDIO === '1') throw new Error('Embedded Studio must use the dedicated daemon-startup entry point.');
   host = normalizeDaemonBindHost(host);
   let resolvedPort = port;
   let daemonShuttingDown = false;
@@ -9355,8 +9154,7 @@ export async function startServer({
     stopPublicFiles: stopProjectPublicFiles,
     isPresent: async (projectId, filePath) => {
       try {
-        const target = await resolveProjectFilePath(PROJECTS_DIR, projectId, filePath, getProject(db, projectId)?.metadata);
-        await fs.promises.lstat(target.filePath);
+        await resolveProjectFilePath(PROJECTS_DIR, projectId, filePath, getProject(db, projectId)?.metadata);
         return true;
       } catch (error) {
         if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return false;

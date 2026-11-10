@@ -123,7 +123,9 @@ export async function closeHttpServer(
 
 export async function startDaemonRuntime(options: DaemonRuntimeOptions = {}): Promise<StartedDaemonRuntime> {
   const { openBrowser: shouldOpenBrowser = false, logListening = false, ...serverOptions } = options;
-  const { startServer } = await import('./server.js');
+  const { startServer } = process.env.OD_EMBEDDED_STUDIO === '1'
+    ? await import('./embedded-server.js')
+    : await import('./server.js');
   const started = await startServer({
     ...serverOptions,
     returnServer: true,

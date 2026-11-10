@@ -9,7 +9,7 @@
 // the regression. False positives are bounded by minPriorBytes (we won't
 // compare against priors that are themselves small) and minRetainedRatio.
 
-import type { Dirent } from 'node:fs';
+import type { Dirent, Stats } from 'node:fs';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -40,6 +40,12 @@ export interface EvaluateArtifactStubGuardInput {
   identifier: string;
   newSize: number;
   config: ArtifactStubGuardConfig;
+  files?: ArtifactStubGuardFiles;
+}
+export interface ArtifactStubGuardFiles {
+  readFile(path: string): Promise<string>;
+  readdir(path: string): Promise<Dirent[]>;
+  stat(path: string): Promise<Stats>;
 }
 
 export interface EvaluateArtifactStubGuardResult {
@@ -122,9 +128,10 @@ export function artifactIdentifiersMatch(a: string, b: string): boolean {
 // sidecar. Returns null when the sidecar is absent, malformed, or
 // missing a string identifier — callers fall back to filename-derived
 // inference for legacy artifacts that pre-date the sidecar era.
-async function readSidecarIdentifier(scanDir: string, entryName: string): Promise<string | null> {
+async function readSidecarIdentifier(scanDir: string, entryName: string, files?: ArtifactStubGuardFiles): Promise<string | null> {
   try {
-    const raw = await readFile(path.join(scanDir, `${entryName}.artifact.json`), 'utf8');
+    const target = path.join(scanDir, `${entryName}.artifact.json`);
+    const raw = files ? await files.readFile(target) : await readFile(target, 'utf8');
     const parsed = JSON.parse(raw) as { metadata?: { identifier?: unknown } } | null;
     const id = parsed?.metadata?.identifier;
     return typeof id === 'string' && id.length > 0 ? id : null;
@@ -172,6 +179,7 @@ function legacyCandidateIdentifiers(filename: string): string[] {
 export async function findPriorArtifactSiblings(
   scanDir: string,
   identifier: string,
+  files?: ArtifactStubGuardFiles,
 ): Promise<PriorArtifactSibling[]> {
   if (identifier.length === 0) return [];
   const tokens = new Set<string>();
@@ -186,7 +194,7 @@ export async function findPriorArtifactSiblings(
   const pattern = new RegExp(`^(?:${alternation})(?:-\\d+)?\\.html?$`);
   let entries: Dirent[];
   try {
-    entries = await readdir(scanDir, { withFileTypes: true });
+    entries = files ? await files.readdir(scanDir) : await readdir(scanDir, { withFileTypes: true });
   } catch {
     return [];
   }
@@ -208,14 +216,15 @@ export async function findPriorArtifactSiblings(
     // accept the file as a prior if either matches. The canonical-form
     // anchor in artifactIdentifiersMatch still rules out truncation
     // collisions and empty-slug conflations.
-    const sidecarIdentifier = await readSidecarIdentifier(scanDir, entry.name);
+    const sidecarIdentifier = await readSidecarIdentifier(scanDir, entry.name, files);
     const candidateIdentifiers = sidecarIdentifier !== null
       ? [sidecarIdentifier]
       : legacyCandidateIdentifiers(entry.name);
     if (candidateIdentifiers.length === 0) continue;
     if (!candidateIdentifiers.some((c) => artifactIdentifiersMatch(identifier, c))) continue;
     try {
-      const st = await stat(path.join(scanDir, entry.name));
+      const target = path.join(scanDir, entry.name);
+      const st = files ? await files.stat(target) : await stat(target);
       results.push({ name: entry.name, size: st.size });
     } catch {
       // ignore unreadable entries; they don't influence the guard decision
@@ -299,6 +308,6 @@ export async function evaluateArtifactStubGuard(
 ): Promise<EvaluateArtifactStubGuardResult> {
   if (input.config.mode === 'off') return { outcome: 'pass' };
   if (input.identifier.length === 0) return { outcome: 'pass' };
-  const priors = await findPriorArtifactSiblings(input.scanDir, input.identifier);
+  const priors = await findPriorArtifactSiblings(input.scanDir, input.identifier, input.files);
   return classifyArtifactStubGuard(priors, input.identifier, input.newSize, input.config);
 }

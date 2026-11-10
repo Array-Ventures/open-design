@@ -66,12 +66,21 @@ export const DECK_STRUCTURED_SLIDE_SELECTOR = DECK_SLIDE_CONTAINERS
   .flatMap((container) => DECK_SLIDE_MARKERS.map((marker) => `${container} > ${marker}`))
   .join(', ');
 
+// Center the fixed design canvas in the actual viewport. An implicit grid
+// track can grow to the design width and put scaled slides offscreen.
 const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(function(){
   if (window.__odDeckStageFallbackInstalled) return;
   window.__odDeckStageFallbackInstalled = true;
   if (!window.customElements || window.customElements.get('deck-stage')) return;
 
   var ACTIVE_ATTR = 'data-od-deck-active';
+  var SLIDE_ATTR = 'data-od-deck-fallback-slide';
+  var defaults = document.createElement('style');
+  defaults.setAttribute('data-od-deck-stage-fallback', '');
+  defaults.textContent = '@layer od-deck-fallback { deck-stage [' + SLIDE_ATTR + ']{position:absolute;inset:0;width:100%;height:100%;} }' +
+    'deck-stage [' + SLIDE_ATTR + ']{visibility:hidden!important;pointer-events:none!important;}' +
+    'deck-stage [' + SLIDE_ATTR + '][' + ACTIVE_ATTR + ']{visibility:visible!important;pointer-events:auto!important;}';
+  (document.head || document.documentElement).prepend(defaults);
   var SLIDE_SELECTOR = ${JSON.stringify(DECK_SLIDE_SELECTOR)};
 
   function numeric(value, fallback) {
@@ -127,21 +136,27 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
       this._onKeydown = this._onKeydown.bind(this);
       this._onResize = this.fit.bind(this);
       this._onSlotChange = this._refresh.bind(this);
+      this._observer = new MutationObserver((records) => {
+        var changed = records.some((record) =>
+          Array.prototype.slice.call(record.addedNodes).concat(Array.prototype.slice.call(record.removedNodes))
+            .some((node) => node.nodeType === 1 && (node.matches(SLIDE_SELECTOR) || node.querySelector(SLIDE_SELECTOR)))
+        );
+        if (changed) this._refresh();
+      });
       var root = this.attachShadow({ mode: 'open' });
       root.innerHTML =
         '<style>' +
         ':host{position:fixed;inset:0;display:block;overflow:hidden;background:#0a0a0a;}' +
-        '.stage{position:absolute;inset:0;display:grid;place-items:center;overflow:hidden;}' +
+        '.stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;}' +
         '.canvas{position:relative;flex:none;width:var(--od-deck-stage-width,1920px);height:var(--od-deck-stage-height,1080px);transform-origin:center center;}' +
         ':host([noscale]) .canvas{transform:none!important;}' +
-        '::slotted(*){visibility:hidden!important;pointer-events:none!important;}' +
-        '::slotted([' + ACTIVE_ATTR + ']){visibility:visible!important;pointer-events:auto!important;}' +
         '</style><div class="stage"><div class="canvas"><slot></slot></div></div>';
       this._slot = root.querySelector('slot');
       this._canvas = root.querySelector('.canvas');
     }
 
     connectedCallback() {
+      this._observer.observe(this, { childList: true, subtree: true });
       this._syncSize();
       postDeckReady();
       this._refresh();
@@ -155,6 +170,7 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
     }
 
     disconnectedCallback() {
+      this._observer.disconnect();
       window.removeEventListener('message', this._onMessage);
       window.removeEventListener('resize', this._onResize);
       document.removeEventListener('keydown', this._onKeydown, true);
@@ -197,7 +213,14 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
       for (var i = 0; i < nested.length; i++) {
         if (nested[i].parentElement === this) direct.push(nested[i]);
       }
-      this._slides = direct.length ? direct : nested;
+      this._slides = direct.length ? direct : nested.filter((slide) => {
+        var parent = slide.parentElement;
+        while (parent && parent !== this) {
+          if (parent.matches(SLIDE_SELECTOR)) return false;
+          parent = parent.parentElement;
+        }
+        return true;
+      });
       return this._slides;
     }
 
@@ -227,6 +250,7 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
       for (var i = 0; i < slides.length; i++) {
         var on = i === this._index;
         var slide = slides[i];
+        slide.setAttribute(SLIDE_ATTR, '');
         slide.toggleAttribute(ACTIVE_ATTR, on);
         slide.toggleAttribute('hidden', false);
         slide.setAttribute('aria-hidden', on ? 'false' : 'true');

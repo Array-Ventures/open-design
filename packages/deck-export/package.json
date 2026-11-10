@@ -1,0 +1,23 @@
+{
+  "name": "@open-design/deck-export",
+  "version": "0.25.1",
+  "private": true,
+  "type": "module",
+  "description": "Browser-only editable deck conversion shared across export hosts.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@typescript/native": "npm:typescript@7.0.2"
+  },
+  "engines": {
+    "node": "~24"
+  }
+}

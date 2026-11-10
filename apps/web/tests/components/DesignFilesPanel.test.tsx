@@ -241,6 +241,19 @@ describe("DesignFilesPanel sections", () => {
     expect(onOpenBrowser).toHaveBeenCalledTimes(1);
   });
 
+  it("labels video and audio categories and opens their actual media files", () => {
+    const { onOpenFile } = renderPanel([
+      file({ name: "clip.mp4", kind: "video", mime: "video/mp4" }),
+      file({ name: "track.wav", kind: "audio", mime: "audio/wav" }),
+    ]);
+    expect(tabLabels().some((label) => label.includes("Video"))).toBe(true);
+    expect(tabLabels().some((label) => label.includes("Audio"))).toBe(true);
+    expect(tabLabels().some((label) => label.includes("Binary"))).toBe(false);
+    clickTab("cat:audio");
+    fireEvent.click(screen.getByTestId("design-file-row-track.wav").querySelector(".df-row-name-btn")!);
+    expect(onOpenFile).toHaveBeenCalledWith("track.wav");
+  });
+
   it("groups files into category tabs and shows one group at a time", () => {
     renderPanel([
       file({ name: "page.html", kind: "html", mime: "text/html" }),

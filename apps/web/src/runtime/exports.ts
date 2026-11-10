@@ -33,6 +33,11 @@ import {
   workspaceResourceUrl,
 } from '../collab/workspace-identity';
 import { sourceHasLegacyDeckScreenSlides } from './deck-slide-structure';
+import { embeddedRenderExport, embeddedStudioEnabled } from './embedded-render-export';
+
+async function fetchRenderExport(url: string, init: RequestInit): Promise<Response> {
+  return await embeddedRenderExport(url, init) ?? fetch(url, init);
+}
 
 // Re-exported so app components can gate desktop-only export paths without
 // importing the host package directly.
@@ -124,7 +129,7 @@ export async function exportProjectAsHtml(opts: {
   workspaceContext?: WorkspaceCollabContext | null;
 }): Promise<DownloadExportResult> {
   const url = `/api/projects/${encodeURIComponent(opts.projectId)}/export/html`;
-  const resp = await fetch(url, {
+  const resp = await fetchRenderExport(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -813,6 +818,18 @@ export async function exportProjectAsPdf(opts: {
   versionId?: string;
   workspaceContext?: WorkspaceCollabContext | null;
 }): Promise<ProjectPdfExportResult> {
+  if (embeddedStudioEnabled()) {
+    const response = await fetchRenderExport(`/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ deck: opts.deck, fileName: opts.filePath, title: opts.title, ...(opts.versionId ? { versionId: opts.versionId } : {}) }),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error?.message ?? 'PDF export did not complete.');
+    }
+    const result = await saveExportDownload(await response.blob(), filenameFromContentDisposition(response) ?? `${safeFilename(opts.title, 'artifact')}.pdf`);
+    return result === 'cancelled' ? 'cancelled' : 'desktop';
+  }
   try {
     const resp = await fetch(`/api/projects/${encodeURIComponent(opts.projectId)}/export/pdf`, {
       body: JSON.stringify({
@@ -997,7 +1014,7 @@ export async function exportProjectAsPptx(opts: {
   const url = `/api/projects/${encodeURIComponent(opts.projectId)}/${path}`;
   let resp: Response;
   try {
-    resp = await fetch(url, {
+    resp = await fetchRenderExport(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -1171,7 +1188,7 @@ export async function exportProjectImageDataUrl(opts: {
   const url = `/api/projects/${encodeURIComponent(opts.projectId)}/export/image`;
   let resp: Response;
   try {
-    resp = await fetch(url, {
+    resp = await fetchRenderExport(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

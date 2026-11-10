@@ -1,3 +1,4 @@
+import { embeddedResourceUrl } from '../components/embedded/transport';
 import { prepareAmrWebUrl } from "./amr-web-intent";
 import {
   PUBLIC_FILE_MANUAL_REVOKE_REQUIRED,
@@ -2631,6 +2632,9 @@ export function liveArtifactPreviewUrl(
   variant: LiveArtifactPreviewVariant = 'rendered',
   workspaceContext?: WorkspaceCollabContext | null,
 ): string {
+  if (process.env.NEXT_PUBLIC_OD_STUDIO_BASE_PATH && variant !== 'template') {
+    return `/api/studio/dashboards/${encodeURIComponent(projectId)}/${encodeURIComponent(artifactId)}/preview`;
+  }
   const baseUrl = workspaceResourceUrl(
     `/api/live-artifacts/${encodeURIComponent(artifactId)}/preview?projectId=${encodeURIComponent(projectId)}`,
     workspaceContext,
@@ -2691,7 +2695,7 @@ function previewCapabilityHref(pathname: string): string {
   const runtimeHref = typeof globalThis.location?.href === 'string'
     ? globalThis.location.href
     : 'http://open-design.local/';
-  return new URL(pathname, runtimeHref).href;
+  return new URL(embeddedResourceUrl(pathname), runtimeHref).href;
 }
 
 export async function fetchProjectPreviewBaseHref(

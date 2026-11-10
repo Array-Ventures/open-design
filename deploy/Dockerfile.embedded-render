@@ -1,0 +1,11 @@
+# Build context is produced by scripts/build-embedded-render.ts, not the source
+# checkout. The host starts this worker with no network or credential mounts.
+FROM node:24.21.0-bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends chromium ffmpeg fonts-dejavu-core fonts-noto-cjk && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/render
+COPY worker.mjs provenance.json hyperframe.runtime.iife.js deck-export.iife.js dom-to-pptx.bundle.js ./
+COPY licenses ./licenses
+COPY node_modules/playwright-core ./node_modules/playwright-core
+ENV HOME=/tmp XDG_CACHE_HOME=/tmp
+USER node
+ENTRYPOINT ["node", "/opt/render/worker.mjs"]

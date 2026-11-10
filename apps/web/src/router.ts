@@ -74,6 +74,8 @@ export type Route =
   | { kind: 'community' };
 
 export function parseRoute(pathname: string): Route {
+  const hostBase = process.env.NEXT_PUBLIC_OD_STUDIO_BASE_PATH ?? '';
+  if (hostBase && (pathname === hostBase || pathname.startsWith(hostBase + '/'))) pathname = pathname.slice(hostBase.length) || '/';
   const parts = pathname.replace(/\/+$/, '').split('/').filter(Boolean);
   if (parts.length === 0) return { kind: 'home', view: 'home' };
   if (parts[0] === 'onboarding') {

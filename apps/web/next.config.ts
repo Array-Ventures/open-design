@@ -21,6 +21,8 @@ const DAEMON_ORIGIN = `http://127.0.0.1:${DAEMON_PORT}`;
 // proxy in front of it at runtime.
 const isProd = process.env.NODE_ENV !== 'development';
 const webOutputMode = process.env.OD_WEB_OUTPUT_MODE;
+const embeddedBuildId = process.env.OD_EMBEDDED_BUILD_ID;
+if (embeddedBuildId && !/^[0-9a-f]{64}$/.test(embeddedBuildId)) throw new Error('Invalid embedded build identity.');
 const isServerOutput = webOutputMode === 'server' || webOutputMode === 'standalone';
 const shouldStaticExport = isProd && !isServerOutput;
 
@@ -196,7 +198,10 @@ export function cmsHostReleaseFingerprint(
 }
 
 const nextConfig: NextConfig = {
+  ...(embeddedBuildId ? { generateBuildId: async () => embeddedBuildId } : {}),
+  basePath: process.env.OD_STUDIO_BASE_PATH ?? '',
   env: {
+    NEXT_PUBLIC_OD_STUDIO_BASE_PATH: process.env.OD_STUDIO_BASE_PATH ?? '',
     // Embedded in the client at build time. Packaged servers use the already
     // compiled client and need not retain source files to load this config.
     NEXT_PUBLIC_CMS_HOST_RELEASE: existsSync(resolve(WEB_ROOT, 'src/components/touchpoint-component.ts'))

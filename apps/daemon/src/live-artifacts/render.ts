@@ -1,3 +1,4 @@
+import { load } from 'cheerio';
 import type { BoundedJsonObject } from './schema.js';
 
 export const LIVE_ARTIFACT_RENDER_FORMAT = 'html_template_v1' as const;
@@ -8,6 +9,7 @@ export const LIVE_ARTIFACT_GENERATED_PREVIEW_ENTRY = 'index.html' as const;
 export interface LiveArtifactRenderInput {
   templateHtml: string;
   dataJson: BoundedJsonObject;
+  maxOutputBytes?: number;
 }
 
 export interface LiveArtifactRenderOutput {
@@ -99,8 +101,19 @@ function childResolver(parent: BindingResolver, varName: string, item: unknown):
   };
 }
 
-function interpolateScalars(fragment: string, resolve: BindingResolver): string {
-  return fragment.replace(TEMPLATE_INTERPOLATION, (_match, rawBinding: string) => resolve(rawBinding.trim()));
+function interpolateScalars(fragment: string, resolve: BindingResolver, maximum: number): string {
+  const chunks: string[] = []; let size = 0; let cursor = 0;
+  const append = (value: string) => {
+    if (Number.isFinite(maximum)) { size += Buffer.byteLength(value); if (size > maximum) throw new Error('Rendered dashboard exceeds its byte limit.'); }
+    chunks.push(value);
+  };
+  for (const match of fragment.matchAll(TEMPLATE_INTERPOLATION)) {
+    append(fragment.slice(cursor, match.index));
+    append(resolve(match[1]!.trim()));
+    cursor = match.index + match[0].length;
+  }
+  append(fragment.slice(cursor));
+  return chunks.join('');
 }
 
 /** Index of the `>` that closes the tag opening at `start`, respecting quotes. */
@@ -223,13 +236,17 @@ function findRepeatDirective(
   return null;
 }
 
-function renderFragment(html: string, resolve: BindingResolver, readArray: ArrayReader): string {
-  let out = '';
+function renderFragment(html: string, resolve: BindingResolver, readArray: ArrayReader, maximum: number): string {
+  let out = ''; let size = 0;
+  const append = (value: string) => {
+    if (Number.isFinite(maximum)) { size += Buffer.byteLength(value); if (size > maximum) throw new Error('Rendered dashboard exceeds its byte limit.'); }
+    out += value;
+  };
   let cursor = 0;
   while (cursor < html.length) {
     const directive = findRepeatDirective(html, cursor);
     if (!directive) {
-      out += interpolateScalars(html.slice(cursor), resolve);
+      append(interpolateScalars(html.slice(cursor), resolve, maximum - size));
       break;
     }
     const { openTagStart, tagName } = directive;
@@ -253,16 +270,32 @@ function renderFragment(html: string, resolve: BindingResolver, readArray: Array
       throw new Error('nested data-od-repeat is not supported');
     }
 
-    out += interpolateScalars(html.slice(cursor, openTagStart), resolve);
+    append(interpolateScalars(html.slice(cursor, openTagStart), resolve, maximum - size));
     for (const item of readArray(arrayPath)) {
-      out += renderFragment(itemTemplate, childResolver(resolve, varName, item), readArray);
+      append(renderFragment(itemTemplate, childResolver(resolve, varName, item), readArray, maximum - size));
     }
     cursor = elementEnd;
   }
   return out;
 }
 
+/** Validate parsed output as well as template text: a binding can occur in a
+ * tag/attribute name or URL, not only a text node. Inspect without serializing
+ * so valid authored markup and escaped text remain byte-for-byte unchanged. */
+function validateRenderedHtml(html: string): void {
+  const $ = load(html);
+  if ($('script,iframe,object,embed').length) throw new Error('Active embedded elements are not supported in dashboard bindings.');
+  $('*').each((_index, element) => {
+    if (!('attribs' in element)) return;
+    for (const [name, value] of Object.entries(element.attribs)) {
+      if (/^on/i.test(name) || name.toLowerCase() === 'srcdoc') throw new Error('Executable attributes are not supported in dashboard bindings.');
+      if (['href', 'src', 'action', 'formaction', 'xlink:href'].includes(name.toLowerCase()) && /^(?:javascript|vbscript):/i.test(value.replace(/[\u0000-\u0020\u007f]/g, ''))) throw new Error('Active URL schemes are not supported in dashboard bindings.');
+    }
+  });
+}
+
 export function renderHtmlTemplateV1(input: LiveArtifactRenderInput): LiveArtifactRenderOutput {
+  if (input.maxOutputBytes !== undefined && (!Number.isSafeInteger(input.maxOutputBytes) || input.maxOutputBytes < 1)) throw new Error('Invalid dashboard output limit.');
   validateHtmlTemplateV1Security(input.templateHtml);
 
   if (RAW_TEMPLATE_INTERPOLATION.test(input.templateHtml)) {
@@ -276,5 +309,7 @@ export function renderHtmlTemplateV1(input: LiveArtifactRenderInput): LiveArtifa
     return value;
   };
 
-  return { html: renderFragment(input.templateHtml, resolve, readArray) };
+  const html = renderFragment(input.templateHtml, resolve, readArray, input.maxOutputBytes ?? Infinity);
+  validateRenderedHtml(html);
+  return { html };
 }

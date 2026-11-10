@@ -1,4 +1,5 @@
 import { withCommentFileDeletion, type CommentFileDeletion } from '../../collab/comment-file-deletion.js';
+import { openProjectFileAccess, streamProjectFileAccess, statProjectDeleteAccess, type ProjectFileAccess } from '../../project-file-access.js';
 import { injectMotionSourcePlayer, isMotionVideoComposition, markMotionHostedPreview, MOTION_PREVIEW_OUTPUT_HEADER } from '@open-design/contracts/runtime/motion-source-player';
 import { createHash, randomUUID } from 'node:crypto';
 import { trackedCommentFilePaths } from '../../collab/local-comment-files.js';
@@ -111,7 +112,7 @@ import {
   type ResolveSnapshotOk,
 } from '../../plugins/index.js';
 import { connectorService } from '../../connectors/service.js';
-import type { RouteDeps } from '../../server-context.js';
+import type { RouteDeps, PathDeps, HttpDeps } from '../../server-context.js';
 import { listSkills } from '../../skills.js';
 import { isSafeId, validateProjectPath } from '../../projects.js';
 import {
@@ -5950,7 +5951,9 @@ export function registerProjectArtifactRoutes(app: Express, ctx: RegisterProject
 
 }
 
-export interface RegisterProjectFileRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'uploads' | 'node' | 'projectStore' | 'projectFiles' | 'documents' | 'artifacts' | 'projectPreviewScopes'> {
+export interface RegisterProjectFileRoutesDeps extends Omit<RouteDeps<'db' | 'http' | 'paths' | 'uploads' | 'node' | 'projectStore' | 'projectFiles' | 'documents' | 'artifacts' | 'projectPreviewScopes'>, 'paths' | 'http'> {
+  paths: Pick<PathDeps, 'PROJECTS_DIR' | 'DESIGN_SYSTEMS_DIR' | 'USER_DESIGN_SYSTEMS_DIR'>;
+  http: Pick<HttpDeps, 'sendApiError' | 'sendMulterError'>;
   isProjectEditingBusy?: (projectId: string) => boolean;
   publicFileMutations?: PublicFileMutations;
   stopPublicFilesBeforeDelete?: CommentFileDeletion;
@@ -6322,8 +6325,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     return false;
   }
 
-  async function detectPoweredPreviewHint(meta: {
-    filePath: string;
+  async function detectPoweredPreviewHint(meta: ProjectFileAccess & {
     mime: string;
     size: number;
   }): Promise<ProjectFileTextPreviewResponse['poweredPreview']> {
@@ -6337,7 +6339,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
 
     let scannedBytes = 0;
     let tail = '';
-    for await (const chunk of fs.createReadStream(meta.filePath, {
+    for await (const chunk of await streamProjectFileAccess(meta, {
       start: 0,
       end: scanLimit - 1,
       highWaterMark: 256 * 1024,
@@ -6436,7 +6438,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       }
 
       res.status(statusCode);
-      const stream = fs.createReadStream(meta.filePath, { start, end });
+      const stream = await streamProjectFileAccess(meta, { start, end });
+      res.once('close', () => stream.destroy());
       stream.on('error', (streamErr: any) => {
         if (!res.headersSent) {
           sendApiError(res, 500, 'STREAM_ERROR', String(streamErr));
@@ -6511,6 +6514,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     ownerFilePath: string,
     scope: string,
     expiresAt: number,
+    externalApiBase?: string,
   ): string {
     // Respect an artifact-authored base URL. Only generated documents without
     // one need the containment base that keeps runtime-created relative URLs
@@ -6532,9 +6536,13 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     const dirSuffix = ownerDir === '.'
       ? ''
       : `${encodeProjectPathForUrl(ownerDir)}/`;
-    const baseTag = `<base href="/api/projects/${encodeURIComponent(projectId)}`
+    const gateway = process.env.OD_STUDIO_BASE_PATH ? `/api/studio/bridge/${encodeURIComponent(projectId)}` : '';
+    const trustedExternalBase = process.env.OD_EMBEDDED_STUDIO === '1' && typeof externalApiBase === 'string' && /^\/api\/studio\/preview\/[A-Za-z0-9_.-]+\/[0-9a-f-]+\/projects$/.test(externalApiBase)
+      ? externalApiBase : null;
+    const apiBase = trustedExternalBase ?? (gateway ? `${gateway}/projects` : '/api/projects');
+    const baseTag = `<base href="${apiBase}/${encodeURIComponent(projectId)}`
       + `/preview/${encodeURIComponent(scope)}/${dirSuffix}" data-od-project-preview-base>`;
-    const baseHref = `/api/projects/${encodeURIComponent(projectId)}`
+    const baseHref = `${apiBase}/${encodeURIComponent(projectId)}`
       + `/preview/${encodeURIComponent(scope)}/${dirSuffix}`;
     const bridge = buildPreviewBaseHrefBridge({ href: baseHref, expiresAt });
     // Same structural rule as the bridge injectors above: a `<head>` inside a
@@ -6868,7 +6876,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         return sendApiError(res, 400, 'BAD_REQUEST', 'target must be a non-root folder');
       }
       await withCommentFileDeletion(ctx.stopPublicFilesBeforeDelete, project.id, { folderPath: target.name }, async () => {
-        if (!(await ctx.node.fs.promises.stat(target.filePath)).isDirectory()) throw new Error('target must be a non-root folder');
+        if (!(await statProjectDeleteAccess(target)).isDirectory()) throw new Error('target must be a non-root folder');
         await deleteProjectFolder(PROJECTS_DIR, req.params.id, folderPath, project.metadata);
       });
       deleteWorkspaceArtifactsInFolder(db, project.id, target.name);
@@ -7034,7 +7042,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       );
       const bytesToRead = Math.min(meta.size, limit);
       const buffer = Buffer.allocUnsafe(bytesToRead);
-      const opened = await fs.promises.open(meta.filePath, 'r');
+      const opened = await openProjectFileAccess(meta);
       handle = opened;
       const result = bytesToRead > 0
         ? await opened.read(buffer, 0, bytesToRead, 0)
@@ -7255,6 +7263,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             relPath,
             scope,
             expiresAt,
+            req.get('x-od-preview-base'),
           );
         },
         true, // revalidate: emit ETag/Last-Modified so covers/preview/export reuse cached assets
@@ -8158,7 +8167,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
 
 }
 
-export interface RegisterProjectUploadRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'paths' | 'projectStore' | 'projectFiles'> {
+export interface RegisterProjectUploadRoutesDeps extends Omit<RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'paths' | 'projectStore' | 'projectFiles'>, 'paths' | 'http'> {
+  paths: Pick<PathDeps, 'PROJECTS_DIR' | 'DESIGN_SYSTEMS_DIR' | 'USER_DESIGN_SYSTEMS_DIR'>;
+  http: Pick<HttpDeps, 'sendApiError' | 'sendMulterError'>;
   verifyWorkspaceRequestAuthority?: VerifyWorkspaceRequestAuthority;
   authorizeProjectRequest?: AuthorizeProjectRequest;
   /** Durable first-open placeholder stamp lookup. */
@@ -8200,7 +8211,8 @@ export function registerProjectUploadRoutes(app: Express, ctx: RegisterProjectUp
         const incoming = Array.isArray(req.files) ? req.files : [];
         const cleanupRejectedUpload = () => {
           for (const f of incoming) {
-            if (f?.path) fs.promises.unlink(f.path).catch(() => {});
+            if (f?.embeddedRemove) f.embeddedRemove().catch(() => {});
+            else if (f?.path) fs.promises.unlink(f.path).catch(() => {});
           }
         };
         if (!await enforceWorkspaceProjectMutation(
@@ -8224,7 +8236,7 @@ export function registerProjectUploadRoutes(app: Express, ctx: RegisterProjectUp
         const out = [];
         for (const f of incoming) {
           try {
-            const stat = await fs.promises.stat(f.path);
+            const stat = f.embeddedStat ?? await fs.promises.stat(f.path);
             const rel = relDir ? `${relDir}/${f.filename}` : f.filename;
             out.push({
               name: rel,
