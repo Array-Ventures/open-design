@@ -1,3 +1,4 @@
+import { SpeakerNotesDrawer } from './embedded/SpeakerNotesDrawer';
 import { DashboardControls } from './embedded/DashboardControls';
 import type { EmbeddedDashboard } from './embedded/dashboards';
 import { validateCommentSaveTarget } from '../comments/validate-save-target';
@@ -18662,7 +18663,7 @@ function HtmlViewer({
           </>
         )}
       </div>
-      {speakerNotesPanel}
+      {embedded && speakerNotesPanel ? <SpeakerNotesDrawer>{speakerNotesPanel}</SpeakerNotesDrawer> : speakerNotesPanel}
       {workspaceActive && inTabPresent && source && typeof document !== 'undefined' ? createPortal(
         <div
           ref={presentOverlayRef}

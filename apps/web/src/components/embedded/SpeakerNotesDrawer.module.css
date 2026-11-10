@@ -1,0 +1,20 @@
+.drawer { position: relative; flex: 0 0 auto; min-height: 0; max-height: 60%; background: var(--color-background-primary-default); }
+.handle { position: absolute; z-index: 20; top: -6px; inset-inline: 0; height: 12px; display: flex; align-items: center; justify-content: center; cursor: row-resize; touch-action: none; user-select: none; outline: none; }
+.handle::before { content: ''; position: absolute; inset-inline: 0; top: 6px; height: 1px; background: var(--color-separator-border); opacity: 0; transition: opacity 150ms ease-out; }
+.handle span { position: relative; width: 40px; height: 4px; border-radius: 4px; background: var(--color-foreground-icon-tertiary); opacity: 0; transition: opacity 150ms ease-out; }
+.drawer[data-open='true'] .handle::before { opacity: 1; }
+.drawer[data-open='true'] .handle span { opacity: .5; }
+.handle:hover span, .handle:focus-visible span, .handle:active span { opacity: 1; }
+.handle:focus-visible { outline: 2px solid var(--color-border-focus-ring); outline-offset: -2px; }
+.content { height: 100%; overflow: auto; }
+.content :global(.speaker-notes-panel) { border-top: 0; animation: none; }
+@media (pointer: coarse) { .handle span { opacity: .4; } }
+@media (prefers-reduced-motion: reduce) { .handle::before, .handle span { transition: none; } }
+.drawer[data-open='false'] .handle { top: -16px; height: 16px; }
+.content :global(.speaker-notes-panel) { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--color-background-primary-default); color: var(--color-text-primary); }
+.content :global(.speaker-notes-panel-head) { flex: 0 0 auto; border-color: var(--color-separator-border); }
+.content :global(.speaker-notes-preview), .content :global(.speaker-notes-editor) { flex: 1; min-height: 0; height: auto; }
+.content :global(.speaker-notes-editor) { display: flex; }
+.content :global(.speaker-notes-editor) > * { flex: 1; min-height: 0; }
+.content :global(.speaker-notes-editor textarea) { height: 100%; min-height: 0; resize: none; }
+:global(.viewer.is-tab-present) .drawer { display: none; }
