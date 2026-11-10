@@ -54,7 +54,7 @@ export function DashboardControls({ artifact, onSaved }: { artifact: LiveArtifac
       <Button size="icon" aria-label="Update data with bot" title="Ask bot to update data" disabled={busy || artifact.status === 'archived'} onClick={() => { void requestBot('update'); }}><RiSparklingLine size={16} aria-hidden /></Button>
       <Button size="icon" aria-label="Schedule updates" title="Schedule updates" disabled={busy || artifact.status === 'archived'} onClick={() => { void requestBot('schedule'); }}><RiCalendarLine size={16} aria-hidden /></Button>
       <Dropdown>
-        <DropdownTrigger aria-label="Dashboard actions" isDisabled={busy} className="inline-flex size-8 items-center justify-center rounded-lg border border-border-button-default bg-background-primary-default text-foreground-icon-primary hover:bg-background-primary-hover"><RiMore2Fill size={16} aria-hidden /></DropdownTrigger>
+        <DropdownTrigger aria-label="Dashboard actions" isDisabled={busy} className={styles.menuTrigger}><RiMore2Fill size={16} aria-hidden /></DropdownTrigger>
         <DropdownPopover aria-label="Dashboard actions" placement="bottom start">
           <DropdownItem onSelect={() => { setTitle(artifact.title); setEditing(true); }}><RiEditLine size={16} aria-hidden />Rename</DropdownItem>
           <DropdownItem onSelect={() => { void save({ pinned: !artifact.pinned }); }}>{artifact.pinned ? <RiPushpinFill size={16} aria-hidden /> : <RiPushpinLine size={16} aria-hidden />}{artifact.pinned ? 'Unpin' : 'Pin'}</DropdownItem>

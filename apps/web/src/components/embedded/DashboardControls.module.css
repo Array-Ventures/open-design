@@ -22,3 +22,18 @@
   line-height: var(--text-caption-1-medium--line-height);
   color: var(--color-text-secondary);
 }
+
+.menuTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--color-border-button-default);
+  border-radius: 8px;
+  background: var(--color-background-primary-default);
+  color: var(--color-foreground-icon-primary);
+}
+.menuTrigger:hover { background: var(--color-background-primary-hover); }
+.menuTrigger svg { flex-shrink: 0; }
