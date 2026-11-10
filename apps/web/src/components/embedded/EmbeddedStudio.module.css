@@ -260,3 +260,13 @@
   .cookingSheet::after { animation: none; opacity: 0; }
   .cookingSpark { animation: none; }
 }
+
+/* Comments share the host's compact controls and semantic surfaces. */
+.workspace :global(.comment-side-panel) { background: var(--color-background-primary-default); color: var(--color-text-primary); border-color: var(--color-separator-border); border-radius: 12px; }
+.workspace :global(.comment-side-header) { height: 40px; min-height: 40px; padding: 0 12px; background: var(--color-background-primary-default); border-color: var(--color-separator-border); }
+.workspace :global(.comment-side-selectbar) { gap: 8px; padding: 8px 12px; }
+.workspace :global(.comment-popover-view-all) { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; border-radius: 8px; }
+.workspace :global(.comment-popover-actions) { gap: 8px; padding: 8px 12px; }
+.workspace :global(.comment-popover-actions-start), .workspace :global(.comment-popover-actions-end) { gap: 8px; }
+.workspace :global(.comment-popover-close) { width: 32px; height: 32px; border-radius: 8px; }
+.workspace :global(.comment-side-new-comment textarea) { min-height: 64px; max-height: 120px; }

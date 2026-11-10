@@ -5196,16 +5196,14 @@ export function CommentSidePanel({
           {allowSendToChat ? (
             <Button
               variant="primary"
+              size="icon"
+              aria-label={sending ? t('chat.comments.sending') : queueOnSend ? t('chat.annotationQueue') : t('chat.comments.sendToChat')}
               data-testid="comment-side-send-claude"
               disabled={sending || sendDisabled}
               title={sendDisabled ? sendDisabledReason : undefined}
               onClick={() => void onSendSelected()}
             >
-              {sending
-                ? t('chat.comments.sending')
-                : queueOnSend
-                  ? t('chat.annotationQueue')
-                  : t('chat.comments.sendToChat')}
+              <Icon name="send" size={16} />
             </Button>
           ) : null}
         </div>

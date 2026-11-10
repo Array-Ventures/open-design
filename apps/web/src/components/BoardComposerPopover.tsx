@@ -682,10 +682,11 @@ export function BoardComposerPopover({
               type="button"
               className="comment-popover-view-all"
               data-testid="comment-popover-view-all"
+              aria-label={t('chat.comments.viewAll')}
+              title={t('chat.comments.viewAll')}
               onClick={(event) => onViewAllComments(event.currentTarget)}
             >
-              {t('chat.comments.viewAll')}
-              <Icon name="chevron-right" size={12} />
+              <Icon name="comment" size={16} />
             </button>
           ) : null}
         </div>
@@ -891,22 +892,27 @@ export function BoardComposerPopover({
                 {canEditComment ? (
                   <Button
                     variant="ghost"
+                    size="icon"
                     data-testid="comment-popover-add-note"
+                    aria-label={t('chat.comments.addNote')}
+                    title={t('chat.comments.addNote')}
                     disabled={!draft.trim()}
                     onClick={onAddDraft}
                   >
-                    {t('chat.comments.addNote')}
+<Icon name="plus" size={16} />
                   </Button>
                 ) : null}
                 {canSendToAgent && allowSendToChat ? (
                   <Button
                     variant="primary"
+                    size="icon"
                     data-testid="comment-add-send"
+                    aria-label={primaryLabel}
                     disabled={sendBlocked}
-                    title={sendDisabled ? sendDisabledReason : undefined}
+                    title={sendDisabled ? sendDisabledReason : primaryLabel}
                     onClick={() => void onSendBatch()}
                   >
-                    {primaryLabel}
+                    <Icon name="send" size={16} />
                   </Button>
                 ) : null}
               </>
@@ -918,22 +924,27 @@ export function BoardComposerPopover({
                 {canSendToAgent && allowSendToChat ? (
                   <Button
                     variant="ghost"
+                    size="icon"
                     data-testid="comment-add-send"
+                    aria-label={primaryLabel}
                     disabled={sendBlocked}
-                    title={sendDisabled ? sendDisabledReason : undefined}
+                    title={sendDisabled ? sendDisabledReason : primaryLabel}
                     onClick={() => void onSendBatch()}
                   >
-                    {primaryLabel}
+                    <Icon name="send" size={16} />
                   </Button>
                 ) : null}
                 {canEditComment ? (
                   <Button
                     variant="primary"
+                    size="icon"
                     data-testid="comment-popover-save"
+                    aria-label={t('chat.comments.comment')}
+                    title={t('chat.comments.comment')}
                     disabled={saveDisabled}
                     onClick={() => void onSaveComment()}
                   >
-                    {t('chat.comments.comment')}
+                    <Icon name="comment" size={16} />
                   </Button>
                 ) : null}
               </>
