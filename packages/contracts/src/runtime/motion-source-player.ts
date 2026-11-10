@@ -116,7 +116,7 @@ ${MOTION_AUDIO_SYNC_RUNTIME}
           if (promise) promise.catch(function (error) {
             if (error && error.name === 'AbortError') return;
             track.blocked = true;
-            notice(error && error.name === 'NotAllowedError' ? '点击画面开启声音' : '音频无法播放，请检查素材');
+            notice(error && error.name === 'NotAllowedError' ? 'Click the preview to enable sound' : 'Audio could not play. Check the audio file.');
           }).finally(function () {
             track.pending = false;
             if (hostMuted || !active || !pageActive || !playing || !wantsPlay) audio.pause();
@@ -148,7 +148,7 @@ ${MOTION_AUDIO_SYNC_RUNTIME}
       var tl = window.__timelines && window.__timelines[root.dataset.compositionId];
       if (!tl || typeof tl.seek !== 'function' || typeof tl.play !== 'function' || !(tl.duration() > 0)) {
         if (Date.now()-started < 15000) { setTimeout(connect, 100); return; }
-        notice('动效未就绪，请检查时间轴或依赖文件');
+        notice('Animation is not ready. Check its timeline and local assets.');
         // Late fonts/images may still register the timeline after the notice.
         // Keep watching while mounted, so a slow load can recover by itself.
         setTimeout(connect, 1000); return;

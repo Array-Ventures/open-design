@@ -37,7 +37,7 @@ describe('motion source player boundaries', () => {
     runInNewContext(code, Object.assign(sandbox, { window: sandbox }));
     now = 16_000;
     pending.shift()!();
-    expect(elements[0]!.textContent).toContain('动效未就绪');
+    expect(elements[0]!.textContent).toContain('Animation is not ready');
     expect(pending).toHaveLength(1);
     const timeline = { duration: () => 4, timeScale: () => 1, seek() {}, play() {}, pause() {}, time: () => 0 };
     sandbox.__timelines.main = timeline;
