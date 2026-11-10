@@ -8,6 +8,7 @@ import { getProject } from '../../state/projects';
 import { useRoute } from '../../router';
 import { useCoalescedCallback } from '../../hooks/useCoalescedCallback';
 import type { OpenTabsState, Project, ProjectFile } from '../../types';
+import { ArtifactSurface } from './ArtifactSurface';
 import { FileWorkspace } from '../FileWorkspace';
 import { IframeKeepAliveProvider, useIframeKeepAlivePool } from '../IframeKeepAlivePool';
 import styles from './EmbeddedStudio.module.css';
@@ -121,7 +122,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
     <main className={styles.workspace} data-testid="embedded-studio">
       {comments.notice ? <div role="status">{comments.notice}</div> : null}
       {dashboardError ? <div role="alert">Dashboards unavailable. Retrying…</div> : null}
-      <FileWorkspace
+      {new URLSearchParams(window.location.search).get('surface') === 'artifact' ? <ArtifactSurface project={project} files={files} dashboards={dashboards} fileName={fileName} generation={generation} onRefresh={refresh} /> : <FileWorkspace
         embedded
         projectId={projectId}
         projectName={project.name}
@@ -144,7 +145,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
         onTabsStateChange={setTabs}
         routeFileName={fileName}
         openRequest={fileName ? { name: fileName, nonce: 1 } : null}
-      />
+      />}
     </main>
   );
 }

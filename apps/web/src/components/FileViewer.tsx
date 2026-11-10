@@ -2106,6 +2106,7 @@ export const FileViewer = memo(function FileViewer({
 });
 
 export function LiveArtifactViewer({
+  chrome = true,
   projectId,
   liveArtifact,
   liveArtifactEvents = [],
@@ -2113,6 +2114,7 @@ export function LiveArtifactViewer({
 }: {
   projectId: string;
   liveArtifact: LiveArtifactWorkspaceEntry;
+  chrome?: boolean;
   liveArtifactEvents?: LiveArtifactEventItem[];
   onRefreshArtifacts?: () => Promise<void> | void;
 }) {
@@ -2592,7 +2594,7 @@ export function LiveArtifactViewer({
           </button>
         </div>
       </div>
-      {hostSourceState && detail ? <DashboardControls key={`${projectId}:${liveArtifact.artifactId}`} artifact={detail} onSaved={(next) => { setDetail(next); setReloadKey((value) => value + 1); void onRefreshArtifacts?.(); }} /> : null}
+      {chrome && hostSourceState && detail ? <DashboardControls key={`${projectId}:${liveArtifact.artifactId}`} artifact={detail} onSaved={(next) => { setDetail(next); setReloadKey((value) => value + 1); void onRefreshArtifacts?.(); }} /> : null}
       <div className="viewer-body" ref={previewBodyRef}>
         {detail?.status === 'archived' ? null : hostSourceState?.sourceError ? <div role="alert">{hostSourceState.sourceError} The preview retains the last successful snapshot.</div>
           : hostSourceState?.sourceChanged ? <div role="status">Local source files have changed. Refresh to update the preview. Data shows the current JSON; preview shows the last successful snapshot.</div> : null}

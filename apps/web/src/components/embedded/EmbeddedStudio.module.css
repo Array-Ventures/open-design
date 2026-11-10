@@ -189,3 +189,8 @@
   background: var(--color-background-secondary-hover);
   color: var(--color-text-primary);
 }
+
+.artifactSurface { display: flex; flex: 1; min-height: 0; width: 100%; overflow: hidden; }
+.artifactSurface :global(.viewer-toolbar),
+.artifactSurface :global(.live-artifact-toolbar) { display: none; }
+.artifactSurface :global(.viewer) { border: 0; border-radius: 0; }
