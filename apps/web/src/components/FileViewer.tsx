@@ -2665,7 +2665,7 @@ export function LiveArtifactViewer({
           </div>
         </div>
         </>}
-        {mode !== 'preview' && loading ? (
+        {mode === 'preview' ? null : loading ? (
           <div className="viewer-empty">{t('fileViewer.loading')}</div>
         ) : mode === 'code' ? (
           <LiveArtifactCodePanel
