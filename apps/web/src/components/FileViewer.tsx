@@ -14348,7 +14348,8 @@ function HtmlViewer({
         slide_count: deckSlideTotal,
       });
     }
-    const win = iframeRef.current?.contentWindow;
+    const activeFrame = useUrlLoadPreview ? urlPreviewIframeRef.current : srcDocPreviewIframeRef.current;
+    const win = activeFrame?.contentWindow;
     if (!win) return;
     // Absolute targets are idempotent when an authored deck and its fallback
     // bridge both observe the command. Cache intent for consecutive clicks.

@@ -4,7 +4,7 @@
 .handle span { position: relative; width: 40px; height: 4px; border-radius: 4px; background: var(--color-foreground-icon-tertiary); opacity: 0; transition: opacity 150ms ease-out; }
 .drawer[data-open='true'] .handle::before { opacity: 1; }
 .drawer[data-open='true'] .handle span { opacity: .5; }
-.handle:hover span, .handle:focus-visible span, .handle:active span { opacity: 1; }
+.handle:hover span, .handle:focus-visible:not([data-pointer-focus='true']) span, .handle:active span { opacity: 1; }
 .handle:focus-visible:not([data-pointer-focus='true']) { outline: 2px solid var(--color-border-focus-ring); outline-offset: -2px; }
 .content { height: 100%; overflow: auto; }
 .content :global(.speaker-notes-panel) { border-top: 0; animation: none; }
