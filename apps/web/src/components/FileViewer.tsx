@@ -14350,6 +14350,17 @@ function HtmlViewer({
     }
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
+    // Absolute targets are idempotent when an authored deck and its fallback
+    // bridge both observe the command. Cache intent for consecutive clicks.
+    if (action === 'next' || action === 'prev') {
+      const count = Math.max(deckSlideTotal, 1);
+      const current = htmlPreviewSlideState.get(previewStateKey)?.active ?? activeDeckSlideIndex;
+      const target = Math.max(0, Math.min(count - 1, current + (action === 'next' ? 1 : -1)));
+      setSlideStateCached(previewStateKey, { active: target, count });
+      setSlideState({ active: target, count });
+      win.postMessage({ type: 'od:slide', action: 'go', index: target }, '*');
+      return;
+    }
     win.postMessage({
       type: 'od:slide',
       action,

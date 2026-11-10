@@ -5,7 +5,7 @@ export function SpeakerNotesDrawer({ children }: { children: ReactNode }) {
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
   const dragging = useRef<number | null>(null);
-  const [height, setHeight] = useState(0);
+  const [height, setHeight] = useState(176);
   const [captured, setCaptured] = useState(false);
   const [pointerFocus, setPointerFocus] = useState(false);
   const maximum = () => Math.max(96, Math.min(400, (root.current?.parentElement?.clientHeight ?? 600) * .6));
