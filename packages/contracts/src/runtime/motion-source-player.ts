@@ -54,7 +54,7 @@ function createMotionAudioSync(audio) {
 // Shared by URL previews, srcdoc previews and the persisted editable source.
 // The renderer installs its flag before author scripts; it never sees chrome,
 // layout scaling, poster seeking, or wall-clock playback from this runtime.
-const PLAYER = `<script data-od-motion-source-player="11">
+const PLAYER = `<script data-od-motion-source-player="12">
 ${MOTION_TIMELINE_CHECK_SCRIPT}
 (function () {
 ${MOTION_AUDIO_SYNC_RUNTIME}
@@ -81,6 +81,15 @@ ${MOTION_AUDIO_SYNC_RUNTIME}
     function onActivity(event) {
       var data = event.data;
       if (!hosted || event.source !== window.parent || !data) return;
+      if (data.type === 'od:motion-control' && data.id === instance && window.__odMotionPlayer) {
+        var player = window.__odMotionPlayer;
+        if (data.action === 'play') player.play();
+        else if (data.action === 'pause') player.pause();
+        else if (data.action === 'replay') player.replay();
+        else if (data.action === 'seek' && typeof data.time === 'number' && Number.isFinite(data.time)) player.seek(data.time);
+        else if (data.action === 'mute' && typeof data.muted === 'boolean') player.setMuted(data.muted);
+        return;
+      }
       if (data.type === '${MOTION_PREVIEW_PROBE}') { requestActivity(); return; }
       if (data.type !== '${MOTION_PREVIEW_ACTIVITY}' || typeof data.active !== 'boolean' || (data.active && data.id !== instance)) return;
       hostMuted = data.muted === true;
@@ -169,6 +178,15 @@ ${MOTION_AUDIO_SYNC_RUNTIME}
         state: function () { return { playing: playing, active: active, time: tl.time(), duration: duration, muted: muted || hostMuted,
           audio: tracks.map(function (track) { return { paused: track.audio.paused, time: track.audio.currentTime, muted: track.audio.muted, volume: track.audio.volume, blocked: track.blocked }; }) }; }
       };
+      function reportState() {
+        var state = window.__odMotionPlayer.state();
+        window.parent.postMessage({type:'od:motion-state', id:instance, playing:state.playing, time:state.time, duration:state.duration, muted:state.muted, hasAudio:tracks.length > 0}, '*');
+      }
+      var stateTimer = setInterval(function () {
+        if (!stage.isConnected) { clearInterval(stateTimer); return; }
+        reportState();
+      }, 250);
+      reportState();
       root.addEventListener('click', function () {
         var blocked = tracks.some(function (track) { return track.blocked; });
         if (blocked) { tracks.forEach(function (track) { track.blocked = false; }); notice(''); if (playing) syncAudio(tl.time(), true, true); else play(); }
@@ -210,7 +228,7 @@ export function injectMotionSourcePlayer(html: string): string {
   const existing = findRealTagOffset(html, /<script\b[^>]*\bdata-od-motion-source-player\b/i);
   if (existing >= 0) {
     const script = /^<script\b[^>]*>[\s\S]*?<\/script\s*>/i.exec(html.slice(existing));
-    if (!script || /data-od-motion-source-player="11"/.test(script[0])) return html;
+    if (!script || /data-od-motion-source-player="12"/.test(script[0])) return html;
     return html.slice(0, existing) + PLAYER + html.slice(existing + script[0].length);
   }
   const end = findRealTagOffset(html, HTML_TAG_PATTERNS.bodyClose);

@@ -5,6 +5,8 @@ import { injectMotionSourcePlayer, markMotionFrameRender } from '../src/runtime/
 describe('motion source player boundaries', () => {
   it('recovers when the timeline arrives after the readiness notice and stops polling after unmount', () => {
     let now = 0;
+    const reporters: Array<() => void> = [];
+    let reporterCleared = false;
     const pending: Array<() => void> = [];
     const elements: Array<{ isConnected: boolean; textContent: string; style: { cssText: string; display: string }; setAttribute(): void; appendChild(): void }> = [];
     const root = {
@@ -18,6 +20,8 @@ describe('motion source player boundaries', () => {
       __timelines: {} as Record<string, unknown>,
       parent: { postMessage() {} }, addEventListener() {}, clearTimeout() {},
       setTimeout: (callback: () => void) => { pending.push(callback); },
+      setInterval: (callback: () => void) => { reporters.push(callback); return 1; },
+      clearInterval: () => { reporterCleared = true; },
       document: {
         readyState: 'complete',
         querySelector: (selector: string) => selector.startsWith('meta') ? { content: 'video' } : root,
@@ -29,7 +33,7 @@ describe('motion source player boundaries', () => {
       },
     };
     const html = injectMotionSourcePlayer('<meta name="od-motion-output" content="video"><main data-composition-id="main"></main>');
-    const code = /<script data-od-motion-source-player="11">([\s\S]*?)<\/script>/.exec(html)![1]!;
+    const code = /<script data-od-motion-source-player="12">([\s\S]*?)<\/script>/.exec(html)![1]!;
     runInNewContext(code, Object.assign(sandbox, { window: sandbox }));
     now = 16_000;
     pending.shift()!();
@@ -47,6 +51,9 @@ describe('motion source player boundaries', () => {
     elements[2]!.isConnected = false;
     retry();
     expect(pending).toHaveLength(0);
+    expect(reporters).toHaveLength(1);
+    reporters[0]!();
+    expect(reporterCleared).toBe(true);
   });
   it.each([true, false])('preserves the root layout contract (stage opt-in: %s)', (stageLayout) => {
     const properties: Record<string, string> = {};
@@ -73,7 +80,7 @@ describe('motion source player boundaries', () => {
       },
     };
     const html = injectMotionSourcePlayer('<meta name="od-motion-output" content="video"><main data-composition-id="main"></main>');
-    const code = /<script data-od-motion-source-player="11">([\s\S]*?)<\/script>/.exec(html)![1]!;
+    const code = /<script data-od-motion-source-player="12">([\s\S]*?)<\/script>/.exec(html)![1]!;
     runInNewContext(code, Object.assign(sandbox, { window: sandbox }));
     if (stageLayout) expect(properties).toMatchObject({ width: '1080px', height: '1080px', left: '0', top: '0', transform: 'none' });
     else expect(properties).toEqual({});
@@ -129,7 +136,7 @@ describe('motion audio contract isolation', () => {
     const source = '<meta name="od-motion-output" content="video"><div data-composition-id="main"></div><script data-od-motion-source-player="6">oldPlayer();</script>';
     const result = injectMotionSourcePlayer(source);
     expect(result).not.toContain('oldPlayer');
-    expect(result).toContain('data-od-motion-source-player="11"');
+    expect(result).toContain('data-od-motion-source-player="12"');
     expect(injectMotionSourcePlayer(result)).toBe(result);
   });
 });
