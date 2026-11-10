@@ -41,13 +41,15 @@ describe('embedded dashboard management', () => {
     expect(host.stage).not.toHaveBeenCalled();
   });
 
-  it('archives through native metadata, with explicit retained-files wording', async () => {
+  it('archives through the actions menu without a permanent warning banner', async () => {
     const fetcher = vi.fn().mockResolvedValue(Response.json({ ...row, archived: true }));
     vi.stubGlobal('fetch', fetcher);
     const onSaved = vi.fn();
     render(<DashboardControls artifact={dashboardDetail(row)} onSaved={onSaved} />);
-    expect(screen.getByText(/Archiving retains files and history/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Archive dashboard' }));
+    expect(screen.queryByText(/Archiving retains files and history/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Archive dashboard' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Dashboard actions' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Archive dashboard' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ status: 'archived' })));
     expect(fetcher).toHaveBeenCalledWith(`/api/studio/projects/${row.projectId}/dashboards/${row.id}`, expect.objectContaining({ method: 'PATCH', body: '{"archived":true}' }));
   });
@@ -55,7 +57,8 @@ describe('embedded dashboard management', () => {
     const fetcher = vi.fn().mockResolvedValue(Response.json(row));
     vi.stubGlobal('fetch', fetcher);
     render(<DashboardControls artifact={dashboardDetail({ ...row, archived: true })} onSaved={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Restore dashboard' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Dashboard actions' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore dashboard' }));
     await waitFor(() => expect(fetcher).toHaveBeenCalled());
     expect(fetcher.mock.calls[0]![1]).toMatchObject({ method: 'PATCH', body: '{"archived":false}' });
   });
@@ -63,7 +66,8 @@ describe('embedded dashboard management', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 403 })));
     const onSaved = vi.fn();
     render(<DashboardControls artifact={dashboardDetail(row)} onSaved={onSaved} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Dashboard actions' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Dashboard title' }), { target: { value: 'New title' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save title' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('403');

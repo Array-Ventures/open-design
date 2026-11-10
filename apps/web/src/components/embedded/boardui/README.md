@@ -70,3 +70,7 @@ PPTX/image/template dialog footer actions use the same shared Button adapter
 with unstyled standalone fallback. Embedded dialog headings use the installed
 host title ramp; source/export callbacks and native radio semantics remain in
 the upstream dialog.
+
+Dashboard overflow actions use the installed free BoardUI Dropdown source,
+with relative imports and React 18 RefObject compatibility. Embedded icon
+controls use the small size and center opaque upstream icon children.

@@ -12,7 +12,7 @@ export const renderEmbeddedButton: ButtonRenderer = ({ variant = 'default', size
     ref={ref}
     iconOnly={size === 'icon'}
     variant={variant === 'primary' ? 'primary' : variant === 'ghost' || variant === 'subtle' || variant === 'primary-ghost' ? 'ghost' : 'secondary'}
-    size={size === 'sm' ? 'small' : 'medium'}
+    size={size === 'sm' || size === 'icon' ? 'small' : 'medium'}
   />
 );
 

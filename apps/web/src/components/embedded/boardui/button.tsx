@@ -168,7 +168,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       {...props}
     >
       {Leading ? <Leading className={cx(styles.icon[size], directionalIconClass(Leading))} aria-hidden /> : null}
-      {iconOnly && children !== undefined && children !== null ? <span className={styles.icon[size]}>{children}</span> : null}
+      {iconOnly && children !== undefined && children !== null ? <span className={cx(styles.icon[size], "inline-flex items-center justify-center")}>{children}</span> : null}
       {!iconOnly && children !== undefined && children !== null && (
         <span className={styles.label[size]}>{children}</span>
       )}

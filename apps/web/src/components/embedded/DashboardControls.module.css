@@ -16,3 +16,9 @@
   flex: 1;
   min-width: 180px;
 }
+
+.status {
+  font-size: var(--text-caption-1-medium);
+  line-height: var(--text-caption-1-medium--line-height);
+  color: var(--color-text-secondary);
+}

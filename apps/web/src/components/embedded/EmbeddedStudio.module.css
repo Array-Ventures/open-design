@@ -178,3 +178,14 @@
 .workspace :global(.df-row-live-artifact:hover) {
   background: var(--color-background-secondary-hover);
 }
+
+.workspace :global(.viewer-tabs) { gap: 4px; border-radius: 12px; }
+.workspace :global(.viewer-tab) { min-height: 32px; border-radius: 8px; }
+.workspace :global(.viewer-tab.active) {
+  background: var(--color-background-primary-default);
+  color: var(--color-text-primary);
+}
+.workspace :global(.viewer-tab:hover:not(:disabled):not(.active)) {
+  background: var(--color-background-secondary-hover);
+  color: var(--color-text-primary);
+}
