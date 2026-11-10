@@ -5,7 +5,7 @@
 .drawer[data-open='true'] .handle::before { opacity: 1; }
 .drawer[data-open='true'] .handle span { opacity: .5; }
 .handle:hover span, .handle:focus-visible span, .handle:active span { opacity: 1; }
-.handle:focus-visible { outline: 2px solid var(--color-border-focus-ring); outline-offset: -2px; }
+.handle:focus-visible:not([data-pointer-focus='true']) { outline: 2px solid var(--color-border-focus-ring); outline-offset: -2px; }
 .content { height: 100%; overflow: auto; }
 .content :global(.speaker-notes-panel) { border-top: 0; animation: none; }
 @media (pointer: coarse) { .handle span { opacity: .4; } }
@@ -21,3 +21,5 @@
 
 /* Keep cross-origin slide frames from swallowing a captured drag in Chromium. */
 .shield { position: fixed; inset: 0; z-index: 2147483646; cursor: row-resize; touch-action: none; user-select: none; }
+
+.content :global(.speaker-notes-panel-title) { text-transform: none; letter-spacing: var(--text-caption-1-medium--letter-spacing); font-size: var(--text-caption-1-medium); line-height: var(--text-caption-1-medium--line-height); font-weight: var(--text-caption-1-medium--font-weight); }
