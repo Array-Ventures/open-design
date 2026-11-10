@@ -16584,7 +16584,8 @@ function HtmlViewer({
     return () => { cancelled = true; };
   }, [commentReadScopeKey, mergeReadState, projectId, file.name, workspaceContext]);
   useEffect(() => {
-    if (!commentPanelOpen || commentSidePanelCollapsed || previewCommentsState !== 'success') return;
+    const listVisible = commentListInPopover || (commentPanelOpen && !commentSidePanelCollapsed);
+    if (!listVisible || previewCommentsState !== 'success') return;
     const scopeKey = commentReadScopeKey;
     let cancelled = false;
     // A committed visible list, not opening the panel or the client's clock,
@@ -16603,7 +16604,7 @@ function HtmlViewer({
       }).catch(() => undefined);
     });
     return () => { cancelled = true; cancelAnimationFrame(frame); };
-  }, [unreadSideComments, commentReadState, file.name, previewCommentsState, commentPanelOpen, commentReadScopeKey, commentSidePanelCollapsed, latestVisibleSideCommentCreatedAt, mergeReadState, projectId, workspaceContext]);
+  }, [unreadSideComments, commentReadState, file.name, previewCommentsState, commentPanelOpen, commentListInPopover, commentReadScopeKey, commentSidePanelCollapsed, latestVisibleSideCommentCreatedAt, mergeReadState, projectId, workspaceContext]);
   // Trusted current member/app-account identities are filtered above. Never
   // fabricate an authorKey from names, colors, or either identity namespace.
   const hasUnreadSideComments = hasUnreadComments({
