@@ -77,7 +77,7 @@ ${MOTION_AUDIO_SYNC_RUNTIME}
         hint.textContent = '';
         var enable = document.createElement('button');
         enable.type = 'button'; enable.textContent = 'Enable sound';
-        enable.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:4px;padding:4px 8px;background:transparent;color:inherit;font:inherit;cursor:pointer;user-select:none';
+        enable.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-height:32px;border:0;border-radius:4px;padding:4px 8px;background:transparent;color:inherit;font:inherit;cursor:pointer;user-select:none';
         enable.addEventListener('click', function () { root.click(); });
         hint.appendChild(enable);
       }
