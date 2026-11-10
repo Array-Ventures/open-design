@@ -197,3 +197,66 @@
 .artifactSurface :global(.chrome-action),
 .artifactSurface :global(.chrome-present-wrap),
 .artifactSurface :global(.chrome-file-action-menus) { display: none; }
+
+.cooking {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 32px;
+  text-align: center;
+}
+.cookingPreview { position: relative; width: 112px; height: 112px; }
+.cookingSheet {
+  position: absolute;
+  inset: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 12px 12px;
+  border: 1px solid var(--color-border-button-default);
+  border-radius: 12px;
+  background: var(--color-background-primary-default);
+  transform: rotate(-6deg);
+  overflow: hidden;
+}
+.cookingSheet > span { height: 4px; border-radius: 4px; background: var(--color-background-tertiary-default); }
+.cookingSheet > span:nth-child(1) { width: 60%; }
+.cookingSheet > span:nth-child(3) { width: 80%; }
+.cookingSheet > div { flex: 1; border-radius: 4px; background: var(--color-background-secondary-default); }
+.cookingSheet::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 25%, var(--color-background-primary-default) 50%, transparent 75%);
+  opacity: .7;
+  transform: translateX(-120%);
+  animation: cookingShimmer 3s ease-in-out infinite;
+}
+.cookingSpark {
+  position: absolute;
+  inset-inline-end: 4px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--color-border-button-default);
+  border-radius: 12px;
+  background: var(--color-background-secondary-default);
+  color: var(--color-foreground-icon-secondary);
+  animation: cookingSpark 3s ease-in-out infinite;
+}
+.cookingCopy { display: flex; flex-direction: column; gap: 8px; }
+.cookingCopy h3 { margin: 0; font-size: var(--text-body-medium); line-height: var(--text-body-medium--line-height); font-weight: var(--text-body-medium--font-weight); color: var(--color-text-primary); }
+.cookingCopy p { margin: 0; font-size: var(--text-caption-1-regular); line-height: var(--text-caption-1-regular--line-height); color: var(--color-text-tertiary); }
+@keyframes cookingShimmer { 0%, 20% { transform: translateX(-120%); } 80%, 100% { transform: translateX(120%); } }
+@keyframes cookingSpark { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) {
+  .cookingSheet::after { animation: none; opacity: 0; }
+  .cookingSpark { animation: none; }
+}

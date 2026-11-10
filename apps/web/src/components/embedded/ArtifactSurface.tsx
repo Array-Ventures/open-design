@@ -1,3 +1,4 @@
+import { RiSparklingLine } from '@remixicon/react';
 import { FileViewer, LiveArtifactViewer } from '../FileViewer';
 import { liveArtifactSummaryToWorkspaceEntry, type Project, type ProjectFile } from '../../types';
 import type { LiveArtifactSummary } from '@open-design/contracts';
@@ -19,6 +20,15 @@ export function ArtifactSurface({ project, files, dashboards, fileName, generati
   return <div className={styles.artifactSurface} data-testid="artifact-surface">
     {dashboard ? <LiveArtifactViewer chrome={false} projectId={project.id} liveArtifact={liveArtifactSummaryToWorkspaceEntry(dashboard)} onRefreshArtifacts={async () => { await onRefresh(); }} />
       : file ? <FileViewer embedded projectId={project.id} projectKind={projectKindFromMetadataToTrackingOrLegacyDefault(project.metadata)} file={file} filesRefreshKey={generation} isDeck={project.metadata?.kind === 'deck'} onFileSaved={async () => { await onRefresh(); }} />
-      : <div role="status" className={styles.status}>The artifact will appear here when it’s ready.</div>}
+      : <div role="status" className={styles.cooking}>
+          <div className={styles.cookingPreview} aria-hidden="true">
+            <div className={styles.cookingSheet}><span /><span /><span /><div /></div>
+            <div className={styles.cookingSpark}><RiSparklingLine size={20} /></div>
+          </div>
+          <div className={styles.cookingCopy}>
+            <h3>Agent is cooking<span aria-hidden="true">…</span></h3>
+            <p>Your artifact will take shape here.</p>
+          </div>
+        </div>}
   </div>;
 }
