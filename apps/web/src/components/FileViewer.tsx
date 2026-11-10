@@ -9535,6 +9535,7 @@ function HtmlViewer({
     () => (typeof window === 'undefined' ? false : parseForceInline(window.location.search)),
     [],
   );
+  const [commentListInPopover, setCommentListInPopover] = useState(false);
   const [activeCommentTarget, setActiveCommentTarget] = useState<PreviewCommentSnapshot | null>(null);
   const [hoveredCommentTarget, setHoveredCommentTarget] = useState<PreviewCommentSnapshot | null>(null);
   // True while the pointer is physically over the floating hover card. The card
@@ -15439,6 +15440,7 @@ function HtmlViewer({
 
   function clearBoardComposer() {
     commentReselectPendingRef.current = false;
+    setCommentListInPopover(false);
     disarmComposerDiscard();
     setActiveCommentTarget(null);
     setHoveredCommentTarget(null);
@@ -17029,93 +17031,6 @@ function HtmlViewer({
       },
     };
   })();
-  const commentComposerNode = boardMode && activeCommentTarget && activeCommentTargetVisible ? (
-    <BoardComposerPopover
-      target={activeCommentTarget}
-      existing={activeComposerComment}
-      canEditComment={canEditActiveComment}
-      canDeleteComment={canDeleteActiveComment}
-      canSendToAgent={canSendActiveComment}
-      draft={commentDraft}
-      notes={queuedBoardNotes}
-      discardPending={composerDiscardPending && composerHoldsUnsentWork}
-      onDraft={(value) => {
-        disarmComposerDiscard();
-        setCommentDraft(value);
-      }}
-      onAddDraft={queueCurrentDraft}
-      onRemoveQueuedNote={(index) =>
-        setQueuedBoardNotes((current) => current.filter((_, currentIndex) => currentIndex !== index))
-      }
-      onClose={clearBoardComposer}
-      onSaveComment={() => { fireCommentPopoverClick('save_comment'); return savePersistentComment(); }}
-      onSendBatch={() => {
-        observeAnalytics(() => {
-          const saved = currentActiveComposerComment();
-          // Observe the same saved-comment branch as sendBoardBatch, without changing its submission.
-          const unchanged = saved && queuedBoardNotes.length === 0 && boardImages.length === 0
-            && commentDraft.trim() === saved.note.trim();
-          fireCommentPopoverClick('send_to_chat', unchanged ? [saved] : undefined);
-        });
-        return sendBoardBatch();
-      }}
-      images={boardImagePreviews}
-      existingImages={
-        activeComposerAttachments.map((attachment) => ({
-          url: projectRawUrl(projectId, attachment.path, workspaceContext),
-          name: attachment.name,
-        }))
-      }
-      onAttachImages={addBoardImages}
-      onRemoveImage={removeBoardImage}
-      onPreviewImage={setBoardPreviewIndex}
-      onRemoveMember={(elementId) => {
-        setActiveCommentTarget((current) => {
-          const { next, shouldClose } = applyPodMemberRemoval(current, elementId);
-          if (shouldClose) clearBoardComposer();
-          return next;
-        });
-        setHoveredPodMemberId((current) => (current === elementId ? null : current));
-      }}
-      onHoverMember={setHoveredPodMemberId}
-      onViewAllComments={(returnFocusTarget) => {
-        commentPanelReturnFocusRef.current = returnFocusTarget ?? null;
-        setCommentPanelOpen(true);
-        setCommentSidePanelCollapsed(false);
-      }}
-      onDeleteComment={onRemovePreviewComment ? async (commentId) => {
-        const removed = await onRemovePreviewComment(commentId);
-        if (!removed) return;
-        clearBoardComposer();
-        setSelectedSideCommentIds((current) => {
-          if (!current.has(commentId)) return current;
-          const next = new Set(current);
-          next.delete(commentId);
-          return next;
-        });
-        setActivePreviewCommentId((current) => (current === commentId ? null : current));
-      } : undefined}
-      sending={sendingBoardBatch}
-      queueOnSend={commentQueueOnSend}
-      sendDisabled={commentSendDisabled || viewerOnly}
-      sendDisabledReason={viewerOnly ? viewerOnlyDisabledTitle : undefined}
-      allowSendToChat={!viewerOnly}
-      t={t}
-      scale={overlayPreviewScale}
-      offset={
-        commentComposerPortalMetrics?.offset ?? {
-          x: overlayPreviewTransform.offsetX,
-          y: overlayPreviewTransform.offsetY,
-        }
-      }
-      bounds={commentComposerPortalMetrics?.bounds ?? previewBodySize}
-      docked={false}
-      commenting
-    />
-  ) : null;
-  const commentComposer = workspaceActive && commentComposerNode && commentComposerPortalMetrics
-    ? createPortal(commentComposerNode, commentComposerPortalMetrics.host)
-    : workspaceActive ? commentComposerNode : null;
   const boardPreviewImage =
     boardPreviewIndex !== null ? boardImagePreviews[boardPreviewIndex] ?? null : null;
   const boardImagePreviewModal = workspaceActive && boardPreviewImage
@@ -17150,7 +17065,7 @@ function HtmlViewer({
       )
     : null;
   const unavailableCommentId = boardMode ? lostSelectedCommentId : null;
-  const commentSidePanel = workspaceActive && commentPanelOpen ? (
+  const commentSidePanel = workspaceActive && (commentPanelOpen || commentListInPopover) ? (
     <CommentSideDock
       comments={visibleSideComments}
       loadState={previewCommentsState}
@@ -17165,7 +17080,7 @@ function HtmlViewer({
       // into a full-height column, where a collapsed rail made no sense). It
       // now always floats as a card, so its collapse control has to actually
       // collapse — forcing `false` here made every click a no-op.
-      collapsed={commentSidePanelCollapsed}
+      collapsed={commentListInPopover ? false : commentSidePanelCollapsed}
       hasUnread={hasUnreadSideComments}
       onCollapsedChange={setCommentSidePanelCollapsed}
       // Escape remains the explicit floating-card close path. The header
@@ -17224,7 +17139,8 @@ function HtmlViewer({
           setActiveCommentExistingAttachments(comment.attachments ?? []);
           setBoardMode(true);
           setCommentCreateMode(true);
-          setCommentPanelOpen(true);
+          if (!commentListInPopover) setCommentPanelOpen(true);
+          setCommentListInPopover(false);
           setCommentSidePanelCollapsed(false);
         });
       }}
@@ -17270,6 +17186,95 @@ function HtmlViewer({
       composer={null}
     />
   ) : null;
+  const commentComposerNode = boardMode && activeCommentTarget && activeCommentTargetVisible ? (
+    <BoardComposerPopover
+      target={activeCommentTarget}
+      existing={activeComposerComment}
+      canEditComment={canEditActiveComment}
+      canDeleteComment={canDeleteActiveComment}
+      canSendToAgent={canSendActiveComment}
+      draft={commentDraft}
+      notes={queuedBoardNotes}
+      discardPending={composerDiscardPending && composerHoldsUnsentWork}
+      onDraft={(value) => {
+        disarmComposerDiscard();
+        setCommentDraft(value);
+      }}
+      onAddDraft={queueCurrentDraft}
+      onRemoveQueuedNote={(index) =>
+        setQueuedBoardNotes((current) => current.filter((_, currentIndex) => currentIndex !== index))
+      }
+      onClose={clearBoardComposer}
+      onSaveComment={() => { fireCommentPopoverClick('save_comment'); return savePersistentComment(); }}
+      onSendBatch={() => {
+        observeAnalytics(() => {
+          const saved = currentActiveComposerComment();
+          // Observe the same saved-comment branch as sendBoardBatch, without changing its submission.
+          const unchanged = saved && queuedBoardNotes.length === 0 && boardImages.length === 0
+            && commentDraft.trim() === saved.note.trim();
+          fireCommentPopoverClick('send_to_chat', unchanged ? [saved] : undefined);
+        });
+        return sendBoardBatch();
+      }}
+      images={boardImagePreviews}
+      existingImages={
+        activeComposerAttachments.map((attachment) => ({
+          url: projectRawUrl(projectId, attachment.path, workspaceContext),
+          name: attachment.name,
+        }))
+      }
+      onAttachImages={addBoardImages}
+      onRemoveImage={removeBoardImage}
+      onPreviewImage={setBoardPreviewIndex}
+      onRemoveMember={(elementId) => {
+        setActiveCommentTarget((current) => {
+          const { next, shouldClose } = applyPodMemberRemoval(current, elementId);
+          if (shouldClose) clearBoardComposer();
+          return next;
+        });
+        setHoveredPodMemberId((current) => (current === elementId ? null : current));
+      }}
+      onHoverMember={setHoveredPodMemberId}
+      commentsView={commentListInPopover ? commentSidePanel : undefined}
+      onBackToComment={() => setCommentListInPopover(false)}
+      onViewAllComments={(returnFocusTarget) => {
+        commentPanelReturnFocusRef.current = returnFocusTarget ?? null;
+        setCommentPanelOpen(false);
+        setCommentListInPopover(true);
+      }}
+      onDeleteComment={onRemovePreviewComment ? async (commentId) => {
+        const removed = await onRemovePreviewComment(commentId);
+        if (!removed) return;
+        clearBoardComposer();
+        setSelectedSideCommentIds((current) => {
+          if (!current.has(commentId)) return current;
+          const next = new Set(current);
+          next.delete(commentId);
+          return next;
+        });
+        setActivePreviewCommentId((current) => (current === commentId ? null : current));
+      } : undefined}
+      sending={sendingBoardBatch}
+      queueOnSend={commentQueueOnSend}
+      sendDisabled={commentSendDisabled || viewerOnly}
+      sendDisabledReason={viewerOnly ? viewerOnlyDisabledTitle : undefined}
+      allowSendToChat={!viewerOnly}
+      t={t}
+      scale={overlayPreviewScale}
+      offset={
+        commentComposerPortalMetrics?.offset ?? {
+          x: overlayPreviewTransform.offsetX,
+          y: overlayPreviewTransform.offsetY,
+        }
+      }
+      bounds={commentComposerPortalMetrics?.bounds ?? previewBodySize}
+      docked={false}
+      commenting
+    />
+  ) : null;
+  const commentComposer = workspaceActive && commentComposerNode && commentComposerPortalMetrics
+    ? createPortal(commentComposerNode, commentComposerPortalMetrics.host)
+    : workspaceActive ? commentComposerNode : null;
   const speakerNotesFeedback = speakerNotesStatus === 'saved'
       ? { className: 'saved', label: t('fileViewer.speakerNotesSaved') }
       : speakerNotesStatus === 'error'
@@ -18627,9 +18632,9 @@ function HtmlViewer({
               ) : null}
             </div>
             {boardImagePreviewModal}
-            {commentPortalHost && commentSidePanel
+            {!commentListInPopover && commentPortalHost && commentSidePanel
               ? createPortal(commentSidePanel, commentPortalHost)
-              : commentPortalId
+              : commentPortalId || commentListInPopover
                 ? null
                 : commentSidePanel}
             {inspectMode && activeInspectTarget ? (

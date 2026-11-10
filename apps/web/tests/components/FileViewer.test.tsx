@@ -11030,7 +11030,7 @@ describe('FileViewer tweaks toolbar', () => {
     expect(await screen.findByTestId('comment-side-panel')).toBeTruthy();
   });
 
-  it('keeps the comment popover open and restores focus when View all comments closes', async () => {
+  it('switches View all comments inside the same popover without docking or losing the draft', async () => {
     const portalId = 'project-comments-view-all';
     render(
       <>
@@ -11061,26 +11061,22 @@ describe('FileViewer tweaks toolbar', () => {
       },
     }));
 
-    const viewAll = await screen.findByTestId('comment-popover-view-all');
-    fireEvent.click(viewAll);
+    const input = await screen.findByTestId('comment-popover-input');
+    fireEvent.change(input, { target: { value: 'Keep my unfinished review' } });
+    const layout = screen.getByTestId('comment-preview-layout');
+    const originalLayout = layout.className;
+    fireEvent.click(screen.getByTestId('comment-popover-view-all'));
 
+    const popover = screen.getByTestId('comment-popover');
     const panel = await screen.findByTestId('comment-side-panel');
-    const dismiss = within(panel).getByRole('button', { name: /hide comments/i });
-    dismiss.focus();
-    fireEvent.click(dismiss);
-
-    const rail = await screen.findByTestId('comment-side-collapsed-rail');
-    expect(screen.getByTestId('comment-popover')).toBeTruthy();
-    await waitFor(() => expect(document.activeElement).toBe(rail));
-
-    fireEvent.click(rail);
-    const reopened = await screen.findByTestId('comment-side-panel');
-    fireEvent.keyDown(reopened, { key: 'Escape' });
-    await waitFor(() => {
-      expect(screen.queryByTestId('comment-side-panel')).toBeNull();
-      expect(screen.getByTestId('comment-popover')).toBeTruthy();
-      expect(document.activeElement).toBe(viewAll);
-    });
+    expect(popover).toContainElement(panel);
+    expect(screen.getByTestId('comment-float-host')).toBeEmptyDOMElement();
+    expect(layout.className).toBe(originalLayout);
+    expect(screen.queryByTestId('comment-popover-input')).toBeNull();
+    fireEvent.click(within(popover).getByRole('button', { name: /go back/i }));
+    expect(screen.getByTestId('comment-popover-input')).toHaveValue('Keep my unfinished review');
+    expect(screen.queryByTestId('comment-side-panel')).toBeNull();
+    expect(layout.className).toBe(originalLayout);
   });
 
   it('shows the open comment count beside the comments icon', () => {

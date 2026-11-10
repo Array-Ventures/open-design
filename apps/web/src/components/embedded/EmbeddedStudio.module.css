@@ -282,3 +282,8 @@
 
 /* Target metrics belong to the inspector; comments keep the message in view. */
 .workspace :global(.comment-popover-section-params) { display: none; }
+
+.workspace :global(.comment-popover-list .comment-side-dock) { width: 100%; height: 280px; max-height: 40vh; }
+.workspace :global(.comment-popover-list .comment-side-panel) { width: 100%; border: 0; border-radius: 0; }
+.workspace :global(.comment-popover-list .comment-side-header) { display: none; }
+.workspace :global(.comment-popover-list .comment-side-list) { padding: 8px; }

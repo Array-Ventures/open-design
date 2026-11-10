@@ -1,4 +1,4 @@
-import type { ChangeEvent, ClipboardEvent, CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
+import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode, PointerEvent as ReactPointerEvent } from 'react';
 import { Button, Textarea } from '@open-design/components';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
@@ -429,6 +429,8 @@ export function BoardComposerPopover({
   onHoverMember,
   onDeleteComment,
   onViewAllComments,
+  commentsView,
+  onBackToComment,
   images = [],
   existingImages = [],
   onAttachImages,
@@ -463,7 +465,9 @@ export function BoardComposerPopover({
   onRemoveMember: (elementId: string) => void;
   onHoverMember?: (elementId: string | null) => void;
   onDeleteComment?: (commentId: string) => void | Promise<boolean | void>;
-  /** Opens the all-comments side panel without closing this popover. */
+  commentsView?: ReactNode;
+  onBackToComment?: () => void;
+  /** Switches this popover to its all-comments page. */
   onViewAllComments?: (returnFocusTarget?: HTMLElement | null) => void;
   /** Object-URL thumbnails for images the user attached to this comment. */
   images?: { file: File; url: string }[];
@@ -507,6 +511,15 @@ export function BoardComposerPopover({
   const podMembers = target.podMembers ?? [];
   const composingRef = useRef(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const backButtonRef = useRef<HTMLButtonElement | null>(null);
+  const viewAllButtonRef = useRef<HTMLButtonElement | null>(null);
+  const listWasVisible = useRef(false);
+  const listVisible = Boolean(commentsView);
+  useLayoutEffect(() => {
+    if (listVisible) backButtonRef.current?.focus();
+    else if (listWasVisible.current) viewAllButtonRef.current?.focus();
+    listWasVisible.current = listVisible;
+  }, [listVisible]);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const [popoverSize, setPopoverSize] = useState<PopoverSize | undefined>(undefined);
   const [manualPosition, setManualPosition] = useState<PopoverPosition | null>(null);
@@ -650,16 +663,17 @@ export function BoardComposerPopover({
   return (
     <div
       ref={popoverRef}
-      className={`comment-popover comment-popover-composer${docked ? ' comment-popover-docked' : ''}${dragging ? ' comment-popover-dragging' : ''}`}
+      className={`comment-popover comment-popover-composer${commentsView ? ' comment-popover-list' : ''}${docked ? ' comment-popover-docked' : ''}${dragging ? ' comment-popover-dragging' : ''}`}
       data-testid="comment-popover"
       role="dialog"
       aria-modal="false"
-      aria-label="Annotation"
+      aria-label={commentsView ? t('chat.tabComments') : 'Annotation'}
       style={popoverStyle}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           event.preventDefault();
-          onClose();
+          if (commentsView) onBackToComment?.();
+          else onClose();
         }
       }}
     >
@@ -674,12 +688,17 @@ export function BoardComposerPopover({
           >
             <span aria-hidden />
           </button>
-          <span className="comment-popover-title" title={target.label || target.elementId}>
+          {commentsView ? <>
+            <Button ref={backButtonRef} size="icon" variant="ghost" onClick={onBackToComment} aria-label={t('designBrowser.goBack')} title={t('designBrowser.goBack')}><Icon name="chevron-left" size={16} /></Button>
+            <span className="comment-popover-title">{t('chat.tabComments')}</span>
+            <Button size="icon" variant="ghost" onClick={onClose} aria-label={t('common.close')} title={t('common.close')}><Icon name="close" size={16} /></Button>
+          </> : <><span className="comment-popover-title" title={target.label || target.elementId}>
             {target.label || target.elementId}
           </span>
           {onViewAllComments ? (
             <button
               type="button"
+              ref={viewAllButtonRef}
               className="comment-popover-view-all"
               data-testid="comment-popover-view-all"
               aria-label={t('chat.comments.viewAll')}
@@ -688,14 +707,14 @@ export function BoardComposerPopover({
             >
               <Icon name="comment" size={16} />
             </button>
-          ) : null}
+          ) : null}</>}
         </div>
       ) : null}
       {/* Everything above the action row scrolls; the action row itself lives
           outside this box (see below) so a height-clamped card can never push
           the buttons out of view. */}
       <div className="comment-popover-body">
-        <section className="comment-popover-section comment-popover-section-params">
+        {commentsView ?? <><section className="comment-popover-section comment-popover-section-params">
           <AnnotationStyleSummary target={target} testId="comment-popover-style-summary" />
         </section>
         {podMembers.length > 0 ? (
@@ -836,8 +855,9 @@ export function BoardComposerPopover({
             ) : null}
           </section>
         ) : null}
+        </>}
       </div>
-      {commenting ? (
+      {commenting && !commentsView ? (
         <div className="comment-popover-actions">
           <div className="comment-popover-actions-start">
             {onAttachImages && canEditComment ? (
