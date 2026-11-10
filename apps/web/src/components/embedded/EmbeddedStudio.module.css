@@ -131,3 +131,36 @@
   padding: 8px 16px;
   gap: 8px;
 }
+
+.workspace :global(.ws-tabs-bar) { gap: 8px; }
+.workspace :global(.ws-tab),
+.workspace :global(.df-tab) {
+  box-sizing: border-box;
+  min-height: 32px;
+  border-radius: 8px;
+}
+.workspace :global(.df-tab) {
+  padding: 6px 10px;
+  font-size: var(--text-caption-1-medium);
+  line-height: var(--text-caption-1-medium--line-height);
+  font-weight: var(--text-caption-1-medium--font-weight);
+  letter-spacing: var(--text-caption-1-medium--letter-spacing);
+}
+.workspace :global(.df-tab.active) {
+  color: var(--color-text-primary);
+  background: var(--color-background-secondary-default);
+  outline-color: var(--color-border-button-default);
+}
+
+.hostTypography :global(.page-creator-subcat) { border-radius: 8px; }
+.hostTypography :global(.page-creator-subcat.active),
+.hostTypography :global(.page-creator-subcat.active:hover),
+.hostTypography :global(.page-creator-sidebar button.active) {
+  background: var(--color-background-secondary-default);
+  border-color: var(--color-border-button-hover);
+  color: var(--color-text-primary);
+}
+.hostTypography :global(.page-creator-sidebar button.active .page-creator-sidebar-count) {
+  background: var(--color-background-tertiary-default);
+  color: var(--color-text-secondary);
+}
