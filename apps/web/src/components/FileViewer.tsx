@@ -5040,8 +5040,7 @@ export function CommentSidePanel({
               <Icon name="check" size={14} />
             </button>
           ) : null}
-          {/* The header's right slot owns collapse; select all moved below
-              the divider. */}
+          {/* Bulk selection shares the header with collapse. */}
           <button
             ref={expandedToggleRef}
             type="button"
