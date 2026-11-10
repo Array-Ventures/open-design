@@ -241,6 +241,7 @@ import {
   htmlHasAuthoredBase,
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
+import { ThumbnailRailResize } from './embedded/ThumbnailRailResize';
 import { DeckThumbnailRail, type DeckThumbnailViewport } from './DeckThumbnailRail';
 import { parseDeckThumbnails } from '../runtime/deck-thumbnail-parser';
 import {
@@ -9910,6 +9911,8 @@ function HtmlViewer({
   // presentation (fullscreen stage + presenter popup) starts.
   const [presentEscHint, setPresentEscHint] = useState(false);
   const [deckThumbnailsCollapsed, setDeckThumbnailsCollapsed] = useState(false);
+  const [deckThumbnailWidth, setDeckThumbnailWidth] = useState<number | null>(null);
+  const thumbnailRailWidth = deckThumbnailWidth ?? (previewViewport === 'desktop' ? 194 : 56);
   const [speakerNotesEditMode, setSpeakerNotesEditMode] = useState(false);
   const [speakerNotesDraft, setSpeakerNotesDraft] = useState('');
   const [_speakerNotesSaving, setSpeakerNotesSaving] = useState(false);
@@ -10302,7 +10305,7 @@ function HtmlViewer({
   // Thumbnail rails consume real canvas width too. Include them when deciding
   // whether comments fit beside the slide or need a full-width bottom row.
   const commentLayoutSize = previewBodySize && effectiveDeck && !deckThumbnailsCollapsed
-    ? { ...previewBodySize, width: Math.max(1, previewBodySize.width - (previewViewport === 'desktop' ? 194 : 56) - 12) }
+    ? { ...previewBodySize, width: Math.max(1, previewBodySize.width - thumbnailRailWidth - 12) }
     : previewBodySize;
   const boardPreviewCanvasSize = commentPreviewCanvasSize(commentLayoutSize, {
     boardMode: localCommentSideDockActive,
@@ -16857,6 +16860,23 @@ function HtmlViewer({
   const showDeckThumbnailRail = effectiveDeck && source !== null && deckSlideTotal > 0 && !manualEditMode;
   const showDeckFloatingNav = effectiveDeck && deckSlideTotal > 0 && !manualEditMode && !inTabPresent;
   const deckNavTotal = Math.max(deckSlideTotal, activeDeckSlideIndex + 1, 1);
+  const deckThumbnailRailNode = showDeckThumbnailRail && !deckThumbnailsCollapsed ? (
+    <DeckThumbnailRail
+      count={deckSlideTotal}
+      activeIndex={activeDeckSlideIndex}
+      labelTotal={deckNavTotal}
+      buildThumbSrcDoc={buildDeckThumbnailSrcDoc}
+      parsedDeck={parsedDeckThumbnails}
+      previewViewport={deckThumbnailRenderViewport}
+      onSelect={(index) => {
+        fireDeckViewerClick('thumbnail_select', {
+          slide_index: index,
+          slide_count: deckSlideTotal,
+        });
+        handleDeckThumbnailSelect(index);
+      }}
+    />
+  ) : null;
   const versioningAvailable = isHtmlVersionableFile(file);
   const commentPreviewLayoutClass = [
     'comment-preview-layer',
@@ -18136,6 +18156,7 @@ function HtmlViewer({
             data-testid={manualEditMode ? undefined : 'comment-preview-layout'}
             ref={manualEditMode ? undefined : setCommentComposerHostRef}
             style={{
+              ...(embedded && deckThumbnailWidth !== null ? { '--deck-rail-width': `${deckThumbnailWidth}px`, '--deck-compact-rail-width': `${deckThumbnailWidth}px` } as CSSProperties : {}),
               ...previewViewportStyle(
                 previewViewport,
                 previewScale,
@@ -18148,23 +18169,12 @@ function HtmlViewer({
           >
             {manualEditPanel}
             {manualEditHoverAffordance}
-            {showDeckThumbnailRail && !deckThumbnailsCollapsed ? (
-              <DeckThumbnailRail
-                count={deckSlideTotal}
-                activeIndex={activeDeckSlideIndex}
-                labelTotal={deckNavTotal}
-                buildThumbSrcDoc={buildDeckThumbnailSrcDoc}
-                parsedDeck={parsedDeckThumbnails}
-                previewViewport={deckThumbnailRenderViewport}
-                onSelect={(index) => {
-                  fireDeckViewerClick('thumbnail_select', {
-                    slide_index: index,
-                    slide_count: deckSlideTotal,
-                  });
-                  handleDeckThumbnailSelect(index);
-                }}
-              />
-            ) : null}
+            {showDeckThumbnailRail && embedded ? (
+              <ThumbnailRailResize collapsed={deckThumbnailsCollapsed} width={thumbnailRailWidth}
+                onResize={next => { setDeckThumbnailsCollapsed(next === 0); if (next > 0) setDeckThumbnailWidth(next); }}>
+                {deckThumbnailRailNode}
+              </ThumbnailRailResize>
+            ) : deckThumbnailRailNode}
             <div
               className={manualEditMode ? 'manual-edit-canvas' : 'comment-preview-canvas'}
               data-testid={manualEditMode ? undefined : 'comment-preview-canvas'}

@@ -1016,7 +1016,7 @@ describe('FileViewer preview scale', () => {
       '.preview-viewport:not(.preview-viewport-desktop).comment-preview-layer-with-deck-rail',
     );
     expect(css).toContain('--deck-device-frame-radius: 18px;');
-    expect(css).toContain('--deck-compact-rail-width: 56px;');
+    expect(css).toContain('--deck-compact-rail-width: var(--deck-rail-width, 56px);');
     expect(css).toContain('.preview-viewport-mobile.comment-preview-layer-with-deck-rail');
     expect(css).toMatch(
       /\.preview-viewport:not\(\.preview-viewport-desktop\)\.comment-preview-layer-with-deck-rail \.deck-thumbnail-rail\s*\{[\s\S]*width: var\(--deck-compact-rail-width\);[\s\S]*height: calc\(var\(--preview-viewport-height\) \* var\(--preview-scale, 1\)\);[\s\S]*border-radius: var\(--deck-device-frame-radius\) 0 0 var\(--deck-device-frame-radius\);/,

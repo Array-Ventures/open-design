@@ -1,0 +1,13 @@
+.rail { position: relative; min-width: 0; min-height: 0; height: 100%; }
+.rail > :global(.deck-thumbnail-rail) { height: 100%; width: 100%; }
+.handle { position: absolute; z-index: 45; inset-inline-end: -6px; inset-block: 0; width: 12px; display: flex; align-items: center; justify-content: center; cursor: col-resize; touch-action: none; user-select: none; outline: none; }
+.handle span { width: 4px; height: 40px; border-radius: 4px; background: var(--color-foreground-icon-tertiary); opacity: .35; transition: opacity 150ms ease-out; pointer-events: none; }
+.handle:hover span, .handle:active span, .handle:focus-visible:not([data-pointer-focus='true']) span { opacity: 1; }
+.handle:focus-visible:not([data-pointer-focus='true']) { outline: 2px solid var(--color-border-focus-ring); outline-offset: -2px; }
+.rail[data-collapsed='true'] { position: absolute; inset-inline-start: 0; inset-block: 0; width: 0; z-index: 45; }
+.rail[data-collapsed='true'] .handle { inset-inline-start: 0; inset-inline-end: auto; width: 16px; }
+.rail[data-collapsed='true'] .handle span { opacity: 0; }
+.rail[data-collapsed='true'] .handle:hover span, .rail[data-collapsed='true'] .handle:focus-visible:not([data-pointer-focus='true']) span { opacity: 1; }
+.shield { position: fixed; inset: 0; z-index: 2147483646; cursor: col-resize; touch-action: none; user-select: none; }
+@media (pointer: coarse) { .rail[data-collapsed='true'] .handle span { opacity: .4; } }
+@media (prefers-reduced-motion: reduce) { .handle span { transition: none; } }
