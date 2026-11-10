@@ -18170,7 +18170,7 @@ function HtmlViewer({
             {manualEditPanel}
             {manualEditHoverAffordance}
             {showDeckThumbnailRail && embedded ? (
-              <ThumbnailRailResize collapsed={deckThumbnailsCollapsed} width={thumbnailRailWidth}
+              <ThumbnailRailResize collapsed={deckThumbnailsCollapsed} width={thumbnailRailWidth} defaultWidth={previewViewport === 'desktop' ? 194 : 56}
                 onResize={next => { setDeckThumbnailsCollapsed(next === 0); if (next > 0) setDeckThumbnailWidth(next); }}>
                 {deckThumbnailRailNode}
               </ThumbnailRailResize>
