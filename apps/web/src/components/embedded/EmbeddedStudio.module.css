@@ -270,3 +270,6 @@
 .workspace :global(.comment-popover-actions-start), .workspace :global(.comment-popover-actions-end) { gap: 8px; }
 .workspace :global(.comment-popover-close) { width: 32px; height: 32px; border-radius: 8px; }
 .workspace :global(.comment-side-new-comment textarea) { min-height: 64px; max-height: 120px; }
+
+/* Target metrics belong to the inspector; comments keep the message in view. */
+.workspace :global(.comment-popover-section-params) { display: none; }
