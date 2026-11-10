@@ -700,7 +700,7 @@ export function BoardComposerPopover({
           </button>
           {commentsView ? <>
             <Button ref={backButtonRef} size="icon" variant="ghost" onClick={onBackToComment} aria-label={t('designBrowser.goBack')} title={t('designBrowser.goBack')}><Icon name="chevron-left" size={16} /></Button>
-            <span className="comment-popover-title">{t('chat.tabComments')}</span>
+            <span className="comment-popover-title">{compact ? 'All comments' : t('chat.tabComments')}</span>
             <Button size="icon" variant="ghost" onClick={onClose} aria-label={t('common.close')} title={t('common.close')}><Icon name="close" size={16} /></Button>
           </> : <><span className={`comment-popover-title${compact ? ' comment-popover-quote' : ''}`} title={targetTitle}>
             {targetTitle}
@@ -846,7 +846,7 @@ export function BoardComposerPopover({
                   // an action whose button is hidden.
                   if (isPodSelection) {
                     if (canSendToAgent && !sendBlocked) void onSendBatch();
-                  } else if (canEditComment && !saveDisabled) {
+                  } else if (canEditComment && !saveDisabled && (!compact || !addToChat || !sendBlocked)) {
                     if (compact) void onSaveComment(addToChat);
                     else void onSaveComment();
                   }

@@ -361,3 +361,16 @@
 .workspace :global(.comment-popover-compact .comment-popover-actions) { border: 0; padding: 4px 12px 12px; justify-content: space-between; }
 .workspace :global(.comment-popover-compact .annotation-input-shell) { border: 0 !important; background: transparent !important; box-shadow: none !important; outline: none !important; }
 .workspace :global(.comment-popover-compact .annotation-input-shell textarea) { min-height: 48px; resize: none; }
+
+.workspace :global(.comment-popover-compact .comment-popover-section + .comment-popover-section) { border: 0; margin: 0; padding: 0; }
+.workspace :global(.comment-popover-compact .annotation-input-shell textarea) { height: 56px !important; min-height: 56px; max-height: 96px; }
+.workspace :global(.comment-popover-compact .comment-side-dock) { height: auto; min-height: 0; }
+.workspace :global(.comment-popover-compact .comment-side-panel) { height: auto; min-height: 0; }
+.workspace :global(.comment-popover-compact .comment-side-header:has(.comment-side-select-all)) { display: none; }
+.workspace :global(.comment-popover-compact .comment-side-list) { flex: 0 1 auto; max-height: 32vh; padding: 8px 4px; gap: 8px; }
+.workspace :global(.comment-popover-compact .comment-side-item) { padding: 12px; gap: 8px; border-radius: 12px; background: var(--color-background-secondary-default); color: var(--color-text-primary); }
+.workspace :global(.comment-popover-compact .comment-side-drag-handle) { display: none; }
+.workspace :global(.comment-popover-compact .comment-side-author strong) { color: var(--color-text-secondary); font-size: var(--text-caption-1-regular); line-height: var(--text-caption-1-regular--line-height); font-weight: var(--text-caption-1-regular--font-weight); }
+.workspace :global(.comment-popover-compact .comment-side-author small) { order: -1; color: var(--color-text-primary); font-size: var(--text-caption-1-semibold); line-height: var(--text-caption-1-semibold--line-height); font-weight: var(--text-caption-1-semibold--font-weight); }
+.workspace :global(.comment-popover-compact .comment-side-body) { padding-inline-start: 0; color: var(--color-text-primary); }
+.workspace :global(.comment-popover-compact .comment-side-item-meta) { margin: 0; }
