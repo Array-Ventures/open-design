@@ -9776,60 +9776,6 @@ function HtmlViewer({
   // a local dock briefly shrinks the preview and shifts centered desktop or
   // mobile content left before the floating card appears.
   const localCommentSideDockActive = commentPanelOpen && !commentPortalId;
-  const boardPreviewCanvasSize = commentPreviewCanvasSize(previewBodySize, {
-    boardMode: localCommentSideDockActive,
-    sidePanelCollapsed: commentSidePanelCollapsed,
-    viewport: previewViewport,
-  });
-  const boardSideDockStacked = usesStackedCommentSideDock(previewBodySize, {
-    boardMode: localCommentSideDockActive,
-    sidePanelCollapsed: commentSidePanelCollapsed,
-    viewport: previewViewport,
-  });
-  useEffect(() => {
-    if (
-      previewViewport !== 'desktop' ||
-      zoomMode !== 'auto' ||
-      previewMeasurementInteractionActive
-    ) {
-      return;
-    }
-    const nextWidth = boardPreviewCanvasSize?.width;
-    const previousWidth = lastAutoFitCanvasWidthRef.current;
-    if (typeof nextWidth === 'number' && Number.isFinite(nextWidth)) {
-      // Growing the canvas (e.g. collapsing the chat rail, per rec:recvq6WoJUvRXl)
-      // can otherwise get stuck at the OLD, narrower-canvas zoom forever: the
-      // in-iframe measurement bridge (srcdoc.ts injectPreviewContentSizeBridge)
-      // reads document.documentElement/body scrollWidth/clientWidth, all of
-      // which are bounded below by the iframe's OWN current rendered viewport
-      // width (html/body fill at least 100% of the viewport by default). That
-      // viewport width is itself `canvasWidth / previewScale` from the
-      // PREVIOUS auto-fit pass, so once the previous scale already implies a
-      // viewport wide enough to contain the real content, the measurement
-      // just reports that residual viewport size right back — self-confirming
-      // the stale scale even after the canvas grows and could fit a larger,
-      // more useful zoom. Dropping the cached content width forces a fresh
-      // measurement this pass at zoom=100% (viewport := canvasWidth exactly),
-      // which cannot be contaminated by a previous scale. Only doing this on
-      // GROW avoids an extra flash-to-100% on every manual drag-resize tick
-      // when the canvas shrinks — that direction already self-corrects,
-      // because the previous scale's implied viewport dips below the
-      // content's real width and the measurement naturally reports the
-      // content's true, uncontaminated extent.
-      if (previousWidth !== null && nextWidth > previousWidth) {
-        setDesktopPreviewContentWidth(null);
-      }
-      lastAutoFitCanvasWidthRef.current = nextWidth;
-    }
-    scheduleDesktopPreviewContentMeasure();
-  }, [
-    boardPreviewCanvasSize?.width,
-    boardPreviewCanvasSize?.height,
-    previewMeasurementInteractionActive,
-    previewViewport,
-    scheduleDesktopPreviewContentMeasure,
-    zoomMode,
-  ]);
 
   function deploymentMapForCurrentFile(items: WebDeploymentInfo[]) {
     const next: Partial<Record<WebDeployProviderId, WebDeploymentInfo>> = {};
@@ -10357,6 +10303,66 @@ function HtmlViewer({
     return sourceLooksLikeDeckPreview(s);
   }, [routingHtmlSource]);
   const effectiveDeck = isDeck || (!passiveLargeHtmlPreview && looksLikeDeck);
+  // Thumbnail rails consume real canvas width too. Include them when deciding
+  // whether comments fit beside the slide or need a full-width bottom row.
+  const commentLayoutSize = previewBodySize && effectiveDeck && !deckThumbnailsCollapsed
+    ? { ...previewBodySize, width: Math.max(1, previewBodySize.width - (previewViewport === 'desktop' ? 194 : 56) - 12) }
+    : previewBodySize;
+  const boardPreviewCanvasSize = commentPreviewCanvasSize(commentLayoutSize, {
+    boardMode: localCommentSideDockActive,
+    sidePanelCollapsed: commentSidePanelCollapsed,
+    viewport: previewViewport,
+  });
+  const boardSideDockStacked = usesStackedCommentSideDock(commentLayoutSize, {
+    boardMode: localCommentSideDockActive,
+    sidePanelCollapsed: commentSidePanelCollapsed,
+    viewport: previewViewport,
+  });
+  useEffect(() => {
+    if (
+      previewViewport !== 'desktop' ||
+      zoomMode !== 'auto' ||
+      previewMeasurementInteractionActive
+    ) {
+      return;
+    }
+    const nextWidth = boardPreviewCanvasSize?.width;
+    const previousWidth = lastAutoFitCanvasWidthRef.current;
+    if (typeof nextWidth === 'number' && Number.isFinite(nextWidth)) {
+      // Growing the canvas (e.g. collapsing the chat rail, per rec:recvq6WoJUvRXl)
+      // can otherwise get stuck at the OLD, narrower-canvas zoom forever: the
+      // in-iframe measurement bridge (srcdoc.ts injectPreviewContentSizeBridge)
+      // reads document.documentElement/body scrollWidth/clientWidth, all of
+      // which are bounded below by the iframe's OWN current rendered viewport
+      // width (html/body fill at least 100% of the viewport by default). That
+      // viewport width is itself `canvasWidth / previewScale` from the
+      // PREVIOUS auto-fit pass, so once the previous scale already implies a
+      // viewport wide enough to contain the real content, the measurement
+      // just reports that residual viewport size right back — self-confirming
+      // the stale scale even after the canvas grows and could fit a larger,
+      // more useful zoom. Dropping the cached content width forces a fresh
+      // measurement this pass at zoom=100% (viewport := canvasWidth exactly),
+      // which cannot be contaminated by a previous scale. Only doing this on
+      // GROW avoids an extra flash-to-100% on every manual drag-resize tick
+      // when the canvas shrinks — that direction already self-corrects,
+      // because the previous scale's implied viewport dips below the
+      // content's real width and the measurement naturally reports the
+      // content's true, uncontaminated extent.
+      if (previousWidth !== null && nextWidth > previousWidth) {
+        setDesktopPreviewContentWidth(null);
+      }
+      lastAutoFitCanvasWidthRef.current = nextWidth;
+    }
+    scheduleDesktopPreviewContentMeasure();
+  }, [
+    boardPreviewCanvasSize?.width,
+    boardPreviewCanvasSize?.height,
+    previewMeasurementInteractionActive,
+    previewViewport,
+    scheduleDesktopPreviewContentMeasure,
+    zoomMode,
+  ]);
+
   const previewZoomPercent = resolveDesktopPreviewZoomPercent({
     zoomMode,
     viewport: previewViewport,

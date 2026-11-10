@@ -11834,7 +11834,9 @@ describe('FileViewer tweaks toolbar', () => {
     fireEvent.change(input, { target: { value: 'Please tighten this heading.' } });
 
     expect(input).not.toHaveAttribute('readonly');
-    expect(screen.getByTestId('comment-popover-save')).toHaveTextContent('Comment');
+    // Compact icon controls retain a full accessible action name.
+    expect(screen.getByTestId('comment-popover-save')).toHaveAccessibleName('Comment');
+    expect(screen.getByTestId('comment-popover-save')).toHaveAttribute('title', 'Comment');
     expect(screen.queryByTestId('comment-add-send')).toBeNull();
   });
 
