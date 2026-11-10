@@ -313,3 +313,5 @@
 .workspace :global(.df-card-meta) { background: var(--color-background-secondary-default); color: var(--color-text-primary); }
 .workspace :global(.df-card-name-btn), .workspace :global(.df-card-name) { color: var(--color-text-primary); }
 .workspace :global(.df-card-sub) { color: var(--color-text-secondary); }
+.workspace :global(.df-card:hover) { border-color: var(--color-border-button-hover); }
+.workspace :global(.df-card:is(.selected, .active)) { border-color: var(--color-accent-600); }
