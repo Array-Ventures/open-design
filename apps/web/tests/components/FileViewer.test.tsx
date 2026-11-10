@@ -12300,8 +12300,10 @@ describe('FileViewer tweaks toolbar', () => {
     expect(rows).toHaveLength(3);
     const firstSlideRow = rows.find((row) => row.dataset.commentId === 'comment-slide-one')!;
     const fourthSlideRow = rows.find((row) => row.dataset.commentId === 'comment-slide-four')!;
-    expect(within(firstSlideRow).getByText('Slide 1 / 18').closest('.comment-side-item-head')).not.toBeNull();
-    expect(within(fourthSlideRow).getByText('Slide 4 / 18').closest('.comment-side-item-head')).not.toBeNull();
+    expect(within(firstSlideRow).getByText('Slide 1 / 18').closest('.comment-side-item-meta')).not.toBeNull();
+    expect(within(firstSlideRow).getByText('Slide 1 / 18').closest('.comment-side-item-head')).toBeNull();
+    expect(within(fourthSlideRow).getByText('Slide 4 / 18').closest('.comment-side-item-meta')).not.toBeNull();
+    expect(within(fourthSlideRow).getByText('Slide 4 / 18').closest('.comment-side-item-head')).toBeNull();
     expect(within(rows.find((row) => row.dataset.commentId === 'comment-without-slide')!).queryByText(/Slide \d+ \/ 18/)).toBeNull();
 
     const postMessage = vi.spyOn(frame.contentWindow!, 'postMessage');
