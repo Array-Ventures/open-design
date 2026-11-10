@@ -5128,14 +5128,6 @@ export function CommentSidePanel({
                   displayNumber={displayCommentNumber(comment, index)}
                   t={t}
                 />
-                {typeof comment.slideIndex === 'number' && deckSlideCount && deckSlideCount > 0 ? (
-                  <span className="comment-side-slide">
-                    {t('fileViewer.speakerNotesSlide', { current: comment.slideIndex + 1, total: deckSlideCount })}
-                  </span>
-                ) : null}
-                <span className="comment-side-time" title={formatAbsoluteDateTime(commentCreatedAt(comment) || undefined) ?? undefined}>
-                  {formatCommentTime(commentCreatedAt(comment), commentClock, t)}
-                </span>
                 {sendable ? (
                   <button
                     type="button"
@@ -5150,6 +5142,16 @@ export function CommentSidePanel({
                     {selected ? <Icon name="check" size={11} /> : null}
                   </button>
                 ) : null}
+              </div>
+              <div className="comment-side-item-meta">
+                {typeof comment.slideIndex === 'number' && deckSlideCount && deckSlideCount > 0 ? (
+                  <span className="comment-side-slide">
+                    {t('fileViewer.speakerNotesSlide', { current: comment.slideIndex + 1, total: deckSlideCount })}
+                  </span>
+                ) : null}
+                <span className="comment-side-time" title={formatAbsoluteDateTime(commentCreatedAt(comment) || undefined) ?? undefined}>
+                  {formatCommentTime(commentCreatedAt(comment), commentClock, t)}
+                </span>
               </div>
               <CommentListBody key={comment.note} note={comment.note} t={t} />
               {unavailableCommentId === comment.id ? (

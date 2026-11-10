@@ -3203,3 +3203,16 @@ button.ghost.mcp-copy-btn:hover:not(:disabled) {
   background: var(--bg-panel);
   min-height: 100%;
 }
+
+/* Metadata sits below the target title, leaving its row free to read. */
+.comment-side-item-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-inline-start: 30px;
+  margin-block: 4px;
+  color: var(--color-text-tertiary, var(--text-muted));
+  font-size: var(--text-caption-1-regular, 12px);
+  line-height: var(--text-caption-1-regular--line-height, 16px);
+}
