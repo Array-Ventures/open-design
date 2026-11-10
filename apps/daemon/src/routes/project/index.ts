@@ -1,3 +1,4 @@
+import { embeddedMotionPreview } from '../../embedded-files/motion-preview.js';
 import { withCommentFileDeletion, type CommentFileDeletion } from '../../collab/comment-file-deletion.js';
 import { openProjectFileAccess, streamProjectFileAccess, statProjectDeleteAccess, type ProjectFileAccess } from '../../project-file-access.js';
 import { injectMotionSourcePlayer, isMotionVideoComposition, markMotionHostedPreview, MOTION_PREVIEW_OUTPUT_HEADER } from '@open-design/contracts/runtime/motion-source-player';
@@ -7201,7 +7202,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         project?.metadata,
         undefined,
         skipHtmlPreviewBridge ? undefined : async (file) => {
-          const transformed = await maybeResolveVitePreviewHtml({
+          let transformed = await maybeResolveVitePreviewHtml({
             file,
             projectId,
             relPath,
@@ -7210,7 +7211,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             readProjectFile,
           });
           if (/^text\/html(?:;|$)/i.test(file.mime)) {
-            const html = Buffer.isBuffer(transformed) ? transformed.toString('utf8') : String(transformed);
+            transformed = embeddedMotionPreview(Buffer.isBuffer(transformed) ? transformed.toString('utf8') : String(transformed), project?.metadata, req.query.odMotionPreview);
+            const html = String(transformed);
             res.setHeader(MOTION_PREVIEW_OUTPUT_HEADER, isMotionVideoComposition(html) ? 'video' : 'html');
           }
           const bridged = applyUrlPreviewBridgesToHtml(
