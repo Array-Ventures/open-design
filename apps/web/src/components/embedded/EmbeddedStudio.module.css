@@ -332,3 +332,5 @@
 .workspace :global(.live-artifact-inline-preview .viewer-toolbar) { display: none; }
 
 .workspace :global(.comment-popover-quote) { color: var(--color-text-secondary); font-size: var(--text-caption-1-regular); line-height: var(--text-caption-1-regular--line-height); font-weight: var(--text-caption-1-regular--font-weight); letter-spacing: var(--text-caption-1-regular--letter-spacing); }
+/* The outer live viewer's body must give the nested canvas a real flex height. */
+.workspace :global(.viewer-body:has(> .live-artifact-inline-preview)) { display: flex; flex-direction: column; overflow: hidden; }
