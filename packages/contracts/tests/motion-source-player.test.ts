@@ -33,7 +33,7 @@ describe('motion source player boundaries', () => {
       },
     };
     const html = injectMotionSourcePlayer('<meta name="od-motion-output" content="video"><main data-composition-id="main"></main>');
-    const code = /<script data-od-motion-source-player="12">([\s\S]*?)<\/script>/.exec(html)![1]!;
+    const code = /<script data-od-motion-source-player="13">([\s\S]*?)<\/script>/.exec(html)![1]!;
     runInNewContext(code, Object.assign(sandbox, { window: sandbox }));
     now = 16_000;
     pending.shift()!();
@@ -80,7 +80,7 @@ describe('motion source player boundaries', () => {
       },
     };
     const html = injectMotionSourcePlayer('<meta name="od-motion-output" content="video"><main data-composition-id="main"></main>');
-    const code = /<script data-od-motion-source-player="12">([\s\S]*?)<\/script>/.exec(html)![1]!;
+    const code = /<script data-od-motion-source-player="13">([\s\S]*?)<\/script>/.exec(html)![1]!;
     runInNewContext(code, Object.assign(sandbox, { window: sandbox }));
     if (stageLayout) expect(properties).toMatchObject({ width: '1080px', height: '1080px', left: '0', top: '0', transform: 'none' });
     else expect(properties).toEqual({});
@@ -136,7 +136,7 @@ describe('motion audio contract isolation', () => {
     const source = '<meta name="od-motion-output" content="video"><div data-composition-id="main"></div><script data-od-motion-source-player="6">oldPlayer();</script>';
     const result = injectMotionSourcePlayer(source);
     expect(result).not.toContain('oldPlayer');
-    expect(result).toContain('data-od-motion-source-player="12"');
+    expect(result).toContain('data-od-motion-source-player="13"');
     expect(injectMotionSourcePlayer(result)).toBe(result);
   });
 });

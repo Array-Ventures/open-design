@@ -54,7 +54,7 @@ function createMotionAudioSync(audio) {
 // Shared by URL previews, srcdoc previews and the persisted editable source.
 // The renderer installs its flag before author scripts; it never sees chrome,
 // layout scaling, poster seeking, or wall-clock playback from this runtime.
-const PLAYER = `<script data-od-motion-source-player="12">
+const PLAYER = `<script data-od-motion-source-player="13">
 ${MOTION_TIMELINE_CHECK_SCRIPT}
 (function () {
 ${MOTION_AUDIO_SYNC_RUNTIME}
@@ -70,7 +70,18 @@ ${MOTION_AUDIO_SYNC_RUNTIME}
     hint.setAttribute('data-od-motion-status', ''); hint.setAttribute('role', 'status');
     hint.style.cssText = 'position:fixed;bottom:12px;right:12px;z-index:2147483647;padding:6px 10px;border-radius:6px;background:#17191d;color:white;font:13px system-ui;display:none';
     document.body.appendChild(hint);
-    function notice(text) { hint.textContent = text; hint.style.display = text ? 'block' : 'none'; }
+    function notice(text, action) {
+      hint.textContent = text;
+      hint.style.display = text ? 'block' : 'none';
+      if (text && action) {
+        hint.textContent = '';
+        var enable = document.createElement('button');
+        enable.type = 'button'; enable.textContent = 'Enable sound';
+        enable.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:4px;padding:4px 8px;background:transparent;color:inherit;font:inherit;cursor:pointer;user-select:none';
+        enable.addEventListener('click', function () { root.click(); });
+        hint.appendChild(enable);
+      }
+    }
     var hosted = window.__odMotionPreview === true || new URL(location.href).searchParams.get('odMotionPreview') === '1';
     var thumbnail = window.__odMotionThumbnail === true || new URL(location.href).searchParams.get('odMotionThumbnail') === '1';
     var instance = Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -116,7 +127,7 @@ ${MOTION_AUDIO_SYNC_RUNTIME}
           if (promise) promise.catch(function (error) {
             if (error && error.name === 'AbortError') return;
             track.blocked = true;
-            notice(error && error.name === 'NotAllowedError' ? 'Click the preview to enable sound' : 'Audio could not play. Check the audio file.');
+            notice(error && error.name === 'NotAllowedError' ? 'Click the preview to enable sound' : 'Audio could not play. Check the audio file.', error && error.name === 'NotAllowedError');
           }).finally(function () {
             track.pending = false;
             if (hostMuted || !active || !pageActive || !playing || !wantsPlay) audio.pause();
@@ -228,7 +239,7 @@ export function injectMotionSourcePlayer(html: string): string {
   const existing = findRealTagOffset(html, /<script\b[^>]*\bdata-od-motion-source-player\b/i);
   if (existing >= 0) {
     const script = /^<script\b[^>]*>[\s\S]*?<\/script\s*>/i.exec(html.slice(existing));
-    if (!script || /data-od-motion-source-player="12"/.test(script[0])) return html;
+    if (!script || /data-od-motion-source-player="13"/.test(script[0])) return html;
     return html.slice(0, existing) + PLAYER + html.slice(existing + script[0].length);
   }
   const end = findRealTagOffset(html, HTML_TAG_PATTERNS.bodyClose);
