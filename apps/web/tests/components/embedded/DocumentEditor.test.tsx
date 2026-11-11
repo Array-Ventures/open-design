@@ -118,12 +118,13 @@ it('inserts a checklist and code block through the compact document controls', a
   act(() => editor().update(() => { $getRoot().getFirstChildOrThrow().selectEnd(); }, { discrete: true }));
   fireEvent.click(screen.getByRole('button', { name: 'More document actions' }));
   fireEvent.click(screen.getByRole('button', { name: 'Code block' }));
-  await waitFor(() => expect(screen.getByRole('textbox').querySelector('code, pre')).toHaveTextContent('Report'));
+  await waitFor(() => expect(screen.getByRole('textbox').querySelector('code, pre')).not.toBeNull());
+  expect(screen.getByRole('heading', { name: 'Report' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Save document' }));
   await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   const html = save.mock.calls[0]![2] as string;
   expect(html).toContain('aria-checked="false"');
-  expect(new DOMParser().parseFromString(html, 'text/html').querySelector('pre')?.textContent).toBe('Report');
+  expect(new DOMParser().parseFromString(html, 'text/html').querySelector('pre')?.textContent).toBe('');
 });
 
 

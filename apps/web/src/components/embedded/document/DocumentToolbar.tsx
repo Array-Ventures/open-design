@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $createParagraphNode, $getRoot, $getSelection, $getState, $isRangeSelection, $setState, FORMAT_TEXT_COMMAND, UNDO_COMMAND, REDO_COMMAND } from 'lexical';
+import { $createParagraphNode, $insertNodes, $getRoot, $getSelection, $getState, $isRangeSelection, $setState, FORMAT_TEXT_COMMAND, UNDO_COMMAND, REDO_COMMAND } from 'lexical';
 import { $createCodeNode } from '@lexical/code';
 import { $createHeadingNode, $createQuoteNode } from '@lexical/rich-text';
 import { $setBlocksType } from '@lexical/selection';
@@ -65,7 +65,7 @@ export function DocumentToolbar({ font, headingFont }: { font: 'sans' | 'serif';
             <DropdownItem onSelect={() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)}><RiListOrdered className="size-4 shrink-0" aria-hidden />Numbered list</DropdownItem>
             <DropdownDivider />
             <DropdownItem onSelect={() => editor.update(() => { const selection = $getSelection(); if ($isRangeSelection(selection)) $setBlocksType(selection, () => $createQuoteNode()); })}><RiDoubleQuotesL className="size-4 shrink-0" aria-hidden />Quote</DropdownItem>
-            <DropdownItem onSelect={() => editor.update(() => { const selection = $getSelection(); if ($isRangeSelection(selection)) $setBlocksType(selection, () => $createCodeNode()); })}><RiCodeLine className="size-4 shrink-0" aria-hidden />Code block</DropdownItem>
+            <DropdownItem onSelect={() => editor.update(() => { const selection = $getSelection(); if ($isRangeSelection(selection)) $insertNodes([$createCodeNode()]); })}><RiCodeLine className="size-4 shrink-0" aria-hidden />Code block</DropdownItem>
             <DropdownDivider />
             <DropdownItem onSelect={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}><RiArrowGoBackLine className="size-4 shrink-0" aria-hidden />Undo</DropdownItem>
             <DropdownItem onSelect={() => editor.dispatchCommand(REDO_COMMAND, undefined)}><RiArrowGoForwardLine className="size-4 shrink-0" aria-hidden />Redo</DropdownItem>
