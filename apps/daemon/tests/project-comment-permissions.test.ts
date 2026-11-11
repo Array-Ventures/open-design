@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -44,6 +44,7 @@ afterEach(async () => {
     await new Promise<void>((resolve) => toClose.close(() => resolve()));
   }
   closeDatabase();
+  vi.unstubAllEnvs();
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
   tempDir = null;
 });
@@ -127,14 +128,14 @@ async function startServer({
     } as any,
   });
   server = http.createServer(app);
-  await new Promise<void>((resolve) => server!.listen(0, resolve));
+  await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('server did not bind to a TCP port');
   const base = `http://127.0.0.1:${address.port}`;
 
   async function json(
     route: string,
-    options: { method?: string; body?: unknown; member?: string } = {},
+    options: { method?: string; body?: unknown; member?: string; human?: string } = {},
   ) {
     const init: RequestInit = { method: options.method ?? 'GET', headers: {} };
     const headers: Record<string, string> = {};
@@ -143,6 +144,7 @@ async function startServer({
       init.body = JSON.stringify(options.body);
     }
     if (options.member) Object.assign(headers, asMember(options.member));
+    if (options.human) headers['x-od-host-human'] = options.human;
     init.headers = headers;
     const response = await fetch(`${base}${route}`, init);
     const text = await response.text();
@@ -700,5 +702,32 @@ describe('preview comment permission gating', () => {
       { method: 'PATCH', member: 'm-author', body: { sortKey: 1 } },
     );
     expect(missing.status).toBe(404);
+  });
+});
+
+describe('embedded review status persistence', () => {
+  it('allows the authenticated author to resolve/reopen, rejects forged authors and retains the pin after reopen', async () => {
+    vi.stubEnv('OD_EMBEDDED_STUDIO', '1');
+    const api = await startServer({ shared: false });
+    const route = `/api/projects/${PROJECT}/conversations/${CONVERSATION}/comments`;
+    const created = await api.json(route, { method: 'POST', human: 'person-a', body: { target: api.commentTarget, note: 'Review this heading' } });
+    expect(created.status).toBe(200);
+    const root = created.body.comment;
+    expect(root.authorMemberId).toBe('evebot:person-a');
+    const original = api.db.prepare('SELECT * FROM preview_comments WHERE id=?').get(root.id);
+    for (const human of [undefined, 'person-b']) {
+      const denied = await api.json(`${route}/${root.id}`, { method: 'PATCH', human, body: { status: 'resolved', authorMemberId: 'evebot:person-a' } });
+      expect(denied.status).toBe(403);
+      expect(api.db.prepare('SELECT * FROM preview_comments WHERE id=?').get(root.id)).toEqual(original);
+    }
+    const resolved = await api.json(`${route}/${root.id}`, { method: 'PATCH', human: 'person-a', body: { status: 'resolved' } });
+    expect(resolved.status).toBe(200);
+    expect(resolved.body.comment).toMatchObject({ id: root.id, status: 'resolved', pinSeq: root.pinSeq, createdAt: root.createdAt });
+    const reopened = await api.json(`${route}/${root.id}`, { method: 'PATCH', human: 'person-a', body: { status: 'open' } });
+    expect(reopened.status).toBe(200);
+    expect(reopened.body.comment).toMatchObject({ id: root.id, status: 'open', pinSeq: root.pinSeq, createdAt: root.createdAt });
+    closeDatabase();
+    const restored = openDatabase(tempDir!);
+    expect(getPreviewComment(restored, PROJECT, CONVERSATION, root.id)).toMatchObject({ id: root.id, status: 'open', pinSeq: root.pinSeq, createdAt: root.createdAt, note: root.note });
   });
 });

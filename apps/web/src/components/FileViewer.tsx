@@ -4,6 +4,7 @@ import type { CommentSaveResult } from './comment-send-result';
 import { confirmHostFeedbackDiscard, prepareHostFeedback } from './embedded/host-context';
 import { CommentMentions } from './embedded/CommentMentions';
 import { DeckPresentationMenu } from './embedded/DeckPresentationMenu';
+import { CommentListPopover, ResolveCommentButton, useCommentReview } from './embedded/CommentReview';
 import { CommentThreadMenu } from './embedded/CommentThreadMenu';
 import { ArtifactAnnotationControls } from './embedded/ArtifactAnnotationControls';
 import { SpeakerNotesDrawer } from './embedded/SpeakerNotesDrawer';
@@ -4848,6 +4849,7 @@ export function CommentSidePanel({
   /** Total deck slides, when the sidebar is attached to a deck preview. */
   deckSlideCount?: number;
 }) {
+  const commentReview = useCommentReview();
   const { workspaceContext } = useProjectCollabContext();
   const [newCommentDraft, setNewCommentDraft] = useState('');
   const [dragState, setDragState] = useState<CommentSideDragState | null>(null);
@@ -5095,7 +5097,7 @@ export function CommentSidePanel({
                   displayNumber={displayCommentNumber(comment, index)}
                   t={t}
                 />
-                {threadActions ? <CommentThreadMenu canEdit={threadActions.canEdit(comment)} canDelete={threadActions.canDelete(comment)} onEdit={() => onReply(comment)} onDelete={() => threadActions.remove(comment)} /> : sendable ? (
+                {threadActions ? <><ResolveCommentButton comment={comment} allowed={threadActions.canDelete(comment)} /><CommentThreadMenu onReopen={comment.status === 'resolved' && threadActions.canDelete(comment) && commentReview ? () => commentReview.changeStatus(comment.id, 'open') : undefined} canEdit={threadActions.canEdit(comment)} canDelete={threadActions.canDelete(comment)} onEdit={() => onReply(comment)} onDelete={() => threadActions.remove(comment)} /></> : sendable ? (
                   <button
                     type="button"
                     className={`comment-side-check${selected ? ' checked' : ''}`}
@@ -5120,6 +5122,7 @@ export function CommentSidePanel({
                   {formatCommentTime(commentCreatedAt(comment), commentClock, t)}
                 </span>
               </div>
+              {threadActions && comment.status === 'resolved' ? <span className="text-caption-1-regular text-text-tertiary">Resolved</span> : null}
               <CommentListBody key={comment.note} note={comment.note} t={t} />
               {unavailableCommentId === comment.id ? (
                 <span role="status" data-testid="comment-location-unavailable">
@@ -7363,6 +7366,7 @@ function HtmlViewer({
   ) => void;
   manualEditEntryAllowed?: boolean;
 }) {
+  const commentReview = useCommentReview();
   const { locale, t } = useI18n();
   const iframeKeepAlivePool = useIframeKeepAlivePool();
   // Retained viewers prewarm new file revisions behind the active tab. Keeping
@@ -9514,6 +9518,7 @@ function HtmlViewer({
     [],
   );
   const [commentListInPopover, setCommentListInPopover] = useState(false);
+  const commentListReturnFocus = useRef<(() => void) | null>(null);
   const [activeCommentTarget, setActiveCommentTarget] = useState<PreviewCommentSnapshot | null>(null);
   const [hoveredCommentTarget, setHoveredCommentTarget] = useState<PreviewCommentSnapshot | null>(null);
   // True while the pointer is physically over the floating hover card. The card
@@ -15658,7 +15663,7 @@ function HtmlViewer({
     return previewComments.find((comment) => (
       comment.id === activePreviewCommentId &&
       comment.filePath === file.name &&
-      comment.status === 'open'
+      (comment.status === 'open' || inlineAnnotations && comment.status === 'resolved')
     )) ?? null;
   }
 
@@ -15752,6 +15757,9 @@ function HtmlViewer({
 
   async function savePersistentComment(addToChat = false) {
     if (!activeCommentTarget || !onSavePreviewComment) return;
+    if (inlineAnnotations && activePreviewCommentId && !activeComposerComment) {
+      setCommentSavedToast('This comment is no longer available. Your draft is retained.'); return;
+    }
     // Allow saving when there is text OR an attached image (image-only notes).
     if (!commentDraft.trim() && boardImages.length === 0 && currentActiveComposerAttachments().length === 0) return;
     const isFreePin = activeCommentTarget.elementId.startsWith('pin-');
@@ -16562,10 +16570,12 @@ function HtmlViewer({
   // state, so a drag survives a refresh/tab-switch/device-switch.
   const visibleSideComments = useMemo(
     () =>
-      [...creationSortedSideComments].sort(
+      (commentReview?.showResolved
+        ? previewComments.filter(comment => comment.filePath === file.name && ['open', 'resolved'].includes(comment.status))
+        : [...creationSortedSideComments]).sort(
         (a, b) => commentEffectiveSortKey(b) - commentEffectiveSortKey(a),
       ),
-    [creationSortedSideComments],
+    [creationSortedSideComments, commentReview?.showResolved, previewComments, file.name],
   );
   // A member id is a trusted current identity only when the workspace context
   // supplies one. Never let two absent ids compare equal and accidentally
@@ -16643,18 +16653,20 @@ function HtmlViewer({
     previewBodySize,
   );
   useEffect(() => {
-    if (!boardMode || !activePreviewCommentId) return;
+    // A review filter is not a dismissal. Retain the selected thread and its draft.
+    if (inlineAnnotations || !boardMode || !activePreviewCommentId) return;
     const stillOpen = visibleSideComments.some((comment) => comment.id === activePreviewCommentId);
     if (!stillOpen) clearBoardComposer();
-  }, [activePreviewCommentId, boardMode, visibleSideComments]);
+  }, [activePreviewCommentId, boardMode, inlineAnnotations, visibleSideComments]);
   useEffect(() => {
     if (!effectiveDeck || slideState == null || !boardMode) return;
     if (!activePreviewCommentId) return;
-    const activeComment = visibleSideComments.find((comment) => comment.id === activePreviewCommentId);
+    const activeComment = (inlineAnnotations && commentReview ? previewComments : visibleSideComments).find((comment) => comment.id === activePreviewCommentId && comment.filePath === file.name);
     if (activeComment && !commentVisibleOnDeckSlide(activeComment, slideState.active)) {
+      if (inlineAnnotations && composerHoldsUnsentWork) return;
       clearBoardComposer();
     }
-  }, [activePreviewCommentId, boardMode, effectiveDeck, slideState?.active, visibleSideComments]);
+  }, [activePreviewCommentId, boardMode, effectiveDeck, slideState?.active, visibleSideComments, inlineAnnotations, commentReview, previewComments, file.name, composerHoldsUnsentWork]);
   const activeDeployment = deployResult || deployment;
   const activeDeployedUrl = activeDeployment?.url?.trim() || '';
   const activeDeploymentDelayed = activeDeployment?.status === 'link-delayed';
@@ -17012,7 +17024,7 @@ function HtmlViewer({
       </button>
     ) : null;
   const activeComposerComment = activePreviewCommentId
-    ? visibleSideComments.find((comment) => comment.id === activePreviewCommentId) ?? null
+    ? (inlineAnnotations && commentReview ? previewComments : visibleSideComments).find(comment => comment.id === activePreviewCommentId && comment.filePath === file.name) ?? null
     : null;
   const activeComposerAttachments =
     activeComposerComment?.attachments ?? activeCommentExistingAttachments;
@@ -17229,12 +17241,14 @@ function HtmlViewer({
       sendDisabled={commentSendDisabled || viewerOnly}
       sendDisabledReason={viewerOnly ? viewerOnlyDisabledTitle : undefined}
       allowSendToChat={!viewerOnly}
-      renderCreateForm={!commentPortalHost && !activeCommentTarget}
+      renderCreateForm={!inlineAnnotations && !commentPortalHost && !activeCommentTarget}
       t={t}
       composer={null}
     />
   ) : null;
-  const commentComposerNode = boardMode && activeCommentTarget && activeCommentTargetVisible ? (
+  const commentComposerNode = inlineAnnotations && commentListInPopover && !activeCommentTarget ? (
+    <CommentListPopover onClose={() => { setCommentListInPopover(false); commentListReturnFocus.current?.(); commentListReturnFocus.current = null; }}>{commentSidePanel}</CommentListPopover>
+  ) : boardMode && activeCommentTarget && activeCommentTargetVisible ? (
     <BoardComposerPopover
       compact={inlineAnnotations}
       target={activeCommentTarget}
@@ -18177,6 +18191,14 @@ function HtmlViewer({
             if (!boardMode) { activateCommentTool(true); return; }
             requestComposerRetarget(() => { setCommentPanelOpen(false); setCommentCreateMode(false); setBoardMode(false); clearBoardComposer(); });
           }}
+          onComments={returnFocus => {
+            const open = () => requestComposerRetarget(() => {
+              setDrawOverlayOpen(false); clearBoardComposer();
+              commentListReturnFocus.current = returnFocus; setCommentListInPopover(true);
+            });
+            if (drawOverlayOpen && markupDraftDirty) { void requestMarkupClose().then(closed => { if (closed) open(); }); }
+            else open();
+          }}
           onMark={() => { requestComposerRetarget(activateDrawTool); }} /> : null}
         {initialPreviewLoading ? (
           <FileViewerLoadingSkeleton />
@@ -18483,7 +18505,7 @@ function HtmlViewer({
                   liveTargets={liveCommentTargets}
                   hoveredTarget={hoveredCommentTarget}
                   hoveredPodMemberId={hoveredPodMemberId}
-                  activeTarget={activeCommentTarget}
+                  activeTarget={inlineAnnotations && activeComposerComment?.status === 'resolved' ? null : activeCommentTarget}
                   activeExistingCommentId={activeComposerComment?.id ?? null}
                   boardTool={boardTool}
                   showActivePin={commentCreateMode}

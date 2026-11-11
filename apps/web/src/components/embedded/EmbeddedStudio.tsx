@@ -15,6 +15,7 @@ import { ArtifactSurface } from './ArtifactSurface';
 import { FileWorkspace } from '../FileWorkspace';
 import { IframeKeepAliveProvider, useIframeKeepAlivePool } from '../IframeKeepAlivePool';
 import styles from './EmbeddedStudio.module.css';
+import { CommentReviewProvider } from './CommentReview';
 import { useEmbeddedComments } from './useEmbeddedComments';
 import { EmbeddedViewerProvider } from './host-viewer';
 import { fetchEmbeddedDashboards, type EmbeddedDashboardSummary } from './dashboards';
@@ -127,7 +128,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
     </div>;
   }
   return (
-    <main className={styles.workspace} data-testid="embedded-studio">
+    <CommentReviewProvider changeStatus={comments.changeStatus}><main className={styles.workspace} data-testid="embedded-studio">
       {error ? <div role="alert" className="flex shrink-0 items-center gap-2 px-3 py-2 text-caption-1-regular text-text-tertiary">Couldn’t refresh.<HostButton variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry refresh" onClick={() => { void refresh(); }} /></div> : null}
       {markupNotice || comments.notice ? <div role="status" className={styles.feedbackNotice}>{markupNotice ?? comments.notice}</div> : null}
       {dashboardError && (dashboards === null || dashboards.length > 0) ? <div role="alert">Dashboards unavailable. Retrying…</div> : null}
@@ -160,6 +161,6 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
         routeFileName={fileName}
         openRequest={fileName ? { name: fileName, nonce: 1 } : null}
       />}
-    </main>
+    </main></CommentReviewProvider>
   );
 }

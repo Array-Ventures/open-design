@@ -3,8 +3,8 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PreviewComment } from '../../../src/types';
 
-const api = vi.hoisted(() => ({ list: vi.fn(), save: vi.fn(), remove: vi.fn(), reorder: vi.fn(), upload: vi.fn(), stage: vi.fn(), prepare: vi.fn() }));
-vi.mock('../../../src/providers/registry', () => ({ fetchPreviewComments: api.list, upsertPreviewComment: api.save, deletePreviewComment: api.remove, patchPreviewCommentSortKey: api.reorder, uploadProjectFiles: api.upload }));
+const api = vi.hoisted(() => ({ list: vi.fn(), save: vi.fn(), remove: vi.fn(), reorder: vi.fn(), status: vi.fn(), upload: vi.fn(), stage: vi.fn(), prepare: vi.fn() }));
+vi.mock('../../../src/providers/registry', () => ({ fetchPreviewComments: api.list, upsertPreviewComment: api.save, deletePreviewComment: api.remove, patchPreviewCommentSortKey: api.reorder, patchPreviewCommentStatus: api.status, uploadProjectFiles: api.upload }));
 vi.mock('../../../src/components/embedded/host-context', async original => ({ ...await original<typeof import('../../../src/components/embedded/host-context')>(), stageHostContext: api.stage, prepareHostFeedback: api.prepare }));
 import { useEmbeddedComments } from '../../../src/components/embedded/useEmbeddedComments';
 const target = { filePath: 'index.html', elementId: 'heading', selector: '#heading', label: 'Heading', text: 'Original', position: { x: 0, y: 0, width: 100, height: 20 }, htmlHint: '<h1>Original</h1>' };
@@ -120,4 +120,34 @@ it('does not resurrect a deleted comment from a refused handoff receipt', async 
   await act(async () => { await result.current.save(target, 'Change heading', true); });
   expect(api.save).toHaveBeenCalledTimes(2);
   expect(api.stage.mock.calls[1]![2]).not.toBe(oldOperation);
+});
+
+it('resolves and reopens a saved comment without replacing its identity', async () => {
+  api.list.mockResolvedValue([{ ...comment, status: 'open', pinSeq: 7 }]);
+  api.status.mockImplementation(async (_project, _container, _id, status) => ({ ...comment, status, pinSeq: 7 }));
+  const { result } = renderHook(() => useEmbeddedComments('project-a'));
+  await waitFor(() => expect(result.current.state).toBe('success'));
+  await act(async () => { expect(await result.current.changeStatus(comment.id, 'resolved')).toBe(true); });
+  expect(result.current.comments[0]).toMatchObject({ id: comment.id, status: 'resolved', pinSeq: 7 });
+  await act(async () => { expect(await result.current.changeStatus(comment.id, 'open')).toBe(true); });
+  expect(result.current.comments[0]).toMatchObject({ id: comment.id, status: 'open', pinSeq: 7 });
+  expect(api.save).not.toHaveBeenCalled(); expect(api.stage).not.toHaveBeenCalled();
+});
+it('retains the open comment and reports a refused status change', async () => {
+  api.list.mockResolvedValue([{ ...comment, status: 'open' }]); api.status.mockResolvedValue(null);
+  const { result } = renderHook(() => useEmbeddedComments('project-a'));
+  await waitFor(() => expect(result.current.state).toBe('success'));
+  await act(async () => { expect(await result.current.changeStatus(comment.id, 'resolved')).toBe(false); });
+  expect(result.current.comments[0]?.status).toBe('open'); expect(result.current.notice).toContain('could not be saved');
+});
+it('ignores a status receipt after switching projects', async () => {
+  let finish!: (value: PreviewComment) => void;
+  api.status.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const view = renderHook(({ id }) => useEmbeddedComments(id), { initialProps: { id: 'project-a' } });
+  await waitFor(() => expect(view.result.current.state).toBe('success'));
+  let pending!: Promise<boolean>;
+  act(() => { pending = view.result.current.changeStatus(comment.id, 'resolved'); });
+  view.rerender({ id: 'project-b' });
+  await act(async () => { finish({ ...comment, status: 'resolved' }); expect(await pending).toBe(false); });
+  expect(view.result.current.comments).toEqual([]);
 });

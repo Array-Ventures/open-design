@@ -9,6 +9,7 @@ import { isImeComposing } from '../utils/imeComposing';
 
 import { Icon } from './Icon';
 import { CommentMentions } from './embedded/CommentMentions';
+import { CommentReviewFilter, ResolveCommentButton, useCommentReview } from './embedded/CommentReview';
 import { CommentThreadMenu } from './embedded/CommentThreadMenu';
 import { Checkbox } from './embedded/boardui/checkbox';
 import { TextareaBase } from './embedded/boardui/textarea';
@@ -513,6 +514,7 @@ export function BoardComposerPopover({
   /** A pick was held back to protect unsent work; the next pick discards it. */
   discardPending?: boolean;
 }) {
+  const commentReview = useCommentReview();
   const pendingCount = notes.length + (draft.trim() ? 1 : 0);
   const podMembers = target.podMembers ?? [];
   const composingRef = useRef(false);
@@ -682,7 +684,7 @@ export function BoardComposerPopover({
       aria-label={commentsView ? t('chat.tabComments') : 'Annotation'}
       style={popoverStyle}
       onKeyDown={(event) => {
-        if (event.key === 'Escape') {
+        if (event.key === 'Escape' && event.currentTarget.contains(event.target as Node)) {
           event.preventDefault();
           if (commentsView) onBackToComment?.();
           else onClose();
@@ -703,11 +705,13 @@ export function BoardComposerPopover({
           {commentsView ? <>
             <Button ref={backButtonRef} size="icon" variant="ghost" onClick={onBackToComment} aria-label={t('designBrowser.goBack')} title={t('designBrowser.goBack')}><Icon name="chevron-left" size={16} /></Button>
             <span className="comment-popover-title">{compact ? 'All comments' : t('chat.tabComments')}</span>
+            {compact ? <CommentReviewFilter /> : null}
             <Button size="icon" variant="ghost" onClick={onClose} aria-label={t('common.close')} title={t('common.close')}><Icon name="close" size={16} /></Button>
           </> : <><span className={`comment-popover-title${compact ? ' comment-popover-quote' : ''}`} title={targetTitle}>
             {targetTitle}
           </span>
-          {compact && existing ? <CommentThreadMenu canEdit={canEditComment} canDelete={Boolean(canDeleteComment && onDeleteComment)} onEdit={() => popoverRef.current?.querySelector<HTMLTextAreaElement>('textarea')?.focus()} onDelete={() => onDeleteComment?.(existing.id)} /> : null}
+          {compact && existing ? <ResolveCommentButton comment={existing} allowed={canDeleteComment} onResolved={onClose} /> : null}
+          {compact && existing ? <CommentThreadMenu canEdit={canEditComment} canDelete={Boolean(canDeleteComment && onDeleteComment)} onReopen={existing.status === 'resolved' && canDeleteComment && commentReview ? () => commentReview.changeStatus(existing.id, 'open') : undefined} onEdit={() => popoverRef.current?.querySelector<HTMLTextAreaElement>('textarea')?.focus()} onDelete={() => onDeleteComment?.(existing.id)} /> : null}
           {onViewAllComments ? (
             <button
               type="button"

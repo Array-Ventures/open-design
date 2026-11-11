@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { deletePreviewComment, fetchPreviewComments, patchPreviewCommentSortKey, uploadProjectFiles, upsertPreviewComment } from '../../providers/registry';
+import { deletePreviewComment, fetchPreviewComments, patchPreviewCommentSortKey, patchPreviewCommentStatus, uploadProjectFiles, upsertPreviewComment } from '../../providers/registry';
 import { commentsToAttachments } from '../../comments';
 import type { ChatCommentAttachment, PreviewComment, PreviewCommentTarget } from '../../types';
 import type { CommentSendResult } from '../comment-send-result';
@@ -105,6 +105,19 @@ export function useEmbeddedComments(projectId: string) {
     else setNotice('Comment could not be removed. Only its author can change it.');
     return ok;
   }, [projectId, scope]);
+  const changeStatus = useCallback(async (id: string, status: 'open' | 'resolved') => {
+    const signal = scope();
+    if (!signal) return false;
+    let saved: PreviewComment | null;
+    try { saved = await patchPreviewCommentStatus(projectId, projectId, id, status); }
+    catch { saved = null; }
+    if (signal.aborted) return false;
+    if (!saved) { setNotice('Comment status could not be saved. Try again.'); return false; }
+    if (pendingSave.current?.comment.id === id) pendingSave.current = null;
+    generation.current++;
+    setComments(current => current.map(comment => comment.id === saved.id ? saved : comment));
+    return true;
+  }, [projectId, scope]);
   const reorder = useCallback(async (id: string, sortKey: number) => {
     const signal = scope();
     if (!signal || signal.aborted) return;
@@ -113,5 +126,5 @@ export function useEmbeddedComments(projectId: string) {
     if (saved) { generation.current++; setComments((current) => current.map((item) => item.id === saved.id ? saved : item)); }
     else { setNotice('Comment order could not be saved.'); await refresh(); }
   }, [projectId, scope, refresh]);
-  return { comments, state, notice, refresh, save, remove, reorder, send };
+  return { comments, state, notice, refresh, save, remove, changeStatus, reorder, send };
 }
