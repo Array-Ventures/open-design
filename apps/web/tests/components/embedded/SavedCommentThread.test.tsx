@@ -4,6 +4,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { PreviewComment, PreviewCommentReply } from '@open-design/contracts';
 import { SavedCommentThread } from '../../../src/components/embedded/SavedCommentThread';
 const api = vi.hoisted(() => ({ fetchCommentReplies: vi.fn(), createCommentReply: vi.fn(), editCommentReply: vi.fn(), deleteCommentReply: vi.fn() }));
+const uploads = vi.hoisted(() => ({ prepare: vi.fn(), clear: vi.fn() }));
+vi.mock('../../../src/components/embedded/feedback-image-upload', () => ({ FeedbackImageUpload: class { prepare = uploads.prepare; clear = uploads.clear; } }));
 const confirm = vi.hoisted(() => vi.fn());
 vi.mock('../../../src/components/embedded/comment-reply-api', () => api);
 vi.mock('../../../src/components/embedded/host-context', () => ({ confirmHostFeedbackDiscard: confirm }));
@@ -11,7 +13,7 @@ vi.mock('../../../src/components/embedded/host-viewer', () => ({ useEmbeddedMent
 const root = { id: 'root', note: 'Read-only root', authorDisplayName: 'Person', createdAt: 1, status: 'open' } as PreviewComment;
 const reply: PreviewCommentReply = { id: 'reply', commentId: 'root', authorMemberId: 'evebot:person', authorDisplayName: 'Person', note: 'Saved reply', createdAt: 1, updatedAt: 1, revision: 1 };
 function props() { return { projectId: 'project', comment: root, hidden: false, onDirty: vi.fn(), onClose: vi.fn(), onEditRoot: vi.fn(), onDeleteRoot: vi.fn(), canEditRoot: true, canDeleteRoot: true, existingImages: [] }; }
-beforeEach(() => { vi.resetAllMocks(); api.fetchCommentReplies.mockResolvedValue([]); confirm.mockResolvedValue(false); });
+beforeEach(() => { vi.resetAllMocks(); Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:fixture-' + crypto.randomUUID()) }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() }); uploads.prepare.mockResolvedValue({ paths: ['_studio-comments/draft.png'], operationId: 'upload-op' }); api.fetchCommentReplies.mockResolvedValue([]); confirm.mockResolvedValue(false); });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 it('shows the saved root as text and starts a separate empty reply composer', async () => {
   render(<SavedCommentThread {...props()} />);
@@ -161,4 +163,111 @@ it('does not post on composition confirmation or Shift+Enter', async () => {
   expect(api.createCommentReply).not.toHaveBeenCalled();
   fireEvent.keyDown(input, { key: 'Enter' });
   await waitFor(() => expect(api.createCommentReply).toHaveBeenCalledOnce());
+});
+
+function attach(name = 'draft.png') {
+  const file = new File(['fixture'], name, { type: 'image/png' });
+  fireEvent.change(screen.getByLabelText('Reply image files'), { target: { files: [file] } });
+  return file;
+}
+it('saves an image-only reply and replaces the temporary preview with its workspace image', async () => {
+  api.createCommentReply.mockImplementation(async (_project, _comment, input) => ({ ...reply, note: input.note, attachments: input.attachments }));
+  render(<SavedCommentThread {...props()} />); attach();
+  await screen.findByRole('img', { name: 'draft.png' });
+  expect(screen.getByRole('button', { name: 'Add reply' })).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Add reply' }));
+  await waitFor(() => expect(api.createCommentReply).toHaveBeenCalledOnce());
+  expect(api.createCommentReply.mock.calls[0]![2]).toMatchObject({ note: '', attachments: [{ path: '_studio-comments/draft.png', name: 'draft.png' }] });
+  await waitFor(() => expect(screen.getByRole('img', { name: 'draft.png' }).getAttribute('src')).not.toMatch(/^blob:/));
+  expect(screen.queryByRole('button', { name: 'Remove draft.png' })).toBeNull();
+});
+it('preserves images and the operation identity after a refused save', async () => {
+  api.createCommentReply.mockRejectedValue(new Error('Save refused'));
+  render(<SavedCommentThread {...props()} />); attach();
+  await screen.findByRole('img', { name: 'draft.png' }); fireEvent.click(screen.getByRole('button', { name: 'Add reply' }));
+  await screen.findByRole('alert'); await waitFor(() => expect(screen.getByRole('button', { name: 'Add reply' })).toBeEnabled());
+  expect(screen.getByRole('img', { name: 'draft.png' }).getAttribute('src')).toMatch(/^blob:/);
+  fireEvent.click(screen.getByRole('button', { name: 'Add reply' }));
+  await waitFor(() => expect(api.createCommentReply).toHaveBeenCalledTimes(2));
+  expect(api.createCommentReply.mock.calls[0]![2]).toEqual(api.createCommentReply.mock.calls[1]![2]);
+});
+it('keeps a newer image and text after an older image submission completes', async () => {
+  let complete!: (value: PreviewCommentReply) => void;
+  api.createCommentReply.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+  render(<SavedCommentThread {...props()} />); attach(); await screen.findByRole('img', { name: 'draft.png' });
+  fireEvent.click(screen.getByRole('button', { name: 'Add reply' })); await waitFor(() => expect(api.createCommentReply).toHaveBeenCalledOnce());
+  attach('newer.png'); fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Newer text' } });
+  await act(async () => complete({ ...reply, note: '', attachments: [{ path: '_studio-comments/draft.png', name: 'draft.png' }] }));
+  expect(screen.getByRole('textbox')).toHaveValue('Newer text');
+  expect(screen.getByRole('button', { name: 'Remove newer.png' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Remove draft.png' })).toBeNull();
+});
+it('retains the image when upload fails and never posts a reply without it', async () => {
+  uploads.prepare.mockRejectedValue(new Error('Upload failed'));
+  render(<SavedCommentThread {...props()} />); attach(); await screen.findByRole('img', { name: 'draft.png' });
+  fireEvent.click(screen.getByRole('button', { name: 'Add reply' })); await screen.findByRole('alert');
+  expect(api.createCommentReply).not.toHaveBeenCalled(); expect(screen.getByRole('img', { name: 'draft.png' })).toBeVisible();
+});
+it('removes a saved image through the conditional reply edit', async () => {
+  api.fetchCommentReplies.mockResolvedValue([{ ...reply, attachments: [{ path: '_studio-comments/draft.png', name: 'draft.png' }] }]);
+  api.editCommentReply.mockResolvedValue({ ...reply, revision: 2, attachments: [] });
+  render(<SavedCommentThread {...props()} />); await screen.findByText(reply.note);
+  fireEvent.click(screen.getByRole('button', { name: 'Reply actions' })); fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+  await screen.findByRole('button', { name: 'Remove draft.png' }); fireEvent.click(screen.getByRole('button', { name: 'Remove draft.png' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save reply' }));
+  await waitFor(() => expect(api.editCommentReply).toHaveBeenCalledWith('project', 'root', reply.id, { note: reply.note, expectedRevision: 1, attachments: [] }, expect.any(AbortSignal)));
+});
+
+for (const remoteRemovesB of [false, true]) it(`merges a local image removal with concurrent remote image changes (remote removal: ${remoteRemovesB})`, async () => {
+  const a = { path: '_studio-comments/a.png', name: 'a.png' }, b = { path: '_studio-comments/b.png', name: 'b.png' }, c = { path: '_studio-comments/c.png', name: 'c.png' };
+  api.fetchCommentReplies.mockResolvedValue([{ ...reply, attachments: [a, b] }]);
+  api.editCommentReply.mockRejectedValue(new Error('Reply changed'));
+  render(<SavedCommentThread {...props()} />); await screen.findByText(reply.note);
+  fireEvent.click(screen.getByRole('button', { name: 'Reply actions' })); fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Remove a.png' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save reply' })); await screen.findByRole('alert');
+  const latest = remoteRemovesB ? [a, c] : [a, b, c];
+  api.fetchCommentReplies.mockResolvedValue([{ ...reply, attachments: latest, revision: 2 }]);
+  fireEvent.click(screen.getByRole('button', { name: 'Reload comments' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Continue editing latest reply' }));
+  const expected = remoteRemovesB ? [c] : [b, c];
+  api.editCommentReply.mockResolvedValue({ ...reply, attachments: expected, revision: 3 });
+  fireEvent.click(screen.getByRole('button', { name: 'Save reply' }));
+  await waitFor(() => expect(api.editCommentReply).toHaveBeenLastCalledWith('project', 'root', reply.id, { note: reply.note, expectedRevision: 2, attachments: expected }, expect.any(AbortSignal)));
+});
+
+it('does not post a stale image upload after switching threads', async () => {
+  let finish!: (value: { paths: string[]; operationId: string }) => void;
+  uploads.prepare.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const p = props(); const rendered = render(<SavedCommentThread {...p} />); attach(); await screen.findByRole('img', { name: 'draft.png' });
+  fireEvent.click(screen.getByRole('button', { name: 'Add reply' })); await waitFor(() => expect(uploads.prepare).toHaveBeenCalledOnce());
+  const signal = uploads.prepare.mock.calls[0]![3] as AbortSignal;
+  rendered.rerender(<SavedCommentThread {...p} comment={{ ...root, id: 'other' }} />);
+  expect(signal.aborted).toBe(true);
+  await act(async () => finish({ paths: ['_studio-comments/late.png'], operationId: 'old-upload' }));
+  expect(api.createCommentReply).not.toHaveBeenCalled(); expect(screen.queryByRole('img', { name: 'draft.png' })).toBeNull();
+});
+it('accepts pasted images and clears the dirty signal when the last image is removed', async () => {
+  const p = props(); render(<SavedCommentThread {...p} />);
+  fireEvent.paste(screen.getByRole('textbox'), { clipboardData: { files: [new File(['image'], 'pasted.png', { type: 'image/png' })] } });
+  await screen.findByRole('img', { name: 'pasted.png' }); expect(p.onDirty).toHaveBeenLastCalledWith(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Remove pasted.png' }));
+  await waitFor(() => expect(p.onDirty).toHaveBeenLastCalledWith(false));
+  expect(api.createCommentReply).not.toHaveBeenCalled();
+});
+it('rejects unsupported pasted content without replacing an existing image draft', async () => {
+  render(<SavedCommentThread {...props()} />); attach(); await screen.findByRole('img', { name: 'draft.png' });
+  fireEvent.paste(screen.getByRole('textbox'), { clipboardData: { files: [new File(['html'], 'fake.png', { type: 'text/html' })] } });
+  await screen.findByRole('alert'); expect(screen.getByRole('img', { name: 'draft.png' })).toBeVisible();
+  expect(screen.queryByRole('img', { name: 'fake.png' })).toBeNull(); expect(api.createCommentReply).not.toHaveBeenCalled();
+});
+it('keeps an edited reply draft as a new reply only after an explicit recovery action', async () => {
+  api.fetchCommentReplies.mockResolvedValue([reply]); api.editCommentReply.mockRejectedValue(new Error('Reply removed'));
+  render(<SavedCommentThread {...props()} />); await screen.findByText(reply.note);
+  fireEvent.click(screen.getByRole('button', { name: 'Reply actions' })); fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Recover this text' } }); fireEvent.click(screen.getByRole('button', { name: 'Save reply' }));
+  await screen.findByRole('alert'); api.fetchCommentReplies.mockResolvedValue([]);
+  fireEvent.click(screen.getByRole('button', { name: 'Reload comments' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Keep draft as a new reply' }));
+  expect(screen.getByRole('textbox', { name: 'Reply' })).toHaveValue('Recover this text'); expect(api.createCommentReply).not.toHaveBeenCalled();
 });

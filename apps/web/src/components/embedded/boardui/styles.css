@@ -36,3 +36,5 @@
 @source "../document/DocumentSurface.tsx";
 @source "../document/DocumentToolbar.tsx";
 @source "../document/document-controls.ts";
+
+@source "../ReplyImages.tsx";
