@@ -9950,11 +9950,13 @@ function HtmlViewer({
   // Brief "Press Esc to exit" hint shown in the main window whenever a
   // presentation (fullscreen stage + presenter popup) starts.
   const [presentEscHint, setPresentEscHint] = useState(false);
-  const [deckThumbnailsCollapsed, setDeckThumbnailsCollapsed] = useState(false);
+  const [deckThumbnailsCollapsedPreference, setDeckThumbnailsCollapsed] = useState<boolean | null>(null);
+  const compactThumbnailRail = embedded && Boolean(previewBodySize && previewBodySize.width < 640);
+  const deckThumbnailsCollapsed = deckThumbnailsCollapsedPreference ?? compactThumbnailRail;
   const [deckThumbnailWidth, setDeckThumbnailWidth] = useState<number | null>(null);
   // A compact screen must leave room for the slide. Preserve the person's
   // wide-screen rail preference while constraining only this rendered layout.
-  const thumbnailRailDefaultWidth = previewViewport === 'desktop' && (!embedded || !previewBodySize || previewBodySize.width >= 640) ? 194 : 56;
+  const thumbnailRailDefaultWidth = compactThumbnailRail ? 120 : previewViewport === 'desktop' ? 194 : 56;
   const thumbnailRailWidth = Math.min(deckThumbnailWidth ?? thumbnailRailDefaultWidth, thumbnailRailDefaultWidth + 24);
   const [speakerNotesEditMode, setSpeakerNotesEditMode] = useState(false);
   const [speakerNotesDraft, setSpeakerNotesDraft] = useState('');
@@ -17441,7 +17443,7 @@ function HtmlViewer({
                   slide_index: activeDeckSlideIndex,
                   slide_count: deckSlideTotal,
                 });
-                setDeckThumbnailsCollapsed((value) => !value);
+                setDeckThumbnailsCollapsed(!deckThumbnailsCollapsed);
               }}
             >
               <Icon name="panel-left" size={15} />
