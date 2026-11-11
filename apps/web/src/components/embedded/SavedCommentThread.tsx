@@ -142,7 +142,7 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
     {editStale ? <div role="status" className="flex items-center gap-2 text-caption-1-regular text-text-tertiary"><span className="min-w-0 flex-1">{latestEditing ? 'This reply changed. Your draft is preserved.' : 'This reply was deleted. Your draft is preserved.'}</span>
       {latestEditing ? <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Continue editing latest reply" title="Keep your draft and edit the latest revision" disabled={busy} onClick={() => { setEditing(latestEditing); setError(null); }} /> : null}
     </div> : null}
-    <TextareaBase aria-label={editing ? 'Edit reply' : 'Reply'} placeholder="Add your comment" rows={1} autoResize maxRows={5} resize="none" value={draft} disabled={!viewer || deletingRoot}
+    <TextareaBase className="min-h-7" aria-label={editing ? 'Edit reply' : 'Reply'} placeholder="Add your comment" rows={1} autoResize maxRows={5} resize="none" value={draft} disabled={!viewer || deletingRoot}
       onChange={event => { draftRef.current = event.target.value; setDraft(event.target.value); notify.current(busy || (editing ? event.target.value !== editing.note : event.target.value !== '')); }}
       onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
     {draft || editing ? <div className="flex items-center justify-end gap-1">
