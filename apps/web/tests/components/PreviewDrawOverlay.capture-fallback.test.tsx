@@ -103,6 +103,28 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
     }
   });
 
+  it('retains embedded drawing and note across a reversible host hide', () => {
+    const dirty = vi.fn();
+    const { container, rerender, getByRole } = render(<PreviewDrawOverlay active draftOnly onDirtyChange={dirty}><iframe title="srcdoc" /></PreviewDrawOverlay>);
+    drawSelectionBox(container.querySelector('canvas')!);
+    fireEvent.change(container.querySelector('.preview-draw-note-input')!, { target: { value: 'Unsent drawing note' } });
+    rerender(<PreviewDrawOverlay active={false} draftOnly onDirtyChange={dirty}><iframe title="srcdoc" /></PreviewDrawOverlay>);
+    rerender(<PreviewDrawOverlay active draftOnly onDirtyChange={dirty}><iframe title="srcdoc" /></PreviewDrawOverlay>);
+    expect((container.querySelector('.preview-draw-note-input') as HTMLInputElement).value).toBe('Unsent drawing note');
+    expect(getByRole('button', { name: 'Undo' })).not.toBeDisabled();
+    expect(dirty).toHaveBeenLastCalledWith(true);
+  });
+
+  it('does not intercept Escape or text undo while markup is inactive', () => {
+    const changed = vi.fn();
+    render(<PreviewDrawOverlay active={false} onActiveChange={changed}><iframe title="srcdoc" /></PreviewDrawOverlay>);
+    const undo = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, cancelable: true });
+    window.dispatchEvent(undo);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(undo.defaultPrevented).toBe(false);
+    expect(changed).not.toHaveBeenCalled();
+  });
+
   it('retains embedded ink and note if capture fails, even after chat preparation succeeds', async () => {
     const annotation = vi.fn();
     window.addEventListener('opendesign:annotation', annotation);

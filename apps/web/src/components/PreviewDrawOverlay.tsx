@@ -74,6 +74,8 @@ interface Props {
   hideChrome?: boolean;
   draftOnly?: boolean;
   onPrepareDraft?: () => Promise<string | null>;
+  onDirtyChange?: (dirty: boolean) => void;
+  discardRevision?: number;
   sendDisabled?: boolean;
   sendDisabledReason?: string;
   onToolbarClick?: (element: DrawToolbarElement, submitAction?: AnnotationAction) => void;
@@ -141,6 +143,8 @@ export function PreviewDrawOverlay({
   hideChrome = false,
   draftOnly = false,
   onPrepareDraft,
+  onDirtyChange,
+  discardRevision = 0,
   sendDisabled = false,
   sendDisabledReason,
   onToolbarClick,
@@ -308,6 +312,7 @@ export function PreviewDrawOverlay({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (!active) return;
       if (e.key === 'Escape') {
         onActiveChange?.(false);
         return;
@@ -320,7 +325,7 @@ export function PreviewDrawOverlay({
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onActiveChange, sending]);
+  }, [active, onActiveChange, sending]);
 
   function syncHistoryState() {
     setHasInk(strokesRef.current.length > 0);
@@ -706,12 +711,21 @@ export function PreviewDrawOverlay({
     bumpLayoutRevision();
   }
 
+  useEffect(() => {
+    if (!discardRevision) return;
+    clearInk(); setNote(''); setExtraFiles([]); setPreviewIndex(null);
+  }, [discardRevision]);
+
+  const holdsDraft = hasInk || hasBox || hasText || Boolean(note.trim()) || extraFiles.length > 0;
+  useEffect(() => { onDirtyChange?.(holdsDraft); }, [holdsDraft, onDirtyChange]);
+  useEffect(() => () => { onDirtyChange?.(false); }, [onDirtyChange]);
+
   function closeOverlay() {
     onActiveChange?.(false);
   }
 
   useEffect(() => {
-    if (active) return;
+    if (active || draftOnly) return;
     strokesRef.current = [];
     undoneStrokesRef.current = [];
     drawingRef.current = null;
@@ -724,7 +738,7 @@ export function PreviewDrawOverlay({
     syncHistoryState();
     redraw();
     bumpLayoutRevision();
-  }, [active, redraw]);
+  }, [active, draftOnly, redraw]);
 
   function normalizedRectToCanvasRect(box: NormalizedRect): Rect | null {
     const rect = canvasRef.current?.getBoundingClientRect();

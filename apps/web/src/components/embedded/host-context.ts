@@ -14,36 +14,35 @@ export function commentContextText(attachments: ChatCommentAttachment[]): string
   ].filter(Boolean).join('\n')).join('\n\n');
 }
 
-/** The host acknowledges staging into its normal composer, never agent execution. */
-export function stageHostContext(projectId: string, text: string, operationId?: string, preparationId?: string): Promise<boolean> {
-  if (window.parent === window || !text.trim() || text.length > 32_000) return Promise.resolve(false);
-  const requestId = operationId ?? crypto.randomUUID();
-  return new Promise((resolve) => {
-    const finish = (accepted: boolean) => { clearTimeout(timeout); window.removeEventListener('message', receive); resolve(accepted); };
+type HostReply = { requestId: string; accepted: boolean };
+
+function requestHost(projectId: string, type: string, responseType: string, fields: Record<string, unknown> = {}, requestId = crypto.randomUUID(), timeoutMs = 5000): Promise<HostReply> {
+  if (window.parent === window) return Promise.resolve({ requestId, accepted: false });
+  return new Promise(resolve => {
+    const finish = (accepted: boolean) => { clearTimeout(timeout); window.removeEventListener('message', receive); resolve({ requestId, accepted }); };
     const receive = (event: MessageEvent) => {
       if (event.origin !== window.location.origin || event.source !== window.parent) return;
       const data = event.data;
-      if (data?.type === 'studio:compose-result' && data.projectId === projectId && data.requestId === requestId) finish(data.accepted === true);
+      if (data?.type === responseType && data.projectId === projectId && data.requestId === requestId) finish(data.accepted === true);
     };
-    const timeout = setTimeout(() => finish(false), 5000);
+    const timeout = setTimeout(() => finish(false), timeoutMs);
     window.addEventListener('message', receive);
-    window.parent.postMessage({ type: 'studio:compose', projectId, requestId, text, ...(preparationId ? { preparationId } : {}) }, window.location.origin);
+    window.parent.postMessage({ type, projectId, requestId, ...fields }, window.location.origin);
   });
 }
 
-/** Choose/reveal chat before capturing or uploading visual feedback. */
-export function prepareHostFeedback(projectId: string): Promise<string | null> {
-  if (window.parent === window) return Promise.resolve(null);
-  const requestId = crypto.randomUUID();
-  return new Promise(resolve => {
-    const finish = (accepted: boolean) => { clearTimeout(timeout); window.removeEventListener('message', receive); resolve(accepted ? requestId : null); };
-    const receive = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin || event.source !== window.parent) return;
-      const data = event.data;
-      if (data?.type === 'studio:feedback-prepared' && data.projectId === projectId && data.requestId === requestId) finish(data.accepted === true);
-    };
-    const timeout = setTimeout(() => finish(false), 120_000);
-    window.addEventListener('message', receive);
-    window.parent.postMessage({ type: 'studio:prepare-feedback', projectId, requestId }, window.location.origin);
-  });
+/** The host acknowledges staging into its normal composer, never agent execution. */
+export async function stageHostContext(projectId: string, text: string, operationId?: string, preparationId?: string): Promise<boolean> {
+  if (!text.trim() || text.length > 32_000) return false;
+  return (await requestHost(projectId, 'studio:compose', 'studio:compose-result', { text, ...(preparationId ? { preparationId } : {}) }, operationId)).accepted;
+}
+
+/** Bind a destination before capture/upload; its token accompanies the staged operation. */
+export async function prepareHostFeedback(projectId: string): Promise<string | null> {
+  const reply = await requestHost(projectId, 'studio:prepare-feedback', 'studio:feedback-prepared', {}, undefined, 120_000);
+  return reply.accepted ? reply.requestId : null;
+}
+
+export async function confirmHostFeedbackDiscard(projectId: string, kind: 'comment' | 'markup'): Promise<boolean> {
+  return (await requestHost(projectId, 'studio:confirm-feedback-discard', 'studio:feedback-discarded', { kind }, undefined, 120_000)).accepted;
 }

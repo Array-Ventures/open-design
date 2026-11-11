@@ -1,5 +1,5 @@
 import type { CommentSaveResult } from './comment-send-result';
-import { prepareHostFeedback } from './embedded/host-context';
+import { confirmHostFeedbackDiscard, prepareHostFeedback } from './embedded/host-context';
 import { CommentMentions } from './embedded/CommentMentions';
 import { DeckPresentationMenu } from './embedded/DeckPresentationMenu';
 import { CommentThreadMenu } from './embedded/CommentThreadMenu';
@@ -9648,6 +9648,8 @@ function HtmlViewer({
   const [boardImagePreviews, setBoardImagePreviews] = useState<{ file: File; url: string }[]>([]);
   const [boardPreviewIndex, setBoardPreviewIndex] = useState<number | null>(null);
   const [sendingBoardBatch, setSendingBoardBatch] = useState(false);
+  const [markupDraftDirty, setMarkupDraftDirty] = useState(false);
+  const [markupDiscardRevision, setMarkupDiscardRevision] = useState(0);
   useEffect(() => {
     const next = boardImages.map((file) => ({ file, url: URL.createObjectURL(file) }));
     setBoardImagePreviews(next);
@@ -9679,6 +9681,10 @@ function HtmlViewer({
    * Editing the draft disarms. Every pick path retargets through here.
    */
   const requestComposerRetarget = useCallback((applyRetarget: () => void) => {
+    if (inlineAnnotations && window.parent !== window && composerHoldsUnsentWorkRef.current) {
+      void confirmHostFeedbackDiscard(projectId, 'comment').then(discard => { if (discard) { disarmComposerDiscard(); applyRetarget(); } });
+      return;
+    }
     if (composerHoldsUnsentWorkRef.current && !composerDiscardArmedRef.current) {
       composerDiscardArmedRef.current = true;
       setComposerDiscardPending(true);
@@ -9686,7 +9692,7 @@ function HtmlViewer({
     }
     disarmComposerDiscard();
     applyRetarget();
-  }, [disarmComposerDiscard]);
+  }, [disarmComposerDiscard, inlineAnnotations, projectId]);
   const [commentSavedToast, setCommentSavedToast] = useState<string | null>(null);
   const [templateSavedToast, setTemplateSavedToast] = useState<string | null>(null);
   const [deploySavedToast, setDeploySavedToast] = useState<{ message: string; details: string } | null>(null);
@@ -9806,7 +9812,7 @@ function HtmlViewer({
   // before the host DOM node has been resolved. Treating that lookup window as
   // a local dock briefly shrinks the preview and shifts centered desktop or
   // mobile content left before the floating card appears.
-  const localCommentSideDockActive = commentPanelOpen && !commentPortalId;
+  const localCommentSideDockActive = commentPanelOpen && !commentPortalId && !inlineAnnotations;
 
   function deploymentMapForCurrentFile(items: WebDeploymentInfo[]) {
     const next: Partial<Record<WebDeployProviderId, WebDeploymentInfo>> = {};
@@ -15509,12 +15515,21 @@ function HtmlViewer({
     setAgentToolsOpen(false);
   }
 
+  async function requestMarkupClose(): Promise<boolean> {
+    if (embedded && window.parent !== window && markupDraftDirty) {
+      if (!await confirmHostFeedbackDiscard(projectId, 'markup')) return false;
+      setMarkupDiscardRevision(value => value + 1);
+    }
+    setDrawOverlayOpen(false);
+    return true;
+  }
+
   function activateDrawTool() {
     if (viewerOnly) return; // read-only viewer: mark (annotate) is an edit action
     fireArtifactToolbarClick('mark');
     const next = !drawOverlayOpen;
     if (!next) {
-      setDrawOverlayOpen(false);
+      void requestMarkupClose();
       setAgentToolsOpen(false);
       return;
     }
@@ -17137,7 +17152,7 @@ function HtmlViewer({
     setSelectedSideCommentIds(current => { const next = new Set(current); next.delete(commentId); return next; });
     setActivePreviewCommentId(current => current === commentId ? null : current);
   } : undefined;
-  const commentSidePanel = workspaceActive && (commentPanelOpen || commentListInPopover) ? (
+  const commentSidePanel = workspaceActive && ((!inlineAnnotations && commentPanelOpen) || commentListInPopover) ? (
     <CommentSideDock
       comments={visibleSideComments}
       threadActions={inlineAnnotations && onRemovePreviewComment ? {
@@ -17216,7 +17231,7 @@ function HtmlViewer({
           setActiveCommentExistingAttachments(comment.attachments ?? []);
           setBoardMode(true);
           setCommentCreateMode(true);
-          if (!commentListInPopover) setCommentPanelOpen(true);
+          if (!commentListInPopover) setCommentPanelOpen(!inlineAnnotations);
           setCommentListInPopover(false);
           setCommentSidePanelCollapsed(false);
         });
@@ -17282,7 +17297,7 @@ function HtmlViewer({
       onRemoveQueuedNote={(index) =>
         setQueuedBoardNotes((current) => current.filter((_, currentIndex) => currentIndex !== index))
       }
-      onClose={clearBoardComposer}
+      onClose={() => requestComposerRetarget(clearBoardComposer)}
       onSaveComment={(addToChat) => { fireCommentPopoverClick('save_comment'); return savePersistentComment(addToChat); }}
       onSendBatch={() => {
         observeAnalytics(() => {
@@ -18199,8 +18214,10 @@ function HtmlViewer({
             </div>
       </>)}
       <div className="viewer-body" ref={previewBodyRef}>
-        {inlineAnnotations ? <ArtifactAnnotationControls projectId={projectId} commenting={boardMode} marking={drawOverlayOpen} disabled={sendingBoardBatch}
+        {inlineAnnotations ? <ArtifactAnnotationControls projectId={projectId} commenting={boardMode} marking={drawOverlayOpen} dirty={composerHoldsUnsentWork || markupDraftDirty} disabled={sendingBoardBatch}
+          onDiscard={() => { clearBoardComposer(); setMarkupDiscardRevision(value => value + 1); setDrawOverlayOpen(false); }}
           onComment={() => {
+            if (drawOverlayOpen && markupDraftDirty) { void requestMarkupClose().then(closed => { if (closed) activateCommentTool(true); }); return; }
             if (!boardMode) { activateCommentTool(true); return; }
             requestComposerRetarget(() => { setCommentPanelOpen(false); setCommentCreateMode(false); setBoardMode(false); clearBoardComposer(); });
           }}
@@ -18251,8 +18268,10 @@ function HtmlViewer({
                   <PreviewDrawOverlay
                     active={drawOverlayOpen}
                     draftOnly={embedded}
+                    onDirtyChange={setMarkupDraftDirty}
+                    discardRevision={markupDiscardRevision}
                     onPrepareDraft={embedded ? () => prepareHostFeedback(projectId) : undefined}
-                    onActiveChange={setDrawOverlayOpen}
+                    onActiveChange={value => { if (value) setDrawOverlayOpen(true); else void requestMarkupClose(); }}
                     captureViewport
                     captureSnapshot={captureExportImageSnapshot}
                     captureTarget={null}
@@ -18517,7 +18536,7 @@ function HtmlViewer({
                   activeSlideIndex={effectiveDeck ? slideState?.active ?? null : null}
                   onOpenComment={(comment, snapshot) => {
                     requestComposerRetarget(() => {
-                      setCommentPanelOpen(true);
+                      setCommentPanelOpen(!inlineAnnotations);
                       setCommentSidePanelCollapsed(false);
                       setCommentCreateMode(true);
                       setBoardMode(true);
