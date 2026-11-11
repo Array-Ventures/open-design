@@ -257,3 +257,21 @@ export function markMotionHostedPreview(html: string): string {
     ? prependAfterDoctype(html, '<script>window.__odMotionPreview=true;</script>')
     : html;
 }
+
+/** Only called for an embedded project explicitly registered as motion video.
+ * Old editable compositions predate od-motion-output. Adapt the preview bytes,
+ * never the source file, and honor any explicit video/interactive declaration.
+ */
+export function prepareLegacyMotionPreview(html: string): string {
+  if (findRealTagOffset(html, /<meta\b[^>]*\bname\s*=\s*["']od-motion-output["']/i) >= 0) return html;
+  const offset = findRealTagOffset(html, /<[^/!][^>]*\bdata-composition-id\s*=/i);
+  if (offset < 0) return html;
+  const tag = /^<[^>]+>/.exec(html.slice(offset))?.[0] ?? '';
+  // A complete authored canvas contract distinguishes a composition from a
+  // code sample or an unrelated data attribute on an ordinary page.
+  if (!['duration', 'width', 'height'].every(key => {
+    const value = new RegExp(`\\bdata-${key}\\s*=\\s*["']([^"']+)["']`, 'i').exec(tag)?.[1];
+    return value !== undefined && Number.isFinite(Number(value)) && Number(value) > 0;
+  })) return html;
+  return prependAfterDoctype(html, '<meta name="od-motion-output" content="video">');
+}

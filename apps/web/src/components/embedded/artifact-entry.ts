@@ -12,6 +12,7 @@ export function artifactEntry(files: ProjectFile[], selected: string | null, pro
   const candidates = files.filter(ordinary);
   const file = (selected ? candidates.find(item => item.name === selected) : undefined)
     ?? candidates.find(item => item.artifactManifest?.primary === true || item.artifactManifest?.primary === item.name)
+    ?? candidates.find(item => ['image', 'video', 'audio'].includes(projectKind ?? '') && item.kind === projectKind)
     ?? candidates.find(item => item.name === 'index.html')
     ?? candidates.find(item => item.kind === 'html')
     ?? candidates.find(item => ['image', 'video', 'audio', 'pdf', 'sketch'].includes(item.kind))

@@ -24,3 +24,15 @@ describe('artifact entry intent', () => {
     expect(artifactEntry([{ ...file('index.html', true), type: 'dir' }], null)).toBeNull();
   });
 });
+
+it('opens the actual media for a typed media project instead of a supporting index page', () => {
+  for (const kind of ['image', 'video', 'audio'] as const) {
+    const media = { ...file(`assets/output.${kind === 'image' ? 'png' : kind === 'video' ? 'mp4' : 'wav'}`), kind };
+    const supporting = file('index.html');
+    expect(artifactEntry([supporting, media], null, kind)).toMatchObject({ kind, file: { name: media.name } });
+    // Declared primary intent and explicit selection continue to win.
+    const declared = file('report.md', true);
+    expect(artifactEntry([supporting, media, declared], null, kind)?.file.name).toBe('report.md');
+    expect(artifactEntry([supporting, media], 'index.html', kind)?.file.name).toBe('index.html');
+  }
+});

@@ -11463,6 +11463,7 @@ function HtmlViewer({
         srcDoc: previewSource ? buildSrcdoc(previewSource, {
           staticSnapshot,
           motionPreview: true,
+          legacyMotionVideo: embedded && projectKind === 'hyperframes',
           previewStorage: Boolean(previewStorageScopeKey),
           deck: effectiveDeck,
           baseHref: srcDocBaseHref,
@@ -11495,6 +11496,8 @@ function HtmlViewer({
     },
     [
       awaitingEmbeddedPreviewBase,
+      embedded,
+      projectKind,
       staticSnapshot,
       previewSource,
       effectiveDeck,

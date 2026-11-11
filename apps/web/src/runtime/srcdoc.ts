@@ -1,3 +1,4 @@
+import { prepareLegacyMotionPreview } from "@open-design/contracts/runtime/motion-source-player";
 import { buildPreviewStorageBridge } from './preview-storage';
 import { injectMotionSourcePlayer, markMotionHostedPreview } from '@open-design/contracts/runtime/motion-source-player';
 /**
@@ -81,6 +82,8 @@ export type SrcdocOptions = {
   previewStorageSeed?: { generation: string; values: Record<string, string> };
   /** Live embedded motion preview only; do not enable for exports/captures. */
   motionPreview?: boolean;
+  /** Explicit embedded motion project whose source predates the output marker. */
+  legacyMotionVideo?: boolean;
   deck?: boolean;
   baseHref?: string;
   initialSlideIndex?: number;
@@ -370,7 +373,8 @@ export function buildSrcdoc(
   // user prints the preview iframe (Cmd+P → Save as PDF), Chromium uses the
   // sanitized title as the default filename — one that Microsoft Teams will
   // accept. Only the title text changes; visible page content is untouched.
-  const motionSource = options.motionPreview && !options.freezeMotion ? markMotionHostedPreview(wrapped) : wrapped;
+  const previewInput = options.legacyMotionVideo && options.motionPreview && !options.freezeMotion ? prepareLegacyMotionPreview(wrapped) : wrapped;
+  const motionSource = options.motionPreview && !options.freezeMotion ? markMotionHostedPreview(previewInput) : previewInput;
   const withSafeTitle = sanitizeTitleInDoc(options.freezeMotion ? motionSource : injectMotionSourcePlayer(motionSource));
   const withVisibilityGuard = injectAfterHeadOpen(withSafeTitle, buildPreviewVisibilityGuard());
   const withOdIds = annotateMissingOdIds(withVisibilityGuard);

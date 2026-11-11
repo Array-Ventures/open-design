@@ -25,7 +25,7 @@ export function ArtifactSurface({ project, files, dashboards, fileName, generati
     {dashboard ? <LiveArtifactViewer chrome={false} projectId={project.id} liveArtifact={liveArtifactSummaryToWorkspaceEntry(dashboard)}
         previewRenderer={({ url, source }) => <LiveArtifactFeedbackPreview projectId={project.id} previewUrl={url} source={source} files={files} feedback={feedback} />}
         onRefreshArtifacts={async () => { await onRefresh(); }} />
-      : file ? <FileViewer embedded inlineAnnotations {...feedback} projectId={project.id} projectKind={projectKindFromMetadataToTrackingOrLegacyDefault(project.metadata)} file={file} filesRefreshKey={generation} isDeck={entry?.kind === 'deck'} onFileSaved={async () => { await onRefresh(); }} />
+      : file ? <FileViewer embedded inlineAnnotations {...feedback} projectId={project.id} projectKind={(project.metadata?.kind as string | undefined) === 'hyperframes' ? 'hyperframes' : projectKindFromMetadataToTrackingOrLegacyDefault(project.metadata)} file={file} filesRefreshKey={generation} isDeck={entry?.kind === 'deck'} onFileSaved={async () => { await onRefresh(); }} />
       : <div role="status" className={styles.cooking}>
           <div className={styles.cookingPreview} aria-hidden="true">
             <div className={styles.cookingSheet}><span /><span /><span /><div /></div>
