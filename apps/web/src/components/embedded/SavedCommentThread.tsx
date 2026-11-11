@@ -7,6 +7,7 @@ import { cx } from './boardui/cx';
 import { CommentThreadMenu } from './CommentThreadMenu';
 import { useReplyImages } from './useReplyImages';
 import { ReplyImages } from './ReplyImages';
+import { ScrollFade, useScrollFade } from './boardui/scroll-fade';
 import { CommentMentions } from './CommentMentions';
 import { ResolveCommentButton, useCommentReview } from './CommentReview';
 import { useEmbeddedViewer } from './host-viewer';
@@ -57,6 +58,7 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
   const notify = useRef(onDirty); notify.current = onDirty;
   const images = useReplyImages(projectId, JSON.stringify([comment.id, editing?.id ?? null]), () => notify.current(true));
   const picker = useRef<HTMLInputElement>(null);
+  const historyFade = useScrollFade();
   const dirty = busy || images.hasChanges(editing?.attachments ?? []) || (editing ? draft !== editing.note : draft !== '');
   const latestEditing = editing ? replies.find(reply => reply.id === editing.id) : null;
   const editStale = Boolean(editing && (!latestEditing || latestEditing.revision !== editing.revision));
@@ -135,7 +137,7 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
     } catch (failure) { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : 'The reply could not be deleted.'); }
     finally { if (!controller.signal.aborted) { pending.current = false; setBusy(false); } }
   }
-  return <section hidden={hidden} aria-label="Comment thread" className={cx('flex-col gap-3', hidden ? 'hidden' : 'flex')} data-testid="saved-comment-thread">
+  return <section hidden={hidden} aria-label="Comment thread" className={cx('min-h-0 flex-1 flex-col gap-3', hidden ? 'hidden' : 'flex')} data-testid="saved-comment-thread">
     <header className="flex min-w-0 items-center gap-1">
       <CommentAuthor name={comment.authorDisplayName} createdAt={comment.createdAt} />
       <ResolveCommentButton comment={comment} allowed={canDeleteRoot} blocked={dirty} onResolved={() => { if (!dirtyRef.current) onClose(); }} />
@@ -150,6 +152,8 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
       }} onReopen={comment.status === 'resolved' && canDeleteRoot && review ? () => review.changeStatus(comment.id, 'open') : undefined} />
       <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiCloseLine} aria-label="Close" title="Close" onClick={onClose} />
     </header>
+    <div className="relative min-h-0 flex-1">
+    <div role="region" aria-label="Thread history" tabIndex={0} onScroll={historyFade.onScroll} className="flex max-h-full min-h-0 flex-col gap-3 overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring">
     <p className="m-0 whitespace-pre-wrap break-words text-body-regular text-text-primary">{comment.note}</p>
     {deleted ? <p role="status" className="m-0 text-caption-1-regular text-text-tertiary">This thread was deleted. Your unsaved reply is still here.</p> : null}
     {existingImages.length ? <div className="comment-popover-images">{existingImages.map(image => <a key={image.url} className="comment-popover-image-thumb" href={image.url} target="_blank" rel="noopener noreferrer"><img src={image.url} alt={image.name} /></a>)}</div> : null}
@@ -159,6 +163,10 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
       </header><ReplyImages projectId={projectId} saved={reply.attachments ?? []} />{reply.note.trim() ? <p className="m-0 whitespace-pre-wrap break-words text-body-regular text-text-primary">{reply.note}</p> : null}
     </article>)}
     {loading ? <span role="status" className="text-caption-1-regular text-text-tertiary">Loading comments…</span> : null}
+    </div>
+    <ScrollFade progress={historyFade.progress} />
+    </div>
+    <div className="flex shrink-0 flex-col gap-3">
     {error ? <div role="alert" className="flex items-center gap-2 text-caption-1-regular text-text-error-primary"><span className="min-w-0 flex-1">{error}</span><Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Reload comments" title="Reload comments" disabled={busy} onClick={() => { void refresh(); }} /></div> : null}
     {editStale ? <div role="status" className="flex items-center gap-2 text-caption-1-regular text-text-tertiary"><span className="min-w-0 flex-1">{latestEditing ? 'This reply changed. Your draft is preserved.' : 'This reply was deleted. Your draft is preserved.'}</span>
       {latestEditing ? <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Continue editing latest reply" title="Keep your draft and edit the latest revision" disabled={busy} onClick={() => { images.rebase(editing?.attachments ?? [], latestEditing.attachments ?? []); setEditing(latestEditing); setError(null); }} />
@@ -178,6 +186,7 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
       {editing ? <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiCloseLine} aria-label="Cancel reply edit" title="Cancel edit" disabled={busy} onClick={() => { void changeEditor(null); }} /> : null}
       <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiArrowUpLine} aria-label={editing ? 'Save reply' : 'Add reply'} title={editing ? 'Save reply' : 'Add reply'} disabled={busy || (!draft.trim() && !images.draft.files.length && !images.draft.kept.length) || !viewer || deleted || editStale} onClick={() => { void submit(); }} />
       </div> : null}
+    </div>
     </div>
   </section>;
 }

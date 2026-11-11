@@ -759,7 +759,7 @@ export function BoardComposerPopover({
       {/* Everything above the action row scrolls; the action row itself lives
           outside this box (see below) so a height-clamped card can never push
           the buttons out of view. */}
-      <div className="comment-popover-body">
+      <div className={`comment-popover-body${readingThread && !commentsView ? ' comment-popover-thread-body' : ''}`}>
         {commentsView}
         {savedThread && threadComment && commentReview?.projectId && onThreadDirty ? <SavedCommentThread key={threadComment.id} projectId={commentReview.projectId} comment={threadComment} deleted={!existing} hidden={!readingThread || Boolean(commentsView)} onDirty={onThreadDirty}
           onClose={onClose} onViewAll={onViewAllComments ? () => onViewAllComments() : undefined} onEditRoot={() => setEditingRoot(true)} onDeleteRoot={onDeleteComment ? () => onDeleteComment(threadComment.id) : undefined}
