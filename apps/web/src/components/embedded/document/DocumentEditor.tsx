@@ -20,6 +20,7 @@ import { documentHtml, documentImport } from './document-html';
 import { documentHtmlConfig, ensureDocumentBlockIds, documentFont } from './document-identity';
 import { saveDocumentFile, type DocumentFile } from './document-file';
 import { DocumentWriter, type DocumentWriteState } from './document-writer';
+import { DOCUMENT_ICON_BUTTON } from './document-controls';
 import { DocumentToolbar } from './DocumentToolbar';
 import styles from './DocumentEditor.module.css';
 import { Button } from '../boardui/button';
@@ -100,9 +101,9 @@ function DocumentBody({ projectId, fileName, title, observed, owners, onSaved, o
   return <>
     <div className="flex shrink-0 items-center justify-end gap-2 px-3 py-2 text-caption-1-regular text-text-tertiary" >
       <span role="status">{status}</span>
-      {writeState.dirty ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiSaveLine} aria-label="Save document" title="Save" disabled={writeState.saving || !writeState.dirty} onClick={() => { void writer.current?.flush(); }} /> : null}
+      {writeState.dirty ? <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiSaveLine} aria-label="Save document" title="Save" disabled={writeState.saving || !writeState.dirty} onClick={() => { void writer.current?.flush(); }} /> : null}
       <Dropdown>
-        <DropdownTrigger aria-label={`${editing ? 'Editing' : 'Viewing'}, mode`} className="flex h-8 items-center gap-1 rounded-xl px-2 text-body-2-medium text-text-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiPencilLine className="size-4 shrink-0" aria-hidden />{editing ? 'Editing' : 'Viewing'}<RiArrowDownSLine className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
+        <DropdownTrigger aria-label={`${editing ? 'Editing' : 'Viewing'}, mode`} className="box-border flex h-8 items-center gap-1 rounded-xl border-0 bg-background-secondary-default px-2 py-0 text-body-2-medium text-text-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiPencilLine className="size-4 shrink-0" aria-hidden />{editing ? 'Editing' : 'Viewing'}<RiArrowDownSLine className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
         <DropdownPopover aria-label="Document mode" placement="bottom end">
           <DropdownItem onSelect={() => { editor.setEditable(true); setEditing(true); }}>Editing</DropdownItem>
           <DropdownItem onSelect={() => { editor.setEditable(false); setEditing(false); }}>Viewing</DropdownItem>

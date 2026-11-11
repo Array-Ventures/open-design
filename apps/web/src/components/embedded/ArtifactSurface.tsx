@@ -28,7 +28,7 @@ export function ArtifactSurface({ project, files, dashboards, fileName, generati
     {dashboard ? <LiveArtifactViewer chrome={false} projectId={project.id} liveArtifact={liveArtifactSummaryToWorkspaceEntry(dashboard)}
         previewRenderer={({ url, source }) => <LiveArtifactFeedbackPreview projectId={project.id} previewUrl={url} source={source} files={files} feedback={feedback} />}
         onRefreshArtifacts={async () => { await onRefresh(); }} />
-      : file && entry?.kind === 'document' && /\.html?$/i.test(file.name) ? <DocumentSurface key={`${project.id}:${file.name}`} projectId={project.id} fileName={file.name} title={file.artifactManifest?.title || project.name} generation={generation} fallback={viewer} onDirtyChange={dirty => holdDocument(dirty ? entry : null)} onSaved={() => { void onRefresh(); }} />
+      : file && entry?.kind === 'document' && /\.html?$/i.test(file.name) ? <DocumentSurface key={`${project.id}:${file.name}`} projectId={project.id} fileName={file.name} title={file.artifactManifest?.title && file.artifactManifest.title !== file.name ? file.artifactManifest.title : project.name} generation={generation} fallback={viewer} onDirtyChange={dirty => holdDocument(dirty ? entry : null)} onSaved={() => { void onRefresh(); }} />
       : file ? viewer
       : <div role="status" className={styles.cooking}>
           <div className={styles.cookingPreview} aria-hidden="true">
