@@ -1,3 +1,5 @@
+import { artifactEntry, artifactDashboard } from './artifact-entry';
+import { useArtifactHostState } from './useArtifactHostState';
 import { LiveArtifactFeedbackPreview, type ArtifactFeedbackProps } from './LiveArtifactFeedbackPreview';
 import { useRef } from 'react';
 import { useMotionTransport } from './useMotionTransport';
@@ -15,22 +17,15 @@ export function ArtifactSurface({ project, files, dashboards, fileName, generati
 }) {
   const surface = useRef<HTMLDivElement>(null);
   useMotionTransport(project.id, surface);
-  const candidates = files.filter(file => !file.name.startsWith('.') && !file.name.split('/').some(part => part.startsWith('.')));
-  const file = (fileName ? candidates.find(file => file.name === fileName) : undefined)
-    ?? candidates.find(file => file.name === 'index.html')
-    ?? candidates.find(file => file.kind === 'html')
-    ?? candidates.find(file => ['image', 'video', 'audio', 'pdf', 'sketch'].includes(file.kind))
-    ?? candidates.find(file => /\.(md|txt)$/i.test(file.name));
-  const appEntry = candidates.find(item => item.name === 'index.html');
-  const activeDashboards = dashboards.filter(item => item.status !== 'archived');
-  // A separate root entry is the working app; a registered template still needs its rendered snapshot.
-  const showApp = appEntry && activeDashboards.every(item => item.hostTemplatePath !== appEntry.name);
-  const dashboard = !fileName && !showApp ? activeDashboards[0] : undefined;
+  const entry = artifactEntry(files, fileName, project.metadata?.kind as string | undefined);
+  const file = entry?.file;
+  const dashboard = artifactDashboard(files, dashboards, fileName);
+  useArtifactHostState(project.id, entry, Boolean(dashboard));
   return <div ref={surface} className={styles.artifactSurface} data-testid="artifact-surface">
     {dashboard ? <LiveArtifactViewer chrome={false} projectId={project.id} liveArtifact={liveArtifactSummaryToWorkspaceEntry(dashboard)}
         previewRenderer={({ url, source }) => <LiveArtifactFeedbackPreview projectId={project.id} previewUrl={url} source={source} files={files} feedback={feedback} />}
         onRefreshArtifacts={async () => { await onRefresh(); }} />
-      : file ? <FileViewer embedded inlineAnnotations {...feedback} projectId={project.id} projectKind={projectKindFromMetadataToTrackingOrLegacyDefault(project.metadata)} file={file} filesRefreshKey={generation} isDeck={project.metadata?.kind === 'deck'} onFileSaved={async () => { await onRefresh(); }} />
+      : file ? <FileViewer embedded inlineAnnotations {...feedback} projectId={project.id} projectKind={projectKindFromMetadataToTrackingOrLegacyDefault(project.metadata)} file={file} filesRefreshKey={generation} isDeck={entry?.kind === 'deck'} onFileSaved={async () => { await onRefresh(); }} />
       : <div role="status" className={styles.cooking}>
           <div className={styles.cookingPreview} aria-hidden="true">
             <div className={styles.cookingSheet}><span /><span /><span /><div /></div>
