@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { Popover } from 'react-aria-components';
+import { MENU_POPOVER_SURFACE, MENU_POPOVER_WIDTH } from './boardui/menu-styles';
 import { Button } from './boardui/button';
 import { cx } from './boardui/cx';
 import { useEmbeddedMentionBots } from './host-viewer';
@@ -11,6 +13,7 @@ export function CommentMentions({ value, onChange, children }: { value: string; 
   const [dismissed, setDismissed] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const id = useId();
+  const composing = useRef(false);
   const before = value.slice(0, caret);
   const start = before.lastIndexOf('@');
   const query = before.slice(start + 1);
@@ -39,8 +42,8 @@ export function CommentMentions({ value, onChange, children }: { value: string; 
   const updateCaret = (target: EventTarget | null) => {
     if (target instanceof HTMLTextAreaElement) setCaret(target.selectionStart);
   };
-  return <div ref={root} className="relative min-w-0" onInputCapture={event => { updateCaret(event.target); setDismissed(false); setIndex(0); }} onSelectCapture={event => updateCaret(event.target)} onKeyDownCapture={event => {
-    if (event.nativeEvent.isComposing || !options.length) return;
+  return <div ref={root} className="relative min-w-0" onCompositionStartCapture={() => { composing.current = true; }} onCompositionEndCapture={() => { composing.current = false; }} onInputCapture={event => { updateCaret(event.target); setDismissed(false); setIndex(0); }} onSelectCapture={event => updateCaret(event.target)} onKeyDownCapture={event => {
+    if (composing.current || event.nativeEvent.isComposing || !options.length) return;
     if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(event.key)) {
       event.preventDefault(); event.stopPropagation();
       if (event.key === 'Escape') setDismissed(true);
@@ -49,10 +52,14 @@ export function CommentMentions({ value, onChange, children }: { value: string; 
     }
   }}>
     {children}
-    {options.length > 0 ? <div id={id} role="listbox" aria-label="Mention a bot" className="mt-1 flex max-h-40 flex-col gap-1 overflow-y-auto rounded-xl border border-border-button-default bg-background-primary-default p-1 shadow-dropdown">
+    <Popover isOpen={options.length > 0} triggerRef={root} placement="top start" offset={4} isNonModal
+      onOpenChange={open => { if (!open) setDismissed(true); }} shouldCloseOnInteractOutside={element => !root.current?.contains(element)}
+      className={cx(MENU_POPOVER_SURFACE, MENU_POPOVER_WIDTH)}>
+      <div id={id} role="listbox" aria-label="Mention a bot" className="flex max-h-40 flex-col gap-1 overflow-y-auto">
       {options.map((bot, i) => <div key={bot.id} id={`${id}-${i}`} role="option" aria-selected={i === selected}>
-        <Button variant="ghost" size="small" className={cx('w-full justify-start', i === selected && 'bg-background-secondary-hover')} tabIndex={-1} onMouseDown={event => event.preventDefault()} onClick={() => choose(bot.name)}>{bot.name}</Button>
+        <Button variant="secondary" size="small" className={cx('w-full justify-start border-transparent bg-transparent text-text-secondary shadow-none hover:border-transparent hover:bg-background-secondary-hover', i === selected && 'bg-button-ghost-background text-button-ghost-foreground hover:bg-button-ghost-hover')} tabIndex={-1} onMouseDown={event => event.preventDefault()} onClick={() => choose(bot.name)}>{bot.name}</Button>
       </div>)}
-    </div> : null}
+      </div>
+    </Popover>
   </div>;
 }
