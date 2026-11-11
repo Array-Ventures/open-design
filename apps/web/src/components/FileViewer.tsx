@@ -1,3 +1,4 @@
+import { DeckPresentationMenu } from './embedded/DeckPresentationMenu';
 import { CommentThreadMenu } from './embedded/CommentThreadMenu';
 import { ArtifactAnnotationControls } from './embedded/ArtifactAnnotationControls';
 import { SpeakerNotesDrawer } from './embedded/SpeakerNotesDrawer';
@@ -15329,18 +15330,18 @@ function HtmlViewer({
     return ok;
   }
 
-  function presentInThisTab() {
+  function presentInThisTab(withNotes = true) {
     setPresentMenuOpen(false);
     presentFullscreenRequestedRef.current = false;
     setMode('preview');
-    if (effectiveDeck) openPresenterWindow();
+    if (effectiveDeck && withNotes) openPresenterWindow();
     setInTabPresent(true);
     setPresentEscHint(true);
   }
 
-  function presentFullscreen() {
+  function presentFullscreen(withNotes = true) {
     setPresentMenuOpen(false);
-    if (effectiveDeck) openPresenterWindow();
+    if (effectiveDeck && withNotes) openPresenterWindow();
     setMode('preview');
     presentFullscreenRequestedRef.current = true;
     setPresentFullscreenPending(true);
@@ -17813,7 +17814,10 @@ function HtmlViewer({
             ? filePrimaryActions
             : null
       ))(<>
-          {showPresent ? (
+          {showPresent && embedded && effectiveDeck ? <DeckPresentationMenu onPresent={withNotes => {
+            if (withNotes) presentInThisTab(true);
+            else presentFullscreen(false);
+          }} /> : showPresent ? (
             <div className="present-wrap chrome-present-wrap">
               <button
                 className="chrome-action chrome-action-secondary chrome-action-icon present-trigger od-tooltip"

@@ -19,7 +19,7 @@
 // own exit control. It lives in the host document, so it keeps working no
 // matter where focus went — which is exactly what Esc cannot promise.
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { CollabProvider, type CollabContextValue } from '../../src/collab/collab-context';
@@ -238,5 +238,28 @@ describe('presentation overlay exit affordance (OPEND-2156)', () => {
 
     await waitFor(() => expect(overlay()).toBeNull());
     expect(popupClose).toHaveBeenCalled();
+  });
+});
+
+describe('embedded deck presentation intents', () => {
+  it.each([false, true])('opens the notes window only when requested (notes=%s)', async withNotes => {
+    const projectId = `proj-embedded-presentation-${withNotes}`;
+    installDeckFetchMock(projectId);
+    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+    const popupClose = vi.fn();
+    const popup = { closed: false, close: popupClose, focus: vi.fn(), document: { open: vi.fn(), write: vi.fn(), close: vi.fn() } };
+    const open = vi.fn(() => popup);
+    vi.stubGlobal('open', open);
+    render(<Wrap><FileViewer embedded projectId={projectId} projectKind="slide_deck" file={deckFile()} isDeck /></Wrap>);
+    const trigger = await screen.findByRole('button', { name: 'Present' });
+    fireEvent.click(trigger);
+    const menu = await screen.findByRole('dialog', { name: 'Present' });
+    fireEvent.click(within(menu).getByRole('button', { name: withNotes ? 'Present with speaker notes' : 'Present' }));
+    await waitFor(() => expect(overlay()).not.toBeNull());
+    expect(open).toHaveBeenCalledTimes(withNotes ? 1 : 0);
+    fireEvent.click(overlay()!.querySelector('.present-exit-btn')!);
+    await waitFor(() => expect(overlay()).toBeNull());
+    expect(popupClose).toHaveBeenCalledTimes(withNotes ? 1 : 0);
+    expect(screen.getByRole('button', { name: 'Present' })).toBe(trigger);
   });
 });
