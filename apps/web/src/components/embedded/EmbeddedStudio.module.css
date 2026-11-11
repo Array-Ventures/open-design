@@ -375,17 +375,12 @@
 .workspace :global(.comment-popover-compact .comment-side-body) { padding-inline-start: 0; color: var(--color-text-primary); }
 .workspace :global(.comment-popover-compact .comment-side-item-meta) { margin: 0; }
 
-/* Navigation is a sibling of the canvas, so canvas-descendant hover rules never match. */
-.workspace :global(.preview-viewport:hover .deck-floating-nav),
-.workspace :global(.deck-floating-nav:focus-within) {
+/* Cross-frame hover must not be required to reach essential deck navigation. */
+.workspace :global(.deck-floating-nav) {
   opacity: 1;
   transform: translate(-50%, 0);
   pointer-events: auto;
-}
-@media (hover: none) {
-  .workspace :global(.deck-floating-nav) {
-    opacity: 1;
-    transform: translate(-50%, 0);
-    pointer-events: auto;
-  }
+  background: var(--color-background-primary-default);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-button-default);
 }
