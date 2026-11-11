@@ -11,7 +11,7 @@ export const renderEmbeddedButton: ButtonRenderer = ({ variant = 'default', size
   <Button
     {...props}
     ref={ref}
-    className={cx((variant === 'ghost' || variant === 'subtle' || variant === 'primary-ghost') && 'border-transparent bg-transparent text-text-secondary shadow-none hover:border-transparent hover:bg-background-secondary-hover active:bg-background-secondary-default', className)}
+    className={cx((variant === 'ghost' || variant === 'subtle' || variant === 'primary-ghost') && 'border-transparent bg-transparent text-text-secondary shadow-none hover:border-transparent hover:bg-background-secondary-hover active:bg-background-secondary-default', (props['aria-pressed'] === true || props['aria-pressed'] === 'true') && 'bg-button-ghost-background text-button-ghost-foreground hover:bg-button-ghost-hover active:bg-button-ghost-hover', className)}
     iconOnly={size === 'icon'}
     variant={variant === 'primary' ? 'primary' : 'secondary'}
     size={size === 'sm' || size === 'icon' ? 'small' : 'medium'}

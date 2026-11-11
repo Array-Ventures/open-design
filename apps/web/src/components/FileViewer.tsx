@@ -18280,6 +18280,7 @@ function HtmlViewer({
                     sendDisabledReason={t('chat.annotationSendDisabledReason')}
                     onToolbarClick={fireDrawToolbarClick}
                     toolbarHost={manualEditMode ? null : commentComposerHost}
+                    toolbarBottomInset={embedded && showDeckFloatingNav ? 72 : undefined}
                   >
                     <div className="artifact-preview-transport-stack">
                       {OD_PREVIEW_KEEP_ALIVE ? (

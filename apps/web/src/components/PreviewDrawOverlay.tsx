@@ -80,6 +80,8 @@ interface Props {
   sendDisabledReason?: string;
   onToolbarClick?: (element: DrawToolbarElement, submitAction?: AnnotationAction) => void;
   toolbarHost?: HTMLElement | null;
+  /** Keep a docked annotation composer above persistent preview navigation. */
+  toolbarBottomInset?: number;
 }
 
 // Left-to-right order of the three submit buttons. Send is last so it sits
@@ -149,6 +151,7 @@ export function PreviewDrawOverlay({
   sendDisabledReason,
   onToolbarClick,
   toolbarHost,
+  toolbarBottomInset = DRAW_DOCK_MARGIN,
 }: Props) {
   const t = useT();
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -1081,10 +1084,19 @@ export function PreviewDrawOverlay({
       setResolvedToolbarHost(null);
       return;
     }
-    setResolvedToolbarHost(
-      toolbarHost ?? (wrapRef.current?.closest('.viewer-body') as HTMLElement | null) ?? null,
-    );
-  }, [active, toolbarHost]);
+    const canvas = draftOnly ? wrapRef.current?.closest<HTMLElement>('.comment-preview-canvas') : null;
+    const fallback = toolbarHost ?? wrapRef.current?.closest<HTMLElement>('.viewer-body') ?? null;
+    const resolve = () => {
+      // Keep the toolbar out of the slide rail. On small screens the canvas can
+      // be narrower than the controls, so use the surrounding preview there.
+      setResolvedToolbarHost(canvas && canvas.clientWidth >= DRAW_DOCK_MIN_WIDTH + DRAW_DOCK_MARGIN * 2 ? canvas : fallback);
+    };
+    resolve();
+    if (!canvas || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(resolve);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [active, toolbarHost, draftOnly]);
 
   useLayoutEffect(() => {
     if (!active) {
@@ -1141,7 +1153,7 @@ export function PreviewDrawOverlay({
     const safeLeft = DRAW_DOCK_MARGIN;
     const safeTop = DRAW_DOCK_MARGIN;
     const safeRight = Math.max(safeLeft, hostRect.width - dockRect.width - DRAW_DOCK_MARGIN);
-    const safeBottom = Math.max(safeTop, hostRect.height - dockRect.height - DRAW_DOCK_MARGIN);
+    const safeBottom = Math.max(safeTop, hostRect.height - dockRect.height - toolbarBottomInset);
     const centeredLeft = anchorInHost.x + anchorInHost.width / 2 - dockRect.width / 2;
     const centeredTop = anchorInHost.y + anchorInHost.height / 2 - dockRect.height / 2;
     const candidates: Array<{ side: DrawDockSide; left: number; top: number; fits: boolean }> = [
@@ -1207,6 +1219,7 @@ export function PreviewDrawOverlay({
   }, [
     active,
     resolvedToolbarHost,
+    toolbarBottomInset,
     captureTarget,
     layoutRevision,
     imagePreviews.length,
@@ -1451,7 +1464,7 @@ export function PreviewDrawOverlay({
             style={{
               ...previewDrawDockBaseStyle,
               ...dockPlacement.style,
-              ...(draftOnly && dockPlacement.layout === 'docked' ? { left: '50%', maxWidth: 'calc(100% - 24px)' } : {}),
+              ...(draftOnly && dockPlacement.layout === 'docked' ? { left: '50%', bottom: toolbarBottomInset, maxWidth: 'calc(100% - 24px)' } : {}),
             }}
           >
           {captureWarning ? (
