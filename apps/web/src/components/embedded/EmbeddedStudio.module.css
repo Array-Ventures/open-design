@@ -374,3 +374,18 @@
 .workspace :global(.comment-popover-compact .comment-side-author small) { order: -1; color: var(--color-text-primary); font-size: var(--text-caption-1-semibold); line-height: var(--text-caption-1-semibold--line-height); font-weight: var(--text-caption-1-semibold--font-weight); }
 .workspace :global(.comment-popover-compact .comment-side-body) { padding-inline-start: 0; color: var(--color-text-primary); }
 .workspace :global(.comment-popover-compact .comment-side-item-meta) { margin: 0; }
+
+/* Navigation is a sibling of the canvas, so canvas-descendant hover rules never match. */
+.workspace :global(.preview-viewport:hover .deck-floating-nav),
+.workspace :global(.deck-floating-nav:focus-within) {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .workspace :global(.deck-floating-nav) {
+    opacity: 1;
+    transform: translate(-50%, 0);
+    pointer-events: auto;
+  }
+}
