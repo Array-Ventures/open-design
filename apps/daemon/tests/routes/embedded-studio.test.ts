@@ -48,6 +48,24 @@ const register = (body = { id, name: 'Dashboard', kind: 'dashboard', directory }
 });
 
 describe('embedded Studio companion boundary', () => {
+  it('admits scoped replies through the real embedded boundary and rejects runner tails', async () => {
+    await register();
+    const endpoint = `${origin}/api/projects/${id}/conversations/${id}/comments`;
+    const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'x-od-host-human': 'alice' };
+    const target = { filePath: 'index.html', elementId: 'heading', selector: 'h1', label: 'Heading', text: 'Heading', position: { x: 0, y: 0, width: 100, height: 20 }, htmlHint: '' };
+    const root = await (await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ target, note: 'Root note' }) })).json() as { comment: { id: string } };
+    const replies = `${endpoint}/${root.comment.id}/replies`;
+    const created = await fetch(replies, { method: 'POST', headers, body: JSON.stringify({ note: 'Reply note', operationId: backupOwner }) });
+    expect(created.status).toBe(200);
+    const { reply } = await created.json() as { reply: { id: string; revision: number } };
+    expect((await fetch(replies, { headers })).status).toBe(200);
+    const edited = await fetch(`${replies}/${reply.id}`, { method: 'PATCH', headers, body: JSON.stringify({ note: 'Edited reply', expectedRevision: reply.revision }) });
+    expect(edited.status).toBe(200);
+    expect((await fetch(`${replies}/${reply.id}`, { method: 'DELETE', headers, body: JSON.stringify({ expectedRevision: 2 }) })).status).toBe(200);
+    expect((await fetch(`${replies}/run`, { method: 'POST', headers, body: '{}' })).status).toBe(403);
+    expect((await fetch(replies)).status).toBe(401);
+    expect(embeddedOperationAllowed('GET', `/projects/${id}/conversations/another/comments/root/replies`)).toBe(false);
+  });
   it('persists host-authored comments without accepting body identity or another person edits', async () => {
     await register();
     const endpoint = `${origin}/api/projects/${id}/conversations/${id}/comments`;

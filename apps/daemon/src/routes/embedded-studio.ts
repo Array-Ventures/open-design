@@ -59,6 +59,8 @@ export function embeddedOperationAllowed(method: string, pathname: string): bool
   const project = /^\/projects\/([0-9a-f-]+)(?:\/(.*))?$/.exec(pathname);
   if (!project || !UUID.test(project[1]!)) return false;
   const suffix = project[2] ?? '';
+  const replies = new RegExp(`^conversations/${project[1]}/comments/[^/]+/replies(?:/([^/]+))?$`).exec(suffix);
+  if (replies) return (replies[1] ? ['PATCH', 'DELETE'] : ['GET', 'POST']).includes(method);
   const comments = new RegExp(`^conversations/${project[1]}/comments(?:/[^/]+(?:/reorder)?)?$`);
   if (comments.test(suffix)) return ['GET', 'POST', 'PATCH', 'DELETE'].includes(method);
   if (method === 'GET' && !suffix) return true;
