@@ -14,6 +14,22 @@ export function commentContextText(attachments: ChatCommentAttachment[]): string
   ].filter(Boolean).join('\n')).join('\n\n');
 }
 
+export type HostArtifactFeedback = {
+  filePath: string; kind: 'comment' | 'markup'; slideIndex?: number;
+  selector?: string; label?: string; selectedText?: string;
+};
+export function commentFeedbackContext(items: ChatCommentAttachment[]): HostArtifactFeedback[] {
+  return items.map(item => ({ filePath: item.filePath, kind: 'comment',
+    ...(item.slideIndex !== undefined ? { slideIndex: item.slideIndex } : {}),
+    ...(item.selector ? { selector: item.selector.slice(0, 2000) } : {}),
+    ...(item.label ? { label: item.label.slice(0, 200) } : {}),
+    ...(item.currentText ? { selectedText: item.currentText.slice(0, 4000) } : {}),
+  }));
+}
+export function commentFeedbackNote(items: ChatCommentAttachment[]): string {
+  return items.map(item => item.comment.trim()).filter(Boolean).join('\n\n') || 'Update the selected content.';
+}
+
 type HostReply = { requestId: string; accepted: boolean };
 
 function requestHost(projectId: string, type: string, responseType: string, fields: Record<string, unknown> = {}, requestId = crypto.randomUUID(), timeoutMs = 5000): Promise<HostReply> {
@@ -32,9 +48,9 @@ function requestHost(projectId: string, type: string, responseType: string, fiel
 }
 
 /** The host acknowledges staging into its normal composer, never agent execution. */
-export async function stageHostContext(projectId: string, text: string, operationId?: string, preparationId?: string, imagePaths: string[] = []): Promise<boolean> {
+export async function stageHostContext(projectId: string, text: string, operationId?: string, preparationId?: string, imagePaths: string[] = [], feedback: HostArtifactFeedback[] = []): Promise<boolean> {
   if (!text.trim() || text.length > 32_000) return false;
-  return (await requestHost(projectId, 'studio:compose', 'studio:compose-result', { text, ...(preparationId ? { preparationId } : {}), ...(imagePaths.length ? { imagePaths } : {}) }, operationId, 30_000)).accepted;
+  return (await requestHost(projectId, 'studio:compose', 'studio:compose-result', { text, ...(preparationId ? { preparationId } : {}), ...(imagePaths.length ? { imagePaths } : {}), ...(feedback.length ? { feedback } : {}) }, operationId, 30_000)).accepted;
 }
 
 /** Bind a destination before capture/upload; its token accompanies the staged operation. */

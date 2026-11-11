@@ -3,7 +3,7 @@ import { deletePreviewComment, fetchPreviewComments, patchPreviewCommentSortKey,
 import { commentsToAttachments } from '../../comments';
 import type { ChatCommentAttachment, PreviewComment, PreviewCommentTarget } from '../../types';
 import type { CommentSendResult } from '../comment-send-result';
-import { commentContextText, prepareHostFeedback, stageHostContext } from './host-context';
+import { commentFeedbackContext, commentFeedbackNote, prepareHostFeedback, stageHostContext } from './host-context';
 import { FeedbackImageUpload } from './feedback-image-upload';
 
 export function useEmbeddedComments(projectId: string) {
@@ -36,13 +36,13 @@ export function useEmbeddedComments(projectId: string) {
   const send = useCallback(async (attachments: ChatCommentAttachment[], images: File[] = []): Promise<CommentSendResult> => {
     const preparationId = await prepareHostFeedback(projectId);
     if (!preparationId) return { status: 'rejected', commentIds: [] };
-    const text = commentContextText(attachments);
+    const text = commentFeedbackNote(attachments);
+    const feedback = commentFeedbackContext(attachments);
     let prepared: Awaited<ReturnType<FeedbackImageUpload['prepare']>>;
-    try { prepared = await pendingSend.current.prepare(projectId, images, text); }
+    try { prepared = await pendingSend.current.prepare(projectId, images, JSON.stringify([text, feedback])); }
     catch { setNotice('Images could not be saved. Your request was not added to chat.'); return { status: 'rejected', commentIds: [] }; }
     const imagePaths = [...new Set([...prepared.paths, ...attachments.flatMap(item => [item.screenshotPath, ...(item.imageAttachments ?? []).map(image => image.path)]).filter((path): path is string => Boolean(path?.startsWith('.studio-comments/')))])];
-    const extra = prepared.paths.length ? '\n' + prepared.paths.map(path => `Attached image: ${path}`).join('\n') : '';
-    const accepted = await stageHostContext(projectId, text + extra, prepared.operationId, preparationId, imagePaths);
+    const accepted = await stageHostContext(projectId, text, prepared.operationId, preparationId, imagePaths, feedback);
     if (accepted) pendingSend.current.clear();
     setNotice(accepted ? 'Added to your chat draft.' : 'Open a bot or group chat beside Studio, then try adding this request again.');
     return { status: accepted ? 'queued' : 'rejected', commentIds: accepted ? attachments.map((item) => item.id) : [] };
@@ -50,7 +50,7 @@ export function useEmbeddedComments(projectId: string) {
   const save = useCallback(async (target: PreviewCommentTarget, note: string, attach: boolean, images: File[] = [], commentId?: string) => {
     const preparationId = attach ? await prepareHostFeedback(projectId) : null;
     if (attach && !preparationId) return null;
-    const key = JSON.stringify([target.filePath, target.elementId, target.selector, target.slideIndex, target.selectionKind, note]);
+    const key = JSON.stringify([target.filePath, target.elementId, target.selector, target.slideIndex, target.selectionKind, target.text, target.label, note]);
     const pending = pendingSave.current;
     const cached = pending && pending.comment.id === commentId && pending.key === key && (images.length === 0 || (pending.images.length === images.length && pending.images.every((file, index) => file === images[index]))) ? pending : null;
     const existing = cached?.comment ?? comments.find((item) => item.id === commentId);
@@ -67,7 +67,8 @@ export function useEmbeddedComments(projectId: string) {
     generation.current++;
     setComments((current) => [...current.filter((item) => item.id !== saved.id), saved]);
     if (attach) {
-      const accepted = await stageHostContext(projectId, commentContextText(commentsToAttachments([saved])), operationId, preparationId ?? undefined, [...new Set(commentsToAttachments([saved]).flatMap(item => [item.screenshotPath, ...(item.imageAttachments ?? []).map(image => image.path)]).filter((path): path is string => Boolean(path?.startsWith('.studio-comments/'))))]);
+      const selected = commentsToAttachments([saved]);
+      const accepted = await stageHostContext(projectId, commentFeedbackNote(selected), operationId, preparationId ?? undefined, [...new Set(commentsToAttachments([saved]).flatMap(item => [item.screenshotPath, ...(item.imageAttachments ?? []).map(image => image.path)]).filter((path): path is string => Boolean(path?.startsWith('.studio-comments/'))))], commentFeedbackContext(selected));
       setNotice(accepted ? 'Comment saved and added to your Evebot draft.' : 'Comment saved. Try adding it to chat again.');
       if (!accepted) return { ...saved, handoffPending: true };
     }

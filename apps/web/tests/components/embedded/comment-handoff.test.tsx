@@ -33,7 +33,8 @@ describe('saved comment chat handoff', () => {
     expect(answer).toEqual(saved);
     expect(mocks.save).toHaveBeenCalledTimes(1);
     expect(mocks.stage).toHaveBeenCalledTimes(2);
-    expect(mocks.stage.mock.calls[0]?.[1]).toContain('Slide: 4');
+    expect(mocks.stage.mock.calls[0]?.[1]).toBe(saved.note);
+    expect(mocks.stage.mock.calls[0]?.[5]).toEqual([expect.objectContaining({ kind: 'comment', filePath: target.filePath, slideIndex: 3, selector: '[data-od-id="heading"]', selectedText: 'Revenue' })]);
     expect(mocks.stage.mock.calls[0]?.[2]).toBe(mocks.stage.mock.calls[1]?.[2]);
   });
   it('updates the saved identity when the person edits after a failed handoff', async () => {

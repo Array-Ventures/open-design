@@ -22,6 +22,7 @@ type DrawDockLayout = 'floating' | 'docked';
 type DrawDockSide = 'right' | 'left' | 'bottom' | 'top';
 interface CaptureTarget {
   filePath?: string;
+  slideIndex?: number;
   elementId?: string;
   selector?: string;
   label?: string;
@@ -54,6 +55,7 @@ export interface AnnotationEventDetail {
   action: AnnotationAction;
   preparationId?: string;
   filePath?: string;
+  slideIndex?: number;
   markKind?: PreviewVisualMarkKind;
   bounds?: { x: number; y: number; width: number; height: number };
   target?: CaptureTarget | null;
@@ -71,6 +73,7 @@ interface Props {
   captureSnapshot?: () => Promise<PreviewSnapshot | null>;
   captureFrameRect?: () => CaptureFrameRect | null;
   filePath?: string;
+  slideIndex?: number;
   hideChrome?: boolean;
   draftOnly?: boolean;
   onPrepareDraft?: () => Promise<string | null>;
@@ -142,6 +145,7 @@ export function PreviewDrawOverlay({
   captureSnapshot,
   captureFrameRect,
   filePath,
+  slideIndex,
   hideChrome = false,
   draftOnly = false,
   onPrepareDraft,
@@ -1043,6 +1047,7 @@ export function PreviewDrawOverlay({
           action,
           ...(preparationId ? { preparationId } : {}),
           filePath: captureTarget?.filePath || filePath,
+          ...(slideIndex !== undefined ? { slideIndex } : {}),
           markKind: kind,
           bounds: kind ? annotationBounds() : undefined,
           target: captureTarget,

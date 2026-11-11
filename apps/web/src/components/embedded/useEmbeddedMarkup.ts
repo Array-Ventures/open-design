@@ -24,15 +24,11 @@ export function useEmbeddedMarkup(projectId: string, fileNames: string[]) {
           }
           const images = [detail.file, ...(detail.extraFiles ?? [])].filter((file): file is File => file instanceof File);
           if (!images.length && !detail.note.trim()) { detail.ack?.({ ok: false, message: 'Add a note or capture the marked image first.' }); return; }
-          const key = JSON.stringify([detail.filePath, detail.note, detail.markKind, detail.bounds]);
+          const key = JSON.stringify([detail.filePath, detail.note, detail.markKind, detail.bounds, detail.slideIndex]);
           const prepared = await upload.current.prepare(projectId, images, key);
-          const attachments = prepared.paths.map(path => `Attached image: ${path}`);
           if (!active) { detail.ack?.({ ok: false, message: 'Reopen the artifact to add this feedback.' }); return; }
-          const text = [`File: ${detail.filePath}`, 'Feedback: visual markup',
-            detail.markKind ? `Mark: ${detail.markKind}` : '',
-            detail.note.trim() ? `Requested change: ${detail.note.trim()}` : 'Requested change: See the marked image.',
-            ...(images.length ? [] : ['Image capture: unavailable.']), ...attachments].filter(Boolean).join('\n');
-          const accepted = await stageHostContext(projectId, text, prepared.operationId, detail.preparationId, prepared.paths);
+          const text = detail.note.trim() || 'Update the marked area.';
+          const accepted = await stageHostContext(projectId, text, prepared.operationId, detail.preparationId, prepared.paths, [{ filePath: detail.filePath, kind: 'markup', label: 'Visual markup', ...(detail.slideIndex !== undefined ? { slideIndex: detail.slideIndex } : {}) }]);
           if (accepted) upload.current.clear();
           if (active) setNotice(accepted ? 'Added to your chat draft.' : 'Open a chat beside this artifact and try again.');
           detail.ack?.({ ok: accepted, ...(accepted ? {} : { message: 'Open a chat beside this artifact and try again.' }) });
