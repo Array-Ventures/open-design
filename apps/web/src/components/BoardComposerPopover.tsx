@@ -11,6 +11,7 @@ import { Icon } from './Icon';
 import { CommentMentions } from './embedded/CommentMentions';
 import { CommentReviewFilter, ResolveCommentButton, useCommentReview } from './embedded/CommentReview';
 import { CommentThreadMenu } from './embedded/CommentThreadMenu';
+import { SavedCommentThread } from './embedded/SavedCommentThread';
 import { Checkbox } from './embedded/boardui/checkbox';
 import { TextareaBase } from './embedded/boardui/textarea';
 
@@ -458,6 +459,9 @@ export function BoardComposerPopover({
   docked = false,
   commenting = true,
   discardPending = false,
+  onThreadDirty,
+  rootEditIntent = 0,
+  rootSelectionIntent = 0,
 }: {
   target: PreviewCommentSnapshot;
   existing: PreviewComment | null;
@@ -515,8 +519,22 @@ export function BoardComposerPopover({
   commenting?: boolean;
   /** A pick was held back to protect unsent work; the next pick discards it. */
   discardPending?: boolean;
+  onThreadDirty?(dirty: boolean): void;
+  rootEditIntent?: number;
+  rootSelectionIntent?: number;
 }) {
   const commentReview = useCommentReview();
+  const retainedThread = useRef<{ target: string; comment: PreviewComment } | null>(null);
+  const threadTarget = JSON.stringify([target.filePath, target.elementId, target.selector]);
+  if (existing) retainedThread.current = { target: threadTarget, comment: existing };
+  else if (retainedThread.current?.target !== threadTarget) retainedThread.current = null;
+  const threadComment = existing ?? retainedThread.current?.comment ?? null;
+  const [editingRoot, setEditingRoot] = useState(false);
+  useLayoutEffect(() => { setEditingRoot(false); }, [existing?.id]);
+  useLayoutEffect(() => { setEditingRoot(rootEditIntent > 0); }, [rootEditIntent, rootSelectionIntent]);
+  const savedThread = compact && threadComment && commentReview?.projectId && onThreadDirty;
+  const rootDirty = Boolean(threadComment && (images.length || notes.length || draft.trim() !== threadComment.note.trim()));
+  const readingThread = Boolean(savedThread && !editingRoot && !rootDirty);
   const pendingCount = notes.length + (draft.trim() ? 1 : 0);
   const podMembers = target.podMembers ?? [];
   const composingRef = useRef(false);
@@ -693,7 +711,7 @@ export function BoardComposerPopover({
         }
       }}
     >
-      {!docked ? (
+      {!docked && (!readingThread || commentsView) ? (
         <div className="comment-popover-titlebar">
           <button
             type="button"
@@ -733,7 +751,11 @@ export function BoardComposerPopover({
           outside this box (see below) so a height-clamped card can never push
           the buttons out of view. */}
       <div className="comment-popover-body">
-        {commentsView ?? <><section className="comment-popover-section comment-popover-section-params">
+        {commentsView}
+        {savedThread && threadComment && commentReview?.projectId && onThreadDirty ? <SavedCommentThread key={threadComment.id} projectId={commentReview.projectId} comment={threadComment} deleted={!existing} hidden={!readingThread || Boolean(commentsView)} onDirty={onThreadDirty}
+          onClose={onClose} onViewAll={onViewAllComments ? () => onViewAllComments() : undefined} onEditRoot={() => setEditingRoot(true)} onDeleteRoot={onDeleteComment ? () => onDeleteComment(threadComment.id) : undefined}
+          canEditRoot={Boolean(existing && canEditComment)} canDeleteRoot={Boolean(existing && canDeleteComment)} existingImages={existingImages} /> : null}
+        {!commentsView && !readingThread ? <><section className="comment-popover-section comment-popover-section-params">
           <AnnotationStyleSummary target={target} testId="comment-popover-style-summary" />
         </section>
         {podMembers.length > 0 ? (
@@ -877,14 +899,14 @@ export function BoardComposerPopover({
             ) : null}
           </section>
         ) : null}
-        </>}
+        </> : null}
       </div>
-      {commenting && !commentsView && compact ? (
+      {commenting && !commentsView && !readingThread && compact ? (
         <div className="comment-popover-actions">
           {canEditComment && canSendToAgent && allowSendToChat ? <Checkbox size="sm" isSelected={addToChat} onChange={setAddToChat} isDisabled={sending || sendDisabled}>Add to chat</Checkbox> : <span />}
           {canEditComment ? <Button size="icon" variant="ghost" data-testid="comment-popover-save" aria-label="Add comment" title="Add comment" disabled={saveDisabled || (addToChat && sendBlocked)} onClick={() => void onSaveComment(addToChat)}><Icon name="arrow-up" size={16} /></Button> : canSendToAgent && allowSendToChat ? <Button size="icon" variant="ghost" data-testid="comment-add-send" aria-label="Add to chat" title="Add to chat" disabled={sendBlocked} onClick={() => void onSendBatch()}><Icon name="arrow-up" size={16} /></Button> : null}
         </div>
-      ) : commenting && !commentsView ? (
+      ) : commenting && !commentsView && !readingThread ? (
         <div className="comment-popover-actions">
           <div className="comment-popover-actions-start">
             {onAttachImages && canEditComment ? (

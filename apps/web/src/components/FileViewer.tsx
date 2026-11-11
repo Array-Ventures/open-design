@@ -4835,7 +4835,7 @@ export function CommentSidePanel({
   currentUser?: CollabCloudMemberDirectoryEntry | null;
   onClearSelection: () => void;
   onReorder?: (orderedIds: string[], draggedId: string) => void;
-  onReply: (comment: PreviewComment) => void;
+  onReply: (comment: PreviewComment, editRoot?: boolean) => void;
   onSendSelected: () => void | Promise<void>;
   onCreateComment?: (note: string) => boolean | Promise<boolean>;
   sending: boolean;
@@ -5097,7 +5097,7 @@ export function CommentSidePanel({
                   displayNumber={displayCommentNumber(comment, index)}
                   t={t}
                 />
-                {threadActions ? <><ResolveCommentButton comment={comment} allowed={threadActions.canDelete(comment)} blocked={threadActions.canResolve ? !threadActions.canResolve(comment) : false} /><CommentThreadMenu onReopen={comment.status === 'resolved' && threadActions.canDelete(comment) && commentReview ? () => commentReview.changeStatus(comment.id, 'open') : undefined} canEdit={threadActions.canEdit(comment)} canDelete={threadActions.canDelete(comment)} onEdit={() => onReply(comment)} onDelete={() => threadActions.remove(comment)} /></> : sendable ? (
+                {threadActions ? <><ResolveCommentButton comment={comment} allowed={threadActions.canDelete(comment)} blocked={threadActions.canResolve ? !threadActions.canResolve(comment) : false} /><CommentThreadMenu onReopen={comment.status === 'resolved' && threadActions.canDelete(comment) && commentReview ? () => commentReview.changeStatus(comment.id, 'open') : undefined} canEdit={threadActions.canEdit(comment)} canDelete={threadActions.canDelete(comment)} onEdit={() => onReply(comment, true)} onDelete={() => threadActions.remove(comment)} /></> : sendable ? (
                   <button
                     type="button"
                     className={`comment-side-check${selected ? ' checked' : ''}`}
@@ -5344,7 +5344,7 @@ function CommentSideDock({
   onSelectAll: () => void;
   onClearSelection: () => void;
   onReorder?: (orderedIds: string[], draggedId: string) => void;
-  onReply: (comment: PreviewComment) => void;
+  onReply: (comment: PreviewComment, editRoot?: boolean) => void;
   onSendSelected: () => void | Promise<void>;
   onCreateComment?: (note: string) => boolean | Promise<boolean>;
   /** Team-collab gate: which comments the viewer may send to the agent (author
@@ -9561,6 +9561,11 @@ function HtmlViewer({
   // Don't let a pending dismiss outlive the component.
   useEffect(() => cancelHoverCardDismiss, [cancelHoverCardDismiss]);
   const [activePreviewCommentId, setActivePreviewCommentId] = useState<string | null>(null);
+  const activeCommentLifetime = useRef({ key: '', revision: 0 });
+  const activeCommentKey = JSON.stringify([projectId, file.name, activePreviewCommentId]);
+  if (activeCommentLifetime.current.key !== activeCommentKey) activeCommentLifetime.current = { key: activeCommentKey, revision: activeCommentLifetime.current.revision + 1 };
+  const [rootEditIntent, setRootEditIntent] = useState(0);
+  const [rootSelectionIntent, setRootSelectionIntent] = useState(0);
   const [commentLocationIntent, setCommentLocationIntent] = useState(0);
   const [missingCommentLocation, setMissingCommentLocation] = useState<{
     commentId: string; previewKey: string; intent: number;
@@ -9612,12 +9617,13 @@ function HtmlViewer({
   }, [boardImages]);
   // Read through refs inside the preview message listener, so a keystroke in
   // the draft does not re-subscribe it.
-  const composerHoldsUnsentWork = Boolean(activeCommentTarget) && composerHasUnsentWork({
+  const [threadDraftDirty, setThreadDraftDirty] = useState(false);
+  const composerHoldsUnsentWork = Boolean(activeCommentTarget) && (threadDraftDirty || composerHasUnsentWork({
     draft: commentDraft,
     queuedNoteCount: queuedBoardNotes.length,
     freshImageCount: boardImages.length,
     savedNote: currentActiveComposerComment()?.note ?? null,
-  });
+  }));
   const composerHoldsUnsentWorkRef = useRef(composerHoldsUnsentWork);
   composerHoldsUnsentWorkRef.current = composerHoldsUnsentWork;
   const commentReselectPendingRef = useRef(false);
@@ -9633,9 +9639,10 @@ function HtmlViewer({
    * discard, which shows the notice; the next pick confirms it and retargets.
    * Editing the draft disarms. Every pick path retargets through here.
    */
-  const requestComposerRetarget = useCallback((applyRetarget: () => void) => {
+  const requestComposerRetarget = useCallback((applyRetarget: () => void, editRoot = false) => {
+    const apply = () => { activeCommentLifetime.current = { key: activeCommentLifetime.current.key, revision: activeCommentLifetime.current.revision + 1 }; setRootSelectionIntent(intent => intent + 1); if (!editRoot) setRootEditIntent(0); applyRetarget(); };
     if (inlineAnnotations && window.parent !== window && composerHoldsUnsentWorkRef.current) {
-      void confirmHostFeedbackDiscard(projectId, 'comment').then(discard => { if (discard) { disarmComposerDiscard(); applyRetarget(); } });
+      void confirmHostFeedbackDiscard(projectId, 'comment').then(discard => { if (discard) { disarmComposerDiscard(); apply(); } });
       return;
     }
     if (composerHoldsUnsentWorkRef.current && !composerDiscardArmedRef.current) {
@@ -9644,7 +9651,7 @@ function HtmlViewer({
       return;
     }
     disarmComposerDiscard();
-    applyRetarget();
+    apply();
   }, [disarmComposerDiscard, inlineAnnotations, projectId]);
   const [commentSavedToast, setCommentSavedToast] = useState<string | null>(null);
   const [templateSavedToast, setTemplateSavedToast] = useState<string | null>(null);
@@ -15447,6 +15454,8 @@ function HtmlViewer({
   }
 
   function clearBoardComposer() {
+    setThreadDraftDirty(false);
+    setRootEditIntent(0);
     commentReselectPendingRef.current = false;
     setCommentListInPopover(false);
     disarmComposerDiscard();
@@ -17115,8 +17124,9 @@ function HtmlViewer({
     : null;
   const unavailableCommentId = boardMode ? lostSelectedCommentId : null;
   const removeComment = onRemovePreviewComment ? async (commentId: string) => {
+    const lifetime = activeCommentLifetime.current;
     if (!await onRemovePreviewComment(commentId)) return;
-    clearBoardComposer();
+    if (activeCommentLifetime.current === lifetime) clearBoardComposer();
     setSelectedSideCommentIds(current => { const next = new Set(current); next.delete(commentId); return next; });
     setActivePreviewCommentId(current => current === commentId ? null : current);
   } : undefined;
@@ -17169,12 +17179,8 @@ function HtmlViewer({
         const sortKey = computeReorderedSortKey(visibleSideComments, orderedIds, draggedId);
         void onReorderPreviewComment?.(draggedId, sortKey);
       }}
-      onReply={(comment) => {
-        // Reply == edit on a flat-thread model: prefill the
-        // popover with the existing note so the user sees and
-        // mutates the current text. Save runs through the
-        // same upsert path; matching project/conv/file/element
-        // updates note in place rather than creating a new row.
+      onReply={(comment, editRoot) => {
+        // Normal selection opens the saved thread; Edit explicitly opens the root editor.
         const snapshot = liveSnapshotForComment(comment, liveCommentTargets) ?? {
           filePath: comment.filePath,
           elementId: comment.elementId,
@@ -17195,6 +17201,7 @@ function HtmlViewer({
           setActiveCommentTarget(needsLocation ? null : snapshot);
           setHoveredCommentTarget(needsLocation ? null : snapshot);
           setActivePreviewCommentId(comment.id);
+          if (editRoot) setRootEditIntent(intent => intent + 1);
           setCommentDraft(comment.note);
           setQueuedBoardNotes([]);
           setActiveCommentExistingAttachments(comment.attachments ?? []);
@@ -17203,7 +17210,7 @@ function HtmlViewer({
           if (!commentListInPopover) setCommentPanelOpen(!inlineAnnotations);
           setCommentListInPopover(false);
           setCommentSidePanelCollapsed(false);
-        });
+        }, Boolean(editRoot));
       }}
       onSendSelected={async () => {
         if (!onSendBoardCommentAttachments) return;
@@ -17258,6 +17265,9 @@ function HtmlViewer({
       canDeleteComment={canDeleteActiveComment}
       canSendToAgent={canSendActiveComment}
       draft={commentDraft}
+      onThreadDirty={setThreadDraftDirty}
+      rootEditIntent={rootEditIntent}
+      rootSelectionIntent={rootSelectionIntent}
       notes={queuedBoardNotes}
       discardPending={composerDiscardPending && composerHoldsUnsentWork}
       onDraft={(value) => {

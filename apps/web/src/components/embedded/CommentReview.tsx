@@ -5,15 +5,16 @@ import { Button } from './boardui/button';
 import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem } from './boardui/dropdown';
 
 type Review = {
+  projectId?: string;
   showResolved: boolean;
   setShowResolved(value: boolean): void;
   changeStatus(id: string, status: 'open' | 'resolved'): Promise<boolean>;
 };
 const ReviewContext = createContext<Review | null>(null);
 export const useCommentReview = () => useContext(ReviewContext);
-export function CommentReviewProvider({ changeStatus, children }: { changeStatus: Review['changeStatus']; children: ReactNode }) {
+export function CommentReviewProvider({ projectId, changeStatus, children }: { projectId?: string; changeStatus: Review['changeStatus']; children: ReactNode }) {
   const [showResolved, setShowResolved] = useState(false);
-  const value = useMemo(() => ({ showResolved, setShowResolved, changeStatus }), [showResolved, changeStatus]);
+  const value = useMemo(() => ({ ...(projectId ? { projectId } : {}), showResolved, setShowResolved, changeStatus }), [projectId, showResolved, changeStatus]);
   return <ReviewContext.Provider value={value}>{children}</ReviewContext.Provider>;
 }
 
