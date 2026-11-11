@@ -355,25 +355,25 @@
 }
 
 /* The selected text, note and one submit action mirror a compact comment card. */
-.workspace :global(.comment-popover-compact .comment-popover-drag-handle) { display: none; }
-.workspace :global(.comment-popover-compact .comment-popover-titlebar) { border: 0; padding: 8px 12px 0; gap: 4px; }
-.workspace :global(.comment-popover-compact .comment-popover-quote) { color: var(--color-text-tertiary); }
-.workspace :global(.comment-popover-compact .comment-popover-actions) { border: 0; padding: 4px 12px 12px; justify-content: space-between; }
-.workspace :global(.comment-popover-compact .annotation-input-shell) { border: 0 !important; background: transparent !important; box-shadow: none !important; outline: none !important; }
-.workspace :global(.comment-popover-compact .annotation-input-shell textarea) { min-height: 48px; resize: none; }
+.hostTypography :global(.comment-popover-compact .comment-popover-drag-handle) { display: none; }
+.hostTypography :global(.comment-popover-compact .comment-popover-titlebar) { border: 0; padding: 8px 12px 0; gap: 4px; }
+.hostTypography :global(.comment-popover-compact .comment-popover-quote) { color: var(--color-text-tertiary); }
+.hostTypography :global(.comment-popover-compact .comment-popover-actions) { border: 0; padding: 4px 12px 12px; justify-content: space-between; }
+.hostTypography :global(.comment-popover-compact .annotation-input-shell) { border: 0 !important; background: transparent !important; box-shadow: none !important; outline: none !important; }
+.hostTypography :global(.comment-popover-compact .annotation-input-shell textarea) { min-height: 48px; resize: none; }
 
-.workspace :global(.comment-popover-compact .comment-popover-section + .comment-popover-section) { border: 0; margin: 0; padding: 0; }
-.workspace :global(.comment-popover-compact .annotation-input-shell textarea) { height: 56px !important; min-height: 56px; max-height: 96px; }
-.workspace :global(.comment-popover-compact .comment-side-dock) { height: auto; min-height: 0; }
-.workspace :global(.comment-popover-compact .comment-side-panel) { height: auto; min-height: 0; }
-.workspace :global(.comment-popover-compact .comment-side-header:has(.comment-side-select-all)) { display: none; }
-.workspace :global(.comment-popover-compact .comment-side-list) { flex: 0 1 auto; max-height: 32vh; padding: 8px 4px; gap: 8px; }
-.workspace :global(.comment-popover-compact .comment-side-item) { padding: 12px; gap: 8px; border-radius: 12px; background: var(--color-background-secondary-default); color: var(--color-text-primary); }
-.workspace :global(.comment-popover-compact .comment-side-drag-handle) { display: none; }
-.workspace :global(.comment-popover-compact .comment-side-author strong) { color: var(--color-text-secondary); font-size: var(--text-caption-1-regular); line-height: var(--text-caption-1-regular--line-height); font-weight: var(--text-caption-1-regular--font-weight); }
-.workspace :global(.comment-popover-compact .comment-side-author small) { order: -1; color: var(--color-text-primary); font-size: var(--text-caption-1-semibold); line-height: var(--text-caption-1-semibold--line-height); font-weight: var(--text-caption-1-semibold--font-weight); }
-.workspace :global(.comment-popover-compact .comment-side-body) { padding-inline-start: 0; color: var(--color-text-primary); }
-.workspace :global(.comment-popover-compact .comment-side-item-meta) { margin: 0; }
+.hostTypography :global(.comment-popover-compact .comment-popover-section + .comment-popover-section) { border: 0; margin: 0; padding: 0; }
+.hostTypography :global(.comment-popover-compact .annotation-input-shell textarea) { height: 56px !important; min-height: 56px; max-height: 96px; }
+.hostTypography :global(.comment-popover-compact .comment-side-dock) { height: auto; min-height: 0; }
+.hostTypography :global(.comment-popover-compact .comment-side-panel) { height: auto; min-height: 0; }
+.hostTypography :global(.comment-popover-compact .comment-side-header:has(.comment-side-select-all)) { display: none; }
+.hostTypography :global(.comment-popover-compact .comment-side-list) { flex: 0 1 auto; max-height: 32vh; padding: 8px 4px; gap: 8px; }
+.hostTypography :global(.comment-popover-compact .comment-side-item) { padding: 12px; gap: 8px; border-radius: 12px; background: var(--color-background-secondary-default); color: var(--color-text-primary); }
+.hostTypography :global(.comment-popover-compact .comment-side-drag-handle) { display: none; }
+.hostTypography :global(.comment-popover-compact .comment-side-author strong) { color: var(--color-text-secondary); font-size: var(--text-caption-1-regular); line-height: var(--text-caption-1-regular--line-height); font-weight: var(--text-caption-1-regular--font-weight); }
+.hostTypography :global(.comment-popover-compact .comment-side-author small) { order: -1; color: var(--color-text-primary); font-size: var(--text-caption-1-semibold); line-height: var(--text-caption-1-semibold--line-height); font-weight: var(--text-caption-1-semibold--font-weight); }
+.hostTypography :global(.comment-popover-compact .comment-side-body) { padding-inline-start: 0; color: var(--color-text-primary); }
+.hostTypography :global(.comment-popover-compact .comment-side-item-meta) { margin: 0; }
 
 /* Cross-frame hover must not be required to reach essential deck navigation. */
 .workspace :global(.deck-floating-nav) {
@@ -397,3 +397,16 @@
 .workspace :global(.deck-floating-reset kbd) { color: var(--color-text-secondary); background: var(--color-background-tertiary-default); }
 .workspace :global(.deck-floating-button:hover:not(:disabled)),
 .workspace :global(.deck-floating-reset:hover:not(:disabled)) { color: var(--color-text-primary); background: var(--color-background-secondary-hover); }
+
+/* Comment cards may be portalled; constrain the actual icon hit areas there too. */
+.hostTypography :global(.comment-popover-compact .comment-popover-titlebar > button) { flex: 0 0 32px; width: 32px; height: 32px; padding: 0; }
+.hostTypography :global(.comment-popover-compact .comment-popover-titlebar > button svg) { flex-shrink: 0; }
+.hostTypography :global(.comment-popover-compact .comment-popover-title) { min-width: 0; }
+.workspace :global(.comment-target-overlay) { background: transparent; box-shadow: none; border-color: var(--color-border-focus-ring); }
+@media (max-width: 560px) {
+  .workspace :global(.deck-floating-nav) { gap: 4px; padding: 4px; max-width: calc(100% - 16px); }
+  .workspace :global(.deck-floating-count) { min-width: 40px; }
+  .workspace :global(.deck-floating-button) { width: 32px; flex: 0 0 32px; }
+  .workspace :global(.deck-floating-reset) { padding: 0 4px; }
+  .workspace :global(.deck-floating-reset kbd) { display: none; }
+}

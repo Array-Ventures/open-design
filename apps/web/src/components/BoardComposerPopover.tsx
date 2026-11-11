@@ -8,6 +8,7 @@ import type { PreviewComment, PreviewCommentMember } from '../types';
 import { isImeComposing } from '../utils/imeComposing';
 
 import { Icon } from './Icon';
+import { CommentMentions } from './embedded/CommentMentions';
 import { CommentThreadMenu } from './embedded/CommentThreadMenu';
 import { Checkbox } from './embedded/boardui/checkbox';
 import { TextareaBase } from './embedded/boardui/textarea';
@@ -817,7 +818,7 @@ export function BoardComposerPopover({
                 ))}
               </div>
             ) : null}
-            <ComposerTextarea
+            <CommentMentions value={draft} onChange={onDraft}><ComposerTextarea
               {...(compact ? { fieldClassName: "annotation-input-shell", rows: 2, resize: "none" as const } : {})}
               data-testid="comment-popover-input"
               className={!canEditComment ? 'composer-note--readonly' : undefined}
@@ -855,6 +856,7 @@ export function BoardComposerPopover({
                 }
               }}
             />
+            </CommentMentions>
             {/* OP2: explain WHY the textarea is read-only when it's specifically
                 a share-page (external) comment — team-member-vs-team-member
                 read-only (OP3) has no such reason line, board only asked for
