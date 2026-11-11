@@ -44,3 +44,11 @@ it('never treats captured feedback images as the artifact primary', () => {
   expect(artifactEntry([captured], null, 'image')).toBeNull();
   expect(artifactEntry([captured, file('index.html')], captured.name)?.file.name).toBe('index.html');
 });
+
+
+it('keeps supporting document images out of primary selection and prefers a typed document', () => {
+  const uploaded = { ...file('_studio-document-assets/image.png'), kind: 'image' as const };
+  expect(artifactEntry([uploaded, file('report.md')], null)?.file.name).toBe('report.md');
+  expect(artifactEntry([{ ...file('images/photo.png'), kind: 'image' }, file('report.md'), file('index.html')], null, 'document')?.file.name).toBe('report.md');
+  expect(artifactEntry([{ ...file('report.markdown'), kind: 'text' }], null)?.kind).toBe('document');
+});

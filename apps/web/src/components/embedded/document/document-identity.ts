@@ -1,11 +1,12 @@
 import { $getState, $getRoot, $isElementNode, $setState, createState, ParagraphNode, type DOMConversionMap, type HTMLConfig, type Klass, type LexicalNode } from 'lexical';
+import { DocumentImageNode } from './DocumentImageNode';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { CodeNode } from '@lexical/code';
 import { ListItemNode, ListNode } from '@lexical/list';
 import { TableCellNode, TableNode } from '@lexical/table';
 
 export const documentBlockId = createState('eveDocumentBlockId', { parse: value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(value) ? value : '' });
-const blocks: readonly Klass<LexicalNode>[] = [ParagraphNode, HeadingNode, QuoteNode, ListItemNode, TableCellNode, CodeNode, ListNode, TableNode];
+const blocks: readonly Klass<LexicalNode>[] = [ParagraphNode, HeadingNode, QuoteNode, ListItemNode, TableCellNode, CodeNode, ListNode, TableNode, DocumentImageNode];
 
 /** Keep saved annotation identities when importing and exporting structured text. */
 export function documentHtmlConfig(): HTMLConfig {
@@ -18,6 +19,11 @@ export function documentHtmlConfig(): HTMLConfig {
     }
     exports.set(Block, (editor, node) => {
       const output = node.exportDOM(editor);
+      // Do not freeze the SDK's placeholder column width or implicit start alignment.
+      if (node instanceof TableCellNode && output.element instanceof HTMLElement) {
+        if (!node.getWidth()) output.element.style.removeProperty('width');
+        if (!node.getFormatType() && output.element.style.textAlign === 'start') output.element.style.removeProperty('text-align');
+      }
       const id = $getState(node, documentBlockId);
       if (id && output.element instanceof HTMLElement) output.element.setAttribute('data-od-id', id);
       return output;

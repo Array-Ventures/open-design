@@ -5,6 +5,7 @@ import { $isLinkNode } from '@lexical/link';
 import { $isCodeNode } from '@lexical/code';
 import { $isTableCellNode, $isTableNode, TableNode } from '@lexical/table';
 import { documentBlockId, documentFont, documentHeadingFont, documentIdentityGroups } from './document-identity';
+import { $isDocumentImageNode, DocumentImageNode } from './DocumentImageNode';
 import { encodeMarkdownDocument } from './markdown-document';
 
 /** Preserve formatting that standard Markdown cannot express as valid inline/block HTML. */
@@ -27,6 +28,13 @@ export function serializeMarkdownDocument(editor: LexicalEditor): string {
     const language = node.getLanguage() ?? '';
     return `${fence}${language}${text ? `\n${text}` : ''}\n${fence}`;
   } };
+  const imageHtml = (node: LexicalNode) => {
+    if (!$isDocumentImageNode(node)) return null;
+    const element = node.exportDOM(editor).element;
+    return element instanceof HTMLElement ? element.outerHTML : null;
+  };
+  const image: ElementTransformer = { type: 'element', dependencies: [DocumentImageNode], regExp: /a^/, replace: () => false, export: imageHtml };
+  const nestedImage: TextMatchTransformer = { type: 'text-match', dependencies: [DocumentImageNode], regExp: /a^/, export: imageHtml };
   const table: ElementTransformer = {
     type: 'element', dependencies: [TableNode], regExp: /a^/, replace: () => false,
     export: (node, children) => {
@@ -71,6 +79,6 @@ export function serializeMarkdownDocument(editor: LexicalEditor): string {
     type: 'element', dependencies: [], regExp: /a^/, replace: () => false,
     export: node => $isElementNode(node) && !['', 'left', 'start'].includes(node.getFormatType()) ? htmlFor(node) : null,
   };
-  const body = $convertToMarkdownString([code, table, alignedBlock, styledText, literalText, link, ...TRANSFORMERS]);
+  const body = $convertToMarkdownString([image, code, table, alignedBlock, nestedImage, styledText, literalText, link, ...TRANSFORMERS]);
   return encodeMarkdownDocument(body, { version: 1, fonts: { text: $getState($getRoot(), documentFont), headings: $getState($getRoot(), documentHeadingFont) }, ids: documentIdentityGroups() });
 }

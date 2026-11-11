@@ -2226,6 +2226,24 @@ describe('cancelConnectorAuthorization', () => {
 });
 
 describe('uploadProjectFiles', () => {
+  it('streams the destination before file parts and forwards editor cancellation', async () => {
+    const file = new File(['image'], 'figure.png', { type: 'image/png' });
+    const signal = new AbortController().signal;
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      files: [{ name: '_studio-document-assets/server.png', path: '_studio-document-assets/server.png', size: 5 }],
+    }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await uploadProjectFiles('project-1', [file], '_studio-document-assets', undefined, signal);
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/api/projects/project-1/upload');
+    expect(init?.signal).toBe(signal);
+    expect([...(init?.body as FormData).keys()]).toEqual(['dir', 'files']);
+    expect((init?.body as FormData).get('dir')).toBe('_studio-document-assets');
+    expect(result.uploaded[0]?.path).toBe('_studio-document-assets/server.png');
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();

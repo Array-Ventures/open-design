@@ -1,3 +1,5 @@
+import { markdownDirectory, markdownRelativeProjectPath, markdownImageSourceUrl } from './markdown-image-path';
+export { markdownImageSourceUrl } from './markdown-image-path';
 import type { CommentSaveResult } from './comment-send-result';
 import { confirmHostFeedbackDiscard, prepareHostFeedback } from './embedded/host-context';
 import { CommentMentions } from './embedded/CommentMentions';
@@ -720,7 +722,6 @@ const MARKDOWN_CODE_LANGUAGE_ATTR = 'data-code-language';
 const MARKDOWN_COPY_BLOCK_ATTR = 'data-copy-code-block';
 const MARKDOWN_COPY_BUTTON_CLASS = 'markdown-code-copy';
 const MARKDOWN_COPY_TOAST_CLASS = 'markdown-code-toast';
-const ABSOLUTE_MARKDOWN_IMAGE_SOURCE_RE = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
 
 const DEPLOY_PROVIDER_OPTIONS: DeployProviderOption[] = [
   {
@@ -976,59 +977,6 @@ function rewriteMarkdownImageSources(
     const loadingAttr = /\sloading=/.test(attrs) ? '' : ' loading="lazy"';
     return `<img${before}src="${escapeHtmlAttribute(resolved)}"${loadingAttr}${after}>`;
   });
-}
-
-export function markdownImageSourceUrl(
-  projectId: string,
-  markdownPath: string,
-  src: string,
-  workspaceContext?: WorkspaceCollabContext | null,
-): string | null {
-  const trimmed = src.trim();
-  if (!trimmed) return null;
-  if (ABSOLUTE_MARKDOWN_IMAGE_SOURCE_RE.test(trimmed)) return trimmed;
-  const relativePath = trimmed.startsWith('/')
-    ? normalizeMarkdownProjectPath(trimmed.slice(1))
-    : normalizeMarkdownProjectPath(`${markdownDirectory(markdownPath)}/${trimmed}`);
-  return relativePath
-    ? projectFileUrl(projectId, relativePath, workspaceContext)
-    : null;
-}
-
-function markdownDirectory(path: string): string {
-  const normalized = normalizeMarkdownProjectPath(path);
-  const slash = normalized.lastIndexOf('/');
-  return slash > 0 ? normalized.slice(0, slash) : '';
-}
-
-function normalizeMarkdownProjectPath(path: string): string {
-  const parts: string[] = [];
-  for (const raw of path.replace(/\\/g, '/').split('/')) {
-    const part = raw.trim();
-    if (!part || part === '.') continue;
-    if (part === '..') {
-      parts.pop();
-      continue;
-    }
-    parts.push(part);
-  }
-  return parts.join('/');
-}
-
-function markdownRelativeProjectPath(fromPath: string, targetPath: string): string {
-  const fromDir = markdownDirectory(fromPath);
-  const target = normalizeMarkdownProjectPath(targetPath);
-  if (!fromDir) return target;
-  if (target.startsWith(`${fromDir}/`)) return target.slice(fromDir.length + 1);
-  const fromParts = fromDir.split('/').filter(Boolean);
-  const targetParts = target.split('/').filter(Boolean);
-  let common = 0;
-  while (common < fromParts.length && common < targetParts.length && fromParts[common] === targetParts[common]) {
-    common += 1;
-  }
-  const up = Array.from({ length: fromParts.length - common }, () => '..');
-  const down = targetParts.slice(common);
-  return [...up, ...down].join('/') || target;
 }
 
 function decodeHtmlAttribute(value: string): string {

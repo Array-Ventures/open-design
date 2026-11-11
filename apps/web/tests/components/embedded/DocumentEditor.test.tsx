@@ -5,6 +5,8 @@ import { $getRoot, $getSelection, $isRangeSelection, $isTextNode, $isElementNode
 import { DocumentEditor } from '../../../src/components/embedded/document/DocumentEditor';
 import { DocumentSurface } from '../../../src/components/embedded/document/DocumentSurface';
 import { documentHtml } from '../../../src/components/embedded/document/document-html';
+const imageUpload = vi.hoisted(() => vi.fn());
+vi.mock('../../../src/components/embedded/document/document-image-upload', () => ({ uploadDocumentImage: imageUpload }));
 const save = vi.hoisted(() => vi.fn());
 const read = vi.hoisted(() => vi.fn());
 vi.mock('../../../src/components/embedded/document/document-file', () => ({ saveDocumentFile: save, readDocumentFile: read }));
@@ -155,6 +157,10 @@ it.each([
   ['embedded code fences and spans', '# Report\n\n````md\nbefore\n```\nafter\n````\n\n``a`b``'],
   ['literal entity references in links', '# Report\n\n[x](<https://example.test/?q=&amp;copy;> "&amp;copy;")'],
   ['hard breaks', '# Report\n\nfirst  \nsecond\n\n- list first  \n  list second'],
+  ['nested inline image', '# Report\n\n<p>Before <span><img src="image.png" alt="Inline"></span> after.</p>'],
+  ['nested linked image', '# Report\n\n<p><a href="./related.md"><span><img src="image.png" alt="Linked"></span></a></p>'],
+  ['image heading list and table', '# Report\n\n<h2>Title <img src="image.png" alt="Heading"></h2><ul><li>Before<img src="image.png" alt="List">after</li></ul><table><tr><td><img src="image.png" alt="Cell"></td></tr></table>'],
+  ['independent image aspect ratio', '# Report\n\n<img src="image.png" alt="Ratio" style="aspect-ratio:2/1">'],
   ['GFM column alignment', '# Report\n\n| Left | Middle | Right |\n| :--- | :---: | ---: |\n| One | Two | Three |'],
 ])('preserves %s through an unrelated edit and reopen', async (_name, source) => {
   const { readMarkdownDocument, finalizeMarkdownDocument } = await import('../../../src/components/embedded/document/markdown-document');
@@ -162,7 +168,7 @@ it.each([
   save.mockImplementation(async (_project, _file, content) => ({ ...await readMarkdownDocument(await finalizeMarkdownDocument(content), 'Report'), sha256: 'saved', format: 'markdown' }));
   const view = render(<DocumentEditor projectId="fixture" fileName="report.md" title="Report" observed={markdown} onSaved={() => {}} />);
   const snapshot = () => editor().getEditorState().read(() => {
-    const collect = (node: import('lexical').LexicalNode): unknown => ({ type: node.getType(), text: $isTextNode(node) ? node.getTextContent() : undefined, format: $isElementNode(node) || $isTextNode(node) ? node.getFormat() : undefined, url: 'getURL' in node ? (node as import('@lexical/link').LinkNode).getURL() : undefined, title: 'getTitle' in node ? (node as import('@lexical/link').LinkNode).getTitle() : undefined, children: $isElementNode(node) ? node.getChildren().map(collect) : undefined });
+    const collect = (node: import('lexical').LexicalNode): unknown => ({ type: node.getType(), image: 'getImageData' in node ? (node as import('../../../src/components/embedded/document/DocumentImageNode').DocumentImageNode).getImageData() : undefined, text: $isTextNode(node) ? node.getTextContent() : undefined, format: $isElementNode(node) || $isTextNode(node) ? node.getFormat() : undefined, url: 'getURL' in node ? (node as import('@lexical/link').LinkNode).getURL() : undefined, title: 'getTitle' in node ? (node as import('@lexical/link').LinkNode).getTitle() : undefined, children: $isElementNode(node) ? node.getChildren().map(collect) : undefined });
     return $getRoot().getChildren().slice(1).map(collect);
   });
   const before = snapshot();
@@ -176,4 +182,96 @@ it.each([
   expect(snapshot()).toEqual(before);
   if (_name === 'literal Markdown and HTML') expect([...screen.getByRole('textbox').querySelectorAll('a')].map(link => link.getAttribute('href'))).toEqual(['./guide.md', '/files/report.pdf']);
   if (_name === 'GFM column alignment') expect([...screen.getByRole('table').querySelectorAll('th p')].map(p => (p as HTMLElement).style.textAlign)).toEqual(['left', 'center', 'right']);
+});
+
+
+it('preserves a local image, dimensions, title and identity through Markdown editing and reopen', async () => {
+  const { readMarkdownDocument, finalizeMarkdownDocument } = await import('../../../src/components/embedded/document/markdown-document');
+  const { documentIdentityGroups } = await import('../../../src/components/embedded/document/document-identity');
+  const source = '# Report\n\nReady\n\n<img src="images/photo%20one.png" alt="Local figure" title="Figure 1" width="400" height="200">';
+  const markdown = { ...await readMarkdownDocument(source, 'Report'), sha256: 'original', format: 'markdown' as const };
+  save.mockImplementation(async (_project, _file, content) => ({ ...await readMarkdownDocument(await finalizeMarkdownDocument(content), 'Report'), sha256: 'saved', format: 'markdown' }));
+  const view = render(<DocumentEditor projectId="fixture" fileName="report.md" title="Report" observed={markdown} onSaved={() => {}} />);
+  const image = await screen.findByRole('img', { name: 'Local figure' });
+  expect(image.getAttribute('src')).toContain('/projects/fixture/raw/images/photo%20one.png');
+  const before = editor().getEditorState().read(documentIdentityGroups);
+  expect(before.image).toHaveLength(1);
+  act(() => editor().update(() => { $getRoot().getChildren()[1]!.selectEnd(); const selection = $getSelection(); if ($isRangeSelection(selection)) selection.insertText(' reviewed'); }, { discrete: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save document' })); await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  const content = await finalizeMarkdownDocument(save.mock.calls[0]![2] as string);
+  expect(content).toContain('src="images/photo%20one.png"'); expect(content).not.toContain('/api/projects/fixture');
+  const saved = { ...await readMarkdownDocument(content, 'Report'), sha256: 'saved', format: 'markdown' as const };
+  view.unmount();
+  read.mockResolvedValue(saved);
+  render(<DocumentSurface projectId="fixture" fileName="report.md" title="Report" fallback={<div>Read-only fallback</div>} onSaved={() => {}} />);
+  await screen.findByRole('textbox', { name: 'Report' });
+  expect(screen.queryByText('Read-only fallback')).toBeNull();
+  expect(editor().getEditorState().read(documentIdentityGroups)).toEqual(before);
+  expect(screen.getByRole('img', { name: 'Local figure' })).toHaveAttribute('width', '400');
+  expect(screen.getByRole('img', { name: 'Local figure' })).toHaveAttribute('height', '200');
+  expect(screen.getByRole('img', { name: 'Local figure' })).toHaveAttribute('title', 'Figure 1');
+});
+
+
+it('uploads and inserts an image at the captured cursor without serializing its display URL', async () => {
+  imageUpload.mockResolvedValue({ name: '_studio-document-assets/figure.png', alt: 'Uploaded figure', width: 400, height: 200 });
+  save.mockImplementation(async (_project, _file, html) => ({ html, sha256: 'saved' }));
+  render(<DocumentEditor projectId="fixture" fileName="report.html" title="Report" observed={observed} onSaved={() => {}} />);
+  act(() => editor().update(() => { $getRoot().getLastChildOrThrow().selectEnd(); }, { discrete: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Image' }));
+  fireEvent.change(screen.getByLabelText('Choose document image'), { target: { files: [new File(['fixture'], 'figure.png', { type: 'image/png' })] } });
+  expect(await screen.findByRole('img', { name: 'Uploaded figure' })).toHaveAttribute('width', '400');
+  expect(imageUpload.mock.calls[0]![0]).toBe('fixture');
+  expect(screen.getByRole('textbox')).toHaveTextContent('Ready');
+  fireEvent.click(screen.getByRole('button', { name: 'Save document' }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0]![2]).toContain('src="_studio-document-assets/figure.png"');
+  expect(save.mock.calls[0]![2]).not.toContain('/api/projects/');
+});
+
+it('retains a completed upload when editing invalidates its cursor and inserts it only at a new chosen location', async () => {
+  let finish!: (value: { name: string; alt: string; width: number; height: number }) => void;
+  imageUpload.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  render(<DocumentEditor projectId="fixture" fileName="report.html" title="Report" observed={observed} onSaved={() => {}} />);
+  act(() => editor().update(() => { $getRoot().getLastChildOrThrow().selectEnd(); }, { discrete: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Image' }));
+  fireEvent.change(screen.getByLabelText('Choose document image'), { target: { files: [new File(['fixture'], 'figure.png', { type: 'image/png' })] } });
+  act(() => editor().update(() => { $getRoot().getLastChildOrThrow().selectEnd(); const selection = $getSelection(); if ($isRangeSelection(selection)) selection.insertText(' while uploading'); }, { discrete: true }));
+  await act(async () => { finish({ name: '_studio-document-assets/figure.png', alt: 'Uploaded figure', width: 400, height: 200 }); });
+  expect(screen.queryByRole('img', { name: 'Uploaded figure' })).toBeNull();
+  expect(screen.getByRole('textbox')).toHaveTextContent('Ready while uploading');
+  fireEvent.click(screen.getByRole('button', { name: 'Insert uploaded image' }));
+  expect(await screen.findByRole('img', { name: 'Uploaded figure' })).toBeInTheDocument();
+  expect(imageUpload).toHaveBeenCalledTimes(1);
+});
+
+it('aborts pending image work on unmount and ignores a late receipt in a different document', async () => {
+  let finish!: (value: { name: string; alt: string; width: number; height: number }) => void;
+  imageUpload.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const first = render(<DocumentEditor projectId="first-project" fileName="report.html" title="Report" observed={observed} onSaved={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Image' }));
+  fireEvent.change(screen.getByLabelText('Choose document image'), { target: { files: [new File(['fixture'], 'figure.png', { type: 'image/png' })] } });
+  const signal = imageUpload.mock.calls[0]![2] as AbortSignal;
+  first.unmount(); expect(signal.aborted).toBe(true);
+  render(<DocumentEditor projectId="second-project" fileName="report.html" title="Report" observed={observed} onSaved={() => {}} />);
+  await act(async () => { finish({ name: '_studio-document-assets/figure.png', alt: 'Late figure', width: 400, height: 200 }); });
+  expect(screen.queryByRole('img', { name: 'Late figure' })).toBeNull();
+  expect(screen.getByRole('textbox')).toHaveTextContent('Ready');
+});
+
+
+it('cancels a pending image when switching to viewing mode without leaving a stale uploading status', async () => {
+  let finish!: (value: { name: string; alt: string; width: number; height: number }) => void;
+  imageUpload.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  render(<DocumentEditor projectId="fixture" fileName="report.html" title="Report" observed={observed} onSaved={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Image' }));
+  fireEvent.change(screen.getByLabelText('Choose document image'), { target: { files: [new File(['fixture'], 'figure.png', { type: 'image/png' })] } });
+  const signal = imageUpload.mock.calls[0]![2] as AbortSignal;
+  fireEvent.click(screen.getByRole('button', { name: 'Editing, mode' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Viewing' }));
+  expect(signal.aborted).toBe(true);
+  await act(async () => { finish({ name: '_studio-document-assets/figure.png', alt: 'Cancelled figure', width: 400, height: 200 }); });
+  expect(screen.queryByRole('img', { name: 'Cancelled figure' })).toBeNull();
+  expect(screen.queryByText('Uploading image…')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Viewing, mode' })).toBeInTheDocument();
 });

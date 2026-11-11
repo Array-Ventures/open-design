@@ -4,7 +4,7 @@ import type { EmbeddedDashboardSummary } from './dashboards';
 export type ArtifactEntry = { file: ProjectFile; kind: 'app' | 'deck' | 'document' | 'image' | 'video' | 'audio' | 'other'; title: string };
 
 function ordinary(file: ProjectFile): boolean {
-  return file.type !== 'dir' && !file.name.startsWith('_studio-comments/') && file.name.split('/').every(part => part && part !== '.' && part !== '..' && !part.startsWith('.') && !/[\\\u0000]/.test(part));
+  return file.type !== 'dir' && !['_studio-comments/', '_studio-document-assets/'].some(prefix => file.name.startsWith(prefix)) && file.name.split('/').every(part => part && part !== '.' && part !== '..' && !part.startsWith('.') && !/[\\\u0000]/.test(part));
 }
 
 /** Prefer declared primary artifacts; filename inference is a legacy fallback. */
@@ -13,14 +13,15 @@ export function artifactEntry(files: ProjectFile[], selected: string | null, pro
   const file = (selected ? candidates.find(item => item.name === selected) : undefined)
     ?? candidates.find(item => item.artifactManifest?.primary === true || item.artifactManifest?.primary === item.name)
     ?? candidates.find(item => ['image', 'video', 'audio'].includes(projectKind ?? '') && item.kind === projectKind)
+    ?? candidates.find(item => projectKind === 'document' && /\.(md|markdown)$/i.test(item.name))
     ?? candidates.find(item => item.name === 'index.html')
     ?? candidates.find(item => item.kind === 'html')
     ?? candidates.find(item => ['image', 'video', 'audio', 'pdf', 'sketch'].includes(item.kind))
-    ?? candidates.find(item => /\.(md|txt)$/i.test(item.name));
+    ?? candidates.find(item => /\.(md|markdown|txt)$/i.test(item.name));
   if (!file) return null;
   const declared = file.artifactManifest?.kind;
   const kind = declared === 'deck' || projectKind === 'deck' ? 'deck'
-    : declared === 'markdown-document' || projectKind === 'document' || /\.(md|txt)$/i.test(file.name) ? 'document'
+    : declared === 'markdown-document' || projectKind === 'document' || /\.(md|markdown|txt)$/i.test(file.name) ? 'document'
     : file.kind === 'image' || file.kind === 'sketch' ? 'image'
     : file.kind === 'video' || file.kind === 'audio' ? file.kind
     : file.kind === 'html' ? 'app' : 'other';

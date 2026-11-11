@@ -17,13 +17,14 @@ import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { ListNode, ListItemNode } from '@lexical/list';
 import { TableNode, TableRowNode, TableCellNode } from '@lexical/table';
 import { LinkNode } from '@lexical/link';
-import { $getRoot, $getState, $setState, RootNode } from 'lexical';
+import { $getRoot, $getState, $setState, $insertNodes, $setSelection, RootNode } from 'lexical';
 import { serializeMarkdownDocument } from './markdown-serialization';
 import { documentHtml, documentImport, documentFontFamily } from './document-html';
 import { documentHtmlConfig, ensureDocumentBlockIds, documentFont, documentHeadingFont, restoreDocumentIdentityGroups } from './document-identity';
 import { saveDocumentFile, type DocumentFile } from './document-file';
 import { DocumentWriter, type DocumentWriteState } from './document-writer';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
+import { DocumentImageNode, DocumentImageScope } from './DocumentImageNode';
 import { DocumentToolbar } from './DocumentToolbar';
 import styles from './DocumentEditor.module.css';
 import { Button } from '../boardui/button';
@@ -31,18 +32,19 @@ import { RiSaveLine, RiPencilLine, RiArrowDownSLine } from '@remixicon/react';
 import { ScrollFade, useScrollFade } from '../boardui/scroll-fade';
 import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem } from '../boardui/dropdown';
 
-export const documentNodes = [HeadingNode, QuoteNode, ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, LinkNode, CodeNode, CodeHighlightNode];
+export const documentNodes = [HeadingNode, QuoteNode, ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, LinkNode, CodeNode, CodeHighlightNode, DocumentImageNode];
 
 export function DocumentEditor({ projectId, fileName, title, observed, onSaved, onDirtyChange, onWriteError }: {
   projectId: string; fileName: string; title: string; observed: DocumentFile; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void; onWriteError?(error: string | null): void;
 }) {
+  const imageScope = useMemo(() => ({ projectId, fileName }), [projectId, fileName]);
   const owners = useMemo(() => new Map<string, string>(), []);
   const [failure, setFailure] = useState<string | null>(null);
   const initialConfig = useMemo(() => ({
     namespace: `document:${projectId}:${fileName}`, theme: { tableScrollableWrapper: styles.tableScroll, code: styles.code, text: { code: styles.inlineCode, underline: styles.underline, strikethrough: styles.strikethrough, underlineStrikethrough: styles.underlineStrikethrough }, list: { checklist: styles.checklist, listitemChecked: styles.checked, listitemUnchecked: styles.unchecked } }, nodes: documentNodes, html: documentHtmlConfig(),
     onError: (error: Error) => { setFailure(error.message); },
     editorState: (editor: import('lexical').LexicalEditor) => {
-      const root = $getRoot(); root.append(...$generateNodesFromDOM(editor, documentImport(observed.html)));
+      const root = $getRoot(); root.select(); $insertNodes($generateNodesFromDOM(editor, documentImport(observed.html))); $setSelection(null);
       const attributes = new DOMParser().parseFromString(observed.html, 'text/html').documentElement;
       const font = attributes.getAttribute('data-eve-document-font');
       const headingFont = attributes.getAttribute('data-eve-document-heading-font') ?? font;
@@ -52,10 +54,10 @@ export function DocumentEditor({ projectId, fileName, title, observed, onSaved, 
   }), [projectId, fileName, observed.html, owners]);
   return <div className={styles.editor} data-testid="document-editor">
     {failure ? <div role="alert" className="p-3 text-body-2-regular text-text-error-primary">{failure}</div> : null}
-    <LexicalComposer initialConfig={initialConfig}>
+    <DocumentImageScope.Provider value={imageScope}><LexicalComposer initialConfig={initialConfig}>
       <DocumentBody projectId={projectId} fileName={fileName} title={title} observed={observed} owners={owners} onSaved={onSaved} onDirtyChange={onDirtyChange} onWriteError={onWriteError} />
       <HistoryPlugin /><ListPlugin /><CheckListPlugin /><TablePlugin hasHorizontalScroll /><LinkPlugin />
-    </LexicalComposer>
+    </LexicalComposer></DocumentImageScope.Provider>
   </div>;
 }
 
@@ -67,6 +69,7 @@ function DocumentBody({ projectId, fileName, title, observed, owners, onSaved, o
   const [writeState, setWriteState] = useState<DocumentWriteState>({ dirty: false, saving: false, error: null });
   const [font, setFont] = useState<'sans' | 'serif'>('sans');
   const [headingFont, setHeadingFont] = useState<'sans' | 'serif'>('serif');
+  const [imageStatus, setImageStatus] = useState<string | null>(null);
   const [editing, setEditing] = useState(true);
   const writer = useRef<DocumentWriter | null>(null);
   const controllerId = useRef(crypto.randomUUID()).current;
@@ -115,11 +118,12 @@ function DocumentBody({ projectId, fileName, title, observed, owners, onSaved, o
         <DropdownTrigger aria-label={`${editing ? 'Editing' : 'Viewing'}, mode`} className="box-border flex h-8 items-center gap-1 rounded-xl border-0 bg-background-secondary-default px-2 py-0 text-body-2-medium text-text-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiPencilLine className="size-4 shrink-0" aria-hidden />{editing ? 'Editing' : 'Viewing'}<RiArrowDownSLine className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
         <DropdownPopover aria-label="Document mode" placement="bottom end">
           <DropdownItem onSelect={() => { editor.setEditable(true); setEditing(true); }}>Editing</DropdownItem>
-          <DropdownItem onSelect={() => { editor.setEditable(false); setEditing(false); }}>Viewing</DropdownItem>
+          <DropdownItem onSelect={() => { editor.setEditable(false); setEditing(false); setImageStatus(null); }}>Viewing</DropdownItem>
         </DropdownPopover>
       </Dropdown>
     </div>
     {writeState.error && !onWriteError ? <div role="alert" className="px-4 py-2 text-body-2-regular text-text-error-primary">{writeState.error}</div> : null}
+    {imageStatus ? <div role="status" className="px-4 py-2 text-body-2-regular text-text-secondary">{imageStatus}</div> : null}
     <div className="relative min-h-0 flex-1">
     <div className={styles.scroll} onScroll={fade.onScroll}>
       <div className={styles.page}>
@@ -129,6 +133,6 @@ function DocumentBody({ projectId, fileName, title, observed, owners, onSaved, o
     </div>
     <ScrollFade progress={fade.progress} surfaceClassName="from-background-primary-default" />
     </div>
-    {editing ? <DocumentToolbar font={font} headingFont={headingFont} /> : null}
+    {editing ? <DocumentToolbar font={font} headingFont={headingFont} onImageStatus={setImageStatus} /> : null}
   </>;
 }

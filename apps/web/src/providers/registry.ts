@@ -3331,6 +3331,7 @@ export async function uploadProjectFiles(
   files: File[],
   dir?: string,
   workspaceContext?: WorkspaceCollabContext | null,
+  signal?: AbortSignal,
 ): Promise<UploadProjectFilesResult> {
   if (files.length === 0) return { uploaded: [], failed: [] };
 
@@ -3354,6 +3355,7 @@ export async function uploadProjectFiles(
         `/api/projects/${encodeURIComponent(projectId)}/upload`,
         {
           method: 'POST',
+          ...(signal ? { signal } : {}),
           ...(workspaceContext ? { headers: workspaceProjectHeaders(workspaceContext) } : {}),
           body: form,
         },

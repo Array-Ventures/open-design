@@ -7,13 +7,14 @@ import { useEmbeddedViewer } from '../host-viewer';
 import { confirmHostFeedbackDiscard } from '../host-context';
 import { readDocumentFile, type DocumentFile } from './document-file';
 import { isEditableDocument, isDocumentLinkSupported } from './document-html';
+import { supportedDocumentImageElement } from './document-image-source';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
 import { DocumentEditor } from './DocumentEditor';
 
-const supported = new Set(['main', 'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'table', 'colgroup', 'col', 'thead', 'tbody', 'tr', 'td', 'th', 'a', 'br', 'span', 'code', 'pre']);
-function supportedDocument(html: string): boolean {
+const supported = new Set(['main', 'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'table', 'colgroup', 'col', 'thead', 'tbody', 'tr', 'td', 'th', 'a', 'br', 'span', 'code', 'pre', 'img']);
+function supportedDocument(html: string, fileName: string): boolean {
   const parsed = new DOMParser().parseFromString(html, 'text/html');
-  return isEditableDocument(html) && [...parsed.body.querySelectorAll('*')].every(element => supported.has(element.tagName.toLowerCase())) && [...parsed.body.querySelectorAll('a[href]')].every(link => isDocumentLinkSupported(link.getAttribute('href')!));
+  return isEditableDocument(html) && [...parsed.body.querySelectorAll('*')].every(element => supported.has(element.tagName.toLowerCase())) && [...parsed.body.querySelectorAll('a[href]')].every(link => isDocumentLinkSupported(link.getAttribute('href')!)) && [...parsed.body.querySelectorAll('img')].every(image => supportedDocumentImageElement(image, fileName));
 }
 
 type DocumentSurfaceProps = {
@@ -87,7 +88,7 @@ function ScopedDocumentSurface({ projectId, fileName, title, generation = 0, fal
   if (accessLost) return <div role="alert" className="flex items-center gap-2 p-4 text-body-2-regular text-text-tertiary">Document unavailable.<Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiRefreshLine} aria-label="Retry loading document" onClick={() => setRetry(value => value + 1)} /></div>;
   if (!loaded) return <div role={error ? 'alert' : 'status'} className="flex items-center gap-2 p-4 text-body-2-regular text-text-tertiary">{error ?? 'Loading document…'}{error ? <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiRefreshLine} aria-label="Retry loading document" onClick={() => setRetry(value => value + 1)} /> : null}</div>;
   // Unsupported semantic nodes stay in the original viewer rather than disappearing on save.
-  if (!supportedDocument(loaded.html)) return <>{fallback}</>;
+  if (!supportedDocument(loaded.html, fileName)) return <>{fallback}</>;
   return <div className="flex min-h-0 flex-1 flex-col">
     {pending || error || writeError ? <div role={writeError ? "alert" : "status"} className="flex items-center gap-2 px-3 py-2 text-caption-1-regular text-text-tertiary">{error ?? writeError ?? 'Document changed elsewhere.'}<Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiRefreshLine} aria-label="Load latest document" title="Load latest" disabled={saving || reloading} onClick={() => { void loadLatest(); }} /></div> : null}
     <DocumentEditor key={`${loaded.sha256}:${reloadEpoch}`} projectId={projectId} fileName={fileName} title={title} observed={loaded}

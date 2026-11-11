@@ -11,12 +11,13 @@ import { RiBold, RiItalic, RiUnderline, RiStrikethrough, RiCodeLine, RiListOrder
 import { Button } from '../boardui/button';
 import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem, DropdownGroup, DropdownDivider } from '../boardui/dropdown';
 import { cx } from '../boardui/cx';
+import { DocumentImageInsertion } from './DocumentImageInsertion';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
 import { documentFont, documentHeadingFont } from './document-identity';
 
 type SelectionState = { x: number; y: number; bold: boolean; italic: boolean; underline: boolean; strikethrough: boolean; code: boolean };
 /** Separate insertion and selected-text controls, following the observed document surfaces. */
-export function DocumentToolbar({ font, headingFont }: { font: 'sans' | 'serif'; headingFont: 'sans' | 'serif' }) {
+export function DocumentToolbar({ font, headingFont, onImageStatus }: { font: 'sans' | 'serif'; headingFont: 'sans' | 'serif'; onImageStatus?(message: string | null): void }) {
   const [editor] = useLexicalComposerContext();
   const [selected, setSelected] = useState<SelectionState | null>(null);
   useEffect(() => {
@@ -57,6 +58,7 @@ export function DocumentToolbar({ font, headingFont }: { font: 'sans' | 'serif';
           </DropdownPopover>
         </Dropdown>
         <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiTableLine} aria-label="Insert table" title="Insert 3 × 3 table" onMouseDown={event => event.preventDefault()} onClick={() => editor.dispatchCommand(INSERT_TABLE_COMMAND, { columns: '3', rows: '3', includeHeaders: true })} />
+        <DocumentImageInsertion onStatus={onImageStatus} />
         <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiCheckboxLine} aria-label="Checklist" title="Checklist" onMouseDown={event => event.preventDefault()} onClick={() => editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined)} />
         <Dropdown>
           <DropdownTrigger aria-label="More document actions" className="box-border flex size-8 shrink-0 items-center justify-center rounded-lg border-0 p-0 text-foreground-icon-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiMoreLine className="size-4 shrink-0" aria-hidden /></DropdownTrigger>

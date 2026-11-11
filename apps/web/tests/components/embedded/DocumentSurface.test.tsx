@@ -16,10 +16,12 @@ vi.mock('../../../src/components/embedded/document/DocumentEditor', async () => 
 afterEach(() => { cleanup(); vi.clearAllMocks(); state.mounts = 0; state.editor = null; actor.id = 'person-a'; });
 it.each([
   '<html data-eve-document="1"><body><a href="ftp://example.test/file">Unsupported link</a></body></html>',
+  '<html data-eve-document="1"><body><img src="picture.png" srcset="other.png 2x"></body></html>',
+  '<html data-eve-document="1"><body><img src="../outside.png"></body></html>',
   '<html><body><p>Authored legacy content</p></body></html>',
   '<html data-eve-document="1"><body><hr><p>Rule</p></body></html>',
   '<html data-eve-document="1"><body><table><caption>Caption</caption><tr><td>1</td></tr></table></body></html>',
-  '<html data-eve-document="1"><body><img src="picture.png"><p>Illustrated document</p></body></html>',
+  '<html data-eve-document="1"><body><img src="https://outside.fixture.test/picture.png"><p>Illustrated document</p></body></html>',
 ])('retains the actual viewer for content that cannot yet round-trip through the editor', async html => {
   read.mockResolvedValue({ html, sha256: 'original' });
   render(<DocumentSurface projectId="fixture" fileName="report.html" title="Report" fallback={<div>Original viewer</div>} onSaved={() => {}} />);
