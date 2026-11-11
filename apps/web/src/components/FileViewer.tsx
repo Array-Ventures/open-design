@@ -17307,6 +17307,7 @@ function HtmlViewer({
         setCommentListInPopover(true);
       }}
       onDeleteComment={removeComment}
+      onResolveComplete={() => { if (!composerHoldsUnsentWorkRef.current) clearBoardComposer(); }}
       sending={sendingBoardBatch}
       queueOnSend={commentQueueOnSend}
       sendDisabled={commentSendDisabled || viewerOnly}

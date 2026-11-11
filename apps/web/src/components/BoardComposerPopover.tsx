@@ -433,6 +433,7 @@ export function BoardComposerPopover({
   onRemoveMember,
   onHoverMember,
   onDeleteComment,
+  onResolveComplete,
   onViewAllComments,
   commentsView,
   compact = false,
@@ -471,6 +472,7 @@ export function BoardComposerPopover({
   onRemoveMember: (elementId: string) => void;
   onHoverMember?: (elementId: string | null) => void;
   onDeleteComment?: (commentId: string) => void | Promise<boolean | void>;
+  onResolveComplete?(): void;
   commentsView?: ReactNode;
   compact?: boolean;
   onBackToComment?: () => void;
@@ -710,7 +712,7 @@ export function BoardComposerPopover({
           </> : <><span className={`comment-popover-title${compact ? ' comment-popover-quote' : ''}`} title={targetTitle}>
             {targetTitle}
           </span>
-          {compact && existing ? <ResolveCommentButton comment={existing} allowed={canDeleteComment} blocked={images.length > 0 || notes.length > 0 || draft.trim() !== existing.note.trim()} onResolved={onClose} /> : null}
+          {compact && existing ? <ResolveCommentButton comment={existing} allowed={canDeleteComment} blocked={images.length > 0 || notes.length > 0 || draft.trim() !== existing.note.trim()} onResolved={onResolveComplete ?? onClose} /> : null}
           {compact && existing ? <CommentThreadMenu canEdit={canEditComment} canDelete={Boolean(canDeleteComment && onDeleteComment)} onReopen={existing.status === 'resolved' && canDeleteComment && commentReview ? () => commentReview.changeStatus(existing.id, 'open') : undefined} onEdit={() => popoverRef.current?.querySelector<HTMLTextAreaElement>('textarea')?.focus()} onDelete={() => onDeleteComment?.(existing.id)} /> : null}
           {onViewAllComments ? (
             <button
