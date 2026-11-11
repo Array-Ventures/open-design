@@ -29,6 +29,7 @@
 }
 
 @source "../DeckPresentationMenu.tsx";
+@source "../SavedCommentThread.tsx";
 
 @source "./scroll-fade.tsx";
 @source "../document/DocumentEditor.tsx";

@@ -3,6 +3,7 @@ import type { PreviewComment, PreviewCommentReply } from '@open-design/contracts
 import { RiArrowUpLine, RiCloseLine, RiChat3Line, RiRefreshLine } from '@remixicon/react';
 import { Button } from './boardui/button';
 import { TextareaBase } from './boardui/textarea';
+import { cx } from './boardui/cx';
 import { CommentThreadMenu } from './CommentThreadMenu';
 import { ResolveCommentButton, useCommentReview } from './CommentReview';
 import { useEmbeddedViewer } from './host-viewer';
@@ -103,7 +104,7 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
     } catch (failure) { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : 'The reply could not be deleted.'); }
     finally { if (!controller.signal.aborted) { pending.current = false; setBusy(false); } }
   }
-  return <section hidden={hidden} style={hidden ? { display: 'none' } : undefined} aria-label="Comment thread" className="flex flex-col gap-3" data-testid="saved-comment-thread">
+  return <section hidden={hidden} aria-label="Comment thread" className={cx('flex-col gap-3', hidden ? 'hidden' : 'flex')} data-testid="saved-comment-thread">
     <header className="flex min-w-0 items-center gap-1">
       <CommentAuthor name={comment.authorDisplayName} createdAt={comment.createdAt} />
       <ResolveCommentButton comment={comment} allowed={canDeleteRoot} blocked={dirty} onResolved={() => { if (!dirtyRef.current) onClose(); }} />
