@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
 import {
   Button as AriaButton,
   Dialog as AriaDialog,
@@ -54,6 +54,7 @@ import { useDismissOnOutsidePress, useTriggerToggle } from "./use-dismiss-on-out
 /* ------------------------------------------------------------------- shell */
 
 interface DropdownContextValue {
+  isOpen: boolean;
   triggerRef: RefObject<HTMLButtonElement>;
   popoverRef: RefObject<HTMLElement>;
   close: () => void;
@@ -93,7 +94,7 @@ export function Dropdown({ isOpen: controlledOpen, onOpenChange, children }: Dro
   const allowOpenChange = useTriggerToggle(isOpen, triggerRef);
 
   return (
-    <DropdownContext.Provider value={{ triggerRef, popoverRef, close: () => setOpen(false) }}>
+    <DropdownContext.Provider value={{ isOpen, triggerRef, popoverRef, close: () => setOpen(false) }}>
       <AriaDialogTrigger isOpen={isOpen} onOpenChange={(o) => allowOpenChange(o) && setOpen(o)}>
         {children}
       </AriaDialogTrigger>
@@ -144,9 +145,16 @@ export function DropdownPopover({
   children,
 }: DropdownPopoverProps) {
   const context = useContext(DropdownContext);
+  // The exit transition retains the portal. Its actions stop accepting focus
+  // and input as soon as the menu closes, before the visual fade finishes.
+  useEffect(() => {
+    const node = context?.popoverRef.current;
+    if (node) node.inert = context?.isOpen === false;
+  }, [context?.isOpen, context?.popoverRef]);
   return (
     <AriaPopover
       ref={context?.popoverRef}
+      aria-hidden={context?.isOpen === false ? true : undefined}
       isNonModal={!staysOnScroll}
       placement={placement}
       offset={offset}
@@ -155,6 +163,7 @@ export function DropdownPopover({
         MENU_POPOVER_WIDTH,
         MENU_POPOVER_SURFACE,
         className,
+        context?.isOpen === false && "pointer-events-none",
       )}
     >
       {/* gap-1 keeps bare DropdownItems 4px apart, the same rhythm as the
