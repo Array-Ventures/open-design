@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { PreviewComment, PreviewCommentReply } from '@open-design/contracts';
-import { RiArrowUpLine, RiCloseLine, RiChat3Line, RiRefreshLine } from '@remixicon/react';
+import { RiArrowUpLine, RiCloseLine, RiRefreshLine } from '@remixicon/react';
 import { Button } from './boardui/button';
 import { TextareaBase } from './boardui/textarea';
 import { cx } from './boardui/cx';
@@ -10,11 +10,21 @@ import { useEmbeddedViewer } from './host-viewer';
 import { confirmHostFeedbackDiscard } from './host-context';
 import { createCommentReply, deleteCommentReply, editCommentReply, fetchCommentReplies } from './comment-reply-api';
 
+const iconButton = 'box-border size-8 min-h-8 shrink-0 border-0 bg-transparent p-0 text-foreground-icon-secondary shadow-none hover:bg-background-secondary-hover active:bg-background-secondary-active';
+function commentAge(createdAt: number): string {
+  const minutes = Math.max(0, Math.floor((Date.now() - createdAt) / 60_000));
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h`;
+  if (minutes < 10080) return `${Math.floor(minutes / 1440)}d`;
+  return new Date(createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 export function CommentAuthor({ name, createdAt }: { name?: string; createdAt: number }) {
   return <div className="flex min-w-0 flex-1 items-center gap-2">
     <span aria-hidden className="flex size-6 shrink-0 items-center justify-center rounded-full bg-background-secondary-default text-caption-1-semibold text-text-secondary">{(name || 'Unknown').slice(0, 1).toUpperCase()}</span>
     <span className="min-w-0 truncate text-body-2-medium text-text-primary">{name || 'Unknown author'}</span>
-    {createdAt > 0 ? <time dateTime={new Date(createdAt).toISOString()} title={new Date(createdAt).toLocaleString()} className="shrink-0 text-caption-1-regular text-text-tertiary">{new Date(createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time> : null}
+    {Number.isFinite(createdAt) && createdAt > 0 ? <time dateTime={new Date(createdAt).toISOString()} title={new Date(createdAt).toLocaleString()} className="shrink-0 text-caption-1-regular text-text-tertiary">{commentAge(createdAt)}</time> : null}
   </div>;
 }
 
@@ -108,7 +118,7 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
     <header className="flex min-w-0 items-center gap-1">
       <CommentAuthor name={comment.authorDisplayName} createdAt={comment.createdAt} />
       <ResolveCommentButton comment={comment} allowed={canDeleteRoot} blocked={dirty} onResolved={() => { if (!dirtyRef.current) onClose(); }} />
-      <CommentThreadMenu canEdit={canEditRoot && !busy} canDelete={Boolean(canDeleteRoot && onDeleteRoot && !busy)} onEdit={() => { void changeEditor(null, true); }} onDelete={async () => {
+      <CommentThreadMenu onViewAll={onViewAll} canEdit={canEditRoot && !busy} canDelete={Boolean(canDeleteRoot && onDeleteRoot && !busy)} onEdit={() => { void changeEditor(null, true); }} onDelete={async () => {
         const controller = scope.current;
         if (!controller || controller.signal.aborted || pending.current) return;
         if (dirtyRef.current && !await confirmHostFeedbackDiscard(projectId, 'comment')) return;
@@ -117,8 +127,7 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
         try { await onDeleteRoot?.(); }
         finally { if (!controller.signal.aborted) { pending.current = false; setBusy(false); setDeletingRoot(false); } }
       }} onReopen={comment.status === 'resolved' && canDeleteRoot && review ? () => review.changeStatus(comment.id, 'open') : undefined} />
-      {onViewAll ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiChat3Line} aria-label="View all comments" title="View all comments" onClick={onViewAll} /> : null}
-      <Button variant="ghost" size="small" iconOnly leadingIcon={RiCloseLine} aria-label="Close" title="Close" onClick={onClose} />
+      <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiCloseLine} aria-label="Close" title="Close" onClick={onClose} />
     </header>
     <p className="m-0 whitespace-pre-wrap break-words text-body-regular text-text-primary">{comment.note}</p>
     {deleted ? <p role="status" className="m-0 text-caption-1-regular text-text-tertiary">This thread was deleted. Your unsaved reply is still here.</p> : null}
@@ -129,16 +138,16 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
       </header><p className="m-0 whitespace-pre-wrap break-words text-body-regular text-text-primary">{reply.note}</p>
     </article>)}
     {loading ? <span role="status" className="text-caption-1-regular text-text-tertiary">Loading comments…</span> : null}
-    {error ? <div role="alert" className="flex items-center gap-2 text-caption-1-regular text-text-error-primary"><span className="min-w-0 flex-1">{error}</span><Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Reload comments" title="Reload comments" disabled={busy} onClick={() => { void refresh(); }} /></div> : null}
+    {error ? <div role="alert" className="flex items-center gap-2 text-caption-1-regular text-text-error-primary"><span className="min-w-0 flex-1">{error}</span><Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Reload comments" title="Reload comments" disabled={busy} onClick={() => { void refresh(); }} /></div> : null}
     {editStale ? <div role="status" className="flex items-center gap-2 text-caption-1-regular text-text-tertiary"><span className="min-w-0 flex-1">{latestEditing ? 'This reply changed. Your draft is preserved.' : 'This reply was deleted. Your draft is preserved.'}</span>
-      {latestEditing ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Continue editing latest reply" title="Keep your draft and edit the latest revision" disabled={busy} onClick={() => { setEditing(latestEditing); setError(null); }} /> : null}
+      {latestEditing ? <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Continue editing latest reply" title="Keep your draft and edit the latest revision" disabled={busy} onClick={() => { setEditing(latestEditing); setError(null); }} /> : null}
     </div> : null}
-    <TextareaBase aria-label={editing ? 'Edit reply' : 'Reply'} placeholder="Add your comment" rows={2} autoResize maxRows={5} resize="none" value={draft} disabled={!viewer || deletingRoot}
+    <TextareaBase aria-label={editing ? 'Edit reply' : 'Reply'} placeholder="Add your comment" rows={1} autoResize maxRows={5} resize="none" value={draft} disabled={!viewer || deletingRoot}
       onChange={event => { draftRef.current = event.target.value; setDraft(event.target.value); notify.current(busy || (editing ? event.target.value !== editing.note : event.target.value !== '')); }}
       onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
     {draft || editing ? <div className="flex items-center justify-end gap-1">
-      {editing ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiCloseLine} aria-label="Cancel reply edit" title="Cancel edit" disabled={busy} onClick={() => { void changeEditor(null); }} /> : null}
-      <Button variant="ghost" size="small" iconOnly leadingIcon={RiArrowUpLine} aria-label={editing ? 'Save reply' : 'Add reply'} title={editing ? 'Save reply' : 'Add reply'} disabled={busy || !draft.trim() || !viewer || deleted || editStale} onClick={() => { void submit(); }} />
+      {editing ? <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiCloseLine} aria-label="Cancel reply edit" title="Cancel edit" disabled={busy} onClick={() => { void changeEditor(null); }} /> : null}
+      <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiArrowUpLine} aria-label={editing ? 'Save reply' : 'Add reply'} title={editing ? 'Save reply' : 'Add reply'} disabled={busy || !draft.trim() || !viewer || deleted || editStale} onClick={() => { void submit(); }} />
     </div> : null}
   </section>;
 }
