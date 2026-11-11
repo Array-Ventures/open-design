@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { ANNOTATION_EVENT, type AnnotationEventDetail } from '../PreviewDrawOverlay';
-import { uploadProjectFiles } from '../../providers/registry';
 import { stageHostContext } from './host-context';
+import { FeedbackImageUpload } from './feedback-image-upload';
 
 /** The embedded canvas stages feedback in Evebot's composer; it never runs a bot. */
 export function useEmbeddedMarkup(projectId: string, fileNames: string[]) {
+  const upload = useRef(new FeedbackImageUpload());
   const [notice, setNotice] = useState<string | null>(null);
   const filesKey = JSON.stringify(fileNames);
   const allowed = useRef(new Set<string>());
@@ -23,18 +24,16 @@ export function useEmbeddedMarkup(projectId: string, fileNames: string[]) {
           }
           const images = [detail.file, ...(detail.extraFiles ?? [])].filter((file): file is File => file instanceof File);
           if (!images.length && !detail.note.trim()) { detail.ack?.({ ok: false, message: 'Add a note or capture the marked image first.' }); return; }
-          let attachments: string[] = [];
-          if (images.length) {
-            const uploaded = await uploadProjectFiles(projectId, images, '.studio-comments');
-            if (uploaded.failed.length || uploaded.uploaded.length !== images.length) throw new Error('The marked image could not be saved.');
-            attachments = uploaded.uploaded.map(file => `Attached image: ${file.path}`);
-          }
+          const key = JSON.stringify([detail.filePath, detail.note, detail.markKind, detail.bounds]);
+          const prepared = await upload.current.prepare(projectId, images, key);
+          const attachments = prepared.paths.map(path => `Attached image: ${path}`);
           if (!active) { detail.ack?.({ ok: false, message: 'Reopen the artifact to add this feedback.' }); return; }
           const text = [`File: ${detail.filePath}`, 'Feedback: visual markup',
             detail.markKind ? `Mark: ${detail.markKind}` : '',
             detail.note.trim() ? `Requested change: ${detail.note.trim()}` : 'Requested change: See the marked image.',
             ...(images.length ? [] : ['Image capture: unavailable.']), ...attachments].filter(Boolean).join('\n');
-          const accepted = await stageHostContext(projectId, text, undefined, detail.preparationId);
+          const accepted = await stageHostContext(projectId, text, prepared.operationId, detail.preparationId, prepared.paths);
+          if (accepted) upload.current.clear();
           if (active) setNotice(accepted ? 'Added to your chat draft.' : 'Open a chat beside this artifact and try again.');
           detail.ack?.({ ok: accepted, ...(accepted ? {} : { message: 'Open a chat beside this artifact and try again.' }) });
         } catch {

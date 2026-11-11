@@ -32,9 +32,9 @@ function requestHost(projectId: string, type: string, responseType: string, fiel
 }
 
 /** The host acknowledges staging into its normal composer, never agent execution. */
-export async function stageHostContext(projectId: string, text: string, operationId?: string, preparationId?: string): Promise<boolean> {
+export async function stageHostContext(projectId: string, text: string, operationId?: string, preparationId?: string, imagePaths: string[] = []): Promise<boolean> {
   if (!text.trim() || text.length > 32_000) return false;
-  return (await requestHost(projectId, 'studio:compose', 'studio:compose-result', { text, ...(preparationId ? { preparationId } : {}) }, operationId)).accepted;
+  return (await requestHost(projectId, 'studio:compose', 'studio:compose-result', { text, ...(preparationId ? { preparationId } : {}), ...(imagePaths.length ? { imagePaths } : {}) }, operationId, 30_000)).accepted;
 }
 
 /** Bind a destination before capture/upload; its token accompanies the staged operation. */
