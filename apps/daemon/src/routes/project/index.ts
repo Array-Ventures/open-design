@@ -78,6 +78,7 @@ import { ArtifactRegressionError } from '../../artifacts/stub-guard.js';
 import {
   ensureCurrentProjectFileVersion,
   isProjectFileVersionPath,
+  isVersionedDocumentFile,
   listProjectFileVersions,
   markProjectFileVersionStoreDeleted,
   readProjectFileVersion,
@@ -6230,7 +6231,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     ensureCurrentVersion: HtmlVersionLock['ensureCurrentVersion'],
     override?: HtmlVersionOverride,
   ): Promise<{ version: ProjectFileVersion | null; versionWarning?: ProjectFileVersionWarning }> {
-    if (!/\.html?$/i.test(fileName)) return { version: null };
+    if (!isVersionedDocumentFile(fileName)) return { version: null };
     try {
       return { version: await ensureCurrentVersion(content, htmlVersionOptions(project, override)) };
     } catch (err) {
@@ -7453,16 +7454,16 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
       if (!await authorizeProjectRequest(req, res, project.id, { mode: 'read' })) return;
-      if (!/\.html?$/i.test(fileName)) {
-        return sendApiError(res, 400, 'BAD_REQUEST', 'versions are only available for HTML files');
+      if (!isVersionedDocumentFile(fileName)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'versions are only available for HTML or Markdown documents');
       }
       let file: ProjectFile | null = null;
       let historyFileName = fileName;
       let workingFileContent: string | null = null;
       try {
         const workingFile = await readProjectFile(PROJECTS_DIR, project.id, fileName, project.metadata);
-        if (!/\.html?$/i.test(workingFile.name)) {
-          return sendApiError(res, 400, 'BAD_REQUEST', 'versions are only available for HTML files');
+        if (!isVersionedDocumentFile(workingFile.name)) {
+          return sendApiError(res, 400, 'BAD_REQUEST', 'versions are only available for HTML or Markdown documents');
         }
         file = workingFile;
         historyFileName = workingFile.name;
@@ -7541,8 +7542,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         'writeFiles',
       )) return;
       const requestedFile = await readProjectFile(PROJECTS_DIR, project.id, fileName, project.metadata);
-      if (!/\.html?$/i.test(requestedFile.name)) {
-        return sendApiError(res, 400, 'BAD_REQUEST', 'versions are only available for HTML files');
+      if (!isVersionedDocumentFile(requestedFile.name)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'versions are only available for HTML or Markdown documents');
       }
       const manualPrompt = typeof req.body?.prompt === 'string' && req.body.prompt.trim()
         ? req.body.prompt.trim()
@@ -7845,7 +7846,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
               ? sanitizePath(req.body.name)
               : sanitizeName(req.file.originalname);
             if (rejectInternalVersionPath(res, desiredName)) return;
-            const requestedSource = uploadProject && /\.html?$/i.test(desiredName)
+            const requestedSource = uploadProject && isVersionedDocumentFile(desiredName)
               ? requestProjectFileVersionUploadSource(req.body)
               : null;
             const writeAndCapture = async (versionLock?: HtmlVersionLock) => {
@@ -7865,7 +7866,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
                 {},
                 uploadProject?.metadata,
               );
-              const versionCapture = uploadProject && requestedSource && /\.html?$/i.test(meta.name) && versionLock
+              const versionCapture = uploadProject && requestedSource && isVersionedDocumentFile(meta.name) && versionLock
                 ? await (async () => {
                   const savedFile = await readProjectFile(PROJECTS_DIR, uploadProject.id, meta.name, uploadProject.metadata);
                   return tryEnsureLockedHtmlCurrentVersion(
@@ -7927,12 +7928,12 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         if (rejectInternalVersionPath(res, name)) return;
         const desiredName = sanitizePath(name);
         if (rejectInternalVersionPath(res, desiredName)) return;
-        const requestedSource = uploadProject && /\.html?$/i.test(desiredName)
+        const requestedSource = uploadProject && isVersionedDocumentFile(desiredName)
           ? requestProjectFileVersionUploadSource(req.body)
           : null;
         const expectedDigest = req.body?.expectedContentSha256;
         if (expectedDigest !== undefined && (typeof expectedDigest !== 'string' || !/^[0-9a-f]{64}$/.test(expectedDigest) || requestedSource !== 'manual')) {
-          return sendApiError(res, 400, 'BAD_REQUEST', 'expectedContentSha256 requires a SHA-256 digest and a manual HTML save');
+          return sendApiError(res, 400, 'BAD_REQUEST', 'expectedContentSha256 requires a SHA-256 digest and a manual document save');
         }
         if (artifactManifest !== undefined && artifactManifest !== null) {
           const validated = validateArtifactManifestInput(
@@ -7991,7 +7992,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
               },
               uploadProject?.metadata,
             );
-          const versionCapture = uploadProject && requestedSource && /\.html?$/i.test(meta.name) && versionLock
+          const versionCapture = uploadProject && requestedSource && isVersionedDocumentFile(meta.name) && versionLock
             ? await (async () => {
               const savedFile = await readProjectFile(PROJECTS_DIR, uploadProject.id, meta.name, uploadProject.metadata);
               const versionOverride: HtmlVersionOverride = {
@@ -8263,7 +8264,7 @@ export function registerProjectUploadRoutes(app: Express, ctx: RegisterProjectUp
               mtime: stat.mtimeMs,
               originalName: f.originalname,
             });
-            if (project && /\.html?$/i.test(rel)) {
+            if (project && isVersionedDocumentFile(rel)) {
               const savedFile = await readProjectFile(PROJECTS_DIR, req.params.id, rel, project.metadata);
               await ensureCurrentProjectFileVersion(
                 PROJECTS_DIR,

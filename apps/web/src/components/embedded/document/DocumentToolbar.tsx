@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { $createParagraphNode, $getRoot, $getSelection, $getState, $isRangeSelection, $setState, FORMAT_TEXT_COMMAND, UNDO_COMMAND, REDO_COMMAND } from 'lexical';
-import { $createHeadingNode } from '@lexical/rich-text';
+import { $createCodeNode } from '@lexical/code';
+import { $createHeadingNode, $createQuoteNode } from '@lexical/rich-text';
 import { $setBlocksType } from '@lexical/selection';
-import { INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from '@lexical/list';
+import { INSERT_CHECK_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from '@lexical/list';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
-import { RiBold, RiItalic, RiUnderline, RiStrikethrough, RiCodeLine, RiListOrdered, RiListUnordered, RiTableLine, RiArrowGoBackLine, RiArrowGoForwardLine, RiFontSize, RiMoreLine, RiCheckLine, RiArrowDownSLine } from '@remixicon/react';
+import { RiBold, RiItalic, RiUnderline, RiStrikethrough, RiCodeLine, RiListOrdered, RiListUnordered, RiTableLine, RiArrowGoBackLine, RiArrowGoForwardLine, RiFontSize, RiMoreLine, RiCheckLine, RiCheckboxLine, RiDoubleQuotesL, RiArrowDownSLine } from '@remixicon/react';
 import { Button } from '../boardui/button';
 import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem, DropdownGroup, DropdownDivider } from '../boardui/dropdown';
 import { cx } from '../boardui/cx';
@@ -39,13 +40,6 @@ export function DocumentToolbar({ font, headingFont }: { font: 'sans' | 'serif';
     const selection = $getSelection();
     if ($isRangeSelection(selection)) $setBlocksType(selection, () => tag === 'p' ? $createParagraphNode() : $createHeadingNode(tag));
   });
-  const list = <Dropdown>
-    <DropdownTrigger aria-label="List" className="box-border flex size-8 shrink-0 items-center justify-center rounded-lg border-0 p-0 text-foreground-icon-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiListUnordered className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
-    <DropdownPopover aria-label="List" placement="top start">
-      <DropdownItem onSelect={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}><RiListUnordered className="size-4 shrink-0" aria-hidden />Bulleted list</DropdownItem>
-      <DropdownItem onSelect={() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)}><RiListOrdered className="size-4 shrink-0" aria-hidden />Numbered list</DropdownItem>
-    </DropdownPopover>
-  </Dropdown>;
   return <>
     <div className="flex shrink-0 justify-center px-3 pb-3 pt-2">
       <div className="flex max-w-full items-center gap-1 rounded-2xl border border-border-button-default bg-background-secondary-default p-1 shadow-sm" role="toolbar" aria-label="Document insertion">
@@ -63,10 +57,16 @@ export function DocumentToolbar({ font, headingFont }: { font: 'sans' | 'serif';
           </DropdownPopover>
         </Dropdown>
         <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiTableLine} aria-label="Insert table" title="Insert 3 × 3 table" onMouseDown={event => event.preventDefault()} onClick={() => editor.dispatchCommand(INSERT_TABLE_COMMAND, { columns: '3', rows: '3', includeHeaders: true })} />
-        {list}
+        <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiCheckboxLine} aria-label="Checklist" title="Checklist" onMouseDown={event => event.preventDefault()} onClick={() => editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined)} />
         <Dropdown>
           <DropdownTrigger aria-label="More document actions" className="box-border flex size-8 shrink-0 items-center justify-center rounded-lg border-0 p-0 text-foreground-icon-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiMoreLine className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
           <DropdownPopover aria-label="Document actions" placement="top end">
+            <DropdownItem onSelect={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}><RiListUnordered className="size-4 shrink-0" aria-hidden />Bulleted list</DropdownItem>
+            <DropdownItem onSelect={() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)}><RiListOrdered className="size-4 shrink-0" aria-hidden />Numbered list</DropdownItem>
+            <DropdownDivider />
+            <DropdownItem onSelect={() => editor.update(() => { const selection = $getSelection(); if ($isRangeSelection(selection)) $setBlocksType(selection, () => $createQuoteNode()); })}><RiDoubleQuotesL className="size-4 shrink-0" aria-hidden />Quote</DropdownItem>
+            <DropdownItem onSelect={() => editor.update(() => { const selection = $getSelection(); if ($isRangeSelection(selection)) $setBlocksType(selection, () => $createCodeNode()); })}><RiCodeLine className="size-4 shrink-0" aria-hidden />Code block</DropdownItem>
+            <DropdownDivider />
             <DropdownItem onSelect={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}><RiArrowGoBackLine className="size-4 shrink-0" aria-hidden />Undo</DropdownItem>
             <DropdownItem onSelect={() => editor.dispatchCommand(REDO_COMMAND, undefined)}><RiArrowGoForwardLine className="size-4 shrink-0" aria-hidden />Redo</DropdownItem>
           </DropdownPopover>

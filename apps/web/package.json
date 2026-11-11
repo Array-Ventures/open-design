@@ -31,10 +31,12 @@
     "@anthropic-ai/sdk": "0.32.1",
     "@excalidraw/excalidraw": "0.18.1",
     "@formkit/auto-animate": "0.9.0",
+    "@lexical/code": "0.36.2",
     "@lexical/history": "0.36.2",
     "@lexical/html": "0.36.2",
     "@lexical/link": "0.36.2",
     "@lexical/list": "0.36.2",
+    "@lexical/markdown": "0.36.2",
     "@lexical/react": "0.36.2",
     "@lexical/rich-text": "0.36.2",
     "@lexical/selection": "0.36.2",
@@ -67,7 +69,8 @@
     "shiki": "4.1.0",
     "tailwind-merge": "3.7.0",
     "thinking-orbs": "0.3.1",
-    "three": "0.185.1"
+    "three": "0.185.1",
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.0",

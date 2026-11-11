@@ -21,3 +21,15 @@
 
 
 .tableScroll { overflow-x: auto; max-width: 100%; }
+
+.code { display: block; overflow-x: auto; white-space: pre; border-radius: 12px; padding: 16px; background: var(--color-background-secondary-default); color: var(--color-text-primary); font-family: var(--font-mono, monospace); font-size: var(--text-body-regular); line-height: 1.5; }
+.inlineCode { border-radius: 4px; padding-inline: 4px; background: var(--color-background-secondary-default); font-family: var(--font-mono, monospace); }
+.content .checklist { list-style: none; }
+.checked, .unchecked { position: relative; }
+.checked::before, .unchecked::before { position: absolute; inset-inline-start: -24px; inset-block-start: 0; width: 20px; cursor: pointer; }
+.checked::before { content: '☑'; color: var(--color-accent-600); }
+.unchecked::before { content: '☐'; color: var(--color-foreground-icon-secondary); }
+
+.underline { text-decoration: underline; }
+.strikethrough { text-decoration: line-through; }
+.underlineStrikethrough { text-decoration: underline line-through; }

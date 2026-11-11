@@ -576,6 +576,24 @@ describe('project file version routes', () => {
     expect(rawResponse.status).toBe(200);
     expect(await rawResponse.text()).toBe(currentVersion.content);
   });
+  it('stores real Markdown history and rejects stale conditional edits', async () => {
+    const projectId = await createProject();
+    const initial = '# Report\n\nReady.\n';
+    await writeProjectFile(projectId, 'report.md', initial);
+    const digest = createHash('sha256').update(initial).digest('hex');
+    const content = '# Report\n\nReviewed.\n';
+    const save = () => fetch(`${baseUrl}/api/projects/${projectId}/files`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'report.md', content, versionSource: 'manual', expectedContentSha256: digest }) });
+    const accepted = await save(); expect(accepted.status).toBe(200);
+    const result = await accepted.json() as { version: { id: string } }; expect(result.version.id).toBeTruthy();
+    const replay = await save(); expect(replay.status).toBe(200); expect((await replay.json() as { version: { id: string } }).version.id).toBe(result.version.id);
+    const history = await fetch(`${baseUrl}/api/projects/${projectId}/files/report.md/versions`); expect(history.status).toBe(200);
+    const listing = await history.json() as { versions: { id: string }[] }; expect(listing.versions.some(item => item.id === result.version.id)).toBe(true);
+    const saved = await fetch(`${baseUrl}/api/projects/${projectId}/files/report.md/versions/${result.version.id}`); expect(saved.status).toBe(200);
+    expect((await saved.json() as { content: string }).content).toBe(content);
+    const stale = await fetch(`${baseUrl}/api/projects/${projectId}/files`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'report.md', content: '# Stale overwrite', versionSource: 'manual', expectedContentSha256: digest }) });
+    expect(stale.status).toBe(409);
+    expect(await (await fetch(`${baseUrl}/api/projects/${projectId}/raw/report.md`)).text()).toBe(content);
+  });
   it('rejects stale document saves and serializes concurrent conditional writers', async () => {
     const projectId = await createProject();
     const original = '<html><body><p>Original</p></body></html>';

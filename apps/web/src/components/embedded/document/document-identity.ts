@@ -1,10 +1,11 @@
 import { $getState, $getRoot, $isElementNode, $setState, createState, ParagraphNode, type DOMConversionMap, type HTMLConfig, type Klass, type LexicalNode } from 'lexical';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
-import { ListItemNode } from '@lexical/list';
-import { TableCellNode } from '@lexical/table';
+import { CodeNode } from '@lexical/code';
+import { ListItemNode, ListNode } from '@lexical/list';
+import { TableCellNode, TableNode } from '@lexical/table';
 
 export const documentBlockId = createState('eveDocumentBlockId', { parse: value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(value) ? value : '' });
-const blocks: readonly Klass<LexicalNode>[] = [ParagraphNode, HeadingNode, QuoteNode, ListItemNode, TableCellNode];
+const blocks: readonly Klass<LexicalNode>[] = [ParagraphNode, HeadingNode, QuoteNode, ListItemNode, TableCellNode, CodeNode, ListNode, TableNode];
 
 /** Keep saved annotation identities when importing and exporting structured text. */
 export function documentHtmlConfig(): HTMLConfig {
@@ -36,13 +37,31 @@ export function documentHtmlConfig(): HTMLConfig {
 }
 
 /** Existing identities win over pasted copies, including copies inserted before them. */
-export function ensureDocumentBlockIds(owners = new Map<string, string>()) {
+export function documentBlockNodes(): LexicalNode[] {
   const nodes: LexicalNode[] = [];
   const visit = (node: LexicalNode) => {
     if (blocks.some(Block => node instanceof Block)) nodes.push(node);
     if ($isElementNode(node)) node.getChildren().forEach(visit);
   };
   $getRoot().getChildren().forEach(visit);
+  return nodes;
+}
+export function documentIdentityGroups(): Record<string, string[]> {
+  const groups: Record<string, string[]> = {};
+  for (const node of documentBlockNodes()) (groups[node.getType()] ??= []).push($getState(node, documentBlockId));
+  return groups;
+}
+export function restoreDocumentIdentityGroups(groups: Record<string, string[] | undefined> | undefined) {
+  if (!groups) return;
+  const nodes = new Map<string, LexicalNode[]>();
+  for (const node of documentBlockNodes()) { const group = nodes.get(node.getType()) ?? []; group.push(node); nodes.set(node.getType(), group); }
+  for (const [type, group] of nodes) {
+    const ids = groups[type];
+    if (ids?.length === group.length) group.forEach((node, index) => $setState(node, documentBlockId, documentBlockId.parse(ids[index])));
+  }
+}
+export function ensureDocumentBlockIds(owners = new Map<string, string>()) {
+  const nodes = documentBlockNodes();
   const live = new Set(nodes.map(node => node.getKey()));
   for (const [id, key] of owners) if (!live.has(key)) owners.delete(id);
   for (const node of nodes) {

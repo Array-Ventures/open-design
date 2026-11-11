@@ -318,6 +318,9 @@ importers:
       '@formkit/auto-animate':
         specifier: 0.9.0
         version: 0.9.0
+      '@lexical/code':
+        specifier: 0.36.2
+        version: 0.36.2
       '@lexical/history':
         specifier: 0.36.2
         version: 0.36.2
@@ -328,6 +331,9 @@ importers:
         specifier: 0.36.2
         version: 0.36.2
       '@lexical/list':
+        specifier: 0.36.2
+        version: 0.36.2
+      '@lexical/markdown':
         specifier: 0.36.2
         version: 0.36.2
       '@lexical/react':
@@ -401,7 +407,7 @@ importers:
         version: 16.2.6(@opentelemetry/api@1.9.1)(@playwright/test@1.60.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       openai:
         specifier: 6.38.0
-        version: 6.38.0(ws@8.21.3)(zod@4.4.2)
+        version: 6.38.0(ws@8.21.3)(zod@3.25.76)
       parse5:
         specifier: 8.0.1
         version: 8.0.1
@@ -429,6 +435,9 @@ importers:
       three:
         specifier: 0.185.1
         version: 0.185.1
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@tailwindcss/postcss':
         specifier: 4.3.0
@@ -11939,10 +11948,10 @@ snapshots:
       is-inside-container: 1.0.0
       wsl-utils: 0.1.0
 
-  openai@6.38.0(ws@8.21.3)(zod@4.4.2):
+  openai@6.38.0(ws@8.21.3)(zod@3.25.76):
     optionalDependencies:
       ws: 8.21.3
-      zod: 4.4.2
+      zod: 3.25.76
 
   p-cancelable@2.1.1: {}
 

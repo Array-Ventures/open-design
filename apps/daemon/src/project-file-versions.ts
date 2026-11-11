@@ -12,6 +12,8 @@ import path from 'node:path';
 
 import { isSafeId, kindFor, mimeFor, resolveProjectDir, validateProjectPath } from './projects.js';
 
+export const isVersionedDocumentFile = (name: string): boolean => /\.(html?|md|markdown)$/i.test(name);
+
 const VERSION_ROOT = '.file-versions';
 const VERSION_MANIFEST = 'manifest.json';
 const VERSION_ID_RE = /^[A-Za-z0-9_-]+$/u;
@@ -186,7 +188,7 @@ function normalizePrompt(value: unknown): string | null {
 }
 
 function normalizeContentPath(value: unknown, id: string): string {
-  if (typeof value === 'string' && /^[A-Za-z0-9._-]+\.html$/u.test(value) && !value.includes('..')) {
+  if (typeof value === 'string' && /^[A-Za-z0-9._-]+\.(?:html|md|markdown)$/u.test(value) && !value.includes('..')) {
     return value;
   }
   return `${id}.html`;
@@ -519,7 +521,8 @@ async function createProjectFileVersionUnlocked(
   const now = Date.now();
   const version = entries.reduce((max, entry) => Math.max(max, Number(entry.version) || 0), 0) + 1;
   const id = randomUUID();
-  const contentPath = `${String(version).padStart(4, '0')}-${id}.html`;
+  const extension = /\.(md|markdown)$/i.test(safeName) ? 'md' : 'html';
+  const contentPath = `${String(version).padStart(4, '0')}-${id}.${extension}`;
   const text = String(content ?? '');
   const source = inferVersionSource(options.source, options.promptSource, options.restoreFromVersionId);
   const entry: VersionEntry = {
@@ -567,7 +570,7 @@ export async function markProjectFileVersionStoreDeleted(
   metadata?: unknown,
 ): Promise<void> {
   const safeName = validateUserFileName(fileName);
-  if (!/\.html?$/i.test(safeName)) return;
+  if (!isVersionedDocumentFile(safeName)) return;
   assertProjectAvailable(projectsRoot, projectId, metadata);
   await withVersionFileLock(projectsRoot, projectId, safeName, async () => {
     const state = await readVersionManifestState(projectsRoot, projectId, safeName);
@@ -589,7 +592,7 @@ export async function renameProjectFileVersionStore(
   const safeFrom = validateUserFileName(fromName);
   const safeTo = validateUserFileName(toName);
   if (safeFrom === safeTo) return;
-  if (!/\.html?$/i.test(safeFrom) || !/\.html?$/i.test(safeTo)) return;
+  if (!isVersionedDocumentFile(safeFrom) || !isVersionedDocumentFile(safeTo)) return;
 
   assertProjectAvailable(projectsRoot, projectId, metadata);
   await withVersionFileLocks(projectsRoot, projectId, [safeFrom, safeTo], async () => {
@@ -670,7 +673,7 @@ export async function ensureCurrentProjectFileVersion(
   metadata?: unknown,
 ): Promise<ProjectFileVersion | null> {
   const safeName = validateUserFileName(fileName);
-  if (!/\.html?$/i.test(safeName)) return null;
+  if (!isVersionedDocumentFile(safeName)) return null;
   assertProjectAvailable(projectsRoot, projectId, metadata);
   return withVersionFileLock(projectsRoot, projectId, safeName, () =>
     ensureCurrentProjectFileVersionUnlocked(projectsRoot, projectId, safeName, content, options),
@@ -684,7 +687,7 @@ async function ensureCurrentProjectFileVersionUnlocked(
   content: string,
   options: CreateProjectFileVersionOptions,
 ): Promise<ProjectFileVersion | null> {
-  if (!/\.html?$/i.test(safeName)) return null;
+  if (!isVersionedDocumentFile(safeName)) return null;
   const text = String(content ?? '');
   const state = await readVersionManifestState(projectsRoot, projectId, safeName);
   if (!state.deletedAt) {
@@ -727,7 +730,7 @@ export async function resolveProjectFileVersionContentMatch(
   metadata?: unknown,
 ): Promise<ProjectFileVersionContentMatch> {
   const safeName = validateUserFileName(fileName);
-  if (!/\.html?$/i.test(safeName)) {
+  if (!isVersionedDocumentFile(safeName)) {
     return { status: 'missing_version', version: null };
   }
   assertProjectAvailable(projectsRoot, projectId, metadata);

@@ -8,6 +8,8 @@ import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { ListPlugin } from '@lexical/react/LexicalListPlugin';
 import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
+import { CheckListPlugin } from '@lexical/react/LexicalCheckListPlugin';
+import { CodeNode, CodeHighlightNode } from '@lexical/code';
 import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html';
@@ -16,8 +18,9 @@ import { ListNode, ListItemNode } from '@lexical/list';
 import { TableNode, TableRowNode, TableCellNode } from '@lexical/table';
 import { LinkNode } from '@lexical/link';
 import { $getRoot, $getState, $setState, RootNode } from 'lexical';
+import { serializeMarkdownDocument } from './markdown-serialization';
 import { documentHtml, documentImport, documentFontFamily } from './document-html';
-import { documentHtmlConfig, ensureDocumentBlockIds, documentFont, documentHeadingFont } from './document-identity';
+import { documentHtmlConfig, ensureDocumentBlockIds, documentFont, documentHeadingFont, restoreDocumentIdentityGroups } from './document-identity';
 import { saveDocumentFile, type DocumentFile } from './document-file';
 import { DocumentWriter, type DocumentWriteState } from './document-writer';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
@@ -28,7 +31,7 @@ import { RiSaveLine, RiPencilLine, RiArrowDownSLine } from '@remixicon/react';
 import { ScrollFade, useScrollFade } from '../boardui/scroll-fade';
 import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem } from '../boardui/dropdown';
 
-export const documentNodes = [HeadingNode, QuoteNode, ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, LinkNode];
+export const documentNodes = [HeadingNode, QuoteNode, ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, LinkNode, CodeNode, CodeHighlightNode];
 
 export function DocumentEditor({ projectId, fileName, title, observed, onSaved, onDirtyChange, onWriteError }: {
   projectId: string; fileName: string; title: string; observed: DocumentFile; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void; onWriteError?(error: string | null): void;
@@ -36,7 +39,7 @@ export function DocumentEditor({ projectId, fileName, title, observed, onSaved, 
   const owners = useMemo(() => new Map<string, string>(), []);
   const [failure, setFailure] = useState<string | null>(null);
   const initialConfig = useMemo(() => ({
-    namespace: `document:${projectId}:${fileName}`, theme: { tableScrollableWrapper: styles.tableScroll }, nodes: documentNodes, html: documentHtmlConfig(),
+    namespace: `document:${projectId}:${fileName}`, theme: { tableScrollableWrapper: styles.tableScroll, code: styles.code, text: { code: styles.inlineCode, underline: styles.underline, strikethrough: styles.strikethrough, underlineStrikethrough: styles.underlineStrikethrough }, list: { checklist: styles.checklist, listitemChecked: styles.checked, listitemUnchecked: styles.unchecked } }, nodes: documentNodes, html: documentHtmlConfig(),
     onError: (error: Error) => { setFailure(error.message); },
     editorState: (editor: import('lexical').LexicalEditor) => {
       const root = $getRoot(); root.append(...$generateNodesFromDOM(editor, documentImport(observed.html)));
@@ -44,14 +47,14 @@ export function DocumentEditor({ projectId, fileName, title, observed, onSaved, 
       const font = attributes.getAttribute('data-eve-document-font');
       const headingFont = attributes.getAttribute('data-eve-document-heading-font') ?? font;
       $setState(root, documentFont, font === 'serif' ? 'serif' : 'sans');
-      $setState(root, documentHeadingFont, headingFont === 'serif' ? 'serif' : 'sans'); ensureDocumentBlockIds(owners);
+      $setState(root, documentHeadingFont, headingFont === 'serif' ? 'serif' : 'sans'); restoreDocumentIdentityGroups(observed.identities); ensureDocumentBlockIds(owners);
     },
   }), [projectId, fileName, observed.html, owners]);
   return <div className={styles.editor} data-testid="document-editor">
     {failure ? <div role="alert" className="p-3 text-body-2-regular text-text-error-primary">{failure}</div> : null}
     <LexicalComposer initialConfig={initialConfig}>
       <DocumentBody projectId={projectId} fileName={fileName} title={title} observed={observed} owners={owners} onSaved={onSaved} onDirtyChange={onDirtyChange} onWriteError={onWriteError} />
-      <HistoryPlugin /><ListPlugin /><TablePlugin hasHorizontalScroll /><LinkPlugin />
+      <HistoryPlugin /><ListPlugin /><CheckListPlugin /><TablePlugin hasHorizontalScroll /><LinkPlugin />
     </LexicalComposer>
   </div>;
 }
@@ -85,7 +88,7 @@ function DocumentBody({ projectId, fileName, title, observed, owners, onSaved, o
   const dirtyChanged = useRef(onDirtyChange); dirtyChanged.current = onDirtyChange;
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const serialize = () => documentHtml(title, $generateHtmlFromNodes(editor), $getState($getRoot(), documentFont), $getState($getRoot(), documentHeadingFont));
+    const serialize = () => observed.format === 'markdown' ? serializeMarkdownDocument(editor) : documentHtml(title, $generateHtmlFromNodes(editor), $getState($getRoot(), documentFont), $getState($getRoot(), documentHeadingFont));
     const initial = editor.getEditorState().read(serialize);
     const current = writer.current ??= new DocumentWriter(observed, initial, async (html, base) => {
       const result = await saveDocumentFile(projectId, fileName, html, base); saved.current(result); return result;
