@@ -360,10 +360,9 @@
 .hostTypography :global(.comment-popover-compact .comment-popover-quote) { color: var(--color-text-tertiary); }
 .hostTypography :global(.comment-popover-compact .comment-popover-actions) { border: 0; padding: 4px 12px 12px; justify-content: space-between; }
 .hostTypography :global(.comment-popover-compact .annotation-input-shell) { border: 0 !important; background: transparent !important; box-shadow: none !important; outline: none !important; }
-.hostTypography :global(.comment-popover-compact .annotation-input-shell textarea) { min-height: 48px; resize: none; }
 
 .hostTypography :global(.comment-popover-compact .comment-popover-section + .comment-popover-section) { border: 0; margin: 0; padding: 0; }
-.hostTypography :global(.comment-popover-compact .annotation-input-shell textarea) { height: 56px !important; min-height: 56px; max-height: 96px; }
+.hostTypography :global(.comment-popover-compact .annotation-input-shell textarea) { height: 48px; min-height: 48px; max-height: 96px; resize: none; }
 .hostTypography :global(.comment-popover-compact .comment-side-dock) { height: auto; min-height: 0; }
 .hostTypography :global(.comment-popover-compact .comment-side-panel) { height: auto; min-height: 0; }
 .hostTypography :global(.comment-popover-compact .comment-side-header:has(.comment-side-select-all)) { display: none; }

@@ -1,3 +1,4 @@
+import { CommentMentions } from './embedded/CommentMentions';
 import { DeckPresentationMenu } from './embedded/DeckPresentationMenu';
 import { CommentThreadMenu } from './embedded/CommentThreadMenu';
 import { ArtifactAnnotationControls } from './embedded/ArtifactAnnotationControls';
@@ -5238,7 +5239,7 @@ export function CommentSidePanel({
           <div className="composer-shell comment-side-new-comment-shell">
             <div className="composer-input-wrap">
               <div className="composer-textarea-layer">
-                <Textarea unstyled
+                <CommentMentions value={newCommentDraft} onChange={setNewCommentDraft}><Textarea unstyled
                   value={newCommentDraft}
                   placeholder={t('chat.comments.placeholder')}
                   aria-label={t('chat.comments.placeholder')}
@@ -5249,7 +5250,7 @@ export function CommentSidePanel({
                       void submitNewComment();
                     }
                   }}
-                />
+                /></CommentMentions>
               </div>
             </div>
             <div className="composer-row comment-side-new-comment-actions">
