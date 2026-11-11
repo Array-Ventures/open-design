@@ -7,7 +7,7 @@ const api = vi.hoisted(() => ({ fetchCommentReplies: vi.fn(), createCommentReply
 const uploads = vi.hoisted(() => ({ prepare: vi.fn(), clear: vi.fn() }));
 vi.mock('../../../src/components/embedded/feedback-image-upload', () => ({ FeedbackImageUpload: class { prepare = uploads.prepare; clear = uploads.clear; } }));
 const confirm = vi.hoisted(() => vi.fn());
-vi.mock('../../../src/components/embedded/comment-reply-api', () => api);
+vi.mock('../../../src/components/embedded/comment-reply-api', async importOriginal => ({ ...await importOriginal<typeof import('../../../src/components/embedded/comment-reply-api')>(), ...api }));
 vi.mock('../../../src/components/embedded/host-context', () => ({ confirmHostFeedbackDiscard: confirm }));
 vi.mock('../../../src/components/embedded/host-viewer', () => ({ useEmbeddedMentionBots: () => [{ id: 'chief', name: 'Chief' }, { id: 'scout', name: 'Scout' }], useEmbeddedViewer: () => ({ memberId: 'evebot:person', displayName: 'Person' }) }));
 const root = { id: 'root', note: 'Read-only root', authorDisplayName: 'Person', createdAt: 1, status: 'open' } as PreviewComment;
@@ -33,7 +33,7 @@ it('keeps newer typing while a reply save finishes and prevents double submissio
   expect(screen.getByText('First reply')).toBeVisible(); expect(screen.getByRole('textbox')).toHaveValue('Next draft');
   expect(p.onDirty).toHaveBeenLastCalledWith(true);
 });
-it('reuses a failed create receipt for the same draft and rotates it when the draft changes', async () => {
+it('settles an uncertain create receipt before submitting a newer draft', async () => {
   api.createCommentReply.mockRejectedValue(new Error('Offline'));
   render(<SavedCommentThread {...props()} />);
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Keep me' } });
@@ -45,7 +45,17 @@ it('reuses a failed create receipt for the same draft and rotates it when the dr
   expect(api.createCommentReply.mock.calls[0]![2]).toEqual(api.createCommentReply.mock.calls[1]![2]);
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Changed draft' } }); fireEvent.click(screen.getByRole('button', { name: 'Add reply' }));
   await waitFor(() => expect(api.createCommentReply).toHaveBeenCalledTimes(3));
-  expect(api.createCommentReply.mock.calls[2]![2].operationId).not.toBe(api.createCommentReply.mock.calls[0]![2].operationId);
+  expect(api.createCommentReply.mock.calls[2]![2]).toEqual(api.createCommentReply.mock.calls[0]![2]);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add reply' })).toBeEnabled());
+  api.createCommentReply.mockResolvedValue({ ...reply, note: 'Keep me' });
+  fireEvent.click(screen.getByRole('button', { name: 'Retry reply save' }));
+  await screen.findByText('Keep me');
+  expect(screen.getByRole('textbox')).toHaveValue('Changed draft');
+  expect(api.createCommentReply.mock.calls[3]![2]).toEqual(api.createCommentReply.mock.calls[0]![2]);
+  api.createCommentReply.mockResolvedValue({ ...reply, id: 'newer', note: 'Changed draft' });
+  fireEvent.click(screen.getByRole('button', { name: 'Add reply' }));
+  await screen.findByText('Changed draft');
+  expect(api.createCommentReply.mock.calls[4]![2].operationId).not.toBe(api.createCommentReply.mock.calls[0]![2].operationId);
 });
 it('retains a reply draft while the same thread is hidden for the comments list', () => {
   const p = props(); const view = render(<SavedCommentThread {...p} />);
@@ -270,4 +280,40 @@ it('keeps an edited reply draft as a new reply only after an explicit recovery a
   fireEvent.click(screen.getByRole('button', { name: 'Reload comments' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Keep draft as a new reply' }));
   expect(screen.getByRole('textbox', { name: 'Reply' })).toHaveValue('Recover this text'); expect(api.createCommentReply).not.toHaveBeenCalled();
+});
+
+it('retries the exact uncertain image reply before consuming only its original files', async () => {
+  api.createCommentReply.mockRejectedValueOnce(new Error('Response lost'));
+  const p = props(); render(<SavedCommentThread {...p} />);
+  const first = new File(['first'], 'first.png', { type: 'image/png' });
+  const later = new File(['later'], 'later.png', { type: 'image/png' });
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Original note' } });
+  fireEvent.change(screen.getByLabelText('Reply image files'), { target: { files: [first] } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add reply' }));
+  await screen.findByRole('alert');
+  const input = api.createCommentReply.mock.calls[0]![2];
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Newer note' } });
+  fireEvent.change(screen.getByLabelText('Reply image files'), { target: { files: [later] } });
+  api.createCommentReply.mockResolvedValue({ ...reply, note: input.note, attachments: input.attachments });
+  fireEvent.click(screen.getByRole('button', { name: 'Retry reply save' }));
+  await screen.findByText('Original note');
+  expect(api.createCommentReply.mock.calls[1]![2]).toEqual(input);
+  expect(uploads.prepare).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('textbox')).toHaveValue('Newer note');
+  expect(screen.getByRole('button', { name: 'Remove later.png' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Remove first.png' })).toBeNull();
+});
+it('keeps an uncertain reply retry and discard guard when newer text is cleared', async () => {
+  api.createCommentReply.mockRejectedValueOnce(new Error('Response lost'));
+  const p = props(); render(<SavedCommentThread {...p} />);
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Original note' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add reply' }));
+  await screen.findByRole('alert');
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } });
+  expect(p.onDirty).toHaveBeenLastCalledWith(true);
+  expect(screen.getByRole('button', { name: 'Retry reply save' })).toBeEnabled();
+  api.createCommentReply.mockResolvedValue({ ...reply, note: 'Original note' });
+  fireEvent.click(screen.getByRole('button', { name: 'Retry reply save' }));
+  await screen.findByText('Original note');
+  expect(screen.getByRole('textbox')).toHaveValue('');
 });

@@ -1,19 +1,19 @@
 import { commentIconButton as iconButton } from './comment-button-style';
 import { useLayoutEffect, useRef, useState } from 'react';
-import type { PreviewComment, PreviewCommentReply } from '@open-design/contracts';
+import type { PreviewComment, PreviewCommentAttachment, PreviewCommentReply, PreviewCommentReplyCreateRequest } from '@open-design/contracts';
 import { RiArrowUpLine, RiCloseLine, RiRefreshLine, RiAttachment2, RiChatNewLine } from '@remixicon/react';
 import { Button } from './boardui/button';
 import { TextareaBase } from './boardui/textarea';
 import { cx } from './boardui/cx';
 import { CommentThreadMenu } from './CommentThreadMenu';
-import { useReplyImages } from './useReplyImages';
+import { useReplyImages, type ImageDraft } from './useReplyImages';
 import { ReplyImages } from './ReplyImages';
 import { ScrollFade, useScrollFade } from './boardui/scroll-fade';
 import { CommentMentions } from './CommentMentions';
 import { ResolveCommentButton, useCommentReview } from './CommentReview';
 import { useEmbeddedViewer } from './host-viewer';
 import { confirmHostFeedbackDiscard } from './host-context';
-import { createCommentReply, deleteCommentReply, editCommentReply, fetchCommentReplies } from './comment-reply-api';
+import { CommentReplyError, createCommentReply, deleteCommentReply, editCommentReply, fetchCommentReplies } from './comment-reply-api';
 import { isImeComposing } from '../../utils/imeComposing';
 
 function commentAge(createdAt: number): string {
@@ -54,12 +54,12 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
   const composing = useRef(false);
   const readVersion = useRef(0);
   const draftRef = useRef(draft); draftRef.current = draft;
-  const receipt = useRef<{ key: string; operationId: string } | null>(null);
+  const receipt = useRef<{ input: PreviewCommentReplyCreateRequest; images: ImageDraft; uploaded: PreviewCommentAttachment[]; uncertain: boolean } | null>(null);
   const notify = useRef(onDirty); notify.current = onDirty;
   const images = useReplyImages(projectId, JSON.stringify([comment.id, editing?.id ?? null]), () => notify.current(true));
   const picker = useRef<HTMLInputElement>(null);
   const historyFade = useScrollFade();
-  const dirty = busy || images.hasChanges(editing?.attachments ?? []) || (editing ? draft !== editing.note : draft !== '');
+  const dirty = busy || Boolean(receipt.current?.uncertain) || images.hasChanges(editing?.attachments ?? []) || (editing ? draft !== editing.note : draft !== '');
   const latestEditing = editing ? replies.find(reply => reply.id === editing.id) : null;
   const editStale = Boolean(editing && (!latestEditing || latestEditing.revision !== editing.revision));
   const dirtyRef = useRef(dirty); dirtyRef.current = dirty;
@@ -93,36 +93,51 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
   }
   async function submit() {
     const controller = scope.current, note = draftRef.current;
-    const imageSnapshot = images.read();
-    if (!controller || controller.signal.aborted || pending.current || !viewer || (!note.trim() && !imageSnapshot.files.length && !imageSnapshot.kept.length) || deleted || editStale) return;
-    const imageProblem = images.validate();
+    const retry = receipt.current?.uncertain ? receipt.current : null;
+    const imageSnapshot = retry?.images ?? images.read();
+    if (!controller || controller.signal.aborted || pending.current || !viewer || (!retry && !note.trim() && !imageSnapshot.files.length && !imageSnapshot.kept.length) || deleted || editStale) return;
+    const imageProblem = retry ? null : images.validate();
     if (imageProblem) { setError(imageProblem); return; }
     const target = editing;
+    let attempt = retry;
+    let sent = false;
     pending.current = true; setBusy(true); notify.current(true); setError(null);
     try {
-      const uploaded = imageSnapshot.files.length ? await images.prepare(imageSnapshot, controller.signal) : [];
+      const uploaded = retry?.uploaded ?? (imageSnapshot.files.length ? await images.prepare(imageSnapshot, controller.signal) : []);
       if (controller.signal.aborted) return;
       const attachments = [...imageSnapshot.kept, ...uploaded];
-      const key = JSON.stringify([note, attachments]);
-      if (!receipt.current || receipt.current.key !== key) receipt.current = { key, operationId: crypto.randomUUID() };
       const imageChanges = imageSnapshot.files.length > 0 || JSON.stringify(imageSnapshot.kept) !== JSON.stringify(target?.attachments ?? []);
       const imageInput = (target ? imageChanges : attachments.length) ? { attachments } : {};
+      if (!target && !attempt) {
+        attempt = { input: { note, operationId: crypto.randomUUID(), ...imageInput }, images: imageSnapshot, uploaded, uncertain: false };
+        receipt.current = attempt;
+      }
+      sent = true;
       const saved = target
         ? await editCommentReply(projectId, comment.id, target.id, { note, expectedRevision: target.revision, ...imageInput }, controller.signal)
-        : await createCommentReply(projectId, comment.id, { note, operationId: receipt.current.operationId, ...imageInput }, controller.signal);
+        : await createCommentReply(projectId, comment.id, attempt!.input, controller.signal);
       if (controller.signal.aborted) return;
       readVersion.current++; setLoading(false);
       setReplies(current => target ? current.map(item => item.id === saved.id ? saved : item) : current.some(item => item.id === saved.id) ? current : [...current, saved]);
-      const unchanged = draftRef.current === note && images.read() === imageSnapshot;
+      const unchanged = draftRef.current === (attempt?.input.note ?? note) && images.read() === imageSnapshot;
+      receipt.current = null;
       if (unchanged) { setDraft(''); setEditing(null); receipt.current = null; images.reset(); }
       else { images.accepted(imageSnapshot, uploaded, Boolean(target)); if (target) setEditing(saved); }
-    } catch (failure) { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : 'Your reply could not be saved.'); }
+    } catch (failure) {
+      if (!controller.signal.aborted) {
+        if (attempt && sent) {
+          if (!(failure instanceof CommentReplyError) || failure.status === 408 || failure.status >= 500) attempt.uncertain = true;
+          else receipt.current = null;
+        }
+        setError(failure instanceof Error ? failure.message : 'Your reply could not be saved.');
+      }
+    }
     finally { if (!controller.signal.aborted) { pending.current = false; setBusy(false); } }
   }
   function changeDraft(value: string) {
     draftRef.current = value;
     setDraft(value);
-    notify.current(busy || images.hasChanges(editing?.attachments ?? []) || (editing ? value !== editing.note : value !== ''));
+    notify.current(busy || Boolean(receipt.current?.uncertain) || images.hasChanges(editing?.attachments ?? []) || (editing ? value !== editing.note : value !== ''));
   }
   async function remove(reply: PreviewCommentReply) {
     const controller = scope.current;
@@ -167,7 +182,7 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
     <ScrollFade progress={historyFade.progress} />
     </div>
     <div className="flex shrink-0 flex-col gap-3">
-    {error ? <div role="alert" className="flex items-center gap-2 text-caption-1-regular text-text-error-primary"><span className="min-w-0 flex-1">{error}</span><Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Reload comments" title="Reload comments" disabled={busy} onClick={() => { void refresh(); }} /></div> : null}
+    {error || receipt.current?.uncertain ? <div role="alert" className="flex items-center gap-2 text-caption-1-regular text-text-error-primary"><span className="min-w-0 flex-1">{error || 'Save not confirmed.'}</span>{receipt.current?.uncertain ? <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry reply save" title="Retry save" disabled={busy} onClick={() => { void submit(); }} /> : null}<Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Reload comments" title="Reload comments" disabled={busy} onClick={() => { void refresh(); }} /></div> : null}
     {editStale ? <div role="status" className="flex items-center gap-2 text-caption-1-regular text-text-tertiary"><span className="min-w-0 flex-1">{latestEditing ? 'This reply changed. Your draft is preserved.' : 'This reply was deleted. Your draft is preserved.'}</span>
       {latestEditing ? <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Continue editing latest reply" title="Keep your draft and edit the latest revision" disabled={busy} onClick={() => { images.rebase(editing?.attachments ?? [], latestEditing.attachments ?? []); setEditing(latestEditing); setError(null); }} />
         : !deleted ? <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiChatNewLine} aria-label="Keep draft as a new reply" title="Keep draft as a new reply" disabled={busy || !viewer} onClick={() => { setEditing(null); receipt.current = null; setError(null); }} /> : null}

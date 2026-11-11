@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PreviewCommentAttachment } from '@open-design/contracts';
 import { FeedbackImageUpload } from './feedback-image-upload';
 
-type ImageDraft = { files: File[]; kept: PreviewCommentAttachment[] };
+export type ImageDraft = { files: File[]; kept: PreviewCommentAttachment[] };
 function limitError(draft: ImageDraft): string | null {
   return draft.files.length + draft.kept.length > 8 || draft.files.some(file => file.size > 25 * 1024 * 1024)
     || draft.files.reduce((size, file) => size + file.size, 0) > 50 * 1024 * 1024 ? 'Use up to 8 images, 25 MB each and 50 MB total.' : null;
