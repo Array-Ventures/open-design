@@ -1,3 +1,4 @@
+import { commentIconButton as iconButton } from './comment-button-style';
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { PreviewComment, PreviewCommentReply } from '@open-design/contracts';
 import { RiArrowUpLine, RiCloseLine, RiRefreshLine, RiAttachment2, RiChatNewLine } from '@remixicon/react';
@@ -15,7 +16,6 @@ import { confirmHostFeedbackDiscard } from './host-context';
 import { createCommentReply, deleteCommentReply, editCommentReply, fetchCommentReplies } from './comment-reply-api';
 import { isImeComposing } from '../../utils/imeComposing';
 
-const iconButton = 'box-border size-8 min-h-8 shrink-0 border-0 bg-transparent p-0 text-foreground-icon-secondary shadow-none hover:bg-background-secondary-hover active:bg-background-secondary-active';
 function commentAge(createdAt: number): string {
   const minutes = Math.max(0, Math.floor((Date.now() - createdAt) / 60_000));
   if (minutes < 1) return 'now';

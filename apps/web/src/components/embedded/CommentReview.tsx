@@ -1,3 +1,4 @@
+import { commentIconButton } from './comment-button-style';
 import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { RiCheckLine, RiFilter3Line, RiCloseLine } from '@remixicon/react';
 import type { PreviewComment } from '../../types';
@@ -30,7 +31,7 @@ export function ResolveCommentButton({ comment, allowed, blocked = false, onReso
   if (!review || !allowed || comment.status !== 'open') return null;
   return <div onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
     <Button variant="ghost" size="small" iconOnly leadingIcon={RiCheckLine} aria-label="Resolve comment" title={blocked ? 'Save your comment changes before resolving' : busy ? 'Resolving…' : 'Resolve'} disabled={busy || blocked}
-      className="box-border size-8 min-h-8 shrink-0 border-0 bg-transparent p-0 text-foreground-icon-secondary shadow-none hover:bg-background-secondary-hover active:bg-background-secondary-active"
+      className={commentIconButton}
       onClick={() => {
         const current = life.current;
         if (current.pending || blocked) return;
@@ -64,7 +65,7 @@ export function CommentListPopover({ children, onClose }: { children: ReactNode;
     onKeyDown={event => { if (event.key === 'Escape' && event.currentTarget.contains(event.target as Node)) { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
     <div className="comment-popover-titlebar"><span className="comment-popover-title">All comments</span><CommentReviewFilter />
       <Button ref={close} variant="ghost" size="small" iconOnly leadingIcon={RiCloseLine} aria-label="Close comments" title="Close" onClick={onClose}
-        className="box-border size-8 min-h-8 shrink-0 border-0 bg-transparent p-0 text-foreground-icon-secondary shadow-none hover:bg-background-secondary-hover" />
+        className={commentIconButton} />
     </div>
     <div className="comment-popover-body">{children}</div>
   </div>;
