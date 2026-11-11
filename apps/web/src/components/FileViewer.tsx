@@ -9952,7 +9952,10 @@ function HtmlViewer({
   const [presentEscHint, setPresentEscHint] = useState(false);
   const [deckThumbnailsCollapsed, setDeckThumbnailsCollapsed] = useState(false);
   const [deckThumbnailWidth, setDeckThumbnailWidth] = useState<number | null>(null);
-  const thumbnailRailWidth = deckThumbnailWidth ?? (previewViewport === 'desktop' ? 194 : 56);
+  // A compact screen must leave room for the slide. Preserve the person's
+  // wide-screen rail preference while constraining only this rendered layout.
+  const thumbnailRailDefaultWidth = previewViewport === 'desktop' && (!embedded || !previewBodySize || previewBodySize.width >= 640) ? 194 : 56;
+  const thumbnailRailWidth = Math.min(deckThumbnailWidth ?? thumbnailRailDefaultWidth, thumbnailRailDefaultWidth + 24);
   const [speakerNotesEditMode, setSpeakerNotesEditMode] = useState(false);
   const [speakerNotesDraft, setSpeakerNotesDraft] = useState('');
   const [_speakerNotesSaving, setSpeakerNotesSaving] = useState(false);
@@ -18233,7 +18236,7 @@ function HtmlViewer({
             data-testid={manualEditMode ? undefined : 'comment-preview-layout'}
             ref={manualEditMode ? undefined : setCommentComposerHostRef}
             style={{
-              ...(embedded && deckThumbnailWidth !== null ? { '--deck-rail-width': `${deckThumbnailWidth}px`, '--deck-compact-rail-width': `${deckThumbnailWidth}px` } as CSSProperties : {}),
+              ...(embedded ? { '--deck-rail-width': `${thumbnailRailWidth}px`, '--deck-compact-rail-width': `${thumbnailRailWidth}px` } as CSSProperties : {}),
               ...previewViewportStyle(
                 previewViewport,
                 previewScale,
@@ -18247,7 +18250,7 @@ function HtmlViewer({
             {manualEditPanel}
             {manualEditHoverAffordance}
             {showDeckThumbnailRail && embedded ? (
-              <ThumbnailRailResize collapsed={deckThumbnailsCollapsed} width={thumbnailRailWidth} defaultWidth={previewViewport === 'desktop' ? 194 : 56}
+              <ThumbnailRailResize collapsed={deckThumbnailsCollapsed} width={thumbnailRailWidth} defaultWidth={thumbnailRailDefaultWidth}
                 onResize={next => { setDeckThumbnailsCollapsed(next === 0); if (next > 0) setDeckThumbnailWidth(next); }}>
                 {deckThumbnailRailNode}
               </ThumbnailRailResize>
