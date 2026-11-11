@@ -7,7 +7,7 @@ const api = vi.hoisted(() => ({ fetchCommentReplies: vi.fn(), createCommentReply
 const confirm = vi.hoisted(() => vi.fn());
 vi.mock('../../../src/components/embedded/comment-reply-api', () => api);
 vi.mock('../../../src/components/embedded/host-context', () => ({ confirmHostFeedbackDiscard: confirm }));
-vi.mock('../../../src/components/embedded/host-viewer', () => ({ useEmbeddedViewer: () => ({ memberId: 'evebot:person', displayName: 'Person' }) }));
+vi.mock('../../../src/components/embedded/host-viewer', () => ({ useEmbeddedMentionBots: () => [{ id: 'chief', name: 'Chief' }, { id: 'scout', name: 'Scout' }], useEmbeddedViewer: () => ({ memberId: 'evebot:person', displayName: 'Person' }) }));
 const root = { id: 'root', note: 'Read-only root', authorDisplayName: 'Person', createdAt: 1, status: 'open' } as PreviewComment;
 const reply: PreviewCommentReply = { id: 'reply', commentId: 'root', authorMemberId: 'evebot:person', authorDisplayName: 'Person', note: 'Saved reply', createdAt: 1, updatedAt: 1, revision: 1 };
 function props() { return { projectId: 'project', comment: root, hidden: false, onDirty: vi.fn(), onClose: vi.fn(), onEditRoot: vi.fn(), onDeleteRoot: vi.fn(), canEditRoot: true, canDeleteRoot: true, existingImages: [] }; }
@@ -138,4 +138,27 @@ it('retains newer typing as a new unsent draft when deleting the edited reply fi
   await act(async () => finish());
   expect(screen.getByRole('textbox', { name: 'Reply' })).toHaveValue('Typed after delete started');
   expect(screen.getByRole('button', { name: 'Add reply' })).toBeEnabled(); expect(api.createCommentReply).not.toHaveBeenCalled();
+});
+
+it('selects a bot mention with Enter without posting the reply', async () => {
+  const p = props(); render(<SavedCommentThread {...p} />);
+  const input = screen.getByRole('textbox', { name: 'Reply' });
+  fireEvent.input(input, { target: { value: '@Ch', selectionStart: 3, selectionEnd: 3 } });
+  await screen.findByRole('listbox', { name: 'Mention a bot' });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  await waitFor(() => expect(input).toHaveValue('@Chief '));
+  expect(api.createCommentReply).not.toHaveBeenCalled(); expect(p.onDirty).toHaveBeenLastCalledWith(true);
+});
+
+it('does not post on composition confirmation or Shift+Enter', async () => {
+  api.createCommentReply.mockResolvedValue({ ...reply, note: '正在输入' });
+  render(<SavedCommentThread {...props()} />);
+  const input = screen.getByRole('textbox', { name: 'Reply' });
+  fireEvent.change(input, { target: { value: '正在输入' } });
+  fireEvent.compositionStart(input); fireEvent.keyDown(input, { key: 'Enter' });
+  expect(api.createCommentReply).not.toHaveBeenCalled();
+  fireEvent.compositionEnd(input); fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+  expect(api.createCommentReply).not.toHaveBeenCalled();
+  fireEvent.keyDown(input, { key: 'Enter' });
+  await waitFor(() => expect(api.createCommentReply).toHaveBeenCalledOnce());
 });

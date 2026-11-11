@@ -5,10 +5,12 @@ import { Button } from './boardui/button';
 import { TextareaBase } from './boardui/textarea';
 import { cx } from './boardui/cx';
 import { CommentThreadMenu } from './CommentThreadMenu';
+import { CommentMentions } from './CommentMentions';
 import { ResolveCommentButton, useCommentReview } from './CommentReview';
 import { useEmbeddedViewer } from './host-viewer';
 import { confirmHostFeedbackDiscard } from './host-context';
 import { createCommentReply, deleteCommentReply, editCommentReply, fetchCommentReplies } from './comment-reply-api';
+import { isImeComposing } from '../../utils/imeComposing';
 
 const iconButton = 'box-border size-8 min-h-8 shrink-0 border-0 bg-transparent p-0 text-foreground-icon-secondary shadow-none hover:bg-background-secondary-hover active:bg-background-secondary-active';
 function commentAge(createdAt: number): string {
@@ -46,6 +48,7 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
   const [error, setError] = useState<string | null>(null);
   const scope = useRef<AbortController | null>(null);
   const pending = useRef(false);
+  const composing = useRef(false);
   const readVersion = useRef(0);
   const draftRef = useRef(draft); draftRef.current = draft;
   const receipt = useRef<{ note: string; operationId: string } | null>(null);
@@ -101,6 +104,11 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
     } catch (failure) { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : 'Your reply could not be saved.'); }
     finally { if (!controller.signal.aborted) { pending.current = false; setBusy(false); } }
   }
+  function changeDraft(value: string) {
+    draftRef.current = value;
+    setDraft(value);
+    notify.current(busy || (editing ? value !== editing.note : value !== ''));
+  }
   async function remove(reply: PreviewCommentReply) {
     const controller = scope.current;
     if (!controller || controller.signal.aborted || pending.current) return;
@@ -142,9 +150,11 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
     {editStale ? <div role="status" className="flex items-center gap-2 text-caption-1-regular text-text-tertiary"><span className="min-w-0 flex-1">{latestEditing ? 'This reply changed. Your draft is preserved.' : 'This reply was deleted. Your draft is preserved.'}</span>
       {latestEditing ? <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Continue editing latest reply" title="Keep your draft and edit the latest revision" disabled={busy} onClick={() => { setEditing(latestEditing); setError(null); }} /> : null}
     </div> : null}
-    <TextareaBase className="min-h-7" aria-label={editing ? 'Edit reply' : 'Reply'} placeholder="Add your comment" rows={1} autoResize maxRows={5} resize="none" value={draft} disabled={!viewer || deletingRoot}
-      onChange={event => { draftRef.current = event.target.value; setDraft(event.target.value); notify.current(busy || (editing ? event.target.value !== editing.note : event.target.value !== '')); }}
-      onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
+    <CommentMentions value={draft} onChange={changeDraft}><TextareaBase className="min-h-7" aria-label={editing ? 'Edit reply' : 'Reply'} placeholder="Add your comment" rows={1} autoResize maxRows={5} resize="none" value={draft} disabled={!viewer || deletingRoot}
+      onChange={event => changeDraft(event.target.value)}
+      onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
+      onKeyDown={event => { if (!isImeComposing(event, composing.current) && event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit(); } }} />
+    </CommentMentions>
     {draft || editing ? <div className="flex items-center justify-end gap-1">
       {editing ? <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiCloseLine} aria-label="Cancel reply edit" title="Cancel edit" disabled={busy} onClick={() => { void changeEditor(null); }} /> : null}
       <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiArrowUpLine} aria-label={editing ? 'Save reply' : 'Add reply'} title={editing ? 'Save reply' : 'Add reply'} disabled={busy || !draft.trim() || !viewer || deleted || editStale} onClick={() => { void submit(); }} />
