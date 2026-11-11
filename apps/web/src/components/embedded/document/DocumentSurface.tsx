@@ -10,7 +10,7 @@ import { isEditableDocument } from './document-html';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
 import { DocumentEditor } from './DocumentEditor';
 
-const supported = new Set(['main', 'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'a', 'br', 'span', 'code']);
+const supported = new Set(['main', 'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'table', 'colgroup', 'col', 'thead', 'tbody', 'tr', 'td', 'th', 'a', 'br', 'span', 'code']);
 function supportedDocument(html: string): boolean {
   const parsed = new DOMParser().parseFromString(html, 'text/html');
   return isEditableDocument(html) && [...parsed.body.querySelectorAll('*')].every(element => supported.has(element.tagName.toLowerCase()));

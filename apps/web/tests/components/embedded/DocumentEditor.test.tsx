@@ -3,9 +3,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, expect, it, vi } from 'vitest';
 import { $getRoot, $getSelection, $isRangeSelection, type LexicalEditor } from 'lexical';
 import { DocumentEditor } from '../../../src/components/embedded/document/DocumentEditor';
+import { DocumentSurface } from '../../../src/components/embedded/document/DocumentSurface';
 import { documentHtml } from '../../../src/components/embedded/document/document-html';
 const save = vi.hoisted(() => vi.fn());
-vi.mock('../../../src/components/embedded/document/document-file', () => ({ saveDocumentFile: save }));
+const read = vi.hoisted(() => vi.fn());
+vi.mock('../../../src/components/embedded/document/document-file', () => ({ saveDocumentFile: save, readDocumentFile: read }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 const observed = { html: documentHtml('Report', '<h1 data-od-id="title">Report</h1><p data-od-id="body">Ready</p>'), sha256: 'original' };
 function editor(): LexicalEditor { return (screen.getByRole('textbox', { name: 'Report' }) as HTMLElement & { __lexicalEditor: LexicalEditor }).__lexicalEditor; }
@@ -33,4 +35,23 @@ it('keeps unsaved edits visible after a save conflict', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Save document' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('This file changed');
   expect(screen.getByRole('textbox')).toHaveTextContent('Ready pending');
+});
+
+it('reopens a saved table document as an editable document with its columns and text intact', async () => {
+  const table = { html: documentHtml('Report', '<h1 data-od-id="title">Report</h1><p data-od-id="body">Ready</p><table><colgroup><col style="width:120px"><col style="width:240px"></colgroup><tbody><tr><th>Metric</th><th>Value</th></tr><tr><td>Customers</td><td>24</td></tr></tbody></table>'), sha256: 'original' };
+  save.mockImplementation(async (_project, _file, html) => ({ html, sha256: 'saved' }));
+  const view = render(<DocumentEditor projectId="fixture" fileName="report.html" title="Report" observed={table} onSaved={() => {}} />);
+  act(() => editor().update(() => {
+    $getRoot().getChildren()[1]!.selectEnd(); const selection = $getSelection(); if ($isRangeSelection(selection)) selection.insertText(' reviewed');
+  }, { discrete: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save document' })); await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  const html = save.mock.calls[0]![2] as string;
+  const saved = new DOMParser().parseFromString(html, 'text/html');
+  expect([...saved.querySelectorAll('col')].map(col => col.style.width)).toEqual(['120px', '240px']);
+  view.unmount(); read.mockResolvedValue({ html, sha256: 'saved' });
+  render(<DocumentSurface projectId="fixture" fileName="report.html" title="Report" fallback={<div>Read-only fallback</div>} onSaved={() => {}} />);
+  expect(await screen.findByRole('textbox', { name: 'Report' })).toHaveTextContent('Ready reviewed');
+  expect(screen.queryByText('Read-only fallback')).toBeNull();
+  expect(screen.getByRole('table').querySelectorAll('tr')).toHaveLength(2);
+  expect([...screen.getByRole('table').querySelectorAll('col')].map(col => col.style.width)).toEqual(['120px', '240px']);
 });
