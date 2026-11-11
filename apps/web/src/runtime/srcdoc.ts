@@ -2103,10 +2103,24 @@ function meaningfulDomFallbackTarget(el) {
     }
   }
 
+  // A layout wrapper's descendant text does not make the wrapper a leaf.
+  // In particular, a deck shell often has just one stage child but spans the
+  // entire viewport. Only its own text can make such a generic node a target.
+  var containerRect = el.getBoundingClientRect();
+  var viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+  var viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+  if (meaningfulChildren > 0 && containerRect.width >= viewportWidth * 0.98 && containerRect.height >= viewportHeight * 0.98) {
+    for (var textNode = el.firstChild; textNode; textNode = textNode.nextSibling) {
+      if (textNode.nodeType === 3 && (textNode.textContent || '').trim()) return true;
+    }
+    return false;
+  }
   return true;
 }
   function generatedRootAnnotation(el, id){
-    return id === 'path-0' && el && el.parentElement === document.body && el.id === 'root';
+    if (!el) return false;
+    if (id === 'path-0' && el.parentElement === document.body && el.id === 'root') return true;
+    return el.getAttribute('data-od-runtime-id') === id && !meaningfulDomFallbackTarget(el);
   }
   function targetFrom(el, allowDomFallback, clickedEl, clickPoint, validateForSave){
     var id = annotatedElementIdFor(el);
