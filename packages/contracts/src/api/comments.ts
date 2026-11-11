@@ -144,6 +144,7 @@ export interface PreviewCommentReply {
   authorMemberId: string;
   authorDisplayName?: string;
   note: string;
+  attachments?: PreviewCommentAttachment[];
   createdAt: number;
   updatedAt: number;
   /** Monotonic edit revision; required for edits/deletion to reject stale writes. */
@@ -154,11 +155,14 @@ export interface PreviewCommentReplyCreateRequest {
   /** Stable for one submission and its retries; a changed draft gets a new UUID. */
   operationId: string;
   note: string;
+  attachments?: PreviewCommentAttachment[];
 }
 
 export interface PreviewCommentReplyEditRequest {
   expectedRevision: number;
   note: string;
+  /** Omit to preserve existing attachments; an empty array removes them. */
+  attachments?: PreviewCommentAttachment[];
 }
 
 export interface PreviewCommentReplyDeleteRequest {

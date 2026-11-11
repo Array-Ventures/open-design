@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, mkdir, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, symlink, link, writeFile, open, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Server } from 'node:http';
@@ -21,6 +21,7 @@ beforeEach(async () => {
   root = path.join(scratch, 'workspace');
   directory = path.join(root, 'team', 'projects', id);
   await mkdir(directory, { recursive: true });
+  await chmod(root, 0o700);
   vi.stubEnv('OD_EMBEDDED_STUDIO', '1');
   vi.stubEnv('OD_EMBEDDED_TOKEN', token);
   vi.stubEnv('OD_EMBEDDED_WORKSPACE_ROOT', root);
@@ -46,8 +47,68 @@ afterEach(async () => {
 const register = (body = { id, name: 'Dashboard', kind: 'dashboard', directory }, authorized = true) => fetch(`${origin}/api/embedded/projects`, {
   method: 'POST', headers: { 'content-type': 'application/json', ...(authorized ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body),
 });
+async function replyFixture() {
+  await register();
+  const endpoint = `${origin}/api/projects/${id}/conversations/${id}/comments`;
+  const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'x-od-host-human': 'alice' };
+  const target = { filePath: 'index.html', elementId: 'heading', selector: 'h1', label: 'Heading', text: 'Heading', position: { x: 0, y: 0, width: 100, height: 20 }, htmlHint: '' };
+  const { comment } = await (await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ target, note: 'Root' }) })).json() as { comment: { id: string } };
+  await mkdir(path.join(directory, '_studio-comments'));
+  return { endpoint: `${endpoint}/${comment.id}/replies`, headers };
+}
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jc4sAAAAASUVORK5CYII=', 'base64');
 
 describe('embedded Studio companion boundary', () => {
+  it('persists image-only replies, includes images in retry identity and preserves revision/deletion rules', async () => {
+    const { endpoint, headers } = await replyFixture();
+    await writeFile(path.join(directory, '_studio-comments/image.png'), png);
+    await writeFile(path.join(directory, '_studio-comments/image.webp'), Buffer.from('UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA', 'base64'));
+    const attachments = [{ path: '_studio-comments/image.png', name: 'image.png' }, { path: '_studio-comments/image.webp', name: 'image.webp' }];
+    const body = { operationId: backupOwner, note: '', attachments };
+    const create = () => fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
+    const created = await create(); expect(created.status).toBe(200);
+    const { reply } = await created.json() as { reply: { id: string; attachments: unknown[] } };
+    expect(reply.attachments).toEqual(attachments);
+    expect(await (await create()).json()).toEqual({ reply });
+    expect((await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ ...body, attachments: [{ ...attachments[0], name: 'changed.png' }] }) })).status).toBe(409);
+    const edit = { note: 'Updated caption', expectedRevision: 1, attachments: [] };
+    for (let retry = 0; retry < 2; retry++) {
+      const response = await fetch(`${endpoint}/${reply.id}`, { method: 'PATCH', headers, body: JSON.stringify(edit) });
+      expect(response.status).toBe(200); expect((await response.json() as { reply: object }).reply).toMatchObject({ revision: 2, attachments: [] });
+    }
+    expect((await fetch(`${endpoint}/${reply.id}`, { method: 'PATCH', headers, body: JSON.stringify({ note: '', expectedRevision: 1, attachments }) })).status).toBe(409);
+    expect((await fetch(`${endpoint}/${reply.id}`, { method: 'DELETE', headers, body: JSON.stringify({ expectedRevision: 2 }) })).status).toBe(200);
+    expect((await create()).status).toBe(409);
+    expect(database.prepare('SELECT note, attachments_json FROM preview_comment_replies WHERE id=?').get(reply.id)).toEqual({ note: '', attachments_json: '[]' });
+  });
+  it('rejects noncanonical, outside, disguised and excessive reply image references before inserting a row', async () => {
+    const { endpoint, headers } = await replyFixture();
+    await writeFile(path.join(directory, '_studio-comments/image.png'), png);
+    await writeFile(path.join(directory, '_studio-comments/disguised.png'), '<!doctype html><script>bad()</script>');
+    await writeFile(path.join(directory, '_studio-comments/raster.html'), png);
+    await writeFile(path.join(directory, '_studio-comments/raster.svg'), png);
+    await writeFile(path.join(directory, '_studio-comments/raster.jpg'), png);
+    const outside = path.join(scratch, 'outside.png'); await writeFile(outside, png);
+    await symlink(outside, path.join(directory, '_studio-comments/symlink.png'));
+    await link(outside, path.join(directory, '_studio-comments/hardlink.png'));
+    const oversized = await open(path.join(directory, '_studio-comments/oversized.png'), 'w');
+    try { await oversized.write(png); await oversized.truncate(25 * 1024 * 1024 + 1); } finally { await oversized.close(); }
+    const invalid = ['_studio-comments/../outside.png', '_studio-comments//image.png', '_studio-comments\\image.png', '/tmp/outside.png', '_studio-comments/missing.png', '_studio-comments/disguised.png', '_studio-comments/raster.html', '_studio-comments/raster.svg', '_studio-comments/raster.jpg', '_studio-comments/symlink.png', '_studio-comments/hardlink.png', '_studio-comments/oversized.png'];
+    const send = (attachments: unknown[]) => fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ operationId: backupOwner, note: '', attachments }) });
+    for (const image of invalid) expect((await send([{ path: image, name: 'image.png' }])).status, image).toBe(400);
+    expect((await send(Array.from({ length: 9 }, () => ({ path: '_studio-comments/image.png', name: 'image.png' })))).status).toBe(400);
+    expect((await send([{ path: '_studio-comments/image.png', name: 'a'.repeat(201) }])).status).toBe(400);
+    expect((await send([{ path: '_studio-comments/image.png', name: 'image.png' }, { path: '_studio-comments/image.png', name: 'duplicate.png' }])).status).toBe(400);
+    const large = [];
+    for (let index = 0; index < 3; index++) {
+      const name = `_studio-comments/large-${index}.png`;
+      const file = await open(path.join(directory, name), 'w');
+      try { await file.write(png); await file.truncate(18 * 1024 * 1024); } finally { await file.close(); }
+      large.push({ path: name, name: `large-${index}.png` });
+    }
+    expect((await send(large)).status).toBe(400);
+    expect(database.prepare('SELECT COUNT(*) AS n FROM preview_comment_replies').get()).toEqual({ n: 0 });
+  });
   it('admits scoped replies through the real embedded boundary and rejects runner tails', async () => {
     await register();
     const endpoint = `${origin}/api/projects/${id}/conversations/${id}/comments`;

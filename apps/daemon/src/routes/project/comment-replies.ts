@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3';
 import { SHARE_COMMENT_MAX_BYTES, type PreviewComment } from '@open-design/contracts';
 import { jsonBodyByteLength } from '../../http/json-body-size.js';
 import { createPreviewCommentReply, deletePreviewCommentReply, editPreviewCommentReply, listPreviewCommentReplies } from '../../storage/preview-comment-replies.js';
+import { ReplyAttachmentError, validateReplyAttachments } from './reply-attachments.js';
 
 type ReplyParams = { id: string; cid: string; commentId: string; replyId: string };
 type Authority = { comment: PreviewComment; author: string | undefined; displayName: string | undefined };
@@ -33,15 +34,17 @@ export function registerEmbeddedCommentReplyRoutes(app: Express, db: Database.Da
           return res.json({ ok: true });
         }
         const note = req.body?.note;
-        if (typeof note !== 'string' || !note.trim()) return res.status(400).json({ error: 'reply text required' });
+        if (typeof note !== 'string') return res.status(400).json({ error: 'reply text required' });
+        const attachments = req.body?.attachments === undefined ? undefined : await validateReplyAttachments(db, req.params.id, req.body.attachments);
         if (method === 'patch') {
-          const reply = editPreviewCommentReply(db, comment.id, req.params.replyId, author, note, expectedRevision);
+          const reply = editPreviewCommentReply(db, comment.id, req.params.replyId, author, note, expectedRevision, attachments);
           return reply ? res.json({ reply }) : res.status(404).json({ error: 'reply not found' });
         }
         const operationId = req.body?.operationId;
         if (typeof operationId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(operationId)) return res.status(400).json({ error: 'operation UUID required' });
-        return res.json({ reply: createPreviewCommentReply(db, { commentId: comment.id, authorMemberId: author, ...(authority.displayName ? { authorDisplayName: authority.displayName } : {}), operationId, note }) });
+        return res.json({ reply: createPreviewCommentReply(db, { commentId: comment.id, authorMemberId: author, ...(authority.displayName ? { authorDisplayName: authority.displayName } : {}), ...(attachments ? { attachments } : {}), operationId, note }) });
       } catch (error) {
+        if (error instanceof ReplyAttachmentError || error instanceof Error && error.message === 'REPLY_CONTENT_REQUIRED') return res.status(400).json({ error: error instanceof ReplyAttachmentError ? error.message : 'Reply text or images required' });
         if (error instanceof Error && error.message === 'REPLY_REVISION_CONFLICT') return res.status(409).json({ error: 'reply changed; reload before editing' });
         if (error instanceof Error && error.message === 'REPLY_OPERATION_CONFLICT') return res.status(409).json({ error: 'reply operation already used' });
         throw error;

@@ -45,7 +45,7 @@ for (const phase of ['before', 'after']) it(`survives a real SIGKILL ${phase} re
 it('adds revisions to the preceding schema without changing persisted replies or receipts', () => {
   const db = seed();
   const saved = createPreviewCommentReply(db, { commentId: 'root', authorMemberId: 'person', operationId: 'once', note: 'Keep this' });
-  db.exec('ALTER TABLE preview_comment_replies DROP COLUMN revision');
+  db.exec('ALTER TABLE preview_comment_replies DROP COLUMN revision; ALTER TABLE preview_comment_replies DROP COLUMN attachments_json');
   migratePreviewCommentReplies(db);
   expect(listPreviewCommentReplies(db, 'root')).toEqual([saved]);
   expect(createPreviewCommentReply(db, { commentId: 'root', authorMemberId: 'person', operationId: 'once', note: 'Keep this' })).toEqual(saved);
