@@ -152,8 +152,8 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
       }} onReopen={comment.status === 'resolved' && canDeleteRoot && review ? () => review.changeStatus(comment.id, 'open') : undefined} />
       <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiCloseLine} aria-label="Close" title="Close" onClick={onClose} />
     </header>
-    <div className="relative min-h-0 flex-1">
-    <div role="region" aria-label="Thread history" tabIndex={0} onScroll={historyFade.onScroll} className="flex max-h-full min-h-0 flex-col gap-3 overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring">
+    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div role="region" aria-label="Thread history" tabIndex={0} onScroll={historyFade.onScroll} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring">
     <p className="m-0 whitespace-pre-wrap break-words text-body-regular text-text-primary">{comment.note}</p>
     {deleted ? <p role="status" className="m-0 text-caption-1-regular text-text-tertiary">This thread was deleted. Your unsaved reply is still here.</p> : null}
     {existingImages.length ? <div className="comment-popover-images">{existingImages.map(image => <a key={image.url} className="comment-popover-image-thumb" href={image.url} target="_blank" rel="noopener noreferrer"><img src={image.url} alt={image.name} /></a>)}</div> : null}
