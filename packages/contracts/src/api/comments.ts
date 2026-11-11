@@ -199,6 +199,8 @@ export interface PreviewComment {
   note: string;
   attachments?: PreviewCommentAttachment[];
   status: PreviewCommentStatus;
+  /** Opaque human-content baseline; excludes background anchor and ordering writes. */
+  editToken?: string;
   /** Epoch milliseconds; 0 means an older sync payload supplied no known creation time.
    * Display unknown rather than borrowing updatedAt or the receiving device's clock. */
   createdAt: number;
@@ -274,6 +276,10 @@ export interface PreviewComment {
 }
 
 export interface PreviewCommentUpsertRequest {
+  /** Embedded writes reuse this UUID until acknowledged; changing payload requires a new UUID. */
+  operationId?: string;
+  /** Embedded edits compare this baseline inside the root/receipt transaction. */
+  expectedEditToken?: string;
   /**
    * Existing comment id when editing a comment. Omit to create a new comment,
    * even if the same author comments on the same element again.

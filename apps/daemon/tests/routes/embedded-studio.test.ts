@@ -59,6 +59,53 @@ async function replyFixture() {
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jc4sAAAAASUVORK5CYII=', 'base64');
 
 describe('embedded Studio companion boundary', () => {
+  it('replays root writes without duplicate rows, rejects stale edits and preserves resolved status', async () => {
+    await register();
+    const endpoint = `${origin}/api/projects/${id}/conversations/${id}/comments`;
+    const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'x-od-host-human': 'alice' };
+    const target = { filePath: 'index.html', elementId: 'heading', selector: 'h1', label: 'Heading', text: 'Heading', position: { x: 0, y: 0, width: 100, height: 20 }, htmlHint: '' };
+    const send = (body: object) => fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
+    const body = { target, note: 'Root once', operationId: backupOwner };
+    const first = await send(body); expect(first.status).toBe(200);
+    const { comment: created } = await first.json() as { comment: { id: string; editToken: string } };
+    const retry = await send(body); expect(retry.status).toBe(200);
+    expect((await retry.json() as { comment: { id: string } }).comment.id).toBe(created.id);
+    expect(database.prepare('SELECT COUNT(*) AS count FROM preview_comments').get()).toEqual({ count: 1 });
+    expect(created.editToken).toMatch(/^[a-f0-9]{64}$/);
+    expect((await send({ ...body, note: 'Changed operation payload' })).status).toBe(409);
+    expect((await fetch(`${endpoint}/${created.id}`, { method: 'PATCH', headers, body: JSON.stringify({ status: 'resolved' }) })).status).toBe(200);
+    const resolved = (await (await fetch(endpoint, { headers })).json() as { comments: { editToken: string }[] }).comments[0]!;
+    const edit = { ...body, id: created.id, note: 'Edited resolved root', operationId: id, expectedEditToken: resolved.editToken };
+    const edited = await send(edit); expect(edited.status).toBe(200);
+    expect((await edited.json() as { comment: object }).comment).toMatchObject({ note: edit.note, status: 'resolved' });
+    expect((await send(edit)).status).toBe(200);
+    expect((await send({ ...edit, operationId: crypto.randomUUID(), note: 'Stale overwrite' })).status).toBe(409);
+    expect((await fetch(`${endpoint}/${created.id}`, { method: 'DELETE', headers })).status).toBe(200);
+    expect((await send(body)).status).toBe(410);
+    expect(database.prepare('SELECT COUNT(*) AS count FROM preview_comments').get()).toEqual({ count: 0 });
+  });
+
+  it('replays acknowledged root images without rereading bytes and scopes receipts to the caller', async () => {
+    await register();
+    await mkdir(path.join(directory, '_studio-comments'));
+    const imagePath = path.join(directory, '_studio-comments/root.png');
+    await writeFile(imagePath, png);
+    const endpoint = `${origin}/api/projects/${id}/conversations/${id}/comments`;
+    const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'x-od-host-human': 'alice' };
+    const target = { filePath: 'index.html', elementId: 'heading', selector: 'h1', label: 'Heading', text: '', position: { x: 0, y: 0, width: 100, height: 20 }, htmlHint: '' };
+    const body = { target, note: '', attachments: [{ path: '_studio-comments/root.png', name: '  root.png  ' }], operationId: backupOwner, authorMemberId: 'forged' };
+    const send = (data = body, caller = headers) => fetch(endpoint, { method: 'POST', headers: caller, body: JSON.stringify(data) });
+    const first = await send(); expect(first.status).toBe(200);
+    const { comment } = await first.json() as { comment: { id: string; authorMemberId: string; attachments: unknown[] } };
+    expect(comment.authorMemberId).toBe('evebot:alice'); expect(comment.attachments).toEqual([{ path: '_studio-comments/root.png', name: 'root.png' }]);
+    await rm(imagePath);
+    const retry = await send(); expect(retry.status).toBe(200); expect(await retry.json()).toEqual({ comment });
+    // A different caller cannot borrow Alice's receipt to bypass byte checks.
+    expect((await send(body, { ...headers, 'x-od-host-human': 'bob' })).status).toBe(400);
+    expect((await send({ ...body, operationId: id, attachments: [{ path: '_studio-comments/missing.png', name: 'missing.png' }] })).status).toBe(400);
+    expect(database.prepare('SELECT COUNT(*) AS count FROM preview_comments').get()).toEqual({ count: 1 });
+    expect(database.prepare('SELECT COUNT(*) AS count FROM preview_comment_writes').get()).toEqual({ count: 1 });
+  });
   it('persists image-only replies, includes images in retry identity and preserves revision/deletion rules', async () => {
     const { endpoint, headers } = await replyFixture();
     await writeFile(path.join(directory, '_studio-comments/image.png'), png);
