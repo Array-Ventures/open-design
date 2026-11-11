@@ -1,4 +1,5 @@
 import { jsonBodyByteLength } from '../../http/json-body-size.js';
+import { registerEmbeddedCommentReplyRoutes } from './comment-replies.js';
 import type { Express, Request } from 'express';
 import type { CommentSyncStateService } from '../../collab/comment-sync-state.js';
 import type {
@@ -502,6 +503,26 @@ export function registerProjectCommentRoutes(app: Express, ctx: RegisterProjectC
     const memberId = context?.workspaceMemberId?.trim();
     return workspaceId && memberId ? `${workspaceId}:${memberId}` : 'local';
   };
+
+  registerEmbeddedCommentReplyRoutes(app, db, async (req, res, write) => {
+    if (!getRoutableConversation(req.params.id, req.params.cid)) {
+      res.status(404).json({ error: 'conversation not found' }); return null;
+    }
+    if (write && !await enforceCommentWorkspaceMutation(req, res, req.params.id)) return null;
+    const resolution = await (write ? resolveRequestWorkspaceContext : resolveReadRequestWorkspaceContext)(req, req.params.id);
+    if (!resolution.ok) { sendWorkspaceResolutionError(res, resolution); return null; }
+    const comment = getRequestPreviewComment(req.params.id, req.params.cid, req.params.commentId, resolution.context);
+    if (!comment) { res.status(404).json({ error: 'comment not found' }); return null; }
+    const human = req.get('x-od-host-human');
+    if (!human || human.length > 200 || /[\r\n\0]/.test(human)) {
+      res.status(401).json({ error: 'host identity required' }); return null;
+    }
+    const encodedName = req.get('x-od-host-human-name');
+    let displayName: string | undefined;
+    try { displayName = encodedName ? decodeURIComponent(encodedName).trim() : undefined; }
+    catch { res.status(400).json({ error: 'invalid host display name' }); return null; }
+    return { comment: comment as PreviewComment, author: await resolveCaller(req, resolution.context), displayName };
+  });
 
   app.get('/api/projects/:id/comments/read', async (req, res) => {
     if (!getProject(db, req.params.id)) return res.status(404).json({ error: 'project not found' });

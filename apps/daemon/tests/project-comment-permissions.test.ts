@@ -706,6 +706,56 @@ describe('preview comment permission gating', () => {
 });
 
 describe('embedded review status persistence', () => {
+  it('persists replies with trusted identity, scoped author edits and retry receipts', async () => {
+    vi.stubEnv('OD_EMBEDDED_STUDIO', '1');
+    const api = await startServer({ shared: false });
+    const roots = `/api/projects/${PROJECT}/conversations/${CONVERSATION}/comments`;
+    const root = (await api.json(roots, { method: 'POST', human: 'person-a', body: { target: api.commentTarget, note: 'Root' } })).body.comment;
+    const route = `${roots}/${root.id}/replies`;
+    const body = { operationId: 'e26f3d0c-0450-42c0-9820-e67378f5ee11', note: 'A real reply', authorMemberId: 'evebot:person-a' };
+    expect((await api.json(route, { method: 'POST', body })).status).toBe(401);
+    const created = await api.json(route, { method: 'POST', human: 'person-b', body });
+    expect(created.status).toBe(200);
+    const reply = created.body.reply;
+    expect(reply).toMatchObject({ commentId: root.id, authorMemberId: 'evebot:person-b', note: body.note });
+    expect((await api.json(route, { method: 'POST', human: 'person-b', body })).body.reply).toEqual(reply);
+    expect((await api.json(route, { method: 'POST', human: 'person-b', body: { ...body, note: 'Changed payload' } })).status).toBe(409);
+    expect((await api.json(route, { human: 'person-a' })).body.replies).toEqual([reply]);
+    for (const method of ['PATCH', 'DELETE']) {
+      expect((await api.json(`${route}/${reply.id}`, { method, human: 'person-a', body: { note: 'Forged', expectedRevision: 1, authorMemberId: 'evebot:person-b' } })).status).toBe(404);
+    }
+    expect((await api.json(`${route}/${reply.id}`, { method: 'PATCH', human: 'person-b', body: { note: 'Edited reply', expectedRevision: 1 } })).body.reply)
+      .toMatchObject({ id: reply.id, note: 'Edited reply', createdAt: reply.createdAt });
+    expect((await api.json(`${route}/${reply.id}`, { method: 'PATCH', human: 'person-b', body: { note: 'Edited reply', expectedRevision: 1 } })).body.reply).toMatchObject({ revision: 2, note: 'Edited reply' });
+    const editedAgain = await api.json(`${route}/${reply.id}`, { method: 'PATCH', human: 'person-b', body: { note: 'Newer edit', expectedRevision: 2 } });
+    expect(editedAgain.body.reply).toMatchObject({ revision: 3, note: 'Newer edit' });
+    // A delayed retry of the first successful edit cannot overwrite a newer one.
+    expect((await api.json(`${route}/${reply.id}`, { method: 'PATCH', human: 'person-b', body: { note: 'Edited reply', expectedRevision: 1 } })).status).toBe(409);
+    expect((await api.json(`${route}/${reply.id}`, { method: 'DELETE', human: 'person-b', body: { expectedRevision: 2 } })).status).toBe(409);
+    closeDatabase();
+    const reopened = openDatabase(tempDir!);
+    expect(reopened.prepare('SELECT note FROM preview_comment_replies WHERE id=?').get(reply.id)).toEqual({ note: 'Newer edit' });
+    // Direct reads prove persistence independently of route response caches.
+  });
+
+  it('does not resurrect a deleted reply on retry, and deleting its root cascades the thread', async () => {
+    vi.stubEnv('OD_EMBEDDED_STUDIO', '1');
+    const api = await startServer({ shared: false });
+    const roots = `/api/projects/${PROJECT}/conversations/${CONVERSATION}/comments`;
+    const root = (await api.json(roots, { method: 'POST', human: 'person-a', body: { target: api.commentTarget, note: 'Root' } })).body.comment;
+    const route = `${roots}/${root.id}/replies`;
+    const body = { operationId: 'e26f3d0c-0450-42c0-9820-e67378f5ee12', note: 'Delete this reply' };
+    const reply = (await api.json(route, { method: 'POST', human: 'person-b', body })).body.reply;
+    const otherRoot = (await api.json(roots, { method: 'POST', human: 'person-a', body: { target: api.commentTarget, note: 'Other root' } })).body.comment;
+    expect((await api.json(`${roots}/${otherRoot.id}/replies/${reply.id}`, { method: 'PATCH', human: 'person-b', body: { note: 'Moved', expectedRevision: 1 } })).status).toBe(404);
+    for (let retry = 0; retry < 2; retry++) expect((await api.json(`${route}/${reply.id}`, { method: 'DELETE', human: 'person-b', body: { expectedRevision: 1 } })).status).toBe(200);
+    expect((await api.json(route, { human: 'person-a' })).body.replies).toEqual([]);
+    expect((await api.json(route, { method: 'POST', human: 'person-b', body })).status).toBe(409);
+    expect((await api.json(`${roots}/${root.id}`, { method: 'DELETE', human: 'person-a' })).status).toBe(200);
+    expect(api.db.prepare('SELECT COUNT(*) AS n FROM preview_comment_replies WHERE comment_id=?').get(root.id)).toEqual({ n: 0 });
+    expect((await api.json(route, { human: 'person-a' })).status).toBe(404);
+  });
+
   it('allows the authenticated author to resolve/reopen, rejects forged authors and retains the pin after reopen', async () => {
     vi.stubEnv('OD_EMBEDDED_STUDIO', '1');
     const api = await startServer({ shared: false });
@@ -716,7 +766,7 @@ describe('embedded review status persistence', () => {
     expect(root.authorMemberId).toBe('evebot:person-a');
     const original = api.db.prepare('SELECT * FROM preview_comments WHERE id=?').get(root.id);
     for (const human of [undefined, 'person-b']) {
-      const denied = await api.json(`${route}/${root.id}`, { method: 'PATCH', human, body: { status: 'resolved', authorMemberId: 'evebot:person-a' } });
+      const denied = await api.json(`${route}/${root.id}`, { method: 'PATCH', ...(human ? { human } : {}), body: { status: 'resolved', authorMemberId: 'evebot:person-a' } });
       expect(denied.status).toBe(403);
       expect(api.db.prepare('SELECT * FROM preview_comments WHERE id=?').get(root.id)).toEqual(original);
     }

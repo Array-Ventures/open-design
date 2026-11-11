@@ -138,6 +138,41 @@ export interface CommentFileMutation {
   }>;
 }
 
+export interface PreviewCommentReply {
+  id: string;
+  commentId: string;
+  authorMemberId: string;
+  authorDisplayName?: string;
+  note: string;
+  createdAt: number;
+  updatedAt: number;
+  /** Monotonic edit revision; required for edits/deletion to reject stale writes. */
+  revision: number;
+}
+
+export interface PreviewCommentReplyCreateRequest {
+  /** Stable for one submission and its retries; a changed draft gets a new UUID. */
+  operationId: string;
+  note: string;
+}
+
+export interface PreviewCommentReplyEditRequest {
+  expectedRevision: number;
+  note: string;
+}
+
+export interface PreviewCommentReplyDeleteRequest {
+  expectedRevision: number;
+}
+
+export interface PreviewCommentRepliesResponse {
+  replies: PreviewCommentReply[];
+}
+
+export interface PreviewCommentReplyResponse {
+  reply: PreviewCommentReply;
+}
+
 export interface PreviewComment {
   /** Creator workspace_artifacts UUID, scoped to this project; never inferred for historical rows. */
   sourceFileId?: string;
