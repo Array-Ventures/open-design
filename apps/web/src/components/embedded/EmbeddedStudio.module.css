@@ -384,3 +384,7 @@
   color: var(--color-text-primary);
   border-color: var(--color-border-button-default);
 }
+
+/* The presentation is portalled outside workspace; reset inherited button padding. */
+.hostTypography :global(.present-overlay .present-exit-btn) { padding: 0; }
+.hostTypography :global(.present-overlay .present-exit-btn svg) { flex-shrink: 0; }

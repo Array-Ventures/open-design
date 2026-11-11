@@ -27,3 +27,5 @@
 :root[data-host-theme="boardui"] button[data-boardui-menu-item]:hover {
   background: var(--color-background-secondary-hover) !important;
 }
+
+@source "../DeckPresentationMenu.tsx";
