@@ -388,3 +388,12 @@
 /* The presentation is portalled outside workspace; reset inherited button padding. */
 .hostTypography :global(.present-overlay .present-exit-btn) { padding: 0; }
 .hostTypography :global(.present-overlay .present-exit-btn svg) { flex-shrink: 0; }
+
+/* The complete control, including children, follows the host's light/dark surface. */
+.workspace :global(.deck-floating-count strong) { color: var(--color-text-primary); }
+.workspace :global(.deck-floating-count span),
+.workspace :global(.deck-floating-reset) { color: var(--color-text-secondary); }
+.workspace :global(.deck-floating-divider) { background: var(--color-separator-border); }
+.workspace :global(.deck-floating-reset kbd) { color: var(--color-text-secondary); background: var(--color-background-tertiary-default); }
+.workspace :global(.deck-floating-button:hover:not(:disabled)),
+.workspace :global(.deck-floating-reset:hover:not(:disabled)) { color: var(--color-text-primary); background: var(--color-background-secondary-hover); }

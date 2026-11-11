@@ -17814,7 +17814,7 @@ function HtmlViewer({
             ? filePrimaryActions
             : null
       ))(<>
-          {showPresent && embedded && effectiveDeck ? <DeckPresentationMenu onPresent={withNotes => {
+          {showPresent && embedded && effectiveDeck ? <DeckPresentationMenu projectId={projectId} hosted={inlineAnnotations} onPresent={withNotes => {
             if (withNotes) presentInThisTab(true);
             else presentFullscreen(false);
           }} /> : showPresent ? (
