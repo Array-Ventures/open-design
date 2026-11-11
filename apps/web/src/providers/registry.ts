@@ -1,4 +1,4 @@
-import { embeddedResourceUrl } from '../components/embedded/transport';
+import { embeddedPreviewBaseScope, embeddedResourceUrl } from '../components/embedded/transport';
 import { prepareAmrWebUrl } from "./amr-web-intent";
 import {
   PUBLIC_FILE_MANUAL_REVOKE_REQUIRED,
@@ -2716,6 +2716,9 @@ export async function fetchProjectPreviewBaseHref(
     const parsed = new URL(body.url, 'http://open-design.local');
     const expectedPrefix = `/api/projects/${encodeURIComponent(projectId)}/preview/`;
     if (!parsed.pathname.startsWith(expectedPrefix)) return null;
+    const hostScope = embeddedPreviewBaseScope(response, projectId);
+    if (hostScope) return hostScope;
+    if (process.env.NEXT_PUBLIC_OD_STUDIO_BASE_PATH) return null;
     const directoryEnd = parsed.pathname.lastIndexOf('/') + 1;
     if (directoryEnd <= expectedPrefix.length) return null;
     const expiresAt = typeof body.expiresAt === 'number' && Number.isFinite(body.expiresAt)

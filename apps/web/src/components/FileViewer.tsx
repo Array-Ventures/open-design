@@ -10791,7 +10791,7 @@ function HtmlViewer({
     urlModeBridge,
     inspectMode,
     drawMode: drawOverlayOpen,
-    forceInline: staticSnapshot || ((forceInline || needsPersistentStorage) && !needsPowered),
+    forceInline: staticSnapshot || ((forceInline || needsPersistentStorage || (embedded && inlineAnnotations)) && !needsPowered),
     needsSandboxShim: needsSandboxShim && !needsPowered,
     needsLocalInteractionBridge: needsLocalInteractionBridge && !needsPowered,
     // Daemon guards wrap the settled on-disk response. Streaming/in-memory
@@ -10855,9 +10855,10 @@ function HtmlViewer({
     ),
     [currentSourceIdentity, routingHtmlSource, routingSourceIdentity],
   );
+  const requiresEmbeddedPreviewBase = embedded && !staticSnapshot && (relativeProjectAssetRefs || projectRootAssetRefs);
   useEffect(() => {
     if (
-      workspaceContext?.workspaceType !== 'team'
+      (workspaceContext?.workspaceType !== 'team' && !requiresEmbeddedPreviewBase)
       ||
       useUrlLoadPreview
       || authoredSrcDocBase !== false
@@ -10878,6 +10879,7 @@ function HtmlViewer({
       cancelled = true;
     };
   }, [
+    requiresEmbeddedPreviewBase,
     authoredSrcDocBase,
     effectiveScopedSrcDocPreviewBase,
     file.name,
@@ -11421,8 +11423,10 @@ function HtmlViewer({
     srcDocBaseHref,
   ].join('\0');
   const previewStorageScopeKey = previewStorageKey(sourceAuthorizationScopeKey, projectId, file.name);
+  const awaitingEmbeddedPreviewBase = requiresEmbeddedPreviewBase && authoredSrcDocBase === false && !effectiveScopedSrcDocPreviewBase;
   const candidateSrcDocTransport = useMemo(
     () => {
+      if (awaitingEmbeddedPreviewBase) return { sourceFingerprint: '', generation: nextPreviewTransportGeneration(), srcDoc: '' };
       const sourceFingerprint = previewSource === null
         ? null
         : previewSourceFingerprint(previewSource);
@@ -11475,6 +11479,7 @@ function HtmlViewer({
       return entry;
     },
     [
+      awaitingEmbeddedPreviewBase,
       staticSnapshot,
       previewSource,
       effectiveDeck,
@@ -16153,7 +16158,7 @@ function HtmlViewer({
       // tracked `.slide` decks still render off-screen.
       const trackedActive = slideState?.active ?? htmlPreviewSlideState.get(previewStateKey)?.active ?? null;
       const plan = planDeckImageCapture({ deck: imageDeckSignal, wholeDeck, trackedActive });
-      if (!staticSnapshot && plan.useOffscreen) {
+      if (!staticSnapshot && !inlineAnnotations && plan.useOffscreen) {
         const exportViewport = !imageDeckSignal && previewViewport !== 'desktop'
           ? PREVIEW_VIEWPORT_PRESETS.find((preset) => preset.id === previewViewport)
           : null;

@@ -67,7 +67,12 @@ export function buildPreviewBaseHrefBridge(
         : next.protocol === current.protocol && next.host === current.host;
       if (!sameOrigin) return;
       var parts = next.pathname.split('/');
-      if (parts[1] !== 'api' || parts[2] !== 'projects' || !parts[3] || parts[4] !== 'preview' || !parts[5]) return;
+      var hostScoped = parts[1] === 'api' && parts[2] === 'studio' && parts[3] === 'preview';
+      if (hostScoped) {
+        var previous = current.pathname.split('/');
+        if (!parts[4] || !parts[5] || parts[6] !== 'projects' || parts[7] !== parts[5] || parts[8] !== 'preview' || !parts[9]
+          || previous[1] !== 'api' || previous[2] !== 'studio' || previous[3] !== 'preview' || previous[5] !== parts[5]) return;
+      } else if (parts[1] !== 'api' || parts[2] !== 'projects' || !parts[3] || parts[4] !== 'preview' || !parts[5]) return;
       if (next.pathname.charAt(next.pathname.length - 1) !== '/') return;
       var base = document.querySelector('base[data-od-project-preview-base]');
       if (!base) return;

@@ -19,6 +19,7 @@ vi.mock('../../../src/providers/project-events', () => ({
     state.ready = enabled ? options.onReady : null;
   },
 }));
+vi.mock('../../../src/components/embedded/ArtifactSurface', () => ({ ArtifactSurface: () => <div>Artifact surface</div> }));
 vi.mock('../../../src/components/FileWorkspace', () => ({
   FileWorkspace: (props: { embedded: boolean; files: ProjectFile[]; onRefreshFiles: () => Promise<unknown>; onManualFileWritten: () => void; chatConfig?: unknown; filesRefreshKey?: number }) => (
     <div>

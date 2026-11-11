@@ -38,3 +38,18 @@ export function installEmbeddedTransport(): void {
     }
   };
 }
+
+/** Server-issued read capability for subresources in an opaque preview frame. */
+export function embeddedPreviewBaseScope(response: Response, projectId: string): { href: string; expiresAt: number } | null {
+  const raw = response.headers.get('x-od-host-preview-url');
+  const expiresAt = Number(response.headers.get('x-od-host-preview-expires-at'));
+  if (!raw || !/^[0-9a-f-]{36}$/i.test(projectId) || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null;
+  try {
+    const url = new URL(raw, window.location.origin);
+    const parts = url.pathname.split('/');
+    if (url.origin !== window.location.origin || url.search || url.hash || parts[1] !== 'api' || parts[2] !== 'studio' || parts[3] !== 'preview'
+      || !parts[4] || parts[5] !== projectId || parts[6] !== 'projects' || parts[7] !== projectId || parts[8] !== 'preview' || !parts[9] || !parts[10]) return null;
+    url.pathname = url.pathname.slice(0, url.pathname.lastIndexOf('/') + 1);
+    return { href: url.href, expiresAt };
+  } catch { return null; }
+}

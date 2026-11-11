@@ -28,8 +28,10 @@ export function checkedDashboard(value: unknown, projectId: string): NativeDashb
   }
   return row;
 }
-export function dashboardSummary(row: NativeDashboard): LiveArtifactSummary {
+export type EmbeddedDashboardSummary = LiveArtifactSummary & { hostTemplatePath: string };
+export function dashboardSummary(row: NativeDashboard): EmbeddedDashboardSummary {
   return {
+    hostTemplatePath: `${row.input.sourceDirectory === '.' ? '' : row.input.sourceDirectory + '/'}${row.input.templateFile}`,
     schemaVersion: 1, id: row.id, projectId: row.projectId, title: row.input.title, slug: row.id,
     status: row.archived ? 'archived' : 'active', pinned: row.pinned,
     preview: { type: 'html', entry: 'index.html' }, hasDocument: true,
@@ -49,7 +51,7 @@ export function dashboardDetail(row: NativeDashboard): EmbeddedDashboard {
     hostSourceState: { sourceChanged: row.sourceChanged, sourceError: row.sourceError, dataAvailable: row.data !== null, paths: row.input },
   };
 }
-export async function fetchEmbeddedDashboards(projectId: string, signal?: AbortSignal, fetcher: typeof fetch = fetch): Promise<LiveArtifactSummary[]> {
+export async function fetchEmbeddedDashboards(projectId: string, signal?: AbortSignal, fetcher: typeof fetch = fetch): Promise<EmbeddedDashboardSummary[]> {
   const response = await fetcher(`/api/studio/projects/${projectId}/dashboards`, { signal });
   if (!response.ok) throw new Error('Dashboards unavailable.');
   const rows: unknown = await response.json();

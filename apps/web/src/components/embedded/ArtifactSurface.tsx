@@ -4,13 +4,13 @@ import { useMotionTransport } from './useMotionTransport';
 import { RiSparklingLine } from '@remixicon/react';
 import { FileViewer, LiveArtifactViewer } from '../FileViewer';
 import { liveArtifactSummaryToWorkspaceEntry, type Project, type ProjectFile } from '../../types';
-import type { LiveArtifactSummary } from '@open-design/contracts';
+import type { EmbeddedDashboardSummary } from './dashboards';
 import { projectKindFromMetadataToTrackingOrLegacyDefault } from '@open-design/contracts/analytics';
 import styles from './EmbeddedStudio.module.css';
 
 /** Content surface only. Evebot owns navigation and project management. */
 export function ArtifactSurface({ project, files, dashboards, fileName, generation, onRefresh, feedback }: {
-  project: Project; files: ProjectFile[]; dashboards: LiveArtifactSummary[];
+  project: Project; files: ProjectFile[]; dashboards: EmbeddedDashboardSummary[];
   fileName: string | null; generation: number; onRefresh(): Promise<unknown>; feedback: ArtifactFeedbackProps;
 }) {
   const surface = useRef<HTMLDivElement>(null);
@@ -21,7 +21,11 @@ export function ArtifactSurface({ project, files, dashboards, fileName, generati
     ?? candidates.find(file => file.kind === 'html')
     ?? candidates.find(file => ['image', 'video', 'audio', 'pdf', 'sketch'].includes(file.kind))
     ?? candidates.find(file => /\.(md|txt)$/i.test(file.name));
-  const dashboard = !fileName ? dashboards.find(item => item.status !== 'archived') : undefined;
+  const appEntry = candidates.find(item => item.name === 'index.html');
+  const activeDashboards = dashboards.filter(item => item.status !== 'archived');
+  // A separate root entry is the working app; a registered template still needs its rendered snapshot.
+  const showApp = appEntry && activeDashboards.every(item => item.hostTemplatePath !== appEntry.name);
+  const dashboard = !fileName && !showApp ? activeDashboards[0] : undefined;
   return <div ref={surface} className={styles.artifactSurface} data-testid="artifact-surface">
     {dashboard ? <LiveArtifactViewer chrome={false} projectId={project.id} liveArtifact={liveArtifactSummaryToWorkspaceEntry(dashboard)}
         previewRenderer={({ url, source }) => <LiveArtifactFeedbackPreview projectId={project.id} previewUrl={url} source={source} files={files} feedback={feedback} />}

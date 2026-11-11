@@ -15,8 +15,7 @@ import { IframeKeepAliveProvider, useIframeKeepAlivePool } from '../IframeKeepAl
 import styles from './EmbeddedStudio.module.css';
 import { useEmbeddedComments } from './useEmbeddedComments';
 import { EmbeddedViewerProvider } from './host-viewer';
-import { fetchEmbeddedDashboards } from './dashboards';
-import type { LiveArtifactSummary } from '@open-design/contracts';
+import { fetchEmbeddedDashboards, type EmbeddedDashboardSummary } from './dashboards';
 
 /** No App/ProjectView mount: the host owns conversations and agent execution. */
 export function EmbeddedStudio() {
@@ -51,7 +50,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
   const [project, setProject] = useState<Project | null>(null);
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const markupNotice = useEmbeddedMarkup(projectId, files.map(file => file.name));
-  const [dashboards, setDashboards] = useState<LiveArtifactSummary[]>([]);
+  const [dashboards, setDashboards] = useState<EmbeddedDashboardSummary[] | null>(null);
   const [dashboardError, setDashboardError] = useState(false);
   const [generation, setGeneration] = useState(0);
   const [error, setError] = useState(false);
@@ -124,7 +123,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
     <main className={styles.workspace} data-testid="embedded-studio">
       {markupNotice || comments.notice ? <div role="status" className={styles.feedbackNotice}>{markupNotice ?? comments.notice}</div> : null}
       {dashboardError ? <div role="alert">Dashboards unavailable. Retrying…</div> : null}
-      {new URLSearchParams(window.location.search).get('surface') === 'artifact' ? <ArtifactSurface project={project} files={files} dashboards={dashboards} fileName={fileName} generation={generation} onRefresh={refresh} feedback={{
+      {new URLSearchParams(window.location.search).get('surface') === 'artifact' ? dashboards === null ? <div role="status" className={styles.status}>Loading preview…</div> : <ArtifactSurface project={project} files={files} dashboards={dashboards ?? []} fileName={fileName} generation={generation} onRefresh={refresh} feedback={{
         previewComments: comments.comments, previewCommentsState: comments.state,
         onRetryPreviewComments: () => { void comments.refresh(); }, onSavePreviewComment: comments.save,
         onRemovePreviewComment: comments.remove, onReorderPreviewComment: comments.reorder,
@@ -135,7 +134,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
         projectName={project.name}
         projectKind={projectKindFromMetadataToTrackingOrLegacyDefault(project.metadata)}
         files={files}
-        liveArtifacts={dashboards}
+        liveArtifacts={dashboards ?? []}
         previewComments={comments.comments}
         previewCommentsState={comments.state}
         onRetryPreviewComments={() => { void comments.refresh(); }}
