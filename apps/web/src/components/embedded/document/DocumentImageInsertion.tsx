@@ -1,6 +1,6 @@
 import { useContext, useLayoutEffect, useRef, useState } from 'react';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $createParagraphNode, $createRangeSelection, $getNodeByKey, $getRoot, $getSelection, $insertNodes, $isElementNode, $isRangeSelection, $isTextNode, $setSelection, type RangeSelection } from 'lexical';
+import { $createRangeSelection, $getNodeByKey, $getRoot, $getSelection, $insertNodes, $isElementNode, $isRangeSelection, $isTextNode, $setSelection, type RangeSelection } from 'lexical';
 import { RiImageLine } from '@remixicon/react';
 import { Button } from '../boardui/button';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
@@ -38,8 +38,12 @@ export function DocumentImageInsertion({ onStatus }: { onStatus?(message: string
         return node?.isAttached() && (position.type === 'text' ? $isTextNode(node) && position.offset <= node.getTextContentSize() : $isElementNode(node) && position.offset <= node.getChildrenSize());
       });
       if (!valid) return;
-      $setSelection(at.selection.clone());
-      $insertNodes([$createParagraphNode().append($createDocumentImageNode({ src: markdownRelativeProjectPath(scope.fileName, asset.name), alt: asset.alt, width: asset.width, height: asset.height }))]);
+      const selection = at.selection.clone();
+      $setSelection(selection);
+      selection.insertParagraph();
+      $insertNodes([$createDocumentImageNode({ src: markdownRelativeProjectPath(scope.fileName, asset.name), alt: asset.alt, width: asset.width, height: asset.height })]);
+      const after = $getSelection();
+      if ($isRangeSelection(after)) after.insertParagraph();
       inserted = true;
     }, { discrete: true });
     if (inserted) { receipt.current = null; setReady(false); status.current?.(null); }

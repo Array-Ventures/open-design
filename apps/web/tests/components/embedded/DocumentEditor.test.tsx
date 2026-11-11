@@ -223,6 +223,10 @@ it('uploads and inserts an image at the captured cursor without serializing its 
   expect(await screen.findByRole('img', { name: 'Uploaded figure' })).toHaveAttribute('width', '400');
   expect(imageUpload.mock.calls[0]![0]).toBe('fixture');
   expect(screen.getByRole('textbox')).toHaveTextContent('Ready');
+  const inserted = screen.getByRole('img', { name: 'Uploaded figure' });
+  expect(inserted.closest('p')?.textContent).toBe('');
+  expect(inserted.closest('p')?.previousElementSibling).toHaveTextContent('Ready');
+  expect(inserted.closest('p')?.nextElementSibling?.tagName).toBe('P');
   fireEvent.click(screen.getByRole('button', { name: 'Save document' }));
   await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   expect(save.mock.calls[0]![2]).toContain('src="_studio-document-assets/figure.png"');
@@ -274,4 +278,22 @@ it('cancels a pending image when switching to viewing mode without leaving a sta
   expect(screen.queryByRole('img', { name: 'Cancelled figure' })).toBeNull();
   expect(screen.queryByText('Uploading image…')).toBeNull();
   expect(screen.getByRole('button', { name: 'Viewing, mode' })).toBeInTheDocument();
+});
+
+it('splits the cursor paragraph around an uploaded image without losing either text side', async () => {
+  imageUpload.mockResolvedValue({ name: '_studio-document-assets/figure.png', alt: 'Uploaded figure', width: 400, height: 200 });
+  render(<DocumentEditor projectId="fixture" fileName="report.html" title="Report" observed={observed} onSaved={() => {}} />);
+  act(() => editor().update(() => {
+    const paragraph = $getRoot().getLastChildOrThrow();
+    if ($isElementNode(paragraph)) {
+      const text = paragraph.getFirstChildOrThrow();
+      if ($isTextNode(text)) text.select(2, 2);
+    }
+  }, { discrete: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Image' }));
+  fireEvent.change(screen.getByLabelText('Choose document image'), { target: { files: [new File(['fixture'], 'figure.png', { type: 'image/png' })] } });
+  const image = await screen.findByRole('img', { name: 'Uploaded figure' });
+  expect(image.closest('p')?.textContent).toBe('');
+  expect(image.closest('p')?.previousElementSibling).toHaveTextContent('Re');
+  expect(image.closest('p')?.nextElementSibling).toHaveTextContent('ady');
 });
