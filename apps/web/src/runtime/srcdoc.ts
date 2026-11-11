@@ -2118,7 +2118,7 @@ function meaningfulDomFallbackTarget(el) {
   return true;
 }
   function generatedRootAnnotation(el, id){
-    if (!el) return false;
+    if (!el || el.hasAttribute('data-od-comment-id')) return false;
     if (id === 'path-0' && el.parentElement === document.body && el.id === 'root') return true;
     return el.getAttribute('data-od-runtime-id') === id && !meaningfulDomFallbackTarget(el);
   }
