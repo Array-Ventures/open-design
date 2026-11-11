@@ -72,6 +72,7 @@ interface Props {
   filePath?: string;
   hideChrome?: boolean;
   draftOnly?: boolean;
+  onPrepareDraft?: () => Promise<boolean>;
   sendDisabled?: boolean;
   sendDisabledReason?: string;
   onToolbarClick?: (element: DrawToolbarElement, submitAction?: AnnotationAction) => void;
@@ -138,6 +139,7 @@ export function PreviewDrawOverlay({
   filePath,
   hideChrome = false,
   draftOnly = false,
+  onPrepareDraft,
   sendDisabled = false,
   sendDisabledReason,
   onToolbarClick,
@@ -983,6 +985,7 @@ export function PreviewDrawOverlay({
     setCaptureWarning(null);
     setPendingAction(action);
     try {
+      if (action === 'draft' && onPrepareDraft && !await onPrepareDraft()) return;
       let file: File | null = null;
       if (shouldCapture) {
         let blob: Blob | null = null;
@@ -991,13 +994,9 @@ export function PreviewDrawOverlay({
         if (blob) {
           const ts = new Date().toISOString().replace(/[:.]/g, '-');
           file = new File([blob], `drawing-${ts}.png`, { type: 'image/png' });
-        } else if (!note.trim() && extraFiles.length === 0) {
-          // The snapshot pipeline is best-effort — the srcDoc foreignObject
-          // rasterizer legitimately fails on real-world artifacts (issue
-          // #4064), and retrying replays the same failure. Only block when
-          // the annotation has no meaning without pixels: ink/box-only marks
-          // are pure bitmap. A typed note or attached images still carry the
-          // user's intent, so those fall through and send without the shot.
+        } else if ((draftOnly && (hasInk || hasBox || hasText)) || (!note.trim() && extraFiles.length === 0)) {
+          // Embedded visual marks must survive failed capture, including when
+          // a note exists. A text-only success must never clear unsent ink.
           setCaptureWarning({
             action,
             message: captureViewport && !hasInk && !hasBox && !hasTarget
@@ -1245,9 +1244,9 @@ export function PreviewDrawOverlay({
     },
     {
       action: 'draft',
-      label: t('chat.annotationAddToInput'),
-      pendingLabel: t('chat.annotationAddingToInput'),
-      title: t('chat.annotationAddToInput'),
+      label: draftOnly ? 'Add to chat' : t('chat.annotationAddToInput'),
+      pendingLabel: draftOnly ? 'Adding to chat…' : t('chat.annotationAddingToInput'),
+      title: draftOnly ? 'Add to chat' : t('chat.annotationAddToInput'),
       icon: <RemixIcon name="input-field" size={15} />,
       enabled: canAddToInput,
     },

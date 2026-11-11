@@ -1,3 +1,4 @@
+import { prepareHostFeedback } from './embedded/host-context';
 import { CommentMentions } from './embedded/CommentMentions';
 import { DeckPresentationMenu } from './embedded/DeckPresentationMenu';
 import { CommentThreadMenu } from './embedded/CommentThreadMenu';
@@ -18243,6 +18244,7 @@ function HtmlViewer({
                   <PreviewDrawOverlay
                     active={drawOverlayOpen}
                     draftOnly={embedded}
+                    onPrepareDraft={embedded ? () => prepareHostFeedback(projectId) : undefined}
                     onActiveChange={setDrawOverlayOpen}
                     captureViewport
                     captureSnapshot={captureExportImageSnapshot}

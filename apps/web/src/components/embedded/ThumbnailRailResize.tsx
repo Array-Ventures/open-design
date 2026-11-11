@@ -12,7 +12,7 @@ export function ThumbnailRailResize({ children, collapsed, width, defaultWidth, 
   useLayoutEffect(() => {
     const parent = root.current?.parentElement;
     if (!parent) return;
-    const clamp = () => { const limit = maximum(); if (!collapsed && width > limit) onResize(limit); };
+    const clamp = () => { if (parent.clientWidth <= 0) return; const limit = maximum(); if (!collapsed && width > limit) onResize(limit); };
     clamp();
     const observer = new ResizeObserver(clamp);
     observer.observe(parent);

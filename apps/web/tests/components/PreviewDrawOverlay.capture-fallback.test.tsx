@@ -103,6 +103,24 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
     }
   });
 
+  it('retains embedded ink and note if capture fails, even after chat preparation succeeds', async () => {
+    const annotation = vi.fn();
+    window.addEventListener('opendesign:annotation', annotation);
+    try {
+      const prepare = vi.fn(async () => true);
+      const { container, getByRole } = render(<PreviewDrawOverlay active draftOnly onPrepareDraft={prepare}><iframe title="srcdoc" data-od-render-mode="srcdoc" /></PreviewDrawOverlay>);
+      drawSelectionBox(container.querySelector('canvas')!);
+      const input = container.querySelector<HTMLInputElement>('.preview-draw-note-input')!;
+      fireEvent.change(input, { target: { value: 'Keep this marked change' } });
+      fireEvent.click(getByRole('button', { name: 'Add to chat' }));
+      await waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(getByRole('button', { name: 'Add to chat' })).not.toBeDisabled());
+      expect(annotation).not.toHaveBeenCalled();
+      expect(input.value).toBe('Keep this marked change');
+      expect(getByRole('button', { name: 'Undo' })).not.toBeDisabled();
+    } finally { window.removeEventListener('opendesign:annotation', annotation); }
+  });
+
   it('still blocks a box-only annotation with no note when the snapshot fails', async () => {
     const annotation = vi.fn();
     window.addEventListener('opendesign:annotation', annotation);

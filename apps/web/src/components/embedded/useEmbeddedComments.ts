@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { deletePreviewComment, fetchPreviewComments, patchPreviewCommentSortKey, uploadProjectFiles, upsertPreviewComment } from '../../providers/registry';
+import { commentsToAttachments } from '../../comments';
 import type { ChatCommentAttachment, PreviewComment, PreviewCommentTarget } from '../../types';
 import type { CommentSendResult } from '../comment-send-result';
-import { commentContextText, stageHostContext } from './host-context';
+import { commentContextText, prepareHostFeedback, stageHostContext } from './host-context';
 
 export function useEmbeddedComments(projectId: string) {
+  const pendingSave = useRef<{ key: string; images: File[]; comment: PreviewComment; operationId: string } | null>(null);
   const [comments, setComments] = useState<PreviewComment[]>([]);
   const [state, setState] = useState<'loading' | 'error' | 'success'>('loading');
   const [notice, setNotice] = useState<string | null>(null);
@@ -30,6 +32,7 @@ export function useEmbeddedComments(projectId: string) {
     return () => { mounted.current = false; generation.current++; clearInterval(timer); };
   }, [refresh]);
   const send = useCallback(async (attachments: ChatCommentAttachment[], images: File[] = []): Promise<CommentSendResult> => {
+    if (!await prepareHostFeedback(projectId)) return { status: 'rejected', commentIds: [] };
     let extra = '';
     if (images.length) {
       const result = await uploadProjectFiles(projectId, images, '.studio-comments');
@@ -41,21 +44,29 @@ export function useEmbeddedComments(projectId: string) {
     return { status: accepted ? 'queued' : 'rejected', commentIds: accepted ? attachments.map((item) => item.id) : [] };
   }, [projectId]);
   const save = useCallback(async (target: PreviewCommentTarget, note: string, attach: boolean, images: File[] = [], commentId?: string) => {
-    const existing = comments.find((item) => item.id === commentId);
+    if (attach && !await prepareHostFeedback(projectId)) return null;
+    const key = JSON.stringify([commentId, target.filePath, target.elementId, target.selector, target.slideIndex, target.selectionKind, note]);
+    const pending = pendingSave.current;
+    const cached = pending && pending.key === key && pending.images.length === images.length && pending.images.every((file, index) => file === images[index]) ? pending : null;
+    const existing = cached?.comment ?? comments.find((item) => item.id === commentId);
     let attachments = existing?.attachments ?? [];
-    if (images.length) {
+    if (images.length && !cached) {
       const result = await uploadProjectFiles(projectId, images, '.studio-comments');
       if (result.failed.length || result.uploaded.length !== images.length) { setNotice('Images could not be saved. Your comment was not saved.'); return null; }
       attachments = [...attachments, ...result.uploaded.map((item) => ({ path: item.path, name: item.name }))];
     }
-    const saved = await upsertPreviewComment(projectId, projectId, { ...(commentId ? { id: commentId } : {}), target, note, attachments });
+    const saved = cached?.comment ?? await upsertPreviewComment(projectId, projectId, { ...(commentId ? { id: commentId } : {}), target, note, attachments });
     if (!saved) { setNotice('Comment could not be saved. Your draft is still available.'); return null; }
+    const operationId = cached?.operationId ?? crypto.randomUUID();
+    pendingSave.current = { key, images, comment: saved, operationId };
     generation.current++;
     setComments((current) => [...current.filter((item) => item.id !== saved.id), saved]);
     if (attach) {
-      const accepted = await stageHostContext(projectId, `File: ${target.filePath}\nSelector: ${target.selector}\nCurrent text: ${target.text}\nRequested change: ${note}\n${attachments.map((image) => `Attached image: ${image.path}`).join('\n')}`);
-      setNotice(accepted ? 'Comment saved and added to your Evebot draft.' : 'Comment saved. Open a chat to add it to a draft.');
+      const accepted = await stageHostContext(projectId, commentContextText(commentsToAttachments([saved])), operationId);
+      setNotice(accepted ? 'Comment saved and added to your Evebot draft.' : 'Comment saved. Try adding it to chat again.');
+      if (!accepted) return null;
     }
+    pendingSave.current = null;
     return saved;
   }, [projectId, comments]);
   const remove = useCallback(async (id: string) => {
