@@ -36,3 +36,11 @@ it('opens the actual media for a typed media project instead of a supporting ind
     expect(artifactEntry([supporting, media], 'index.html', kind)?.file.name).toBe('index.html');
   }
 });
+
+it('never treats captured feedback images as the artifact primary', () => {
+  const captured = { ...file('_studio-comments/mark.png'), kind: 'image' as const };
+  const image = { ...file('assets/hero.png'), kind: 'image' as const };
+  expect(artifactEntry([captured, image], null, 'image')?.file.name).toBe('assets/hero.png');
+  expect(artifactEntry([captured], null, 'image')).toBeNull();
+  expect(artifactEntry([captured, file('index.html')], captured.name)?.file.name).toBe('index.html');
+});
