@@ -41,10 +41,11 @@ export function useEmbeddedComments(projectId: string) {
     let prepared: Awaited<ReturnType<FeedbackImageUpload['prepare']>>;
     try { prepared = await pendingSend.current.prepare(projectId, images, JSON.stringify([text, feedback])); }
     catch { setNotice('Images could not be saved. Your request was not added to chat.'); return { status: 'rejected', commentIds: [] }; }
-    const imagePaths = [...new Set([...prepared.paths, ...attachments.flatMap(item => [item.screenshotPath, ...(item.imageAttachments ?? []).map(image => image.path)]).filter((path): path is string => Boolean(path?.startsWith('.studio-comments/')))])];
-    const accepted = await stageHostContext(projectId, text, prepared.operationId, preparationId, imagePaths, feedback);
+    const imagePaths = [...new Set([...prepared.paths, ...attachments.flatMap(item => [item.screenshotPath, ...(item.imageAttachments ?? []).map(image => image.path)]).filter((path): path is string => Boolean(path && /^(?:\.|_)studio-comments\//.test(path)))])];
+    let failure: string | undefined;
+    const accepted = await stageHostContext(projectId, text, prepared.operationId, preparationId, imagePaths, feedback, message => { failure = message; });
     if (accepted) pendingSend.current.clear();
-    setNotice(accepted ? 'Added to your chat draft.' : 'Open a bot or group chat beside Studio, then try adding this request again.');
+    setNotice(accepted ? 'Added to your chat draft.' : failure ?? 'The feedback could not be added. Try again.');
     return { status: accepted ? 'queued' : 'rejected', commentIds: accepted ? attachments.map((item) => item.id) : [] };
   }, [projectId]);
   const save = useCallback(async (target: PreviewCommentTarget, note: string, attach: boolean, images: File[] = [], commentId?: string) => {
@@ -56,7 +57,7 @@ export function useEmbeddedComments(projectId: string) {
     const existing = cached?.comment ?? comments.find((item) => item.id === commentId);
     let attachments = existing?.attachments ?? [];
     if (images.length && !cached) {
-      const result = await uploadProjectFiles(projectId, images, '.studio-comments');
+      const result = await uploadProjectFiles(projectId, images, '_studio-comments');
       if (result.failed.length || result.uploaded.length !== images.length) { setNotice('Images could not be saved. Your comment was not saved.'); return null; }
       attachments = [...attachments, ...result.uploaded.map((item) => ({ path: item.path, name: item.name }))];
     }
@@ -68,8 +69,9 @@ export function useEmbeddedComments(projectId: string) {
     setComments((current) => [...current.filter((item) => item.id !== saved.id), saved]);
     if (attach) {
       const selected = commentsToAttachments([saved]);
-      const accepted = await stageHostContext(projectId, commentFeedbackNote(selected), operationId, preparationId ?? undefined, [...new Set(commentsToAttachments([saved]).flatMap(item => [item.screenshotPath, ...(item.imageAttachments ?? []).map(image => image.path)]).filter((path): path is string => Boolean(path?.startsWith('.studio-comments/'))))], commentFeedbackContext(selected));
-      setNotice(accepted ? 'Comment saved and added to your Evebot draft.' : 'Comment saved. Try adding it to chat again.');
+      let failure: string | undefined;
+      const accepted = await stageHostContext(projectId, commentFeedbackNote(selected), operationId, preparationId ?? undefined, [...new Set(commentsToAttachments([saved]).flatMap(item => [item.screenshotPath, ...(item.imageAttachments ?? []).map(image => image.path)]).filter((path): path is string => Boolean(path && /^(?:\.|_)studio-comments\//.test(path))))], commentFeedbackContext(selected), message => { failure = message; });
+      setNotice(accepted ? 'Comment saved and added to your Evebot draft.' : failure ? `Comment saved. ${failure}` : 'Comment saved. Try adding it to chat again.');
       if (!accepted) return { ...saved, handoffPending: true };
     }
     pendingSave.current = null;

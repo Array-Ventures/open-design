@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 const upload = vi.hoisted(() => vi.fn());
 vi.mock('../../../src/providers/registry', () => ({ uploadProjectFiles: upload }));
 import { FeedbackImageUpload } from '../../../src/components/embedded/feedback-image-upload';
-beforeEach(() => { vi.resetAllMocks(); upload.mockResolvedValue({ uploaded: [{ path: '.studio-comments/mark.png' }], failed: [] }); });
+beforeEach(() => { vi.resetAllMocks(); upload.mockResolvedValue({ uploaded: [{ path: '_studio-comments/mark.png' }], failed: [] }); });
 it('shares one upload and operation receipt across concurrent or lost-response retries', async () => {
   const cache = new FeedbackImageUpload();
   let sequence = 0;

@@ -13,7 +13,7 @@ export class FeedbackImageUpload {
     const key = JSON.stringify([projectId, context, hashes]);
     if (this.pending?.key === key) return this.pending.images;
     const images = (async () => {
-      const result = files.length ? await uploadProjectFiles(projectId, files, '.studio-comments') : { uploaded: [], failed: [] };
+      const result = files.length ? await uploadProjectFiles(projectId, files, '_studio-comments') : { uploaded: [], failed: [] };
       if (result.failed.length || result.uploaded.length !== files.length) throw new Error('The marked image could not be saved.');
       return { operationId: crypto.randomUUID(), paths: result.uploaded.map(file => file.path) };
     })();

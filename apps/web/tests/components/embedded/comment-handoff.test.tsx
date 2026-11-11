@@ -51,3 +51,11 @@ describe('saved comment chat handoff', () => {
   });
 
 });
+
+it('passes canonical saved capture paths to the native import instead of dropping them', async () => {
+  mocks.save.mockResolvedValue({ ...saved, attachments: [{ path: '_studio-comments/mark.png', name: 'mark.png' }] });
+  const { result } = renderHook(() => useEmbeddedComments('p'));
+  await waitFor(() => expect(result.current.state).toBe('success'));
+  await act(async () => { await result.current.save(target, saved.note, true); });
+  expect(mocks.stage.mock.calls[0]?.[4]).toEqual(['_studio-comments/mark.png']);
+});

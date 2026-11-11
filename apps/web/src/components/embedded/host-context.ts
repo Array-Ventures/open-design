@@ -30,16 +30,16 @@ export function commentFeedbackNote(items: ChatCommentAttachment[]): string {
   return items.map(item => item.comment.trim()).filter(Boolean).join('\n\n') || 'Update the selected content.';
 }
 
-type HostReply = { requestId: string; accepted: boolean };
+type HostReply = { requestId: string; accepted: boolean; error?: string };
 
 function requestHost(projectId: string, type: string, responseType: string, fields: Record<string, unknown> = {}, requestId = crypto.randomUUID(), timeoutMs = 5000): Promise<HostReply> {
   if (window.parent === window) return Promise.resolve({ requestId, accepted: false });
   return new Promise(resolve => {
-    const finish = (accepted: boolean) => { clearTimeout(timeout); window.removeEventListener('message', receive); resolve({ requestId, accepted }); };
+    const finish = (accepted: boolean, error?: string) => { clearTimeout(timeout); window.removeEventListener('message', receive); resolve({ requestId, accepted, ...(error ? { error } : {}) }); };
     const receive = (event: MessageEvent) => {
       if (event.origin !== window.location.origin || event.source !== window.parent) return;
       const data = event.data;
-      if (data?.type === responseType && data.projectId === projectId && data.requestId === requestId) finish(data.accepted === true);
+      if (data?.type === responseType && data.projectId === projectId && data.requestId === requestId) finish(data.accepted === true, typeof data.error === 'string' && data.error.length <= 400 ? data.error : undefined);
     };
     const timeout = setTimeout(() => finish(false), timeoutMs);
     window.addEventListener('message', receive);
@@ -48,9 +48,11 @@ function requestHost(projectId: string, type: string, responseType: string, fiel
 }
 
 /** The host acknowledges staging into its normal composer, never agent execution. */
-export async function stageHostContext(projectId: string, text: string, operationId?: string, preparationId?: string, imagePaths: string[] = [], feedback: HostArtifactFeedback[] = []): Promise<boolean> {
+export async function stageHostContext(projectId: string, text: string, operationId?: string, preparationId?: string, imagePaths: string[] = [], feedback: HostArtifactFeedback[] = [], onFailure?: (message: string) => void): Promise<boolean> {
   if (!text.trim() || text.length > 32_000) return false;
-  return (await requestHost(projectId, 'studio:compose', 'studio:compose-result', { text, ...(preparationId ? { preparationId } : {}), ...(imagePaths.length ? { imagePaths } : {}), ...(feedback.length ? { feedback } : {}) }, operationId, 30_000)).accepted;
+  const result = await requestHost(projectId, 'studio:compose', 'studio:compose-result', { text, ...(preparationId ? { preparationId } : {}), ...(imagePaths.length ? { imagePaths } : {}), ...(feedback.length ? { feedback } : {}) }, operationId, 30_000);
+  if (!result.accepted) onFailure?.(result.error ?? 'The feedback could not be added. Your draft is still available.');
+  return result.accepted;
 }
 
 /** Bind a destination before capture/upload; its token accompanies the staged operation. */

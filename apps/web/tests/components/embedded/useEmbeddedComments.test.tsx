@@ -19,7 +19,7 @@ describe('embedded persistent annotations', () => {
     expect(api.save).toHaveBeenCalledWith('project-a', 'project-a', expect.objectContaining({ target, note: 'Change heading' }));
     expect(result.current.comments).toEqual([comment]); expect(api.stage).not.toHaveBeenCalled();
     await act(async () => { await result.current.save(target, 'Change heading', true); });
-    expect(api.stage).toHaveBeenCalledWith('project-a', 'Change heading', expect.any(String), expect.any(String), [], [expect.objectContaining({ kind: 'comment', filePath: target.filePath })]);
+    expect(api.stage).toHaveBeenCalledWith('project-a', 'Change heading', expect.any(String), expect.any(String), [], [expect.objectContaining({ kind: 'comment', filePath: target.filePath })], expect.any(Function));
   });
   it('preserves saved comments when the host refuses a draft handoff', async () => {
     api.stage.mockResolvedValue(false);

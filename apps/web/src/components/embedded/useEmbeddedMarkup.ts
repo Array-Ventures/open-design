@@ -28,10 +28,11 @@ export function useEmbeddedMarkup(projectId: string, fileNames: string[]) {
           const prepared = await upload.current.prepare(projectId, images, key);
           if (!active) { detail.ack?.({ ok: false, message: 'Reopen the artifact to add this feedback.' }); return; }
           const text = detail.note.trim() || 'Update the marked area.';
-          const accepted = await stageHostContext(projectId, text, prepared.operationId, detail.preparationId, prepared.paths, [{ filePath: detail.filePath, kind: 'markup', label: 'Visual markup', ...(detail.slideIndex !== undefined ? { slideIndex: detail.slideIndex } : {}) }]);
+          let failure: string | undefined;
+          const accepted = await stageHostContext(projectId, text, prepared.operationId, detail.preparationId, prepared.paths, [{ filePath: detail.filePath, kind: 'markup', label: 'Visual markup', ...(detail.slideIndex !== undefined ? { slideIndex: detail.slideIndex } : {}) }], message => { failure = message; });
           if (accepted) upload.current.clear();
-          if (active) setNotice(accepted ? 'Added to your chat draft.' : 'Open a chat beside this artifact and try again.');
-          detail.ack?.({ ok: accepted, ...(accepted ? {} : { message: 'Open a chat beside this artifact and try again.' }) });
+          if (active) setNotice(accepted ? 'Added to your chat draft.' : failure ?? 'The feedback could not be added. Try again.');
+          detail.ack?.({ ok: accepted, ...(accepted ? {} : { message: failure ?? 'The feedback could not be added. Try again.' }) });
         } catch {
           detail.ack?.({ ok: false, message: 'The markup could not be added. Your drawing is still available.' });
         }
