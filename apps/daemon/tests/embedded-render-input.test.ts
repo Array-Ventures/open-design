@@ -18,3 +18,12 @@ describe('contained render request', () => {
     expect(RenderInput.safeParse({ fileName: 'index.html', format: 'image', index: 200 }).success).toBe(false);
   });
 });
+
+it('accepts document outputs without treating decks or media as documents', () => {
+  for (const fileName of ['report.md', 'report.markdown', 'report.html']) {
+    for (const format of ['docx', 'markdown']) expect(RenderInput.safeParse({ fileName, format }).success).toBe(true);
+  }
+  expect(RenderInput.safeParse({ fileName: 'movie.mp4', format: 'docx' }).success).toBe(false);
+  expect(RenderInput.safeParse({ fileName: 'deck.html', format: 'docx', deck: true }).success).toBe(false);
+  expect(RenderInput.safeParse({ fileName: 'report.md', format: 'docx', dataFile: 'data.json' }).success).toBe(false);
+});

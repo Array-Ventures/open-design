@@ -109,6 +109,10 @@
     "./runtime/motion-source-player": {
       "types": "./dist/runtime/motion-source-player.d.ts",
       "default": "./dist/runtime/motion-source-player.mjs"
+    },
+    "./runtime/document": {
+      "types": "./dist/runtime/document.d.ts",
+      "default": "./dist/runtime/document.mjs"
     }
   },
   "scripts": {

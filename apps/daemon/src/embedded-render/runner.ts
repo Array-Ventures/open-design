@@ -13,6 +13,7 @@ import { chromium } from 'playwright-core';
 import { injectDeckStageFallback } from '@open-design/contracts/runtime/deck-stage-fallback';
 import { bundleStandaloneHtml } from '../artifacts/standalone-html.js';
 import { buildScreenshotPdf, buildScreenshotPptx, type SlideImage } from '../deck-export.js';
+import { prepareDocument, exportDocument, documentPrintCss, documentPrintOptions } from './documents.js';
 import { RenderInput } from './input.js';
 
 const MIME: Record<string, string> = { '.html': 'text/html', '.htm': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mp3': 'audio/mpeg', '.wav': 'audio/wav' };
@@ -33,7 +34,19 @@ export async function renderSnapshot(source: string, output: string, value: unkn
     if (!info.isFile() || info.size > 50 * 1024 * 1024) throw new Error('Asset size limit');
     return readFile(file);
   }
-  let html = (await asset(input.fileName)).toString('utf8');
+  const original = (await asset(input.fileName)).toString('utf8');
+  let html = original;
+  const document = !input.deck && !input.dataFile ? await prepareDocument(html, input.fileName, input.title) : null;
+  if (['docx', 'markdown'].includes(input.format)) {
+    if (!document) throw new Error('Choose a document artifact for this export.');
+    const result = await exportDocument(document, original, input.fileName, input.format as 'docx' | 'markdown', input.title, async name => {
+      try { const buffer = await asset(name); return { buffer, size: buffer.length, mime: mime(name) }; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
+    });
+    await writeFile(path.join(output, result.file), result.body, { flag: 'wx', mode: 0o600 });
+    return { file: result.file, mime: result.mime };
+  }
+  if (document) html = document;
   if (input.dataFile) {
     const bytes = await asset(input.dataFile);
     if (bytes.length > 1024 * 1024 || Buffer.byteLength(html) > 2 * 1024 * 1024) throw new Error('Dashboard source exceeds its JSON/template byte limit.');
@@ -66,7 +79,7 @@ export async function renderSnapshot(source: string, output: string, value: unkn
       const url = new URL(req.url ?? '/', 'http://127.0.0.1');
       const name = decodeURIComponent(url.pathname.slice(1));
       const buffer = name === input.fileName ? Buffer.from(deck ? injectDeckStageFallback(html) : html) : await asset(name);
-      res.writeHead(200, { 'content-type': mime(name), 'x-content-type-options': 'nosniff', 'cache-control': 'no-store' }).end(buffer);
+      res.writeHead(200, { 'content-type': name === input.fileName && document ? 'text/html' : mime(name), 'x-content-type-options': 'nosniff', 'cache-control': 'no-store' }).end(buffer);
     } catch { res.writeHead(404).end(); }
   });
   server.listen(0, '127.0.0.1');
@@ -98,6 +111,7 @@ export async function renderSnapshot(source: string, output: string, value: unkn
     }
     await page.addStyleTag({ content: '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important}' });
     if (unavailable.size) throw new Error('Required resources are unavailable. Bundle remote fonts, scripts and assets into the project before exporting.');
+    if (document && input.format === 'pdf') await page.addStyleTag({ content: documentPrintCss });
     const images: SlideImage[] = [];
     if (deck) {
       // The live preview scales a logical deck to its panel. An export captures
@@ -137,7 +151,7 @@ export async function renderSnapshot(source: string, output: string, value: unkn
     const extension = input.format === 'image' ? images[0]?.jpeg ? 'jpg' : 'png' : input.format;
     const file = `artifact.${extension}`;
     const body = input.format === 'pptx' ? await buildScreenshotPptx(images, { title: input.title, aspect: (input.width ?? 1920) / (input.height ?? 1080) })
-      : input.format === 'pdf' ? deck ? await buildScreenshotPdf(images) : await page.pdf({ printBackground: true, preferCSSPageSize: true, format: 'A4' })
+      : input.format === 'pdf' ? deck ? await buildScreenshotPdf(images) : await page.pdf(document ? documentPrintOptions(input.title) : { printBackground: true, preferCSSPageSize: true, format: 'A4' })
       : images[0]!.buffer;
     if (body.length > 250 * 1024 * 1024) throw new Error('Export exceeds its byte limit.');
     await writeFile(path.join(output, file), body, { flag: 'wx', mode: 0o600 });

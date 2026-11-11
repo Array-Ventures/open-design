@@ -123,4 +123,28 @@ await run('dashboard-array-refused', { ...dashboard, dataFile: 'dashboard-array.
 await run('dashboard-script-refused', { ...dashboard, fileName: 'dashboard-script.html', format: 'html' }, false);
 const dashboardPptx = await run('dashboard-deck-pptx', { ...dashboard, fileName: 'dashboard-deck.html', format: 'pptx', width: 800, height: 450 }); assert.equal(dashboardPptx.result.pages, 2); assert.equal(dashboardPptx.body.subarray(0, 2).toString(), 'PK');
 const activeData = await run('dashboard-active-url-refused', { fileName: 'dashboard-link.html', dataFile: 'dashboard-link-data.json', format: 'html' }, false); assert.match(activeData.result.error ?? '', /Active URL/);
+
+// Document outputs must contain editable semantics, not an image in a renamed archive.
+await writeFile(path.join(source, 'report.md'), '# Document export fixture\n\nEditable **bold** text.\n\n| Metric | Value |\n| --- | ---: |\n| Customers | 24 |\n\n- [x] Complete\n- [ ] Pending\n\n```js\nconst count = 24;\n```\n');
+const word = await run('document-word', { fileName: 'report.md', format: 'docx', title: 'Document export fixture' });
+const wordZip = await JSZip.loadAsync(word.body);
+const wordXml = await wordZip.file('word/document.xml').async('string');
+assert.match(wordXml, /<w:tbl>/); assert.match(wordXml, /<w:b\s*\/>/);
+assert.match(wordXml, /Customers/); assert.match(wordXml, /☒ Complete/); assert.match(wordXml, /☐ Pending/);
+assert.equal((wordXml.match(/>Document export fixture<\/w:t>/g) ?? []).length, 1, 'Do not duplicate the visible H1 with HTML title metadata');
+assert.ok(!wordXml.includes('<w:drawing'), 'Document text/table must not become a page screenshot');
+const wordStyles = await wordZip.file('word/styles.xml').async('string'); assert.match(wordStyles, /Georgia/); assert.match(wordStyles, /Arial/);
+const plainMarkdown = await run('document-markdown', { fileName: 'report.md', format: 'markdown' });
+assert.equal(plainMarkdown.body.toString(), await readFile(path.join(source, 'report.md'), 'utf8'));
+const documentPdf = await run('document-pdf', { fileName: 'report.md', format: 'pdf' }); assert.equal(documentPdf.body.subarray(0, 4).toString(), '%PDF');
+await writeFile(path.join(source, 'active-document.html'), '<html data-eve-document="1"><body><iframe src="file:///job/input.json"></iframe></body></html>');
+await run('document-active-refused', { fileName: 'active-document.html', format: 'docx' }, false);
+await writeFile(path.join(source, 'illustrated.md'), '# Illustrated document\n\n![Local figure](asset.svg)\n');
+const illustratedWord = await run('document-word-image', { fileName: 'illustrated.md', format: 'docx' });
+const illustratedZip = await JSZip.loadAsync(illustratedWord.body);
+assert.ok(Object.keys(illustratedZip.files).some(name => name.startsWith('word/media/')), 'Word must contain the local image bytes');
+assert.match(await illustratedZip.file('word/document.xml').async('string'), /<w:drawing>/);
+await writeFile(path.join(source, 'remote-document.md'), '# Remote document\n\n![Remote figure](https://unavailable.fixture.invalid/image.png)\n');
+await run('document-remote-image-refused', { fileName: 'remote-document.md', format: 'docx' }, false);
+
 process.stdout.write(`Contained export checks passed. Inspect artifacts in ${scratch}\n`);

@@ -1,18 +1,9 @@
 import { micromark } from 'micromark';
 import { gfm, gfmHtml } from 'micromark-extension-gfm';
-import { z } from 'zod';
+import { documentMetadataSchema as metadataSchema, documentMetadataDirective as directive, type MarkdownDocumentMetadata } from '@open-design/contracts/runtime/document';
+export type { MarkdownDocumentMetadata } from '@open-design/contracts/runtime/document';
 import { documentDigest } from './document-digest';
 import { documentHtml } from './document-html';
-
-const font = z.enum(['sans', 'serif']);
-const ids = z.array(z.string().regex(/^[A-Za-z0-9_-]{1,100}$/)).max(10000).optional();
-const metadataSchema = z.object({
-  version: z.literal(1), fonts: z.object({ text: font, headings: font }).strict(),
-  ids: z.object({ paragraph: ids, heading: ids, quote: ids, listitem: ids, tablecell: ids, code: ids, list: ids, table: ids }).strict(),
-  bodySha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
-}).strict();
-export type MarkdownDocumentMetadata = z.infer<typeof metadataSchema>;
-const directive = /^<!-- eve-document:([A-Za-z0-9+/=]+) -->\r?\n(?:\r?\n)?/;
 
 export function encodeMarkdownDocument(body: string, metadata: MarkdownDocumentMetadata): string {
   const safe = metadataSchema.parse(metadata);

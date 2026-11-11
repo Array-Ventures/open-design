@@ -20,6 +20,7 @@ await build({
     "./src/runtime/deck-stage-fallback.ts",
     "./src/runtime/motion-source-player.ts",
     "./src/runtime/deck-protocol.ts",
+    "./src/runtime/document.ts",
     "./src/runtime/preview-observability.ts",
     "./src/runtime/preview-build-focus.ts",
     "./src/runtime/preview-runtime-state.ts",
