@@ -529,11 +529,20 @@ export function BoardComposerPopover({
   if (existing) retainedThread.current = { target: threadTarget, comment: existing };
   else if (retainedThread.current?.target !== threadTarget) retainedThread.current = null;
   const threadComment = existing ?? retainedThread.current?.comment ?? null;
+  const rootBaseline = useRef<{ id: string; note: string } | null>(null);
+  const untouchedExternalUpdate = Boolean(existing && rootBaseline.current?.id === existing.id
+    && rootBaseline.current.note !== existing.note && draft === rootBaseline.current.note && !images.length && !notes.length);
+  useLayoutEffect(() => {
+    const previous = rootBaseline.current;
+    rootBaseline.current = existing ? { id: existing.id, note: existing.note } : null;
+    if (existing && previous?.id === existing.id && previous.note !== existing.note
+      && draft === previous.note && !images.length && !notes.length) onDraft(existing.note);
+  }, [existing?.id, existing?.note, draft, images.length, notes.length, onDraft]);
   const [editingRoot, setEditingRoot] = useState(false);
   useLayoutEffect(() => { setEditingRoot(false); }, [existing?.id]);
   useLayoutEffect(() => { setEditingRoot(rootEditIntent > 0); }, [rootEditIntent, rootSelectionIntent]);
   const savedThread = compact && threadComment && commentReview?.projectId && onThreadDirty;
-  const rootDirty = Boolean(threadComment && (images.length || notes.length || draft.trim() !== threadComment.note.trim()));
+  const rootDirty = Boolean(threadComment && !untouchedExternalUpdate && (images.length || notes.length || draft.trim() !== threadComment.note.trim()));
   const readingThread = Boolean(savedThread && !editingRoot && !rootDirty);
   const pendingCount = notes.length + (draft.trim() ? 1 : 0);
   const podMembers = target.podMembers ?? [];

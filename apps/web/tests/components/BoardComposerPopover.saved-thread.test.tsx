@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 import type { PreviewComment } from '../../src/types';
 import type { PreviewCommentSnapshot } from '../../src/comments';
 import { BoardComposerPopover } from '../../src/components/BoardComposerPopover';
@@ -10,9 +11,9 @@ vi.mock('../../src/components/embedded/host-viewer', () => ({ useEmbeddedMention
 afterEach(cleanup);
 const target: PreviewCommentSnapshot = { filePath: 'index.html', elementId: 'heading', selector: 'h1', label: 'Heading', text: 'Heading', position: { x: 40, y: 40, width: 200, height: 40 }, htmlHint: '', selectionKind: 'element' };
 const root = { ...target, id: 'root', note: 'Saved root note', createdAt: 1, updatedAt: 1, status: 'open', authorDisplayName: 'Person' } as PreviewComment;
-function view({ existing = root, list = false, edit = 0, selection = 0 }: { existing?: PreviewComment | null; list?: boolean; edit?: number; selection?: number } = {}) {
-  return <CommentReviewProvider projectId="project" changeStatus={vi.fn()}><BoardComposerPopover target={target} existing={existing} draft={root.note} notes={[]} compact
-    onDraft={vi.fn()} onAddDraft={vi.fn()} onRemoveQueuedNote={vi.fn()} onClose={vi.fn()} onSaveComment={vi.fn()} onSendBatch={vi.fn()} onRemoveMember={vi.fn()} onThreadDirty={vi.fn()}
+function view({ existing = root, list = false, edit = 0, selection = 0, draftValue = root.note, onDraft = vi.fn() }: { draftValue?: string; onDraft?(value: string): void; existing?: PreviewComment | null; list?: boolean; edit?: number; selection?: number } = {}) {
+  return <CommentReviewProvider projectId="project" changeStatus={vi.fn()}><BoardComposerPopover target={target} existing={existing} draft={draftValue} notes={[]} compact
+    onDraft={onDraft} onAddDraft={vi.fn()} onRemoveQueuedNote={vi.fn()} onClose={vi.fn()} onSaveComment={vi.fn()} onSendBatch={vi.fn()} onRemoveMember={vi.fn()} onThreadDirty={vi.fn()}
     sending={false} t={((key: string) => key) as never} rootEditIntent={edit} rootSelectionIntent={selection} commentsView={list ? <p>All comments page</p> : undefined} /></CommentReviewProvider>;
 }
 it('opens a saved root as a thread and enters the root editor only on an explicit edit intent', async () => {
@@ -35,4 +36,23 @@ it('retains the thread snapshot and draft if the saved root disappears during re
   rendered.rerender(view({ existing: null }));
   expect(screen.getByText(root.note)).toBeVisible(); expect(screen.getByRole('textbox')).toHaveValue('Unsent reply');
   expect(screen.getByRole('button', { name: 'Add reply' })).toBeDisabled();
+});
+
+function ControlledThread({ existing, edit = 0 }: { existing: PreviewComment; edit?: number }) {
+  const [draft, setDraft] = useState(root.note);
+  return view({ existing, edit, draftValue: draft, onDraft: setDraft });
+}
+it('updates an untouched root buffer after external edits while retaining the reply draft and read mode', async () => {
+  const rendered = render(<ControlledThread existing={root} />);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Reply' }), { target: { value: 'My unsent reply' } });
+  rendered.rerender(<ControlledThread existing={{ ...root, note: 'Externally updated root' }} />);
+  await waitFor(() => expect(screen.queryByTestId('comment-popover-input')).toBeNull());
+  expect(screen.getByText('Externally updated root')).toBeVisible();
+  expect(screen.getByRole('textbox', { name: 'Reply' })).toHaveValue('My unsent reply');
+});
+it('does not replace unsaved root edits when the same saved root changes externally', async () => {
+  const rendered = render(<ControlledThread existing={root} edit={1} />);
+  fireEvent.change(screen.getByTestId('comment-popover-input'), { target: { value: 'My local root edit' } });
+  rendered.rerender(<ControlledThread existing={{ ...root, note: 'Externally updated root' }} edit={1} />);
+  expect(screen.getByTestId('comment-popover-input')).toHaveValue('My local root edit');
 });
