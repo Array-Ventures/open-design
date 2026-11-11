@@ -154,7 +154,6 @@ export function DropdownPopover({
   return (
     <AriaPopover
       ref={context?.popoverRef}
-      aria-hidden={context?.isOpen === false ? true : undefined}
       isNonModal={!staysOnScroll}
       placement={placement}
       offset={offset}
@@ -168,9 +167,12 @@ export function DropdownPopover({
     >
       {/* gap-1 keeps bare DropdownItems 4px apart, the same rhythm as the
           Select listbox; DropdownDivider's margins are sized to absorb it. */}
-      <AriaDialog aria-label={ariaLabel} className={cx("flex flex-col gap-1 outline-none", dialogClassName)}>
-        {children}
-      </AriaDialog>
+      {/* Own this attribute: the portal's library-managed props can replace it. */}
+      <div aria-hidden={context?.isOpen === false ? true : undefined}>
+        <AriaDialog aria-label={ariaLabel} className={cx("flex flex-col gap-1 outline-none", dialogClassName)}>
+          {children}
+        </AriaDialog>
+      </div>
     </AriaPopover>
   );
 }
