@@ -28,3 +28,20 @@ it('rejects excessive images before uploading anything', async () => {
   await expect(cache.prepare('project', Array.from({ length: 9 }, () => new File(['x'], 'x.png')), 'note')).rejects.toThrow('limit');
   expect(upload).not.toHaveBeenCalled();
 });
+
+it('does not upload after its artifact scope is cancelled during hashing', async () => {
+  const cache = new FeedbackImageUpload(); const controller = new AbortController();
+  let finish!: (value: ArrayBuffer) => void;
+  const file = new File(['image'], 'mark.png');
+  vi.spyOn(file, 'arrayBuffer').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const pending = cache.prepare('project', [file], 'note', controller.signal);
+  controller.abort(); finish(new ArrayBuffer(1));
+  await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  expect(upload).not.toHaveBeenCalled();
+});
+it('forwards cancellation and rejects a receipt delivered after storage completes', async () => {
+  const cache = new FeedbackImageUpload(); const controller = new AbortController();
+  upload.mockImplementation(async () => { controller.abort(); return { uploaded: [{ path: '_studio-comments/late.png' }], failed: [] }; });
+  await expect(cache.prepare('project', [new File(['image'], 'mark.png')], 'note', controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+  expect(upload).toHaveBeenCalledWith('project', [expect.any(File)], '_studio-comments', undefined, controller.signal);
+});
