@@ -144,6 +144,12 @@ const illustratedWord = await run('document-word-image', { fileName: 'illustrate
 const illustratedZip = await JSZip.loadAsync(illustratedWord.body);
 assert.ok(Object.keys(illustratedZip.files).some(name => name.startsWith('word/media/')), 'Word must contain the local image bytes');
 assert.match(await illustratedZip.file('word/document.xml').async('string'), /<w:drawing>/);
+// The editor preserves image attributes/identity with an inline HTML wrapper.
+await writeFile(path.join(source, 'editor-image.md'), '# Editor image\n\nBefore image.\n\n<span data-eve-document-image="1"><img src="asset.svg" alt="Editor figure" width="200" height="100"></span>\n');
+const editorImageWord = await run('document-editor-image', { fileName: 'editor-image.md', format: 'docx' });
+const editorImageZip = await JSZip.loadAsync(editorImageWord.body);
+assert.ok(Object.keys(editorImageZip.files).some(name => name.startsWith('word/media/')), 'Editor-authored image bytes must remain in Word');
+assert.match(await editorImageZip.file('word/document.xml').async('string'), /<w:drawing>/);
 await writeFile(path.join(source, 'remote-document.md'), '# Remote document\n\n![Remote figure](https://unavailable.fixture.invalid/image.png)\n');
 await run('document-remote-image-refused', { fileName: 'remote-document.md', format: 'docx' }, false);
 

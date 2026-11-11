@@ -210,6 +210,12 @@ it('preserves a local image, dimensions, title and identity through Markdown edi
   expect(screen.getByRole('img', { name: 'Local figure' })).toHaveAttribute('width', '400');
   expect(screen.getByRole('img', { name: 'Local figure' })).toHaveAttribute('height', '200');
   expect(screen.getByRole('img', { name: 'Local figure' })).toHaveAttribute('title', 'Figure 1');
+  act(() => editor().update(() => { $getRoot().getChildren()[1]!.selectEnd(); const selection = $getSelection(); if ($isRangeSelection(selection)) selection.insertText(' after reopening'); }, { discrete: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save document' }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  expect(save.mock.calls[1]![2]).toContain('src="images/photo%20one.png"');
+  expect(save.mock.calls[1]![2]).toContain('after reopening');
+  expect(editor().getEditorState().read(documentIdentityGroups).image).toEqual(before.image);
 });
 
 
