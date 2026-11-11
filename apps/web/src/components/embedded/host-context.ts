@@ -15,7 +15,7 @@ export function commentContextText(attachments: ChatCommentAttachment[]): string
 }
 
 /** The host acknowledges staging into its normal composer, never agent execution. */
-export function stageHostContext(projectId: string, text: string, operationId?: string): Promise<boolean> {
+export function stageHostContext(projectId: string, text: string, operationId?: string, preparationId?: string): Promise<boolean> {
   if (window.parent === window || !text.trim() || text.length > 32_000) return Promise.resolve(false);
   const requestId = operationId ?? crypto.randomUUID();
   return new Promise((resolve) => {
@@ -27,16 +27,16 @@ export function stageHostContext(projectId: string, text: string, operationId?: 
     };
     const timeout = setTimeout(() => finish(false), 5000);
     window.addEventListener('message', receive);
-    window.parent.postMessage({ type: 'studio:compose', projectId, requestId, text }, window.location.origin);
+    window.parent.postMessage({ type: 'studio:compose', projectId, requestId, text, ...(preparationId ? { preparationId } : {}) }, window.location.origin);
   });
 }
 
 /** Choose/reveal chat before capturing or uploading visual feedback. */
-export function prepareHostFeedback(projectId: string): Promise<boolean> {
-  if (window.parent === window) return Promise.resolve(false);
+export function prepareHostFeedback(projectId: string): Promise<string | null> {
+  if (window.parent === window) return Promise.resolve(null);
   const requestId = crypto.randomUUID();
   return new Promise(resolve => {
-    const finish = (accepted: boolean) => { clearTimeout(timeout); window.removeEventListener('message', receive); resolve(accepted); };
+    const finish = (accepted: boolean) => { clearTimeout(timeout); window.removeEventListener('message', receive); resolve(accepted ? requestId : null); };
     const receive = (event: MessageEvent) => {
       if (event.origin !== window.location.origin || event.source !== window.parent) return;
       const data = event.data;

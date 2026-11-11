@@ -1,3 +1,4 @@
+import type { CommentSaveResult } from './comment-send-result';
 import { prepareHostFeedback } from './embedded/host-context';
 import { CommentMentions } from './embedded/CommentMentions';
 import { DeckPresentationMenu } from './embedded/DeckPresentationMenu';
@@ -1789,7 +1790,7 @@ interface Props {
   previewComments?: PreviewComment[];
   previewCommentsState?: 'loading' | 'error' | 'success';
   onRetryPreviewComments?: () => void;
-  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string) => Promise<PreviewComment | null>;
+  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string) => Promise<CommentSaveResult | null>;
   onRemovePreviewComment?: (commentId: string) => Promise<boolean>;
   /**
    * Persist a drag-reorder of the sidebar's display order (recvq5BVsolIxi
@@ -7385,7 +7386,7 @@ function HtmlViewer({
   previewComments?: PreviewComment[];
   previewCommentsState?: 'loading' | 'error' | 'success';
   onRetryPreviewComments?: () => void;
-  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string) => Promise<PreviewComment | null>;
+  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string) => Promise<CommentSaveResult | null>;
   onRemovePreviewComment?: (commentId: string) => Promise<boolean>;
   onReorderPreviewComment?: (commentId: string, sortKey: number) => Promise<void>;
   onSendBoardCommentAttachments?: (attachments: ChatCommentAttachment[], images?: File[]) => Promise<CommentSendResult> | CommentSendResult;
@@ -15795,6 +15796,12 @@ function HtmlViewer({
         boardImages,
         activeComposerComment?.id,
       );
+      if (saved?.handoffPending) {
+        setActivePreviewCommentId(saved.id);
+        setActiveCommentExistingAttachments(saved.attachments ?? []);
+        setBoardImages([]);
+        return;
+      }
       if (saved) {
         clearBoardComposer();
         setActiveCommentExistingAttachments(saved.attachments ?? []);

@@ -107,7 +107,7 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
     const annotation = vi.fn();
     window.addEventListener('opendesign:annotation', annotation);
     try {
-      const prepare = vi.fn(async () => true);
+      const prepare = vi.fn(async () => '11111111-1111-4111-8111-111111111111');
       const { container, getByRole } = render(<PreviewDrawOverlay active draftOnly onPrepareDraft={prepare}><iframe title="srcdoc" data-od-render-mode="srcdoc" /></PreviewDrawOverlay>);
       drawSelectionBox(container.querySelector('canvas')!);
       const input = container.querySelector<HTMLInputElement>('.preview-draw-note-input')!;

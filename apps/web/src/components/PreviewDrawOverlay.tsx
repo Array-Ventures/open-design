@@ -52,6 +52,7 @@ export interface AnnotationEventDetail {
   file: File | null;
   note: string;
   action: AnnotationAction;
+  preparationId?: string;
   filePath?: string;
   markKind?: PreviewVisualMarkKind;
   bounds?: { x: number; y: number; width: number; height: number };
@@ -72,7 +73,7 @@ interface Props {
   filePath?: string;
   hideChrome?: boolean;
   draftOnly?: boolean;
-  onPrepareDraft?: () => Promise<boolean>;
+  onPrepareDraft?: () => Promise<string | null>;
   sendDisabled?: boolean;
   sendDisabledReason?: string;
   onToolbarClick?: (element: DrawToolbarElement, submitAction?: AnnotationAction) => void;
@@ -985,7 +986,8 @@ export function PreviewDrawOverlay({
     setCaptureWarning(null);
     setPendingAction(action);
     try {
-      if (action === 'draft' && onPrepareDraft && !await onPrepareDraft()) return;
+      const preparationId = action === 'draft' && onPrepareDraft ? await onPrepareDraft() : undefined;
+      if (onPrepareDraft && action === 'draft' && !preparationId) return;
       let file: File | null = null;
       if (shouldCapture) {
         let blob: Blob | null = null;
@@ -1022,6 +1024,7 @@ export function PreviewDrawOverlay({
           file,
           note: note.trim(),
           action,
+          ...(preparationId ? { preparationId } : {}),
           filePath: captureTarget?.filePath || filePath,
           markKind: kind,
           bounds: kind ? annotationBounds() : undefined,

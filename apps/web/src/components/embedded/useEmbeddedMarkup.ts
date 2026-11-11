@@ -34,7 +34,7 @@ export function useEmbeddedMarkup(projectId: string, fileNames: string[]) {
             detail.markKind ? `Mark: ${detail.markKind}` : '',
             detail.note.trim() ? `Requested change: ${detail.note.trim()}` : 'Requested change: See the marked image.',
             ...(images.length ? [] : ['Image capture: unavailable.']), ...attachments].filter(Boolean).join('\n');
-          const accepted = await stageHostContext(projectId, text);
+          const accepted = await stageHostContext(projectId, text, undefined, detail.preparationId);
           if (active) setNotice(accepted ? 'Added to your chat draft.' : 'Open a chat beside this artifact and try again.');
           detail.ack?.({ ok: accepted, ...(accepted ? {} : { message: 'Open a chat beside this artifact and try again.' }) });
         } catch {
