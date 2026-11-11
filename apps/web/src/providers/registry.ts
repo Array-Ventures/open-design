@@ -2267,7 +2267,7 @@ export async function fetchProjectFiles(
             : {}),
         });
         if (!resp.ok) {
-          throw new Error(`Project files request failed (${resp.status})`);
+          throw Object.assign(new Error(`Project files request failed (${resp.status})`), { status: resp.status });
         }
         const json = (await resp.json()) as { files?: unknown };
         if (!Array.isArray(json.files)) {
@@ -3154,6 +3154,7 @@ export async function writeProjectTextFile(
     versionLabel?: string;
     versionPrompt?: string | null;
     parentVersionId?: string;
+    expectedContentSha256?: string;
   },
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<ProjectFile | null> {
@@ -3175,6 +3176,7 @@ export async function writeProjectTextFileDetailed(
     versionLabel?: string;
     versionPrompt?: string | null;
     parentVersionId?: string;
+    expectedContentSha256?: string;
   },
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<WriteProjectTextFileResult> {
@@ -3193,6 +3195,7 @@ export async function writeProjectTextFileDetailed(
         versionLabel: options?.versionLabel,
         versionPrompt: options?.versionPrompt,
         parentVersionId: options?.parentVersionId,
+        expectedContentSha256: options?.expectedContentSha256,
       }),
     });
     if (!resp.ok) {

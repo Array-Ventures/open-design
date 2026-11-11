@@ -87,3 +87,12 @@ Catalogue resources belong to the verified companion package, outside the
 bot-writable workspace mounts. Their path/integrity checks do not authorize an
 arbitrary bot-provided resource root. A catalogue restriction heuristic is not
 a legal certification of every upstream asset or provider term.
+
+
+## Structured document checkpoint
+
+An embedded document project can opt a semantic HTML file into rich editing with `data-eve-document="1"` on its HTML element. The initial editor supports headings, paragraphs, emphasis, lists, tables, font family, undo/redo and serialized saves. Stable `data-od-id` block identities survive supported imports/exports; pasted copies receive new identities. Files containing media or form nodes that cannot yet round-trip remain in their existing viewer. Legacy applications are never silently converted into a document.
+
+Manual HTML saves may supply `expectedContentSha256`. Under the existing managed file-version lock the daemon compares actual bytes, rejects a conflicting base with `FILE_CONTENT_CHANGED`, and admits identical-content retries after a lost response. This lock coordinates managed writes; it does not claim an atomic compare-and-swap against arbitrary external filesystem writes. The editor serializes saves against each acknowledged base and retains edits after errors. Its dirty-state host bridge is source/origin/project checked by Evebot, which owns navigation confirmation. In-flight writes and failed unknown-commit attempts remain dirty; retries reconcile an uncertain attempted body before draining newer edits. Hosted editors wait for the viewer identity and reset across actor changes. Clean external revisions remount the editor; own-save acknowledgements preserve its caret/undo instance. Dirty external reads remain pending. Manual reload rechecks draft/save revisions after confirmation and after the read. Transport refresh failures retain the current editor, while explicit denied/missing reads withdraw it.
+
+This is a partial document implementation, not full reference parity: Markdown editing, media nodes, document comments, suggestions, richer tables and genuine DOCX/PDF exports still need implementation and fidelity checks. The embedded source continues to own no model chat or cloud publishing.

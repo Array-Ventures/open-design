@@ -105,10 +105,25 @@ describe('host-owned embedded Studio', () => {
     expect(screen.queryByText('stale.html')).not.toBeInTheDocument();
   });
 
-  it('withdraws the writable workspace when a saved-edit refresh cannot recheck access', async () => {
+  it('retains the mounted preview and its state when a refresh has a transport failure', async () => {
+    state.identityFrame = true;
+    render(<EmbeddedStudio />);
+    await screen.findByText('Host-owned agent');
+    const frame = await screen.findByTestId('identity-preview');
+    state.files.mockRejectedValueOnce(new Error('Connection interrupted'));
+    act(() => { screen.getByText('Saved in Studio').click(); });
+    await waitFor(() => expect(screen.getByText('Couldn’t refresh.')).toBeInTheDocument());
+    expect(screen.getByTestId('identity-preview')).toBe(frame);
+    state.files.mockResolvedValueOnce([file('index.html')]);
+    act(() => { screen.getByRole('button', { name: 'Retry refresh' }).click(); });
+    await waitFor(() => expect(screen.queryByText('Couldn’t refresh.')).toBeNull());
+    expect(screen.getByTestId('identity-preview')).toBe(frame);
+  });
+
+  it('withdraws the writable workspace when a saved-edit refresh explicitly denies access', async () => {
     render(<EmbeddedStudio />);
     await screen.findByText('index.html');
-    state.files.mockRejectedValueOnce(new Error('unavailable'));
+    state.files.mockRejectedValueOnce(Object.assign(new Error('Forbidden'), { status: 403 }));
     act(() => { screen.getByText('Saved in Studio').click(); });
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Project unavailable'));
     expect(screen.queryByTestId('embedded-studio')).not.toBeInTheDocument();

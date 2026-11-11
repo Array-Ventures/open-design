@@ -1,0 +1,27 @@
+// @vitest-environment jsdom
+import { describe, expect, it } from 'vitest';
+import { documentHtml, documentImport, isEditableDocument } from '../../../src/components/embedded/document/document-html';
+describe('semantic document import', () => {
+  it('retains headings, lists, tables, inline emphasis and safe alignment', () => {
+    const doc = documentImport('<h1>Report</h1><p style="text-align:center"><strong>Ready</strong></p><ul><li>One</li></ul><table><tr><td colspan="2">125</td></tr></table>');
+    expect(doc.querySelector('h1')?.textContent).toBe('Report');
+    expect(doc.querySelector('p')?.style.textAlign).toBe('center');
+    expect(doc.querySelector('strong')?.textContent).toBe('Ready');
+    expect(doc.querySelector('li')?.textContent).toBe('One');
+    expect(doc.querySelector('td')?.getAttribute('colspan')).toBe('2');
+  });
+  it('does not admit scripts, frame content, event handlers, network styles or application overlays', () => {
+    const doc = documentImport('<script>alert(1)</script><iframe src="/api/secrets"></iframe><img src="https://outside.test/x"><p onclick="alert(1)" style="position:fixed;inset:0;background:url(https://outside.test/x);text-align:right">Safe</p><a href="javascript:alert(1)">Bad</a>');
+    expect(doc.querySelector('script,iframe,img,[onclick]')).toBeNull();
+    expect(doc.querySelector('p')?.getAttribute('style')).toBe('text-align: right;');
+    expect(doc.querySelector('a')?.hasAttribute('href')).toBe(false);
+  });
+  it('marks exported documents without interpreting the title as markup', () => {
+    const html = documentHtml('<img onerror=alert(1)>', '<h1>Title</h1><p>Body</p>');
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    expect(doc.title).toBe('<img onerror=alert(1)>');
+    expect(doc.querySelector('img')).toBeNull();
+    expect(isEditableDocument(html)).toBe(true);
+    expect(isEditableDocument('<p>Legacy layout</p>')).toBe(false);
+  });
+});

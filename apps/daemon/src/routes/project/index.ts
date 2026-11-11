@@ -7930,6 +7930,10 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         const requestedSource = uploadProject && /\.html?$/i.test(desiredName)
           ? requestProjectFileVersionUploadSource(req.body)
           : null;
+        const expectedDigest = req.body?.expectedContentSha256;
+        if (expectedDigest !== undefined && (typeof expectedDigest !== 'string' || !/^[0-9a-f]{64}$/.test(expectedDigest) || requestedSource !== 'manual')) {
+          return sendApiError(res, 400, 'BAD_REQUEST', 'expectedContentSha256 requires a SHA-256 digest and a manual HTML save');
+        }
         if (artifactManifest !== undefined && artifactManifest !== null) {
           const validated = validateArtifactManifestInput(
             artifactManifest,
@@ -7949,6 +7953,17 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             ? Buffer.from(content, 'base64')
             : Buffer.from(content, 'utf8');
         const writeAndCapture = async (versionLock?: HtmlVersionLock) => {
+          if (expectedDigest !== undefined) {
+            let observed;
+            try { observed = await readProjectFile(PROJECTS_DIR, projectId, desiredName, uploadProject?.metadata); }
+            catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+            }
+            const actualDigest = observed ? createHash('sha256').update(observed.buffer).digest('hex') : null;
+            if (actualDigest !== expectedDigest && actualDigest !== createHash('sha256').update(buf).digest('hex')) {
+              throw Object.assign(new Error('This file changed after you opened it. Reload the latest document before saving.'), { code: 'FILE_CONTENT_CHANGED' });
+            }
+          }
           const parentVersionId = uploadProject && requestedSource === 'manual' && versionLock
             ? await matchedHtmlParentVersionId(
               uploadProject,
@@ -8039,6 +8054,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             details: { placeholders: err.placeholders },
           });
         }
+        if (err?.code === 'FILE_CONTENT_CHANGED') return sendApiError(res, 409, err.code, err.message);
         if (err?.code === 'EEXIST') {
           return sendApiError(res, 409, 'FILE_EXISTS', 'file already exists');
         }

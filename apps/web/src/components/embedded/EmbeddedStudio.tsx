@@ -1,3 +1,5 @@
+import { RiRefreshLine } from '@remixicon/react';
+import { Button as HostButton } from './boardui/button';
 import { useEmbeddedMarkup } from './useEmbeddedMarkup';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, ButtonRendererProvider, InputRendererProvider, TextareaRendererProvider, ValueSelectRendererProvider } from '@open-design/components';
@@ -75,8 +77,13 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
       setGeneration((n) => n + 1);
       setError(false);
       return { acceptedGeneration: version };
-    } catch {
-      if (mounted.current && request.current === version) { setError(true); setProject(null); }
+    } catch (cause) {
+      if (mounted.current && request.current === version) {
+        setError(true);
+        const status = typeof cause === 'object' && cause !== null && 'status' in cause ? Number(cause.status) : 0;
+        // Transport failure retains loaded drafts; explicit access loss withdraws the writable surface.
+        if ([401, 403, 404].includes(status)) setProject(null);
+      }
     }
   }, [projectId, pool]);
 
@@ -114,13 +121,14 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
     if (event.type === 'comment-changed') void comments.refresh();
   }, { onReady: () => { void refresh(); }, onConnectedChange: (connected) => { if (!connected && project) void refresh(); } });
 
-  if (!project || generation === 0 || error) {
+  if (!project || generation === 0) {
     return <div role={error ? 'alert' : 'status'} className={styles.status}>
       {error ? <div>Project unavailable <Button onClick={() => { setError(false); setAttempt((n) => n + 1); }}>Retry</Button></div> : 'Loading project…'}
     </div>;
   }
   return (
     <main className={styles.workspace} data-testid="embedded-studio">
+      {error ? <div role="alert" className="flex shrink-0 items-center gap-2 px-3 py-2 text-caption-1-regular text-text-tertiary">Couldn’t refresh.<HostButton variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry refresh" onClick={() => { void refresh(); }} /></div> : null}
       {markupNotice || comments.notice ? <div role="status" className={styles.feedbackNotice}>{markupNotice ?? comments.notice}</div> : null}
       {dashboardError ? <div role="alert">Dashboards unavailable. Retrying…</div> : null}
       {new URLSearchParams(window.location.search).get('surface') === 'artifact' ? dashboards === null ? <div role="status" className={styles.status}>Loading preview…</div> : <ArtifactSurface project={project} files={files} dashboards={dashboards ?? []} fileName={fileName} generation={generation} onRefresh={refresh} feedback={{

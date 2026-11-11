@@ -61,6 +61,6 @@ export async function prepareHostFeedback(projectId: string): Promise<string | n
   return reply.accepted ? reply.requestId : null;
 }
 
-export async function confirmHostFeedbackDiscard(projectId: string, kind: 'comment' | 'markup'): Promise<boolean> {
+export async function confirmHostFeedbackDiscard(projectId: string, kind: 'comment' | 'markup' | 'document'): Promise<boolean> {
   return (await requestHost(projectId, 'studio:confirm-feedback-discard', 'studio:feedback-discarded', { kind }, undefined, 120_000)).accepted;
 }

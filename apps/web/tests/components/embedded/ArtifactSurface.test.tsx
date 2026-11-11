@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Project, ProjectFile } from '../../../src/types';
 import type { EmbeddedDashboardSummary } from '../../../src/components/embedded/dashboards';
 vi.mock('../../../src/components/FileViewer', () => ({ FileViewer: ({ file }: { file: ProjectFile }) => <div data-testid="app-preview">{file.name}</div>, LiveArtifactViewer: () => <div data-testid="dashboard-preview">Rendered snapshot</div> }));
 vi.mock('../../../src/components/embedded/useMotionTransport', () => ({ useMotionTransport: () => {} }));
+vi.mock('../../../src/components/embedded/document/DocumentSurface', () => ({ DocumentSurface: ({ fileName, onDirtyChange }: { fileName: string; onDirtyChange(dirty: boolean): void }) => <div data-testid="document-preview">{fileName}<button onClick={() => onDirtyChange(true)}>Unsaved document edit</button><button onClick={() => onDirtyChange(false)}>Saved document edit</button></div> }));
 import { ArtifactSurface } from '../../../src/components/embedded/ArtifactSurface';
 afterEach(cleanup);
 const project = { id: 'project-a', metadata: { kind: 'prototype' } } as unknown as Project;
@@ -28,4 +29,16 @@ describe('default artifact experience', () => {
     open([file('index.html'), file('other.html')], [dashboard('index.html')], 'other.html');
     expect(screen.getByTestId('app-preview')).toHaveTextContent('other.html');
   });
+});
+
+it('retains a dirty document when external file reconciliation changes the default entry', () => {
+  const docProject = { ...project, metadata: { kind: 'document' } } as unknown as Project; // Embedded host kind; the upstream taxonomy stays unchanged.
+  const surface = (files: ProjectFile[], generation: number) => <ArtifactSurface project={docProject} files={files} dashboards={[]} fileName={null} generation={generation} onRefresh={async () => {}} feedback={{}} />;
+  const view = render(surface([file('index.html')], 1));
+  fireEvent.click(screen.getByRole('button', { name: 'Unsaved document edit' }));
+  const before = screen.getByTestId('document-preview');
+  view.rerender(surface([file('other.html')], 2));
+  expect(screen.getByTestId('document-preview')).toBe(before); expect(before).toHaveTextContent('index.html');
+  fireEvent.click(screen.getByRole('button', { name: 'Saved document edit' }));
+  expect(screen.getByTestId('document-preview')).toHaveTextContent('other.html');
 });
