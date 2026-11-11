@@ -4827,7 +4827,7 @@ export function CommentSidePanel({
   onToggleSelect: (commentId: string) => void;
   onSelectAll: () => void;
   canSendComment?: (comment: PreviewComment) => boolean;
-  threadActions?: { canEdit(comment: PreviewComment): boolean; canDelete(comment: PreviewComment): boolean; remove(comment: PreviewComment): void | Promise<unknown> };
+  threadActions?: { canEdit(comment: PreviewComment): boolean; canDelete(comment: PreviewComment): boolean; canResolve?(comment: PreviewComment): boolean; remove(comment: PreviewComment): void | Promise<unknown> };
   /** The viewer's own directory entry, so their comments show their avatar +
    *  name even when the member roster is empty (personal workspace / cold
    *  roster window). Supplied from the workspace context the caller already
@@ -5097,7 +5097,7 @@ export function CommentSidePanel({
                   displayNumber={displayCommentNumber(comment, index)}
                   t={t}
                 />
-                {threadActions ? <><ResolveCommentButton comment={comment} allowed={threadActions.canDelete(comment)} /><CommentThreadMenu onReopen={comment.status === 'resolved' && threadActions.canDelete(comment) && commentReview ? () => commentReview.changeStatus(comment.id, 'open') : undefined} canEdit={threadActions.canEdit(comment)} canDelete={threadActions.canDelete(comment)} onEdit={() => onReply(comment)} onDelete={() => threadActions.remove(comment)} /></> : sendable ? (
+                {threadActions ? <><ResolveCommentButton comment={comment} allowed={threadActions.canDelete(comment)} blocked={threadActions.canResolve ? !threadActions.canResolve(comment) : false} /><CommentThreadMenu onReopen={comment.status === 'resolved' && threadActions.canDelete(comment) && commentReview ? () => commentReview.changeStatus(comment.id, 'open') : undefined} canEdit={threadActions.canEdit(comment)} canDelete={threadActions.canDelete(comment)} onEdit={() => onReply(comment)} onDelete={() => threadActions.remove(comment)} /></> : sendable ? (
                   <button
                     type="button"
                     className={`comment-side-check${selected ? ' checked' : ''}`}
@@ -5350,7 +5350,7 @@ function CommentSideDock({
   /** Team-collab gate: which comments the viewer may send to the agent (author
    * OR project owner). Defaults to all-sendable when absent (single-user). */
   canSendComment?: (comment: PreviewComment) => boolean;
-  threadActions?: { canEdit(comment: PreviewComment): boolean; canDelete(comment: PreviewComment): boolean; remove(comment: PreviewComment): void | Promise<unknown> };
+  threadActions?: { canEdit(comment: PreviewComment): boolean; canDelete(comment: PreviewComment): boolean; canResolve?(comment: PreviewComment): boolean; remove(comment: PreviewComment): void | Promise<unknown> };
   /** The viewer's own directory entry — see `CommentSidePanel`. */
   currentUser?: CollabCloudMemberDirectoryEntry | null;
   sending: boolean;
@@ -17126,6 +17126,7 @@ function HtmlViewer({
       threadActions={inlineAnnotations && onRemovePreviewComment ? {
         canEdit: comment => canEditComment(comment, commentAuthority),
         canDelete: comment => canDeleteComment(comment, commentAuthority),
+        canResolve: comment => comment.id !== activePreviewCommentId || !composerHoldsUnsentWork,
         remove: comment => removeComment?.(comment.id),
       } : undefined}
       loadState={previewCommentsState}

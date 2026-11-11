@@ -710,7 +710,7 @@ export function BoardComposerPopover({
           </> : <><span className={`comment-popover-title${compact ? ' comment-popover-quote' : ''}`} title={targetTitle}>
             {targetTitle}
           </span>
-          {compact && existing ? <ResolveCommentButton comment={existing} allowed={canDeleteComment} onResolved={onClose} /> : null}
+          {compact && existing ? <ResolveCommentButton comment={existing} allowed={canDeleteComment} blocked={images.length > 0 || notes.length > 0 || draft.trim() !== existing.note.trim()} onResolved={onClose} /> : null}
           {compact && existing ? <CommentThreadMenu canEdit={canEditComment} canDelete={Boolean(canDeleteComment && onDeleteComment)} onReopen={existing.status === 'resolved' && canDeleteComment && commentReview ? () => commentReview.changeStatus(existing.id, 'open') : undefined} onEdit={() => popoverRef.current?.querySelector<HTMLTextAreaElement>('textarea')?.focus()} onDelete={() => onDeleteComment?.(existing.id)} /> : null}
           {onViewAllComments ? (
             <button

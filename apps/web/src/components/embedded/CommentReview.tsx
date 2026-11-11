@@ -18,7 +18,7 @@ export function CommentReviewProvider({ changeStatus, children }: { changeStatus
 }
 
 /** Resolution changes the saved thread, not its canvas identity or pin number. */
-export function ResolveCommentButton({ comment, allowed, onResolved }: { comment: PreviewComment; allowed: boolean; onResolved?(): void }) {
+export function ResolveCommentButton({ comment, allowed, blocked = false, onResolved }: { comment: PreviewComment; allowed: boolean; blocked?: boolean; onResolved?(): void }) {
   const review = useCommentReview();
   const [busy, setBusy] = useState(false);
   const life = useRef({ active: false, generation: 0, pending: false });
@@ -28,11 +28,11 @@ export function ResolveCommentButton({ comment, allowed, onResolved }: { comment
   }, [comment.id]);
   if (!review || !allowed || comment.status !== 'open') return null;
   return <div onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
-    <Button variant="ghost" size="small" iconOnly leadingIcon={RiCheckLine} aria-label="Resolve comment" title={busy ? 'Resolving…' : 'Resolve'} disabled={busy}
+    <Button variant="ghost" size="small" iconOnly leadingIcon={RiCheckLine} aria-label="Resolve comment" title={blocked ? 'Save your comment changes before resolving' : busy ? 'Resolving…' : 'Resolve'} disabled={busy || blocked}
       className="box-border size-8 min-h-8 shrink-0 border-0 bg-transparent p-0 text-foreground-icon-secondary shadow-none hover:bg-background-secondary-hover active:bg-background-secondary-active"
       onClick={() => {
         const current = life.current;
-        if (current.pending) return;
+        if (current.pending || blocked) return;
         const generation = current.generation; current.pending = true; setBusy(true);
         void review.changeStatus(comment.id, 'resolved').then(saved => {
           if (current.active && current.generation === generation && saved) onResolved?.();

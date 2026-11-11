@@ -77,3 +77,11 @@ it('does not dismiss the comments card for Escape inside its portalled filter', 
   fireEvent.keyDown(option, { key: 'Escape' });
   expect(close).not.toHaveBeenCalled(); expect(screen.getByRole('dialog', { name: 'All comments' })).toBeInTheDocument();
 });
+
+it('requires saving unsent changes before starting resolution', () => {
+  const change = vi.fn();
+  render(<CommentReviewProvider changeStatus={change}><ResolveCommentButton comment={comment} allowed blocked /></CommentReviewProvider>);
+  const resolve = screen.getByRole('button', { name: 'Resolve comment' });
+  expect(resolve).toBeDisabled(); expect(resolve).toHaveAttribute('title', 'Save your comment changes before resolving');
+  fireEvent.click(resolve); expect(change).not.toHaveBeenCalled();
+});
