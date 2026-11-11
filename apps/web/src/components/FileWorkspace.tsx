@@ -288,7 +288,8 @@ interface Props {
   previewComments?: PreviewComment[];
   previewCommentsState?: 'loading' | 'error' | 'success';
   onRetryPreviewComments?: () => void;
-  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string) => Promise<PreviewComment | null>;
+  onDiscardPreviewCommentWrite?: () => void;
+  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string, baseline?: PreviewComment) => Promise<PreviewComment | null>;
   onRemovePreviewComment?: (commentId: string) => Promise<boolean>;
   onReorderPreviewComment?: (commentId: string, sortKey: number) => Promise<void>;
   onSendBoardCommentAttachments?: (attachments: ChatCommentAttachment[], images?: File[]) => Promise<CommentSendResult> | CommentSendResult;
@@ -1377,6 +1378,7 @@ export function FileWorkspace({
   previewCommentsState = 'success',
   onRetryPreviewComments,
   onSavePreviewComment,
+  onDiscardPreviewCommentWrite,
   onRemovePreviewComment,
   onReorderPreviewComment,
   onSendBoardCommentAttachments,
@@ -3534,6 +3536,7 @@ export function FileWorkspace({
       previewCommentsState={previewCommentsState}
       onRetryPreviewComments={onRetryPreviewComments}
       onSavePreviewComment={onSavePreviewComment}
+      onDiscardPreviewCommentWrite={onDiscardPreviewCommentWrite}
       onRemovePreviewComment={onRemovePreviewComment}
       onReorderPreviewComment={onReorderPreviewComment}
       onSendBoardCommentAttachments={onSendBoardCommentAttachments}
@@ -4686,7 +4689,7 @@ export function FileWorkspace({
         ) : activeLiveArtifact ? (
           <LiveArtifactViewer
             previewRenderer={embedded ? ({ url, source }) => <LiveArtifactFeedbackPreview projectId={projectId} previewUrl={url} source={source} files={files} feedback={{
-              previewComments, previewCommentsState, onRetryPreviewComments, onSavePreviewComment,
+              previewComments, previewCommentsState, onRetryPreviewComments, onSavePreviewComment, onDiscardPreviewCommentWrite,
               onRemovePreviewComment, onReorderPreviewComment, onSendBoardCommentAttachments,
             }} /> : undefined}
             projectId={projectId}

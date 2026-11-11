@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { File as NodeFile } from 'node:buffer';
+import { webcrypto } from 'node:crypto';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PreviewComment } from '../../../src/types';
@@ -9,14 +11,14 @@ vi.mock('../../../src/components/embedded/host-context', async original => ({ ..
 import { useEmbeddedComments } from '../../../src/components/embedded/useEmbeddedComments';
 const target = { filePath: 'index.html', elementId: 'heading', selector: '#heading', label: 'Heading', text: 'Original', position: { x: 0, y: 0, width: 100, height: 20 }, htmlHint: '<h1>Original</h1>' };
 const comment = { ...target, id: 'comment-a', note: 'Change heading', conversationId: 'project-a', attachments: [] } as unknown as PreviewComment;
-beforeEach(() => { api.list.mockResolvedValue([]); api.stage.mockResolvedValue(true); api.prepare.mockResolvedValue('11111111-1111-4111-8111-111111111111'); api.save.mockResolvedValue(comment); });
-afterEach(() => { cleanup(); vi.resetAllMocks(); });
+beforeEach(() => { vi.stubGlobal('File', NodeFile); vi.stubGlobal('crypto', webcrypto); api.list.mockResolvedValue([]); api.stage.mockResolvedValue(true); api.prepare.mockResolvedValue('11111111-1111-4111-8111-111111111111'); api.save.mockResolvedValue(comment); });
+afterEach(() => { cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
 describe('embedded persistent annotations', () => {
   it('saves in the project comment container and stages only after an explicit attach', async () => {
     const { result } = renderHook(() => useEmbeddedComments('project-a'));
     await waitFor(() => expect(result.current.state).toBe('success'));
     await act(async () => { await result.current.save(target, 'Change heading', false); });
-    expect(api.save).toHaveBeenCalledWith('project-a', 'project-a', expect.objectContaining({ target, note: 'Change heading' }));
+    expect(api.save).toHaveBeenCalledWith('project-a', 'project-a', expect.objectContaining({ target, note: 'Change heading', operationId: expect.any(String) }), undefined, expect.any(AbortSignal));
     expect(result.current.comments).toEqual([comment]); expect(api.stage).not.toHaveBeenCalled();
     await act(async () => { await result.current.save(target, 'Change heading', true); });
     expect(api.stage).toHaveBeenCalledWith('project-a', 'Change heading', expect.any(String), expect.any(String), [], [expect.objectContaining({ kind: 'comment', filePath: target.filePath })], expect.any(Function));
@@ -150,4 +152,63 @@ it('ignores a status receipt after switching projects', async () => {
   view.rerender({ id: 'project-b' });
   await act(async () => { finish({ ...comment, status: 'resolved' }); expect(await pending).toBe(false); });
   expect(view.result.current.comments).toEqual([]);
+});
+
+it('retries an uncertain root write with the same image paths and operation ID', async () => {
+  api.upload.mockResolvedValue({ uploaded: [{ path: '_studio-comments/image.png', name: 'image.png' }], failed: [] });
+  api.save.mockResolvedValueOnce(null).mockResolvedValueOnce(comment);
+  const { result } = renderHook(() => useEmbeddedComments('project-a'));
+  await waitFor(() => expect(result.current.state).toBe('success'));
+  const file = new File(['pixels'], 'image.png', { type: 'image/png' });
+  await act(async () => { expect(await result.current.save(target, 'Draft', false, [file])).toBeNull(); });
+  await act(async () => { expect(await result.current.save(target, 'Draft', false, [file])).toEqual(comment); });
+  expect(api.upload).toHaveBeenCalledOnce(); expect(api.save).toHaveBeenCalledTimes(2);
+  expect(api.save.mock.calls[1]![2]).toEqual(api.save.mock.calls[0]![2]);
+});
+it('uses the explicitly captured edit baseline rather than a later refresh', async () => {
+  const original = { ...comment, editToken: 'original' }; api.list.mockResolvedValue([{ ...comment, editToken: 'latest' }]);
+  const { result } = renderHook(() => useEmbeddedComments('project-a'));
+  await waitFor(() => expect(result.current.state).toBe('success'));
+  await act(async () => { await result.current.save(target, 'My edit', false, [], comment.id, original); });
+  expect(api.save.mock.calls[0]![2]).toMatchObject({ id: comment.id, expectedEditToken: 'original' });
+});
+it('settles an uncertain create before submitting newer text and images as an edit', async () => {
+  const accepted = { ...comment, note: 'Original', editToken: 'accepted', attachments: [{ path: '_studio-comments/old.png', name: 'old.png' }] };
+  api.upload.mockResolvedValueOnce({ uploaded: [{ path: '_studio-comments/old.png' }], failed: [] }).mockResolvedValueOnce({ uploaded: [{ path: '_studio-comments/new.png' }], failed: [] });
+  api.save.mockResolvedValueOnce(null).mockResolvedValue(accepted);
+  const { result } = renderHook(() => useEmbeddedComments('project-a'));
+  await waitFor(() => expect(result.current.state).toBe('success'));
+  const old = new File(['old'], 'old.png', { type: 'image/png' }); const newer = new File(['new'], 'new.png', { type: 'image/png' });
+  await act(async () => { await result.current.save(target, 'Original', false, [old]); });
+  await act(async () => {
+    expect(await result.current.save(target, 'Newer', true, [old, newer])).toMatchObject({ id: accepted.id, keepDraft: true, consumedImages: [old] });
+  });
+  expect(api.save.mock.calls[1]![2]).toEqual(api.save.mock.calls[0]![2]); expect(api.upload).toHaveBeenCalledOnce(); expect(api.stage).not.toHaveBeenCalled();
+  await act(async () => { await result.current.save(target, 'Newer', false, [newer], accepted.id, accepted); });
+  expect(api.save.mock.calls[2]![2]).toMatchObject({ id: accepted.id, expectedEditToken: 'accepted', note: 'Newer', attachments: [accepted.attachments[0], { path: '_studio-comments/new.png', name: 'new.png' }] });
+});
+it('does not trap a rebased edit behind its definitively rejected uncertain operation', async () => {
+  const { RootCommentWriteError } = await import('../../../src/providers/comment-write-error');
+  const original = { ...comment, editToken: 'original' }; const latest = { ...comment, editToken: 'remote' };
+  api.list.mockResolvedValue([original]); api.save.mockRejectedValueOnce(new RootCommentWriteError(0)).mockRejectedValueOnce(new RootCommentWriteError(409)).mockResolvedValue(latest);
+  const { result } = renderHook(() => useEmbeddedComments('project-a'));
+  await waitFor(() => expect(result.current.state).toBe('success'));
+  await act(async () => { await expect(result.current.save(target, 'Draft', false, [], comment.id, original)).rejects.toMatchObject({ status: 0 }); });
+  await act(async () => { await expect(result.current.save(target, 'Draft', false, [], comment.id, original)).rejects.toMatchObject({ status: 409 }); });
+  await act(async () => { await result.current.save(target, 'Draft', false, [], comment.id, latest); });
+  expect(api.save.mock.calls[1]![2]).toEqual(api.save.mock.calls[0]![2]);
+  expect(api.save.mock.calls[2]![2]).toMatchObject({ expectedEditToken: 'remote' });
+  expect(api.save.mock.calls[2]![2].operationId).not.toBe(api.save.mock.calls[0]![2].operationId);
+});
+it('does not hand off or retain a late receipt after explicit draft discard', async () => {
+  let complete!: (value: typeof comment) => void;
+  api.save.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+  const { result } = renderHook(() => useEmbeddedComments('project-a'));
+  await waitFor(() => expect(result.current.state).toBe('success'));
+  let pending!: ReturnType<typeof result.current.save>;
+  act(() => { pending = result.current.save(target, 'Old draft', true); });
+  await waitFor(() => expect(api.save).toHaveBeenCalledOnce());
+  act(() => result.current.discardSave());
+  await act(async () => { complete(comment); expect(await pending).toBeNull(); });
+  expect(api.stage).not.toHaveBeenCalled(); expect(result.current.comments).toEqual([]);
 });

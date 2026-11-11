@@ -1739,7 +1739,8 @@ interface Props {
   previewComments?: PreviewComment[];
   previewCommentsState?: 'loading' | 'error' | 'success';
   onRetryPreviewComments?: () => void;
-  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string) => Promise<CommentSaveResult | null>;
+  onDiscardPreviewCommentWrite?: () => void;
+  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string, baseline?: PreviewComment) => Promise<CommentSaveResult | null>;
   onRemovePreviewComment?: (commentId: string) => Promise<boolean>;
   /**
    * Persist a drag-reorder of the sidebar's display order (recvq5BVsolIxi
@@ -1860,6 +1861,7 @@ export const FileViewer = memo(function FileViewer({
   previewCommentsState = 'success',
   onRetryPreviewComments,
   onSavePreviewComment,
+  onDiscardPreviewCommentWrite,
   onRemovePreviewComment,
   onReorderPreviewComment,
   onSendBoardCommentAttachments,
@@ -1982,6 +1984,7 @@ export const FileViewer = memo(function FileViewer({
         previewCommentsState={previewCommentsState}
         onRetryPreviewComments={onRetryPreviewComments}
         onSavePreviewComment={onSavePreviewComment}
+        onDiscardPreviewCommentWrite={onDiscardPreviewCommentWrite}
         onRemovePreviewComment={onRemovePreviewComment}
         onReorderPreviewComment={onReorderPreviewComment}
         onSendBoardCommentAttachments={onSendBoardCommentAttachments}
@@ -7281,6 +7284,7 @@ function HtmlViewer({
   previewCommentsState = 'success',
   onRetryPreviewComments,
   onSavePreviewComment,
+  onDiscardPreviewCommentWrite,
   onRemovePreviewComment,
   onReorderPreviewComment,
   onSendBoardCommentAttachments,
@@ -7337,7 +7341,8 @@ function HtmlViewer({
   previewComments?: PreviewComment[];
   previewCommentsState?: 'loading' | 'error' | 'success';
   onRetryPreviewComments?: () => void;
-  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string) => Promise<CommentSaveResult | null>;
+  onDiscardPreviewCommentWrite?: () => void;
+  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string, baseline?: PreviewComment) => Promise<CommentSaveResult | null>;
   onRemovePreviewComment?: (commentId: string) => Promise<boolean>;
   onReorderPreviewComment?: (commentId: string, sortKey: number) => Promise<void>;
   onSendBoardCommentAttachments?: (attachments: ChatCommentAttachment[], images?: File[]) => Promise<CommentSendResult> | CommentSendResult;
@@ -9573,7 +9578,9 @@ function HtmlViewer({
   const [liveCommentTargets, setLiveCommentTargets] = useState<Map<string, PreviewCommentSnapshot>>(() => new Map());
   const [commentTargetsReadyKey, setCommentTargetsReadyKey] = useState<string | null>(null);
   const liveCommentTargetsRef = useRef(liveCommentTargets);
-  const [commentDraft, setCommentDraft] = useState('');
+  const [commentDraft, setCommentDraftState] = useState('');
+  const commentDraftRef = useRef('');
+  const setCommentDraft = useCallback((value: string) => { commentDraftRef.current = value; setCommentDraftState(value); }, []);
   // Inspect mode shares the iframe selection bridge with comment mode but
   // routes the picked element to a side panel that mutates per-element CSS
   // overrides via postMessage. The host owns the authoritative override map:
@@ -9600,7 +9607,13 @@ function HtmlViewer({
   // Images attached to an element comment ("评论此元素"). Kept as raw Files
   // (uploaded on send) with object-URL thumbnails for preview/remove, mirroring
   // the markup overlay's image tray.
-  const [boardImages, setBoardImages] = useState<File[]>([]);
+  const [boardImages, setBoardImagesState] = useState<File[]>([]);
+  const boardImagesRef = useRef<File[]>([]);
+  const setBoardImages = useCallback((update: File[] | ((current: File[]) => File[])) => {
+    const next = typeof update === 'function' ? update(boardImagesRef.current) : update;
+    boardImagesRef.current = next; setBoardImagesState(next);
+  }, []);
+  const rootSaveLock = useRef(false);
   const [activeCommentExistingAttachments, setActiveCommentExistingAttachments] =
     useState<PreviewCommentAttachment[]>([]);
   const [boardImagePreviews, setBoardImagePreviews] = useState<{ file: File; url: string }[]>([]);
@@ -9640,7 +9653,7 @@ function HtmlViewer({
    * Editing the draft disarms. Every pick path retargets through here.
    */
   const requestComposerRetarget = useCallback((applyRetarget: () => void, editRoot = false) => {
-    const apply = () => { activeCommentLifetime.current = { key: activeCommentLifetime.current.key, revision: activeCommentLifetime.current.revision + 1 }; setRootSelectionIntent(intent => intent + 1); if (!editRoot) setRootEditIntent(0); applyRetarget(); };
+    const apply = () => { onDiscardPreviewCommentWrite?.(); activeCommentLifetime.current = { key: activeCommentLifetime.current.key, revision: activeCommentLifetime.current.revision + 1 }; setRootSelectionIntent(intent => intent + 1); if (!editRoot) setRootEditIntent(0); applyRetarget(); };
     if (inlineAnnotations && window.parent !== window && composerHoldsUnsentWorkRef.current) {
       void confirmHostFeedbackDiscard(projectId, 'comment').then(discard => { if (discard) { disarmComposerDiscard(); apply(); } });
       return;
@@ -9652,7 +9665,7 @@ function HtmlViewer({
     }
     disarmComposerDiscard();
     apply();
-  }, [disarmComposerDiscard, inlineAnnotations, projectId]);
+  }, [disarmComposerDiscard, inlineAnnotations, projectId, onDiscardPreviewCommentWrite]);
   const [commentSavedToast, setCommentSavedToast] = useState<string | null>(null);
   const [templateSavedToast, setTemplateSavedToast] = useState<string | null>(null);
   const [deploySavedToast, setDeploySavedToast] = useState<{ message: string; details: string } | null>(null);
@@ -15454,6 +15467,7 @@ function HtmlViewer({
   }
 
   function clearBoardComposer() {
+    onDiscardPreviewCommentWrite?.();
     setThreadDraftDirty(false);
     setRootEditIntent(0);
     commentReselectPendingRef.current = false;
@@ -15764,43 +15778,43 @@ function HtmlViewer({
     return checked;
   }
 
-  async function savePersistentComment(addToChat = false) {
-    if (!activeCommentTarget || !onSavePreviewComment) return;
+  async function savePersistentComment(addToChat = false, baseline?: PreviewComment) {
+    if (!activeCommentTarget || !onSavePreviewComment || rootSaveLock.current || sendingBoardBatch) return;
     if (inlineAnnotations && activePreviewCommentId && !activeComposerComment) {
       setCommentSavedToast('This comment is no longer available. Your draft is retained.'); return;
     }
-    // Allow saving when there is text OR an attached image (image-only notes).
-    if (!commentDraft.trim() && boardImages.length === 0 && currentActiveComposerAttachments().length === 0) return;
-    const isFreePin = activeCommentTarget.elementId.startsWith('pin-');
-    setSendingBoardBatch(true);
+    if (!commentDraftRef.current.trim() && boardImagesRef.current.length === 0 && currentActiveComposerAttachments().length === 0) return;
+    const lifetime = activeCommentLifetime.current;
+    const submittedNote = commentDraftRef.current.trim();
+    const submittedImages = [...boardImagesRef.current];
+    const submittedTarget = activeCommentTarget;
+    const submittedId = activeComposerComment?.id;
+    const isFreePin = submittedTarget.elementId.startsWith('pin-');
+    rootSaveLock.current = true; setSendingBoardBatch(true);
     try {
-      const checked = await currentCommentSaveTarget(activeCommentTarget);
-      if (!checked) return;
+      const checked = await currentCommentSaveTarget(submittedTarget);
+      if (!checked || activeCommentLifetime.current !== lifetime) return;
       const target = withDeckSlideIndex(targetFromSnapshot(checked));
-      const saved = await onSavePreviewComment(
-        target,
-        commentDraft.trim(),
-        addToChat,
-        boardImages,
-        activeComposerComment?.id,
-      );
-      if (saved?.handoffPending) {
+      const saved = baseline
+        ? await onSavePreviewComment(target, submittedNote, addToChat, submittedImages, submittedId, baseline)
+        : await onSavePreviewComment(target, submittedNote, addToChat, submittedImages, submittedId);
+      if (activeCommentLifetime.current !== lifetime) return;
+      if (!saved) return null;
+      const unchanged = commentDraftRef.current.trim() === submittedNote
+        && boardImagesRef.current.length === submittedImages.length
+        && boardImagesRef.current.every((image, index) => image === submittedImages[index]);
+      if (saved.keepDraft || saved.handoffPending || !unchanged) {
         setActivePreviewCommentId(saved.id);
         setActiveCommentExistingAttachments(saved.attachments ?? []);
-        setBoardImages([]);
-        return;
+        setBoardImages(current => current.filter(image => !(saved.consumedImages ?? submittedImages).includes(image)));
+        return saved;
       }
-      if (saved) {
-        clearBoardComposer();
-        setActiveCommentExistingAttachments(saved.attachments ?? []);
-        setBoardMode(true);
-        setCommentCreateMode(true);
-        setActivePreviewCommentId(saved.id);
-        setCommentSavedToast(isFreePin ? t('chat.comments.pinSavedToast') : t('chat.comments.savedToast'));
-      }
-    } finally {
-      setSendingBoardBatch(false);
-    }
+      clearBoardComposer();
+      setActiveCommentExistingAttachments(saved.attachments ?? []);
+      setBoardMode(true); setCommentCreateMode(true); setActivePreviewCommentId(saved.id);
+      setCommentSavedToast(isFreePin ? t('chat.comments.pinSavedToast') : t('chat.comments.savedToast'));
+      return saved;
+    } finally { rootSaveLock.current = false; setSendingBoardBatch(false); }
   }
 
   async function savePanelComment(note: string) {
@@ -17279,7 +17293,7 @@ function HtmlViewer({
         setQueuedBoardNotes((current) => current.filter((_, currentIndex) => currentIndex !== index))
       }
       onClose={() => requestComposerRetarget(clearBoardComposer)}
-      onSaveComment={(addToChat) => { fireCommentPopoverClick('save_comment'); return savePersistentComment(addToChat); }}
+      onSaveComment={(addToChat, baseline) => { fireCommentPopoverClick('save_comment'); return savePersistentComment(addToChat, baseline); }}
       onSendBatch={() => {
         observeAnalytics(() => {
           const saved = currentActiveComposerComment();

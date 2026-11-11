@@ -134,7 +134,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
       {dashboardError && (dashboards === null || dashboards.length > 0) ? <div role="alert">Dashboards unavailable. Retrying…</div> : null}
       {new URLSearchParams(window.location.search).get('surface') === 'artifact' ? dashboards === null ? <div role="status" className={styles.status}>Loading preview…</div> : <ArtifactSurface project={project} files={files} dashboards={dashboards ?? []} fileName={fileName} generation={generation} onRefresh={refresh} feedback={{
         previewComments: comments.comments, previewCommentsState: comments.state,
-        onRetryPreviewComments: () => { void comments.refresh(); }, onSavePreviewComment: comments.save,
+        onRetryPreviewComments: () => { void comments.refresh(); }, onSavePreviewComment: comments.save, onDiscardPreviewCommentWrite: comments.discardSave,
         onRemovePreviewComment: comments.remove, onReorderPreviewComment: comments.reorder,
         onSendBoardCommentAttachments: comments.send,
       }} /> : <FileWorkspace
@@ -148,6 +148,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
         previewCommentsState={comments.state}
         onRetryPreviewComments={() => { void comments.refresh(); }}
         onSavePreviewComment={comments.save}
+        onDiscardPreviewCommentWrite={comments.discardSave}
         onRemovePreviewComment={comments.remove}
         onReorderPreviewComment={comments.reorder}
         onSendBoardCommentAttachments={comments.send}

@@ -1,6 +1,6 @@
 import type { PreviewComment } from '../types';
 
-export type CommentSaveResult = PreviewComment & { handoffPending?: boolean };
+export type CommentSaveResult = PreviewComment & { handoffPending?: boolean; keepDraft?: boolean; consumedImages?: File[] };
 
 export type CommentSendResult =
   | { status: 'accepted' | 'queued'; commentIds: string[] }

@@ -1,18 +1,9 @@
 import type Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import type { PreviewComment } from '@open-design/contracts';
+import { canonicalCommentJson } from '@open-design/contracts';
 
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === 'object') return Object.fromEntries(
-    Object.entries(value)
-      .filter(([, item]) => item !== undefined)
-      .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
-      .map(([key, item]) => [key, canonical(item)]),
-  );
-  return value;
-}
-function digest(value: unknown): string { return createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex'); }
+function digest(value: unknown): string { return createHash('sha256').update(canonicalCommentJson(value)).digest('hex'); }
 
 /** Background anchor/ordering/author-display updates are not human content edits. */
 export function previewCommentEditToken(comment: Partial<PreviewComment>): string {

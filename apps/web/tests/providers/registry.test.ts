@@ -1426,6 +1426,19 @@ function previewCommentResponse(overrides: Record<string, unknown> = {}): Respon
 }
 
 describe('upsertPreviewComment', () => {
+  it('retains typed conflict and uncertain-transport errors for receipt-bearing writes', async () => {
+    const { RootCommentWriteError } = await import('../../src/providers/comment-write-error');
+    const input = { target: PREVIEW_COMMENT_TARGET, note: 'Draft', operationId: '11111111-1111-4111-8111-111111111111' };
+    const controller = new AbortController();
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ code: 'COMMENT_EDIT_CONFLICT', error: '<untrusted>' }), { status: 409 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(upsertPreviewComment('project', 'conversation', input, undefined, controller.signal)).rejects.toMatchObject({ status: 409, code: 'COMMENT_EDIT_CONFLICT', message: 'This comment changed. Your draft is preserved.' });
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({ signal: controller.signal });
+    fetchMock.mockRejectedValueOnce(new TypeError('lost response'));
+    await expect(upsertPreviewComment('project', 'conversation', input)).rejects.toBeInstanceOf(RootCommentWriteError);
+    await expect(upsertPreviewComment('project', 'conversation', { ...input, operationId: undefined })).resolves.toBeNull();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();

@@ -1,4 +1,5 @@
 import { embeddedPreviewBaseScope, embeddedResourceUrl } from '../components/embedded/transport';
+import { RootCommentWriteError } from './comment-write-error';
 import { prepareAmrWebUrl } from "./amr-web-intent";
 import {
   PUBLIC_FILE_MANUAL_REVOKE_REQUIRED,
@@ -3036,12 +3037,14 @@ export async function upsertPreviewComment(
   conversationId: string,
   input: PreviewCommentUpsertRequest,
   workspaceContext?: WorkspaceCollabContext | null,
+  signal?: AbortSignal,
 ): Promise<PreviewComment | null> {
   try {
     const resp = await fetch(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/comments`,
       {
         method: 'POST',
+        ...(signal ? { signal } : {}),
         headers: {
           'Content-Type': 'application/json',
           ...(workspaceContext ? workspaceProjectHeaders(workspaceContext) : {}),
@@ -3049,10 +3052,17 @@ export async function upsertPreviewComment(
         body: JSON.stringify(input),
       },
     );
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      if (input.operationId) {
+        const error = await resp.json().catch(() => ({})) as { code?: unknown };
+        throw new RootCommentWriteError(resp.status, typeof error.code === 'string' ? error.code : undefined);
+      }
+      return null;
+    }
     const json = (await resp.json()) as { comment: PreviewComment };
     return json.comment ?? null;
-  } catch {
+  } catch (error) {
+    if (input.operationId) throw error instanceof RootCommentWriteError ? error : new RootCommentWriteError(0);
     return null;
   }
 }

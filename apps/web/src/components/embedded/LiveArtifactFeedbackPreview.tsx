@@ -4,7 +4,7 @@ import type { ProjectFile } from '../../types';
 import { Button } from './boardui/button';
 
 export type ArtifactFeedbackProps = Pick<ComponentProps<typeof FileViewer>,
-  'previewComments' | 'previewCommentsState' | 'onRetryPreviewComments' | 'onSavePreviewComment' |
+  'previewComments' | 'previewCommentsState' | 'onRetryPreviewComments' | 'onSavePreviewComment' | 'onDiscardPreviewCommentWrite' |
   'onRemovePreviewComment' | 'onReorderPreviewComment' | 'onSendBoardCommentAttachments'>;
 
 /** Annotate the frozen, authorized render; never fall back to the current template. */
