@@ -7,7 +7,7 @@ const consent = vi.hoisted(() => vi.fn());
 vi.mock('../../../src/components/embedded/host-context', () => ({ confirmHostFeedbackDiscard: consent }));
 const actor = vi.hoisted(() => ({ id: 'person-a' as string | null }));
 vi.mock('../../../src/components/embedded/host-viewer', () => ({ useEmbeddedViewer: () => actor.id ? ({ memberId: actor.id }) : null }));
-const state = vi.hoisted(() => ({ mounts: 0, editor: null as null | { observed: { html: string; sha256: string }; onSaved(value: { html: string; sha256: string }): void; onDirtyChange(dirty: boolean, saving: boolean): void } }));
+const state = vi.hoisted(() => ({ mounts: 0, editor: null as null | { observed: { html: string; sha256: string }; onSaved(value: { html: string; sha256: string }): void; onDirtyChange(dirty: boolean, saving: boolean): void; onWriteError(error: string | null): void } }));
 vi.mock('../../../src/components/embedded/document/document-file', () => ({ readDocumentFile: read }));
 vi.mock('../../../src/components/embedded/document/DocumentEditor', async () => {
   const { useState } = await import('react');
@@ -118,4 +118,16 @@ it('waits for the initial host identity before mounting any editable document', 
     actor.id = 'person-a'; view.rerender(surface(1));
     expect(await screen.findByText('Rich editor')).toBeInTheDocument(); expect(read).toHaveBeenCalledTimes(1);
   } finally { if (descriptor) Object.defineProperty(window, 'parent', descriptor); }
+});
+
+it('offers confirmed reload for a save conflict even without a file-change notification', async () => {
+  read.mockResolvedValue(version('first')); consent.mockResolvedValue(true);
+  render(surface(1)); await screen.findByText('Rich editor');
+  const before = screen.getByTestId('editor-mount').textContent;
+  act(() => { state.editor!.onDirtyChange(true, false); state.editor!.onWriteError('Document changed elsewhere.'); });
+  expect(screen.getByRole('alert')).toHaveTextContent('Document changed elsewhere.');
+  expect(screen.getByTestId('editor-mount').textContent).toBe(before);
+  read.mockResolvedValue(version('external')); fireEvent.click(screen.getByRole('button', { name: 'Load latest document' }));
+  await waitFor(() => expect(state.editor?.observed.sha256).toBe('external'));
+  expect(consent).toHaveBeenCalledWith('fixture', 'document');
 });

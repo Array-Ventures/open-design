@@ -6,16 +6,16 @@ import { $createHeadingNode } from '@lexical/rich-text';
 import { $setBlocksType } from '@lexical/selection';
 import { INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from '@lexical/list';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
-import { RiBold, RiItalic, RiUnderline, RiStrikethrough, RiCodeLine, RiListOrdered, RiListUnordered, RiTableLine, RiArrowGoBackLine, RiArrowGoForwardLine, RiFontSize, RiMoreLine, RiArrowDownSLine } from '@remixicon/react';
+import { RiBold, RiItalic, RiUnderline, RiStrikethrough, RiCodeLine, RiListOrdered, RiListUnordered, RiTableLine, RiArrowGoBackLine, RiArrowGoForwardLine, RiFontSize, RiMoreLine, RiCheckLine, RiArrowDownSLine } from '@remixicon/react';
 import { Button } from '../boardui/button';
-import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem } from '../boardui/dropdown';
+import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem, DropdownGroup, DropdownDivider } from '../boardui/dropdown';
 import { cx } from '../boardui/cx';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
-import { documentFont } from './document-identity';
+import { documentFont, documentHeadingFont } from './document-identity';
 
 type SelectionState = { x: number; y: number; bold: boolean; italic: boolean; underline: boolean; strikethrough: boolean; code: boolean };
 /** Separate insertion and selected-text controls, following the observed document surfaces. */
-export function DocumentToolbar() {
+export function DocumentToolbar({ font, headingFont }: { font: 'sans' | 'serif'; headingFont: 'sans' | 'serif' }) {
   const [editor] = useLexicalComposerContext();
   const [selected, setSelected] = useState<SelectionState | null>(null);
   useEffect(() => {
@@ -51,9 +51,15 @@ export function DocumentToolbar() {
       <div className="flex max-w-full items-center gap-1 rounded-2xl border border-border-button-default bg-background-secondary-default p-1 shadow-sm" role="toolbar" aria-label="Document insertion">
         <Dropdown>
           <DropdownTrigger aria-label="Font" className="box-border flex size-8 shrink-0 items-center justify-center rounded-lg border-0 p-0 text-foreground-icon-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiFontSize className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
-          <DropdownPopover aria-label="Font" placement="top start">
-            <DropdownItem onSelect={() => editor.update(() => $setState($getRoot(), documentFont, 'sans'))}>Sans</DropdownItem>
-            <DropdownItem onSelect={() => editor.update(() => $setState($getRoot(), documentFont, 'serif'))}>Serif</DropdownItem>
+          <DropdownPopover aria-label="Font" placement="top start" className="w-40">
+            {([{ label: 'Headings', state: documentHeadingFont, value: headingFont }, { label: 'Text', state: documentFont, value: font }] as const).map((group, index) => <div key={group.label} role="group" aria-label={group.label}>
+              {index ? <DropdownDivider /> : null}
+              <DropdownGroup label={group.label}>
+                {(['serif', 'sans'] as const).map(choice => <DropdownItem key={choice} selected={group.value === choice} onSelect={() => editor.update(() => $setState($getRoot(), group.state, choice))}>
+                  <span>{choice === 'serif' ? 'Serif' : 'Sans'}</span>{group.value === choice ? <RiCheckLine className="ms-auto size-4 shrink-0 text-accent-600" aria-hidden /> : null}
+                </DropdownItem>)}
+              </DropdownGroup>
+            </div>)}
           </DropdownPopover>
         </Dropdown>
         <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiTableLine} aria-label="Insert table" title="Insert 3 × 3 table" onMouseDown={event => event.preventDefault()} onClick={() => editor.dispatchCommand(INSERT_TABLE_COMMAND, { columns: '3', rows: '3', includeHeaders: true })} />

@@ -130,7 +130,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
     <main className={styles.workspace} data-testid="embedded-studio">
       {error ? <div role="alert" className="flex shrink-0 items-center gap-2 px-3 py-2 text-caption-1-regular text-text-tertiary">Couldn’t refresh.<HostButton variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry refresh" onClick={() => { void refresh(); }} /></div> : null}
       {markupNotice || comments.notice ? <div role="status" className={styles.feedbackNotice}>{markupNotice ?? comments.notice}</div> : null}
-      {dashboardError ? <div role="alert">Dashboards unavailable. Retrying…</div> : null}
+      {dashboardError && (dashboards === null || dashboards.length > 0) ? <div role="alert">Dashboards unavailable. Retrying…</div> : null}
       {new URLSearchParams(window.location.search).get('surface') === 'artifact' ? dashboards === null ? <div role="status" className={styles.status}>Loading preview…</div> : <ArtifactSurface project={project} files={files} dashboards={dashboards ?? []} fileName={fileName} generation={generation} onRefresh={refresh} feedback={{
         previewComments: comments.comments, previewCommentsState: comments.state,
         onRetryPreviewComments: () => { void comments.refresh(); }, onSavePreviewComment: comments.save,

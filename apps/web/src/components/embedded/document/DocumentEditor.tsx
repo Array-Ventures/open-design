@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
@@ -16,8 +16,8 @@ import { ListNode, ListItemNode } from '@lexical/list';
 import { TableNode, TableRowNode, TableCellNode } from '@lexical/table';
 import { LinkNode } from '@lexical/link';
 import { $getRoot, $getState, $setState, RootNode } from 'lexical';
-import { documentHtml, documentImport } from './document-html';
-import { documentHtmlConfig, ensureDocumentBlockIds, documentFont } from './document-identity';
+import { documentHtml, documentImport, documentFontFamily } from './document-html';
+import { documentHtmlConfig, ensureDocumentBlockIds, documentFont, documentHeadingFont } from './document-identity';
 import { saveDocumentFile, type DocumentFile } from './document-file';
 import { DocumentWriter, type DocumentWriteState } from './document-writer';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
@@ -30,8 +30,8 @@ import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem } from '../boa
 
 export const documentNodes = [HeadingNode, QuoteNode, ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, LinkNode];
 
-export function DocumentEditor({ projectId, fileName, title, observed, onSaved, onDirtyChange }: {
-  projectId: string; fileName: string; title: string; observed: DocumentFile; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void;
+export function DocumentEditor({ projectId, fileName, title, observed, onSaved, onDirtyChange, onWriteError }: {
+  projectId: string; fileName: string; title: string; observed: DocumentFile; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void; onWriteError?(error: string | null): void;
 }) {
   const owners = useMemo(() => new Map<string, string>(), []);
   const [failure, setFailure] = useState<string | null>(null);
@@ -40,26 +40,30 @@ export function DocumentEditor({ projectId, fileName, title, observed, onSaved, 
     onError: (error: Error) => { setFailure(error.message); },
     editorState: (editor: import('lexical').LexicalEditor) => {
       const root = $getRoot(); root.append(...$generateNodesFromDOM(editor, documentImport(observed.html)));
-      const font = new DOMParser().parseFromString(observed.html, 'text/html').documentElement.getAttribute('data-eve-document-font');
-      $setState(root, documentFont, font === 'serif' ? 'serif' : 'sans'); ensureDocumentBlockIds(owners);
+      const attributes = new DOMParser().parseFromString(observed.html, 'text/html').documentElement;
+      const font = attributes.getAttribute('data-eve-document-font');
+      const headingFont = attributes.getAttribute('data-eve-document-heading-font') ?? font;
+      $setState(root, documentFont, font === 'serif' ? 'serif' : 'sans');
+      $setState(root, documentHeadingFont, headingFont === 'serif' ? 'serif' : 'sans'); ensureDocumentBlockIds(owners);
     },
   }), [projectId, fileName, observed.html, owners]);
   return <div className={styles.editor} data-testid="document-editor">
     {failure ? <div role="alert" className="p-3 text-body-2-regular text-text-error-primary">{failure}</div> : null}
     <LexicalComposer initialConfig={initialConfig}>
-      <DocumentBody projectId={projectId} fileName={fileName} title={title} observed={observed} owners={owners} onSaved={onSaved} onDirtyChange={onDirtyChange} />
+      <DocumentBody projectId={projectId} fileName={fileName} title={title} observed={observed} owners={owners} onSaved={onSaved} onDirtyChange={onDirtyChange} onWriteError={onWriteError} />
       <HistoryPlugin /><ListPlugin /><TablePlugin hasHorizontalScroll /><LinkPlugin />
     </LexicalComposer>
   </div>;
 }
 
-function DocumentBody({ projectId, fileName, title, observed, owners, onSaved, onDirtyChange }: {
-  projectId: string; fileName: string; title: string; observed: DocumentFile; owners: Map<string, string>; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void;
+function DocumentBody({ projectId, fileName, title, observed, owners, onSaved, onDirtyChange, onWriteError }: {
+  projectId: string; fileName: string; title: string; observed: DocumentFile; owners: Map<string, string>; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void; onWriteError?(error: string | null): void;
 }) {
   const [editor] = useLexicalComposerContext();
   const fade = useScrollFade();
   const [writeState, setWriteState] = useState<DocumentWriteState>({ dirty: false, saving: false, error: null });
   const [font, setFont] = useState<'sans' | 'serif'>('sans');
+  const [headingFont, setHeadingFont] = useState<'sans' | 'serif'>('serif');
   const [editing, setEditing] = useState(true);
   const writer = useRef<DocumentWriter | null>(null);
   const controllerId = useRef(crypto.randomUUID()).current;
@@ -76,20 +80,22 @@ function DocumentBody({ projectId, fileName, title, observed, owners, onSaved, o
     if (window.parent !== window) window.parent.postMessage({ type: 'studio:document-unavailable', projectId, controllerId }, window.location.origin);
   }, [projectId, controllerId]);
   const saved = useRef(onSaved); saved.current = onSaved;
+  const writeErrorChanged = useRef(onWriteError); writeErrorChanged.current = onWriteError;
+  useLayoutEffect(() => () => { writer.current?.stop(); }, []);
   const dirtyChanged = useRef(onDirtyChange); dirtyChanged.current = onDirtyChange;
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const serialize = () => documentHtml(title, $generateHtmlFromNodes(editor), $getState($getRoot(), documentFont));
+    const serialize = () => documentHtml(title, $generateHtmlFromNodes(editor), $getState($getRoot(), documentFont), $getState($getRoot(), documentHeadingFont));
     const initial = editor.getEditorState().read(serialize);
     const current = writer.current ??= new DocumentWriter(observed, initial, async (html, base) => {
       const result = await saveDocumentFile(projectId, fileName, html, base); saved.current(result); return result;
-    }, state => { dirtyChanged.current?.(state.dirty, state.saving); setWriteState(state); });
+    }, state => { dirtyChanged.current?.(state.dirty, state.saving); writeErrorChanged.current?.(state.error); setWriteState(state); });
     current.start();
     const normalize = editor.registerNodeTransform(RootNode, () => ensureDocumentBlockIds(owners));
-    setFont(editor.getEditorState().read(() => $getState($getRoot(), documentFont)));
+    editor.getEditorState().read(() => { setFont($getState($getRoot(), documentFont)); setHeadingFont($getState($getRoot(), documentHeadingFont)); });
     const stop = editor.registerUpdateListener(({ editorState, dirtyElements, dirtyLeaves }) => {
       if (!dirtyElements.size && !dirtyLeaves.size) return;
-      editorState.read(() => { current.change(serialize()); setFont($getState($getRoot(), documentFont)); });
+      editorState.read(() => { current.change(serialize()); setFont($getState($getRoot(), documentFont)); setHeadingFont($getState($getRoot(), documentHeadingFont)); });
       clearTimeout(timer);
       if (!current.state().error) timer = setTimeout(() => { void current.flush(); }, 750);
     });
@@ -110,16 +116,16 @@ function DocumentBody({ projectId, fileName, title, observed, owners, onSaved, o
         </DropdownPopover>
       </Dropdown>
     </div>
-    {writeState.error ? <div role="alert" className="px-4 py-2 text-body-2-regular text-text-error-primary">{writeState.error}</div> : null}
+    {writeState.error && !onWriteError ? <div role="alert" className="px-4 py-2 text-body-2-regular text-text-error-primary">{writeState.error}</div> : null}
     <div className="relative min-h-0 flex-1">
     <div className={styles.scroll} onScroll={fade.onScroll}>
       <div className={styles.page}>
-        <RichTextPlugin contentEditable={<ContentEditable aria-label={title} className={styles.content} style={{ fontFamily: font === 'serif' ? 'Georgia, serif' : 'inherit' }} />}
+        <RichTextPlugin contentEditable={<ContentEditable aria-label={title} className={styles.content} style={{ fontFamily: documentFontFamily(font), '--document-heading-font': documentFontFamily(headingFont) } as CSSProperties} />}
           placeholder={<div className={styles.placeholder}>Start writing…</div>} ErrorBoundary={LexicalErrorBoundary} />
       </div>
     </div>
     <ScrollFade progress={fade.progress} surfaceClassName="from-background-primary-default" />
     </div>
-    {editing ? <DocumentToolbar /> : null}
+    {editing ? <DocumentToolbar font={font} headingFont={headingFont} /> : null}
   </>;
 }

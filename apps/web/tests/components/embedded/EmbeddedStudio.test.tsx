@@ -6,10 +6,11 @@ import { PooledIframe, previewIframeKeepAliveKey } from '../../../src/components
 import type { ProjectEvent } from '../../../src/providers/project-events';
 
 const state = vi.hoisted(() => ({
-  getProject: vi.fn(), files: vi.fn(), invalidate: vi.fn(), identityFrame: false,
+  getProject: vi.fn(), files: vi.fn(), dashboards: vi.fn(), invalidate: vi.fn(), identityFrame: false,
   event: null as null | ((event: ProjectEvent) => void),
   ready: null as null | (() => void),
 }));
+vi.mock('../../../src/components/embedded/dashboards', () => ({ fetchEmbeddedDashboards: state.dashboards }));
 vi.mock('../../../src/state/projects', () => ({ getProject: state.getProject }));
 vi.mock('../../../src/router', () => ({ useRoute: () => ({ kind: 'project', projectId: 'project-a', fileName: 'index.html' }) }));
 vi.mock('../../../src/providers/registry', () => ({ fetchProjectFiles: state.files, invalidateProjectFilesCache: state.invalidate, fetchPreviewComments: async () => [] }));
@@ -40,6 +41,7 @@ const file = (name: string) => ({ name, path: name, type: 'file', size: 20, mtim
 
 beforeEach(() => {
   state.identityFrame = false;
+  state.dashboards.mockResolvedValue([]);
   state.getProject.mockResolvedValue(project);
   state.files.mockResolvedValue([file('index.html')]);
 });
@@ -128,4 +130,19 @@ describe('host-owned embedded Studio', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Project unavailable'));
     expect(screen.queryByTestId('embedded-studio')).not.toBeInTheDocument();
   });
+});
+
+it('does not show unrelated dashboard failure chrome after a known-empty listing', async () => {
+  state.identityFrame = true; render(<EmbeddedStudio />); await screen.findByText('Host-owned agent');
+  const frame = screen.getByTestId('identity-preview');
+  await waitFor(() => expect(state.dashboards).toHaveBeenCalledTimes(1));
+  state.dashboards.mockRejectedValueOnce(new Error('Network interrupted'));
+  await waitFor(() => expect(state.dashboards).toHaveBeenCalledTimes(2), { timeout: 3500 });
+  expect(screen.queryByText('Dashboards unavailable. Retrying…')).toBeNull();
+  expect(screen.getByTestId('identity-preview')).toBe(frame);
+});
+it('retains a useful failure message when the initial dashboard authority check fails', async () => {
+  state.dashboards.mockRejectedValueOnce(new Error('Unavailable'));
+  render(<EmbeddedStudio />);
+  expect(await screen.findByText('Dashboards unavailable. Retrying…')).toBeInTheDocument();
 });

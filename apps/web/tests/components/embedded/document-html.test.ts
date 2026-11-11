@@ -25,3 +25,15 @@ describe('semantic document import', () => {
     expect(isEditableDocument('<p>Legacy layout</p>')).toBe(false);
   });
 });
+
+it('retains independent heading families across every supported heading level in standalone output', () => {
+  const html = documentHtml('Report', '<h1>One</h1><h2>Two</h2><h3>Three</h3><h4>Four</h4><h5>Five</h5><h6>Six</h6><p>Body</p>', 'sans', 'serif');
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+  const style = document.createElement('style'); style.textContent = parsed.querySelector('style')!.textContent;
+  const content = document.createElement('div'); content.innerHTML = parsed.body.innerHTML;
+  document.head.append(style); document.body.append(content);
+  try {
+    for (const heading of content.querySelectorAll('h1,h2,h3,h4,h5,h6')) expect(getComputedStyle(heading).fontFamily).toContain('Georgia');
+    expect(getComputedStyle(content.querySelector('p')!).fontFamily).not.toContain('Georgia');
+  } finally { style.remove(); content.remove(); }
+});

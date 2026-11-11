@@ -56,3 +56,5 @@ export function ensureDocumentBlockIds(owners = new Map<string, string>()) {
 }
 
 export const documentFont = createState('eveDocumentFont', { parse: value => value === 'serif' ? 'serif' as const : 'sans' as const });
+
+export const documentHeadingFont = createState('eveDocumentHeadingFont', { parse: value => value === 'serif' ? 'serif' as const : 'sans' as const });

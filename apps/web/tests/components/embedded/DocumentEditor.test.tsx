@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { $getRoot, $getSelection, $isRangeSelection, type LexicalEditor } from 'lexical';
 import { DocumentEditor } from '../../../src/components/embedded/document/DocumentEditor';
@@ -54,4 +54,26 @@ it('reopens a saved table document as an editable document with its columns and 
   expect(screen.queryByText('Read-only fallback')).toBeNull();
   expect(screen.getByRole('table').querySelectorAll('tr')).toHaveLength(2);
   expect([...screen.getByRole('table').querySelectorAll('col')].map(col => col.style.width)).toEqual(['120px', '240px']);
+});
+
+it('saves independent heading and body font choices through the actual formatting menu', async () => {
+  save.mockImplementation(async (_project, _file, html) => ({ html, sha256: 'saved' }));
+  render(<DocumentEditor projectId="fixture" fileName="report.html" title="Report" observed={observed} onSaved={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Font' }));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Headings' })).getByRole('button', { name: 'Sans' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Font' }));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Text' })).getByRole('button', { name: 'Serif' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Save document' })).not.toBeDisabled());
+  fireEvent.click(screen.getByRole('button', { name: 'Save document' })); await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  const doc = new DOMParser().parseFromString(save.mock.calls[0]![2] as string, 'text/html');
+  expect(doc.documentElement.getAttribute('data-eve-document-font')).toBe('serif');
+  expect(doc.documentElement.getAttribute('data-eve-document-heading-font')).toBe('sans');
+  expect(screen.getByRole('textbox').style.fontFamily).toContain('Georgia');
+  expect(screen.getByRole('textbox').style.getPropertyValue('--document-heading-font')).toBe('system-ui, sans-serif');
+});
+it('preserves the existing whole-document font for files written before independent heading fonts', () => {
+  const old = { ...observed, html: documentHtml('Report', '<h1>Report</h1><p>Ready</p>', 'serif').replace(' data-eve-document-heading-font="serif"', '') };
+  render(<DocumentEditor projectId="fixture" fileName="report.html" title="Report" observed={old} onSaved={() => {}} />);
+  expect(screen.getByRole('textbox').style.fontFamily).toContain('Georgia');
+  expect(screen.getByRole('textbox').style.getPropertyValue('--document-heading-font')).toContain('Georgia');
 });

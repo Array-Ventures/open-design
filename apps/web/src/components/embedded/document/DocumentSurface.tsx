@@ -29,6 +29,7 @@ export function DocumentSurface(props: DocumentSurfaceProps) {
 function ScopedDocumentSurface({ projectId, fileName, title, generation = 0, fallback, onSaved, onDirtyChange }: DocumentSurfaceProps) {
   const [loaded, setLoaded] = useState<DocumentFile | null>(null);
   const [pending, setPending] = useState<{ file: DocumentFile; base: string | null } | null>(null);
+  const [writeError, setWriteError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [accessLost, setAccessLost] = useState(false);
   const [reloadEpoch, setReloadEpoch] = useState(0);
@@ -88,9 +89,10 @@ function ScopedDocumentSurface({ projectId, fileName, title, generation = 0, fal
   // Unsupported semantic nodes stay in the original viewer rather than disappearing on save.
   if (!supportedDocument(loaded.html)) return <>{fallback}</>;
   return <div className="flex min-h-0 flex-1 flex-col">
-    {pending || error ? <div role="status" className="flex items-center gap-2 px-3 py-2 text-caption-1-regular text-text-tertiary">{error ?? 'Document changed elsewhere.'}<Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiRefreshLine} aria-label="Load latest document" title="Load latest" disabled={saving || reloading} onClick={() => { void loadLatest(); }} /></div> : null}
+    {pending || error || writeError ? <div role={writeError ? "alert" : "status"} className="flex items-center gap-2 px-3 py-2 text-caption-1-regular text-text-tertiary">{error ?? writeError ?? 'Document changed elsewhere.'}<Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiRefreshLine} aria-label="Load latest document" title="Load latest" disabled={saving || reloading} onClick={() => { void loadLatest(); }} /></div> : null}
     <DocumentEditor key={`${loaded.sha256}:${reloadEpoch}`} projectId={projectId} fileName={fileName} title={title} observed={loaded}
       onDirtyChange={(value, activeSave) => { revision.current++; dirtyCurrent.current = value; savingCurrent.current = activeSave; setDirty(value); setSaving(activeSave); onDirtyChange?.(value); }}
+      onWriteError={setWriteError}
       onSaved={value => { revision.current++; acknowledged.current = value.sha256; onSaved(); }} />
   </div>;
 }
