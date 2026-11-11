@@ -2850,12 +2850,12 @@ function meaningfulDomFallbackTarget(el) {
     hoveredId = null;
     window.parent.postMessage({ type: 'od:comment-leave' }, '*');
   }, true);
-  document.addEventListener('click', function(ev){
+  window.addEventListener('click', function(ev){
     if (!pickerActive()) return;
     var result = closestTarget(ev);
     if (result) {
       ev.preventDefault();
-      ev.stopPropagation();
+      ev.stopImmediatePropagation();
       var commentPickerClick = commentEnabled && mode === 'picker' && !inspectEnabled;
       var clickPoint = commentPickerClick ? { x: ev.clientX, y: ev.clientY } : null;
       var payload = targetFrom(result.target, commentPickerClick, result.clicked, clickPoint);
@@ -2882,7 +2882,7 @@ function meaningfulDomFallbackTarget(el) {
       walk = walk.parentElement;
     }
     ev.preventDefault();
-    ev.stopPropagation();
+    ev.stopImmediatePropagation();
     // Store viewport coordinates to match regular getBoundingClientRect()
     // element targets; the host overlay renders this position directly.
     var pinX = Math.round(ev.clientX);
@@ -4114,7 +4114,7 @@ function injectDeckBridge(
   }
   if (${JSON.stringify(clickNavigation)}) {
     document.addEventListener('click', function(ev){
-      if (ev.defaultPrevented) return;
+      if (ev.defaultPrevented || document.documentElement.hasAttribute('data-od-comment-mode')) return;
       if (ev.button !== undefined && ev.button !== 0) return;
       if (ev.metaKey || ev.ctrlKey || ev.altKey || ev.shiftKey) return;
       if (isInteractiveClickTarget(ev.target)) return;

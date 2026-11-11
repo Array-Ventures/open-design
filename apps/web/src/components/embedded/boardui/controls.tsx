@@ -4,14 +4,16 @@ import { InputBase } from './input';
 import { TextareaBase } from './textarea';
 import { Select, SelectItem } from './select';
 import './styles.css';
+import { cx } from './cx';
 
 /** Adapt upstream props once, rather than rewriting each upstream workspace action. */
-export const renderEmbeddedButton: ButtonRenderer = ({ variant = 'default', size = 'default', ...props }, ref) => (
+export const renderEmbeddedButton: ButtonRenderer = ({ variant = 'default', size = 'default', className, ...props }, ref) => (
   <Button
     {...props}
     ref={ref}
+    className={cx((variant === 'ghost' || variant === 'subtle' || variant === 'primary-ghost') && 'border-transparent bg-transparent text-text-secondary shadow-none hover:border-transparent hover:bg-background-secondary-hover active:bg-background-secondary-default', className)}
     iconOnly={size === 'icon'}
-    variant={variant === 'primary' ? 'primary' : variant === 'ghost' || variant === 'subtle' || variant === 'primary-ghost' ? 'ghost' : 'secondary'}
+    variant={variant === 'primary' ? 'primary' : 'secondary'}
     size={size === 'sm' || size === 'icon' ? 'small' : 'medium'}
   />
 );

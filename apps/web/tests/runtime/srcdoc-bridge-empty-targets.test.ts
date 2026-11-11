@@ -381,6 +381,18 @@ describe('selection bridge — empty annotation surface (#890)', () => {
     });
   });
 
+  it('captures annotation clicks before authored document navigation and restores normal clicks when disabled', () => {
+    const { win, parentPostMessage } = setupBridgeDom('<h1 id="headline">Slide content</h1>', 'comment', ['#headline']);
+    let navigations = 0;
+    win.document.addEventListener('click', () => { navigations++; }, true);
+    win.document.querySelector('#headline')!.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(navigations).toBe(0);
+    expect(postedMessages(parentPostMessage, 'od:comment-target')).toHaveLength(1);
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:comment-mode', enabled: false, mode: 'picker' } }));
+    win.document.querySelector('#headline')!.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(navigations).toBe(1);
+  });
+
   it('uses a click-position pin on deck letterboxing instead of selecting its generated shell', async () => {
     const { win, parentPostMessage } = setupBridgeDom(
       '<div class="deck-shell" data-od-id="path-0" data-od-runtime-id="path-0"><div class="deck-stage" data-od-id="path-0-0" data-od-runtime-id="path-0-0"><section><h1 id="headline">Actual slide heading</h1><p>Slide body</p></section></div></div>',

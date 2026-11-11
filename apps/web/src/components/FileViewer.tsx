@@ -15536,19 +15536,19 @@ function HtmlViewer({
     activateDraw();
   }
 
-  function activateCommentTool() {
+  function activateCommentTool(createMode = false) {
     fireArtifactToolbarClick('comment');
     void capturePreviewScrollPosition();
     if (boardMode && !commentCreateMode && boardTool === 'inspect') {
       setBoardMode(false);
-      setCommentCreateMode(false);
+      setCommentCreateMode(createMode);
       clearBoardComposer();
       setAgentToolsOpen(false);
       return;
     }
     const activateComment = () => {
       setCommentPanelOpen(false);
-      setCommentCreateMode(false);
+      setCommentCreateMode(createMode);
       clearBoardComposer();
       setInspectMode(false);
       setDrawOverlayOpen(false);
@@ -17538,7 +17538,7 @@ function HtmlViewer({
                   title={t('fileViewer.comment')}
                   aria-label={t('fileViewer.comment')}
                   aria-pressed={boardMode && !commentCreateMode && boardTool === 'inspect'}
-                  onClick={activateCommentTool}
+                  onClick={() => activateCommentTool()}
                 >
                   <RemixIcon name="chat-new-line" size={15} />
                 </button>
@@ -18193,7 +18193,7 @@ function HtmlViewer({
       <div className="viewer-body" ref={previewBodyRef}>
         {inlineAnnotations ? <ArtifactAnnotationControls projectId={projectId} commenting={boardMode} marking={drawOverlayOpen} disabled={sendingBoardBatch}
           onComment={() => {
-            if (!boardMode) { activateCommentTool(); return; }
+            if (!boardMode) { activateCommentTool(true); return; }
             requestComposerRetarget(() => { setCommentPanelOpen(false); setCommentCreateMode(false); setBoardMode(false); clearBoardComposer(); });
           }}
           onMark={() => { requestComposerRetarget(activateDrawTool); }} /> : null}

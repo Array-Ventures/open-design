@@ -1270,8 +1270,8 @@ export function PreviewDrawOverlay({
 
   const controlStyle = (style: CSSProperties, selected = false): CSSProperties => draftOnly
     ? { ...style, width: 32, minWidth: 32, height: 32, flexBasis: 32, padding: 0, borderRadius: 8,
-        background: selected ? 'var(--color-background-secondary-default)' : 'transparent',
-        color: 'var(--color-foreground-icon-primary)', borderColor: 'var(--color-separator-border)' }
+        background: selected ? 'var(--color-button-ghost-background)' : 'transparent',
+        color: selected ? 'var(--color-button-ghost-foreground)' : 'var(--color-foreground-icon-primary)', borderColor: 'var(--color-separator-border)' }
     : style;
   return (
     <div
@@ -1648,11 +1648,11 @@ export function PreviewDrawOverlay({
               disabled={sending}
               placeholder={t('chat.annotationNotePlaceholder')}
               style={{
-                background: draftOnly ? 'var(--color-background-secondary-default)' : 'rgba(218, 97, 56, 0.18)',
-                border: '1px solid rgba(248, 150, 104, 0.82)',
+                background: 'var(--color-background-secondary-default, var(--bg-panel))',
+                border: '1px solid var(--color-border-button-default, var(--border))',
                 borderRadius: 999,
                 outline: 'none',
-                boxShadow: '0 0 0 3px rgba(218, 97, 56, 0.22)',
+                boxShadow: 'none',
                 color: 'inherit',
                 flexGrow: 1,
                 flexShrink: 1,
@@ -1700,7 +1700,7 @@ export function PreviewDrawOverlay({
                     className="preview-draw-icon-action"
                     style={{
                       ...controlStyle(drawActionButtonStyle(opt.action === 'send')),
-                      ...(draftOnly ? { background: 'var(--color-accent-600)', color: 'var(--color-text-on-accent)' } : {}),
+                      ...(draftOnly ? { background: 'var(--color-background-secondary-default)', color: 'var(--color-text-primary)' } : {}),
                       opacity: opt.enabled ? 1 : 0.4,
                       cursor: sending ? 'wait' : (opt.enabled ? 'pointer' : 'not-allowed'),
                     }}

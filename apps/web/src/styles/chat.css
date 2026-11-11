@@ -2574,13 +2574,13 @@ body:has(.manual-edit-workspace) .chat-composer-fixed-layer {
 }
 
 .preview-draw-note-input::placeholder {
-  color: rgba(255, 225, 210, 0.86);
+  color: var(--color-text-placeholder, var(--text-muted));
 }
 
 .preview-draw-note-input:focus {
-  background: rgba(218, 97, 56, 0.26) !important;
-  border-color: rgba(255, 184, 140, 0.95) !important;
-  box-shadow: 0 0 0 3px rgba(218, 97, 56, 0.34), 0 0 18px rgba(218, 97, 56, 0.24) !important;
+  background: var(--color-background-secondary-default, var(--bg-panel)) !important;
+  border-color: var(--color-border-focus-ring, var(--accent)) !important;
+  box-shadow: 0 0 0 2px var(--color-border-focus-ring, var(--accent)) !important;
 }
 
 /* -------- Staged attachments -------------------------------------- */
