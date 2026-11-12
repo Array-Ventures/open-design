@@ -237,3 +237,16 @@ uncertain transport errors and failed preparation errors retain their existing
 semantics. Three new behavioral tests first reproduced the two-click defect;
 all 54 focused writer/save/discard tests now pass, along with guard and workspace
 typecheck. Packaged/native browser qualification is a separate following gate.
+
+## First-cell worksheet navigation
+
+The pinned grid has no Ctrl+Home binding. A native browser check reproduces that
+selection remains on the formula cell rather than returning to A1. The embedded
+grid now registers a view operation and shortcut through the pinned command/UI
+services. It uses the engine's focused, non-activated sheet-editor precondition
+and the grid's current/readiness guard. It selects A1 through the scoped facade
+and scrolls it into view; it never creates a cell mutation or save intent.
+Registration belongs to the view layer and is disposed when that layer retires.
+The already lazy-loaded kernel supplies UI services, avoiding an eager UI import.
+Guard and workspace types pass; packaged browser focus/editing/chat checks remain
+the acceptance gate for this change.

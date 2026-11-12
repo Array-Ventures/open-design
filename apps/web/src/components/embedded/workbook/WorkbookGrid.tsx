@@ -23,6 +23,7 @@ import { attachWorkbookArrayCalculation } from './grid-array-calculation';
 import { prepareWorkbookArrayLiveSource } from './array-live-source';
 import { restoreCsvViewDimensions } from './csv-view-dimensions';
 import { restoreWorkbookSelection } from './grid-selection';
+import { attachWorkbookNavigation } from './grid-navigation';
 import { LifecycleService, LifecycleStages } from '@univerjs/core';
 import { WorkbookViewLayers } from './grid-view-layers';
 
@@ -176,6 +177,8 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
       };
       const selected = workbook.getActiveSheet();
       restoreWorkbookSelection(selected, previous?.range);
+      const navigation = attachWorkbookNavigation(univer, univerAPI, () => current() && readyForInput, kernel);
+      layer.own(() => navigation.dispose());
       // No mutations are accepted while the controller drains a previous
       // writer. An unmounted/revoked surface must never become editable later.
       await callbacks.current.onReady?.(workbook.save());
