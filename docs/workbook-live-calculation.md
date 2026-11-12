@@ -116,3 +116,63 @@ plans, and continue admitting genuine user edits to those coordinates. Include
 existing/new arrays, dynamic references, cross-sheet dependents, spill errors,
 undo and source refresh. Until then the grid flag remains disabled; the scalar
 helper is groundwork, not a claim of complete live spreadsheet support.
+
+## Source-preserving ownership bootstrap probe
+
+`source-array-engine-data.ts` constructs the pinned array-data channel only from
+explicit source metadata and loaded source caches. It checks the loaded cache
+against the validated source adapter, refuses changed values/formulas, preserves
+blank holes, and never rewrites raw cells or references. Unknown ownership,
+data tables and ambiguous typed error caches are not treated as ready. The
+`known` result certifies only the bootstrap data, not live calculation support.
+
+Actual pinned-engine probes establish:
+
+- Registering ownership/cache leaves the entire raw snapshot unchanged.
+- Growth into an actual non-array literal 99 produces `#SPILL!` and retains 99.
+  The engine's real cache/value collision comparisons remain intact.
+- Array metadata is emitted after calculation starts, before its graph and
+  scalar results. The graph contains the original `=SEQUENCE(B2/5000)` string;
+  the scalar result's source formula map covers the dependent scalar formula
+  but omits the array owner. That scalar map is not array-result identity proof.
+
+Two probes explicitly document unresolved behavior rather than asserting success:
+
+1. Contracting a three-row imported array to two rows removes the retired
+   follower's overlay but leaves its original raw cache 3. That value can
+   resurface in the view. The writer still correctly sees only the B2 input
+   edit. Clearing raw source values to make this probe look correct would
+   change the inputs and is not implemented.
+2. A cross-sheet formula still references `Inputs!D4` exactly, but its emitted
+   graph does not link that spill follower to the array owner. The owner's
+   `parents` alone cannot protect this dependent's saved cache. The explicit
+   source/runtime ownership relation and pinned range references must also be
+   considered before claiming safe dependent calculation.
+
+These failures require a reviewed array calculation/display seam. Neither the
+bootstrap helper nor passing counterexample tests enables arrays or certifies
+their save path; the grid engine remains disabled.
+
+### Separate interactive cache representation
+
+`sourceArrayInteractiveSnapshot` now returns both untouched source and separate
+interactive snapshots. Only cache content at explicitly owned followers moves
+out of interactive raw cells into the exact array overlay; source formulas,
+references, styles, workbook model and OOXML stay intact. Cache mismatches are
+refused, not normalized away. A real non-array 99 remains an input and still
+causes `#SPILL!` on growth. Tests show contraction no longer exposes stale raw
+cache, and a genuinely typed 42 after anchor removal remains a literal edit.
+The writer compares the interactive baseline to the current raw snapshot; it
+must never ignore follower coordinates globally.
+
+A varying-array probe calculates a second result of 10001 and an actual
+cross-sheet `=Inputs!D4+10` result of 10011, with source values/formulas unchanged.
+This qualifies the representation against Univer's dynamic spill behavior,
+**not** the source workbook's legacy CSE semantics. `t="array"` does not prove
+dynamic mode. Microsoft identifies dynamic behavior with the
+[XLDAPR metadata extension](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-xlsx/3dd44d53-847b-402f-a8c7-41a85024caf7)
+and its [fDynamic flag](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-xlsx/d1ef676d-d970-4ddd-b642-62f5e0c291e0).
+The retained source parts preserve those records, but resolving/validating that
+identity in the normalized model is still open. The bootstrap explicitly reports
+`calculation: unverified` for source arrays. Do not infer dynamic mode from a
+function name or claim legacy contraction fidelity from the dynamic probe.
