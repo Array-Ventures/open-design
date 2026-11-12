@@ -66,6 +66,7 @@ it('runs the pinned UI editor normalization and actual kernel write/undo path wi
   const afterPaste = structuredClone(book.save()); paste('outside\tfields\tshould\tnever\twrite');
   expect(errors.at(-1)).toContain('existing CSV fields'); expect(book.save()).toEqual(afterPaste);
   expect(csvGridEdits(model, 'a'.repeat(64), baseline, book.save()).edits.map(edit => edit.cell.value)).toEqual([...values, ...pasted]);
+  element.tabIndex = 0; element.focus(); expect(document.activeElement).toBe(element);
   const foreign = document.createElement('textarea'); document.body.append(foreign);
   const outside = new Event('paste', { bubbles: true, cancelable: true }); foreign.dispatchEvent(outside);
   expect(outside.defaultPrevented).toBe(false); expect(book.save()).toEqual(afterPaste); foreign.remove();

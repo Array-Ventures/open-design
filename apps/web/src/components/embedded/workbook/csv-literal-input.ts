@@ -31,8 +31,8 @@ export function attachCsvLiteralInput(univer: Univer, api: FUniver, kernel: Kern
       if (context.unitId !== unitId || !editing || editing.unitId !== unitId || editing.sheetId !== context.subUnitId || editing.row !== context.row || editing.column !== context.col) return next(cell);
       const document = instances.getUnit<DocumentDataModel>(DOCS_NORMAL_EDITOR_UNIT_ID_KEY), stream = document?.getSnapshot().body?.dataStream;
       if (stream === undefined || !stream.endsWith('\r\n')) throw Error('The literal CSV input could not be verified.');
-      const literal = csvLiteralCell(stream.slice(0, -2), cell || null); onError('');
-      return next(literal);
+      try { const literal = csvLiteralCell(stream.slice(0, -2), cell || null); onError(''); return next(literal); }
+      catch (error) { onError(error instanceof Error ? error.message : 'The literal CSV input could not be applied.'); throw error; }
     },
   });
   const clipboard = injector.get(kernel.ISheetClipboardService).addClipboardHook({ id: 'csv-literal-paste-guard', priority: 1000, onBeforePaste: () => { onError('Paste plain text with the keyboard into the selected CSV fields.'); return false; } });
@@ -40,7 +40,7 @@ export function attachCsvLiteralInput(univer: Univer, api: FUniver, kernel: Kern
     // During text editing, let the existing document editor preserve cursor and
     // selection; AFTER_CELL_EDIT above restores that document's exact text.
     if (bridge.isVisible().visible) return;
-    let ownedTarget = element.contains(event.target as Node) || element.contains(document.activeElement);
+    let ownedTarget = element.contains(event.target as Node) || (event.target === document || event.target === document.body) && element.contains(document.activeElement);
     if (!ownedTarget) {
       // Univer's hidden grid input may live in its document renderer rather
       // than below the sheet canvas. Match that exact owned input, never an

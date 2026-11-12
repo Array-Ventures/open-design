@@ -38,27 +38,34 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
   const formattingRef = useRef<{ publish(): void } | null>(null);
   useEffect(() => { formattingRef.current?.publish(); }, [formatScope?.blocked]);
   const [error, setError] = useState<string | null>(null);
-  const [inputError, setInputError] = useState<string | null>(null);
+  const inputError = useRef<string | null>(null);
   const calculationState = useRef<WorkbookCalculationState | null>(null);
   const publishCalculation = () => {
     const scope = format.current, state = calculationState.current;
     if (scope && state) window.parent.postMessage({ type: 'studio:workbook-calculation-state', projectId: scope.projectId, controllerId: scope.controllerId, ...state }, window.location.origin);
   };
-  const publish = useRef(publishCalculation); publish.current = publishCalculation;
+  const publishInput = () => {
+    const scope = format.current;
+    if (model.sourceFormat === 'csv' && scope) window.parent.postMessage({ type: 'studio:workbook-input-state', projectId: scope.projectId, controllerId: scope.controllerId, error: inputError.current }, window.location.origin);
+  };
+  const reportInputError = (message: string | null) => { inputError.current = message ? message.slice(0, 1000) : null; publishInput(); };
+  const publishState = () => { publishCalculation(); publishInput(); };
+  const publish = useRef(publishState); publish.current = publishState;
   useEffect(() => {
     const receive = (event: MessageEvent) => {
       if (event.source === window.parent && event.origin === window.location.origin && event.data?.type === 'studio:artifact-request' && event.data.projectId === format.current?.projectId) publish.current();
     };
+    const scope = format.current, csv = model.sourceFormat === 'csv';
     window.addEventListener('message', receive); publish.current();
-    return () => window.removeEventListener('message', receive);
-  }, [formatScope?.projectId, formatScope?.controllerId]);
+    return () => { window.removeEventListener('message', receive); if (csv && scope) window.parent.postMessage({ type: 'studio:workbook-input-state', projectId: scope.projectId, controllerId: scope.controllerId, error: null }, window.location.origin); };
+  }, [formatScope?.projectId, formatScope?.controllerId, model.sourceFormat]);
   const [kernel, setKernel] = useState(0);
   const stored = useRef<WorkbookDocument | null>(null);
   const carried = useRef<{ id: string; model: WorkbookDocument; snapshot: IWorkbookData } | null>(null);
   const editable = Boolean(onSnapshot);
   useEffect(() => {
     if (!container.current) return;
-    setInputError(null);
+    reportInputError(null);
     calculationState.current = null;
     const root = document.documentElement;
     let dispose = () => {}, active = true;
@@ -142,7 +149,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       const release = () => context.setContextValue(DISABLE_AUTO_FOCUS_KEY, true);
       element.addEventListener('pointerdown', activate, true); element.addEventListener('focusin', activate);
       window.addEventListener('blur', release);
-      const literal = model.sourceFormat === 'csv' ? attachCsvLiteralInput(univer, univerAPI, kernel, element, model, message => setInputError(message || null)) : null;
+      const literal = model.sourceFormat === 'csv' ? attachCsvLiteralInput(univer, univerAPI, kernel, element, model, message => reportInputError(message || null)) : null;
       const beforeLiteral = dispose;
       if (literal) dispose = () => { try { literal.dispose(); } finally { beforeLiteral(); } };
       const formatting = workbookFormattingBridge(univerAPI, () => editable && model.sourceFormat !== 'csv' ? format.current : undefined); formattingRef.current = formatting;
@@ -170,7 +177,6 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
   }, [id, model, editable, kernel]);
   return <div className="relative h-full min-h-0 w-full">
     <div ref={container} className={cx(styles.grid, 'h-full min-h-0 w-full')} role="region" aria-label="Workbook grid" tabIndex={0} />
-    {inputError ? <p role="alert" className="absolute bottom-2 start-2 end-2 m-0 rounded-lg bg-background-primary-default p-2 text-caption-1-regular text-text-error-primary">{inputError}</p> : null}
     {error ? <div role="alert" className="absolute inset-0 bg-background-primary-default p-4 text-body-2-regular text-text-error-primary">{error}</div> : null}
   </div>;
 }

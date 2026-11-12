@@ -7,7 +7,7 @@ import { WorkbookGrid } from '../../../src/components/embedded/workbook/Workbook
 
 const runtime = vi.hoisted(() => ({ context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
   calculation: null as null | ((state: { phase: string; stored: number; unavailable: number; paused: boolean }) => void),
-  live: false, fail: null as null | (() => void), calculationDisposed: vi.fn(),
+  input: null as null | ((message: string) => void), live: false, fail: null as null | (() => void), calculationDisposed: vi.fn(),
   getRange: vi.fn(), select: vi.fn(), createWorkbook: vi.fn(), editable: vi.fn(), activeSheet: vi.fn(), saved: vi.fn(), listener: null as null | ((event: { type: number; id: string }) => void) }));
 vi.mock('@univerjs/presets', async original => ({ ...await original<typeof import('@univerjs/presets')>(),
   Univer: class { constructor() { runtime.created(); } registerPlugin = runtime.register; dispose = runtime.dispose; __getInjector = () => ({ get: () => ({ setContextValue: runtime.context }) }); },
@@ -17,6 +17,7 @@ vi.mock('@univerjs/presets', async original => ({ ...await original<typeof impor
 vi.mock('@univerjs/preset-sheets-core', () => ({ ...Object.fromEntries(['UniverRenderEnginePlugin', 'UniverFormulaEnginePlugin', 'UniverUIPlugin', 'UniverDocsPlugin', 'UniverDocsUIPlugin', 'UniverSheetsPlugin', 'UniverSheetsUIPlugin', 'UniverSheetsFormulaPlugin', 'UniverSheetsFormulaUIPlugin', 'UniverSheetsNumfmtPlugin', 'UniverSheetsNumfmtUIPlugin'].map(name => [name, name])), DISABLE_AUTO_FOCUS_KEY: 'disableAutoFocus', CalculationMode: { NO_CALCULATION: 2 } }));
 vi.mock('../../../src/components/embedded/workbook/grid-calculation', () => ({ workbookLiveCalculationEligible: () => runtime.live, attachWorkbookCalculation: (...args: unknown[]) => { runtime.calculation = args[7] as NonNullable<typeof runtime.calculation>; return { dispose() {} }; } }));
 vi.mock('../../../src/components/embedded/workbook/calculation-worker-owner', () => ({ ownWorkbookCalculationWorker: (fail: () => void) => { runtime.fail = fail; return { loaded: Promise.resolve(true), ready: true, worker: {}, dispose: runtime.calculationDisposed }; } }));
+vi.mock('../../../src/components/embedded/workbook/csv-literal-input', () => ({ attachCsvLiteralInput: (_univer: unknown, _api: unknown, _kernel: unknown, _element: unknown, _model: unknown, report: (message: string) => void) => { runtime.input = report; return { dispose() { runtime.input = null; } }; } }));
 vi.mock('@univerjs/rpc', () => ({ UniverRPCMainThreadPlugin: 'UniverRPCMainThreadPlugin' }));
 const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 'inputs', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
   sheets: [{ id: 'inputs', name: 'Inputs', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
@@ -114,4 +115,22 @@ it('publishes scoped calculation information for existing host chrome without a 
   expect(post).not.toHaveBeenCalled();
   const late = runtime.calculation; view.unmount(); post.mockClear();
   act(() => late?.(state)); expect(post).not.toHaveBeenCalled(); post.mockRestore();
+});
+
+it('publishes bounded CSV input refusals to the exact host controller without a canvas banner', async () => {
+  const projectId = '18a8301a-b6e1-4001-8000-c967b1eab222', controllerId = '18a8301a-b6e1-4001-8000-c967b1eab223';
+  const post = vi.spyOn(window, 'postMessage');
+  const view = render(<WorkbookGrid id="csv-grid" title="CSV" model={{ ...model, sourceFormat: 'csv' }} onSnapshot={vi.fn()} formatScope={{ projectId, controllerId, blocked: false }} />);
+  await waitFor(() => expect(runtime.input).not.toBeNull());
+  act(() => runtime.input?.('x'.repeat(1200)));
+  expect(post).toHaveBeenLastCalledWith({ type: 'studio:workbook-input-state', projectId, controllerId, error: 'x'.repeat(1000) }, window.location.origin);
+  expect(screen.queryByRole('alert')).toBeNull();
+  post.mockClear();
+  act(() => window.dispatchEvent(new MessageEvent('message', { source: window, origin: 'https://untrusted.invalid', data: { type: 'studio:artifact-request', projectId } })));
+  act(() => window.dispatchEvent(new MessageEvent('message', { source: window, origin: window.location.origin, data: { type: 'studio:artifact-request', projectId: controllerId } })));
+  act(() => window.dispatchEvent(new MessageEvent('message', { source: null, origin: window.location.origin, data: { type: 'studio:artifact-request', projectId } })));
+  expect(post).not.toHaveBeenCalled();
+  act(() => window.dispatchEvent(new MessageEvent('message', { source: window, origin: window.location.origin, data: { type: 'studio:artifact-request', projectId } })));
+  expect(post).toHaveBeenLastCalledWith({ type: 'studio:workbook-input-state', projectId, controllerId, error: 'x'.repeat(1000) }, window.location.origin);
+  view.unmount(); expect(post).toHaveBeenLastCalledWith({ type: 'studio:workbook-input-state', projectId, controllerId, error: null }, window.location.origin);
 });
