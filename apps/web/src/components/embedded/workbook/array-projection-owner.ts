@@ -7,8 +7,10 @@ import { workbookCalculationDeadline } from './formula-worker-deadline';
 
 /** One source-bound worker and one atomic, read-only projection stream. A new
  * source/controller gets a new owner. Results never mutate authored snapshots. */
+// This pin's Turbopack worker bootstrap uses importScripts, so its generated
+// entry must run as a classic worker even though the source uses ESM imports.
 export function ownArrayProjectionWorker(model: WorkbookDocument, unitId: string, sourceSha256: string, unavailable: () => void,
-  factory = () => new Worker(new URL('./workbook-array.worker.ts', import.meta.url), { type: 'module', name: 'workbook-array-calculation' })) {
+  factory = () => new Worker(new URL('./workbook-array.worker.ts', import.meta.url), { type: 'classic', name: 'workbook-array-calculation' })) {
   const worker = factory(), listeners = new Set<(projection: ArrayProjection) => void>();
   let active = true, ready = false, failed = false, settled = false, generation = 0, expected: { generation: number; inputSha256: string } | undefined;
   let resolve!: (ready: boolean) => void;

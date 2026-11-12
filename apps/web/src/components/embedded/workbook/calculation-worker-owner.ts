@@ -2,7 +2,9 @@ import { workbookCalculationMessageSchema, type WorkbookCalculationResultMessage
 import { workbookCalculationDeadline } from './formula-worker-deadline';
 /** The RPC plugin does not own a supplied Worker instance. This owner retains
  * its exact lifetime and stops a failed/departed worker without restarting it. */
-export function ownWorkbookCalculationWorker(unavailable: () => void, factory = () => new Worker(new URL('./workbook-formula.worker.ts', import.meta.url), { type: 'module', name: 'workbook-calculation' })) {
+// This pin's Turbopack worker bootstrap uses importScripts, so its generated
+// entry must run as a classic worker even though the source uses ESM imports.
+export function ownWorkbookCalculationWorker(unavailable: () => void, factory = () => new Worker(new URL('./workbook-formula.worker.ts', import.meta.url), { type: 'classic', name: 'workbook-calculation' })) {
   const worker = factory(), deadline = workbookCalculationDeadline(worker, () => { failed = true; ready = false; settle(false); unavailable(); });
   let ready = false, active = true, failed = false, settled = false, resolve!: (ready: boolean) => void;
   const listeners = new Set<(result: WorkbookCalculationResultMessage) => void>();
