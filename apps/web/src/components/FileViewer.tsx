@@ -1,3 +1,5 @@
+import { sha256 } from '@noble/hashes/sha256';
+import { bytesToHex } from '@noble/hashes/utils';
 import { markdownDirectory, markdownRelativeProjectPath, markdownImageSourceUrl } from './markdown-image-path';
 export { markdownImageSourceUrl } from './markdown-image-path';
 import type { CommentSaveResult } from './comment-send-result';
@@ -14145,6 +14147,7 @@ function HtmlViewer({
         artifactManifest: file.artifactManifest,
         versionSource: 'manual',
         versionLabel: label,
+        expectedContentSha256: bytesToHex(sha256(new TextEncoder().encode(baseSource))),
         ...(parentVersionId ? { parentVersionId } : {}),
       }, workspaceContext);
       if (!saved.ok) {
@@ -14240,7 +14243,11 @@ function HtmlViewer({
       cacheBustKey: Date.now(),
       workspaceContext,
     });
-    if (persisted == null || persisted === expectedSource) return true;
+    if (persisted == null) {
+      setManualEditError('Could not check the latest file. Your changes remain open. Try saving again.');
+      return false;
+    }
+    if (persisted === expectedSource) return true;
     setSource(persisted);
     sourceRef.current = persisted;
     setInlinedSource(null);
@@ -14293,6 +14300,7 @@ function HtmlViewer({
         artifactManifest: file.artifactManifest,
         versionSource: 'manual',
         versionLabel: `Undo ${latest.label}`,
+        expectedContentSha256: bytesToHex(sha256(new TextEncoder().encode(latest.afterSource))),
         ...(parentVersionId ? { parentVersionId } : {}),
       }, workspaceContext);
       if (!saved.ok) {
@@ -14357,6 +14365,7 @@ function HtmlViewer({
         artifactManifest: file.artifactManifest,
         versionSource: 'manual',
         versionLabel: `Redo ${latest.label}`,
+        expectedContentSha256: bytesToHex(sha256(new TextEncoder().encode(latest.beforeSource))),
         ...(parentVersionId ? { parentVersionId } : {}),
       }, workspaceContext);
       if (!saved.ok) {

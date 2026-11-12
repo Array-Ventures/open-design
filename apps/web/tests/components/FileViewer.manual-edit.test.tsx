@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { createHash } from 'node:crypto';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -256,6 +257,84 @@ describe('FileViewer manual edit regressions', () => {
     await waitFor(() => expect(textarea()?.value ?? null).toBe(action !== 'select' ? null : 'Other'));
     for (const body of saved) expect(JSON.parse(body).content).toContain('<main data-od-id="hero">Kept across selection</main>');
     expect(screen.getByTestId('manual-edit-mode-toggle').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it.each(['apply', 'undo', 'redo'] as const)('binds %s to its observed source and rejects a concurrent writer', async (operation) => {
+    const original = '<html>\r\n<body><main data-od-id="hero">Hero ☃ café</main></body>\r\n</html>';
+    const concurrent = '<html><body><main data-od-id="hero">Newer agent content</main></body></html>';
+    const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+    let persisted = original;
+    let conflict = operation === 'apply';
+    const writes: Array<{ content: string; expectedContentSha256?: string }> = [];
+    const observed: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes('/api/projects/project-1/files') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        writes.push(body);
+        if (conflict) persisted = concurrent;
+        if (body.expectedContentSha256 && body.expectedContentSha256 !== digest(persisted)) {
+          return Response.json({ error: { code: 'FILE_CONTENT_CHANGED', message: 'Newer content exists' } }, { status: 409 });
+        }
+        persisted = body.content;
+        return Response.json({ file: htmlPreviewFile() });
+      }
+      if (String(input).includes('/raw/')) observed.push(persisted);
+      return new Response(persisted, { status: 200 });
+    }));
+    let exit: (() => Promise<boolean>) | null = null;
+    render(<FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()} liveHtml={original}
+      onManualEditExitHandlerChange={(_name, handler) => { exit = handler; }} />);
+    await enterManualEditMode();
+    await selectManualEditTarget();
+    fireEvent.change(document.querySelector('.manual-edit-right textarea')!, { target: { value: 'Human edit' } });
+    if (operation === 'apply') {
+      let accepted: boolean | undefined;
+      await act(async () => { accepted = await exit!(); });
+      expect(accepted).toBe(false);
+      expect((document.querySelector('.manual-edit-right textarea') as HTMLTextAreaElement).value).toBe('Human edit');
+    } else {
+      fireEvent.click(screen.getByText('Save'));
+      await waitFor(() => expect(document.querySelector('.manual-edit-right')).toBeNull());
+      await selectManualEditTarget();
+      if (operation === 'redo') {
+        fireEvent.click(screen.getByLabelText('Undo'));
+        await waitFor(() => expect((screen.getByLabelText('Redo') as HTMLButtonElement).disabled).toBe(false));
+      }
+      conflict = true;
+      fireEvent.click(screen.getByLabelText(operation === 'undo' ? 'Undo' : 'Redo'));
+    }
+    await screen.findByText(/Newer content exists/);
+    expect(writes).toHaveLength(operation === 'apply' ? 1 : operation === 'undo' ? 2 : 3);
+    expect(persisted).toBe(concurrent);
+    expect(writes[0]!.expectedContentSha256).toBe(digest(original));
+    if (operation !== 'apply') expect(writes[1]!.expectedContentSha256).toBe(digest(writes[0]!.content));
+    if (operation === 'redo') expect(writes[2]!.expectedContentSha256).toBe(digest(original));
+    expect(observed).not.toContain(concurrent); // The competing change happened after preflight.
+    expect(screen.getByTestId('manual-edit-mode-toggle').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('keeps the draft and refuses a write when the source observation is unavailable', async () => {
+    const source = '<html><body><main data-od-id="hero">Hero</main></body></html>';
+    let unavailable = false;
+    const writes: string[] = [];
+    let exit: (() => Promise<boolean>) | null = null;
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes('/api/projects/project-1/files') && init?.method === 'POST') { writes.push(String(init.body)); return Response.json({ file: htmlPreviewFile() }); }
+      if (unavailable && String(input).includes('/raw/')) return new Response('Unavailable', { status: 503 });
+      return new Response(source, { status: 200 });
+    }));
+    render(<FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()} liveHtml={source}
+      onManualEditExitHandlerChange={(_name, handler) => { exit = handler; }} />);
+    await enterManualEditMode();
+    await selectManualEditTarget();
+    fireEvent.change(document.querySelector('.manual-edit-right textarea')!, { target: { value: 'Keep this draft' } });
+    unavailable = true;
+    let accepted: boolean | undefined;
+    await act(async () => { accepted = await exit!(); });
+    expect(accepted).toBe(false);
+    expect(writes).toHaveLength(0);
+    expect((document.querySelector('.manual-edit-right textarea') as HTMLTextAreaElement).value).toBe('Keep this draft');
+    expect(screen.getByText(/Could not check the latest file/)).toBeTruthy();
   });
 
   it('opens edit mode with a clean canvas and no docked panel', async () => {
