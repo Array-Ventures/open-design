@@ -1,18 +1,15 @@
 import { expect, it } from 'vitest';
 import ExcelJS from 'exceljs-community';
-import JSZip from 'jszip';
 import { readXlsxWorkbook } from '../../src/artifacts/workbook/reader.js';
 import { calculateWorkbookCellEdits } from '../../src/artifacts/workbook/calculated-patch.js';
 
 async function fixture() {
   const book = new ExcelJS.Workbook(), inputs = book.addWorksheet('Inputs'), summary = book.addWorksheet('Summary');
-  inputs.getCell('A1').value = 2; inputs.getCell('D3').value = { formula: 'SEQUENCE(3)', result: 1 }; inputs.getCell('D4').value = 2; inputs.getCell('D5').value = 3;
+  inputs.getCell('A1').value = 2; inputs.getCell('D3').value = 1; inputs.getCell('D4').value = 2; inputs.getCell('D5').value = 3;
   summary.getCell('A1').value = { formula: 'SUM(Inputs!D3#)', result: 111 };
   summary.getCell('B1').value = { formula: 'IFERROR(A1,999)+1', result: 112 };
   summary.getCell('C1').value = { formula: 'Inputs!A1*2', result: 4 };
-  const zip = await JSZip.loadAsync(await book.xlsx.writeBuffer()), path = 'xl/worksheets/sheet1.xml';
-  zip.file(path, (await zip.file(path)!.async('string')).replace('<f>', '<f t="array" ref="D3:D5">'));
-  return readXlsxWorkbook(await zip.generateAsync({ type: 'nodebuffer' }));
+  return readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer()));
 }
 it('preserves original unsupported spill-reference caches and masked dependents rather than saving the pinned #VALUE result', async () => {
   const source = await fixture();
