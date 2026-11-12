@@ -1,10 +1,13 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { ICommandService, IUniverInstanceService, LocaleType, Univer, UniverInstanceType, type IWorkbookData, type Workbook } from '@univerjs/core';
+import { CommandType, ICommandService, IUniverInstanceService, LocaleType, Univer, UniverInstanceType, type IWorkbookData, type Workbook } from '@univerjs/core';
 import English from '@univerjs/sheets/locale/en-US';
 import type { FUniver } from '@univerjs/core/facade';
-import { UniverFormulaEnginePlugin } from '@univerjs/engine-formula';
+import { CalculationMode, UniverSheetsFormulaPlugin } from '@univerjs/sheets-formula';
+import { FormulaDataModel, UniverFormulaEnginePlugin } from '@univerjs/engine-formula';
 import { SetRangeValuesCommand, SetStyleCommand, SetRangeValuesMutation, UniverSheetsPlugin } from '@univerjs/sheets';
+import { WORKBOOK_MODEL_LIMITS } from '@open-design/contracts/runtime/workbook';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import { ownArrayInputNormalization } from '../../src/components/embedded/workbook/array-input-normalization';
 import { attachWorkbookArrayCalculation } from '../../src/components/embedded/workbook/grid-array-calculation';
 import { qualifiedArrayKernel, type QualifiedArrayProjection } from '../../src/components/embedded/workbook/qualified-array-kernel';
 import type { ownArrayProjectionWorker } from '../../src/components/embedded/workbook/array-projection-owner';
@@ -13,16 +16,16 @@ import { workbookGridEdits } from '../../src/components/embedded/workbook/grid-e
 const sha='a'.repeat(64);
 const source: WorkbookDocument={version:1,calculationMetadata:'verified',date1904:false,activeSheetId:'s',styles:[{}],features:{charts:0,drawings:0,externalLinks:0,macros:false,signed:false},sheets:[{id:'s',name:'Inputs',visibility:'visible',rowCount:100,columnCount:20,frozenRows:0,frozenColumns:0,rowDimensions:[],columnDimensions:[],merges:[],arrayFormulas:[{kind:'array',calculation:'dynamic',row:2,column:3,range:{startRow:2,endRow:4,startColumn:3,endColumn:3}}],cells:[{row:0,column:0,kind:'number',value:3},{row:2,column:3,kind:'number',value:10,formula:'=SEQUENCE(A1,1,10)'},{row:3,column:3,kind:'number',value:11},{row:4,column:3,kind:'number',value:12},{row:0,column:5,kind:'number',value:111,formula:'=D4+100'}]}]};
 let cleanup=()=>{};afterEach(()=>cleanup());
-function setup(model: WorkbookDocument = source, render = { ready: Promise.resolve(), available: () => true }) {
- const kernel=qualifiedArrayKernel(model,'unit',sha),univer=new Univer({locale:LocaleType.EN_US,locales:{[LocaleType.EN_US]:English}});univer.registerPlugin(UniverFormulaEnginePlugin,{notExecuteFormula:true});univer.registerPlugin(UniverSheetsPlugin,{notExecuteFormula:true});
+function setup(model: WorkbookDocument = source, render = { ready: Promise.resolve(), available: () => true }, beforePlugins?: (commands: ReturnType<Univer['__getInjector']>) => void) {
+ const kernel=qualifiedArrayKernel(model,'unit',sha),univer=new Univer({locale:LocaleType.EN_US,locales:{[LocaleType.EN_US]:English}}),input=ownArrayInputNormalization(univer);beforePlugins?.(univer.__getInjector());univer.registerPlugin(UniverFormulaEnginePlugin,{notExecuteFormula:true});univer.registerPlugin(UniverSheetsPlugin,{notExecuteFormula:true});univer.registerPlugin(UniverSheetsFormulaPlugin,{initialFormulaComputing:CalculationMode.NO_CALCULATION});
  const core=univer.createUnit<IWorkbookData,Workbook>(UniverInstanceType.UNIVER_SHEET,structuredClone(kernel.initial)),commands=univer.__getInjector().get(ICommandService),listeners=new Set<(result:QualifiedArrayProjection)=>void>();
  univer.__getInjector().get(IUniverInstanceService).setCurrentUnitForType(core.getUnitId());univer.__getInjector().get(IUniverInstanceService).focusUnit(core.getUnitId());
  const baseline=structuredClone(core.getSnapshot()),snapshot=()=>structuredClone(core.getSnapshot()),repaint=vi.fn(),states:unknown[]=[];let generation=0,pending=Promise.resolve(),active=true;
  const owner={calculate(input:IWorkbookData){const ticket=++generation;pending=kernel.calculate(input,ticket).then(result=>{if(active)for(const listener of listeners)listener(result);});return ticket;},onResult(listener:(result:QualifiedArrayProjection)=>void){listeners.add(listener);return()=>listeners.delete(listener);},fail:vi.fn()} as unknown as ReturnType<typeof ownArrayProjectionWorker>;
  const api={getActiveWorkbook:()=>({getSheets:()=>[{refreshCanvas:repaint}]})} as unknown as FUniver;
- const calculation=attachWorkbookArrayCalculation(univer,api,model,kernel.original,snapshot(),sha,snapshot,owner,state=>states.push(state),render);
+ const calculation=attachWorkbookArrayCalculation(univer,api,model,kernel.original,snapshot(),sha,snapshot,owner,state=>states.push(state),render,input);
  cleanup=()=>{active=false;calculation.dispose();univer.dispose();};
- return {core,commands,snapshot,baseline,kernel,calculation,repaint,states,flush:()=>pending,owner};
+ return {core,commands,snapshot,baseline,kernel,calculation,repaint,states,formulaData:()=>structuredClone(univer.__getInjector().get(FormulaDataModel).getFormulaData()),flush:()=>pending,owner};
 }
 it('runs main-kernel input, private array calculation, real cell interception and undo without follower journal writes',async()=>{
  const live=setup();await live.flush();const sheet=live.core.getSheetBySheetId('s')!;
@@ -90,4 +93,79 @@ it('coalesces actual projection updates until Rendered and never paints after di
  rendered();await ready;await Promise.resolve();expect(live.repaint).toHaveBeenCalledTimes(1);expect(live.core.getSheetBySheetId('s')!.getCell(3,3)?.v).toBeUndefined();
  cleanup();let late!:()=>void;const later=new Promise<void>(resolve=>{late=resolve;}),closed=setup(source,{ready:later,available:()=>true});await closed.flush();closed.calculation.dispose();late();await later;await Promise.resolve();expect(closed.repaint).not.toHaveBeenCalled();
  cleanup();const headless=setup(source,{ready:Promise.resolve(),available:()=>false});await headless.flush();expect(headless.repaint).not.toHaveBeenCalled();
+});
+
+
+it('normalizes an existing source owner edit/removal and undo through the actual formula plugin', async () => {
+ const live=setup();await live.flush();const sheet=live.core.getSheetBySheetId('s')!;
+ const write=(value:unknown)=>live.commands.syncExecuteCommand(SetRangeValuesCommand.id,{unitId:'unit',subUnitId:'s',range:{startRow:2,endRow:2,startColumn:3,endColumn:3},value});
+ expect(write({f:'=SEQUENCE(A1,1,20)',v:null,t:null})).toBe(true);await live.flush();
+ expect(sheet.getCell(3,3)?.v).toBe(21);expect(sheet.getCell(0,5)?.v).toBe(121);expect(sheet.getCellRaw(3,3)?.v).toBeUndefined();
+ expect(live.commands.syncExecuteCommand('univer.command.undo')).toBe(true);await live.flush();expect(sheet.getCell(3,3)?.v).toBe(11);
+ expect(write({f:null,v:42,t:2})).toBe(true);await live.flush();expect(sheet.getCellRaw(2,3)?.v).toBe(42);expect(sheet.getCell(3,3)?.v).toBeUndefined();
+ expect(live.commands.syncExecuteCommand('univer.command.undo')).toBe(true);await live.flush();expect(sheet.getCell(3,3)?.v).toBe(11);
+});
+
+it('rejects follower and out-of-bounds input before the SDK changes its formula metadata', async () => {
+ const live=setup();await live.flush();const data=live.formulaData(),snapshot=live.snapshot();
+ for(const cellValue of [{3:{3:{f:'=42',v:null}}},{100:{0:{f:'=42',v:null}}},{2:{3:{f:'='+ '1'.repeat(WORKBOOK_MODEL_LIMITS.text),v:null}}}]) {
+  expect(()=>live.commands.syncExecuteCommand(SetRangeValuesMutation.id,{unitId:'unit',subUnitId:'s',cellValue})).toThrow();
+  expect(live.formulaData()).toEqual(data);expect(live.snapshot()).toEqual(snapshot);
+ }
+});
+
+it.each([
+ ['cache value',{2:{3:{f:'=SEQUENCE(A1,1,20)',si:null,v:999,t:2}}}],
+ ['wrong formula',{2:{3:{f:'=SEQUENCE(A1,1,99)',si:null,v:null,t:null}}}],
+ ['shared formula',{2:{3:{f:'=SEQUENCE(A1,1,20)',si:'forged',v:null,t:null}}}],
+ ['follower coordinate',{3:{3:{f:'=SEQUENCE(A1,1,20)',si:null,v:null,t:null}}}],
+] as const)('rejects forged %s even inside an otherwise authorized input',async(_label,cellValue)=>{
+ let inject=true;
+ const live=setup(source,undefined,injector=>injector.get(ICommandService).beforeCommandExecuted((command,options)=>{
+  if(inject&&command.id===SetRangeValuesMutation.id&&!options?.fromFormula){inject=false;injector.get(ICommandService).syncExecuteCommand(SetRangeValuesMutation.id,{unitId:'unit',subUnitId:'s',cellValue},{onlyLocal:true,fromFormula:true});}
+ }));await live.flush();const before=live.snapshot(),metadata=live.formulaData();
+ expect(()=>live.commands.syncExecuteCommand(SetRangeValuesMutation.id,{unitId:'unit',subUnitId:'s',cellValue:{2:{3:{f:'=SEQUENCE(A1,1,20)',v:null,t:null}}}})).toThrow('read-only projection');
+ expect(live.snapshot()).toEqual(before);expect(live.formulaData()).toEqual(metadata);
+ live.commands.syncExecuteCommand(SetRangeValuesMutation.id,{unitId:'unit',subUnitId:'s',cellValue:{2:{3:{f:'=SEQUENCE(A1,1,20)',v:null,t:null}}}});await live.flush();expect(live.core.getSheetBySheetId('s')!.getCell(3,3)?.v).toBe(21);
+});
+
+it('rejects unsolicited normalization after the genuine input completed',async()=>{
+ const live=setup();await live.flush();
+ live.commands.syncExecuteCommand(SetRangeValuesMutation.id,{unitId:'unit',subUnitId:'s',cellValue:{2:{3:{f:'=SEQUENCE(A1,1,20)',v:null,t:null}}}});await live.flush();const before=live.snapshot();
+ expect(()=>live.commands.syncExecuteCommand(SetRangeValuesMutation.id,{unitId:'unit',subUnitId:'s',cellValue:{2:{3:{f:'=SEQUENCE(A1,1,20)',si:null,v:null,t:null}}}},{onlyLocal:true,fromFormula:true})).toThrow('read-only projection');
+ expect(live.snapshot()).toEqual(before);
+});
+
+
+it('ends failed outer input authority before immediate same-turn forged normalization',async()=>{
+ let fail=true;
+ const live=setup(source,undefined,injector=>injector.get(ICommandService).beforeCommandExecuted((command,options)=>{
+  if(fail&&command.id===SetRangeValuesMutation.id&&!options?.fromFormula){fail=false;throw new Error('SDK callback failed');}
+ }));await live.flush();const before=live.snapshot();
+ const params={unitId:'unit',subUnitId:'s',cellValue:{2:{3:{f:'=SEQUENCE(A1,1,20)',v:null,t:null}}}};
+ expect(()=>live.commands.syncExecuteCommand(SetRangeValuesMutation.id,params)).toThrow('SDK callback failed');
+ expect(()=>live.commands.syncExecuteCommand(SetRangeValuesMutation.id,{...params,cellValue:{2:{3:{f:'=SEQUENCE(A1,1,20)',si:null,v:null,t:null}}}},{onlyLocal:true,fromFormula:true})).toThrow('read-only projection');
+ expect(live.snapshot()).toEqual(before);
+ live.commands.syncExecuteCommand(SetRangeValuesMutation.id,params);await live.flush();expect(live.core.getSheetBySheetId('s')!.getCell(3,3)?.v).toBe(21);
+});
+
+it('supports the asynchronous public input API without retaining authorization across its promise',async()=>{
+ const live=setup();await live.flush();
+ const params={unitId:'unit',subUnitId:'s',cellValue:{2:{3:{f:'=SEQUENCE(A1,1,20)',v:null,t:null}}}};
+ const pending=live.commands.executeCommand(SetRangeValuesMutation.id,params);
+ expect(()=>live.commands.syncExecuteCommand(SetRangeValuesMutation.id,{...params,cellValue:{2:{3:{f:'=SEQUENCE(A1,1,20)',si:null,v:null,t:null}}}},{onlyLocal:true,fromFormula:true})).toThrow('read-only projection');
+ expect(await pending).toBe(true);await live.flush();expect(live.core.getSheetBySheetId('s')!.getCell(3,3)?.v).toBe(21);
+});
+
+it('preserves public dispatch results and exceptions and restores only its own wrappers',async()=>{
+ const univer=new Univer(),commands=univer.__getInjector().get(ICommandService),sync=commands.syncExecuteCommand,async=commands.executeCommand;
+ const guard=ownArrayInputNormalization(univer);
+ try {
+  commands.registerCommand({id:'test.array-input.result',type:CommandType.COMMAND,handler:()=>37});
+  commands.registerCommand({id:'test.array-input.error',type:CommandType.COMMAND,handler:()=>{throw new Error('Exact public error');}});
+  expect(commands.syncExecuteCommand('test.array-input.result')).toBe(37);expect(await commands.executeCommand('test.array-input.result')).toBe(37);
+  expect(()=>commands.syncExecuteCommand('test.array-input.error')).toThrow('Exact public error');await expect(commands.executeCommand('test.array-input.error')).rejects.toThrow('Exact public error');
+  guard.dispose();expect(commands.syncExecuteCommand).toBe(sync);expect(commands.executeCommand).toBe(async);
+  const next=ownArrayInputNormalization(univer),foreign=sync.bind(commands);commands.syncExecuteCommand=foreign;next.dispose();expect(commands.syncExecuteCommand).toBe(foreign);expect(commands.executeCommand).toBe(async);
+ } finally {guard.dispose();univer.dispose();}
 });

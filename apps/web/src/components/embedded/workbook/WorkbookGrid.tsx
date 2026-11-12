@@ -17,6 +17,7 @@ import type { WorkbookCalculationState } from './calculation-state';
 import { ownWorkbookCalculationWorker } from './calculation-worker-owner';
 import { attachWorkbookCalculation, workbookLiveCalculationEligible } from './grid-calculation';
 import { ownArrayProjectionWorker } from './array-projection-owner';
+import { ownArrayInputNormalization } from './array-input-normalization';
 import { attachWorkbookArrayCalculation } from './grid-array-calculation';
 import { prepareWorkbookArrayLiveSource } from './array-live-source';
 import { restoreCsvViewDimensions } from './csv-view-dimensions';
@@ -138,6 +139,8 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
         if (!current()) { close(); return; }
         univer.registerPlugin(UniverRPCMainThreadPlugin, { workerURL: calculationOwner.worker });
       }
+      const arrayInput = arraySeed ? ownArrayInputNormalization(univer, () => current() && readyForInput) : null;
+      if (arrayInput) layer.own(() => arrayInput.dispose());
       univer.registerPlugin(UniverRenderEnginePlugin);
       univer.registerPlugin(UniverFormulaEnginePlugin, { notExecuteFormula: true });
       univer.registerPlugin(UniverUIPlugin, { container: layer.element, header: false, toolbar: false, contextMenu: false, disableAutoFocus: true });
@@ -163,7 +166,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
       workbook.setActiveSheet(previous && prepared.data.sheets?.[previous.sheetId] ? previous.sheetId : seed?.sheetOrder[0] ?? prepared.activeSheetId); workbook.setEditable(false);
       readSnapshot = () => workbook.save();
       const calculationChanged = (value: WorkbookCalculationState) => { if (current()) { calculationState.current = value; publish.current(); } };
-      const calculation = arraySeed ? attachWorkbookArrayCalculation(univer, univerAPI, model, original, workbook.save(), sourceSha256!, readSnapshot, arrayOwner, calculationChanged, { ready: univer.__getInjector().get(LifecycleService).onStage(LifecycleStages.Rendered), available: () => Boolean(univer.__getInjector().get(IRenderManagerService).getRenderUnitById(id)) }) : attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, calculationChanged);
+      const calculation = arraySeed ? attachWorkbookArrayCalculation(univer, univerAPI, model, original, workbook.save(), sourceSha256!, readSnapshot, arrayOwner, calculationChanged, { ready: univer.__getInjector().get(LifecycleService).onStage(LifecycleStages.Rendered), available: () => Boolean(univer.__getInjector().get(IRenderManagerService).getRenderUnitById(id)) }, arrayInput!) : attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, calculationChanged);
       dispose = () => {
         try { const sheet = workbook.getActiveSheet(); view.current = { id, sourceFormat: model.sourceFormat, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() }; }
         finally { workbook.setEditable(false); calculation.dispose(); stopCalculation(); layer.retire(); }
