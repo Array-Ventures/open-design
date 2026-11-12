@@ -47,8 +47,8 @@ function cellValue(type: string | null, raw: string | undefined, source: ExcelJS
     if (value && typeof value === 'object' && 'hyperlink' in value) return { kind: 'string', value: value.text };
     throw new WorkbookFormatError('Workbook string could not be read.');
   }
+  if (type === 'str' && raw !== undefined) return { kind: 'string', value: raw };
   if (raw === undefined || raw === '') return { kind: 'blank', value: null };
-  if (type === 'str') return { kind: 'string', value: raw };
   if (type === 'e') return { kind: 'error', value: raw };
   if (type === 'b') return { kind: 'boolean', value: bool(raw) };
   if (type === 'd') return { kind: 'number', value: dateSerial(raw, date1904) };

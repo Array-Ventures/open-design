@@ -1,11 +1,12 @@
 import type { Document, Element } from '@xmldom/xmldom';
 import type { WorkbookDimensionEdit, WorkbookStyleEdit, WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { patchWorkbookCells, type WorkbookCellEdit } from './cell-patch.js';
-import { calculateWorkbook } from './calculate.js';
+import { calculateWorkbookResults } from './calculate.js';
 import { patchWorkbookStyles } from './style-patch.js';
 import { patchWorkbookDimensions } from './dimension-patch.js';
 import { readXlsxWorkbook, type ReadWorkbook } from './reader.js';
 import { WorkbookFormatError, writeWorkbookPackage } from './package.js';
+import { formulaCellKey } from './formula-cache-policy.js';
 import { address, child, children, xmlPart } from './parts.js';
 import { writeWorkbookXml } from './xml.js';
 
@@ -27,10 +28,11 @@ function valueElement(document: Document, cell: Element, value: string): Element
   const item = document.createElementNS(cell.namespaceURI, cell.prefix ? `${cell.prefix}:v` : 'v');
   item.appendChild(document.createTextNode(value)); return item;
 }
-async function writeCalculatedCaches(source: ReadWorkbook, model: WorkbookDocument): Promise<Buffer> {
+async function writeCalculatedCaches(source: ReadWorkbook, model: WorkbookDocument, retained: ReadonlySet<string>): Promise<Buffer> {
   const output = new Map(source.parts);
   for (const sheet of model.sheets) {
-    const formulas = new Map(sheet.cells.filter(cell => cell.formula).map(cell => [`${cell.row}:${cell.column}`, cell]));
+    const before = new Map(source.model.sheets.find(previous => previous.id === sheet.id)!.cells.map(cell => [`${cell.row}:${cell.column}`, cell]));
+    const formulas = new Map(sheet.cells.filter(cell => cell.formula && !retained.has(formulaCellKey(sheet.id, cell.row, cell.column)) && (before.get(`${cell.row}:${cell.column}`)?.kind !== cell.kind || before.get(`${cell.row}:${cell.column}`)?.value !== cell.value)).map(cell => [`${cell.row}:${cell.column}`, cell]));
     if (!formulas.size) continue;
     const part = source.sheetParts.get(sheet.id)!, document = xmlPart(output, part), data = child(document.documentElement!, 'sheetData');
     for (const row of data ? children(data, 'row') : []) for (const cell of children(row, 'c')) {
@@ -68,7 +70,7 @@ export async function calculateWorkbookCellEdits(source: ReadWorkbook, edits: re
     return { bytes, model: (await readXlsxWorkbook(bytes)).model };
   }
   assertCalculationSupported(source);
-  const patched = await readXlsxWorkbook(await patchWorkbookCells(source, edits));
-  const model = await calculateWorkbook(patched.model);
-  return { bytes: await writeCalculatedCaches(patched, model), model };
+  const patched = await readXlsxWorkbook(await patchWorkbookCells(source, edits, { retainFormulaCaches: true }));
+  const { model, retained } = await calculateWorkbookResults(patched.model, source.model);
+  return { bytes: await writeCalculatedCaches(patched, model, retained), model };
 }

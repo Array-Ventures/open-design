@@ -38,7 +38,7 @@ function writeValue(document: Document, target: Element, value: WorkbookCell): v
     text(document, target, 'v', value.kind === 'boolean' ? value.value ? '1' : '0' : String(value.value));
   }
 }
-interface SheetIndex { rows: Map<number, Element>; cells: Map<string, Element> }
+interface SheetIndex { rows: Map<number, Element>; cells: Map<string, Element>; shared: Map<string, [string, Element][]> }
 function ensureCell(document: Document, root: Element, position: WorkbookCell, index: SheetIndex): Element {
   const data = child(root, 'sheetData');
   if (!data) throw new WorkbookFormatError('Worksheet data is missing.');
@@ -83,7 +83,7 @@ function rejectProtectedEdit(restrictions: EditRestrictions, cell: WorkbookCell)
 /** Preservation primitive, not the product save API. It patches cell contents,
  * expands shared formula groups before edits and removes stale formula caches.
  * Calculation and conditional binary history must run before product export. */
-export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly WorkbookCellEdit[]): Promise<Buffer> {
+export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly WorkbookCellEdit[], options: { retainFormulaCaches?: boolean } = {}): Promise<Buffer> {
   if (source.model.features.signed) throw new WorkbookFormatError('Editing would invalidate workbook signatures.', 'WORKBOOK_UNSUPPORTED');
   if (edits.length > 100_000) throw new WorkbookFormatError('Too many workbook edits.', 'WORKBOOK_LIMIT');
   if (!edits.length) return writeWorkbookPackage(source.parts);
@@ -106,7 +106,7 @@ export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly W
     if (!document) {
       document = xmlPart(source.parts, part); documents.set(part, document);
       restrictions.set(part, editRestrictions(document.documentElement!));
-      const sheetIndex: SheetIndex = { rows: new Map(), cells: new Map() }; indexes.set(part, sheetIndex);
+      const sheetIndex: SheetIndex = { rows: new Map(), cells: new Map(), shared: new Map() }; indexes.set(part, sheetIndex);
       // Normalize omitted coordinates for later sorted insertion, without
       // touching any package that does not require a worksheet rewrite.
       let lastRow = 0;
@@ -121,7 +121,11 @@ export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly W
           cell.setAttribute('r', cellAddress(position.row, position.column)); lastColumn = position.column;
           sheetIndex.cells.set(`${position.row}:${position.column}`, cell);
           const formula = child(cell, 'f');
-          if (formula?.getAttribute('t') === 'shared') {
+          if (formula?.getAttribute('t') === 'shared' && options.retainFormulaCaches) {
+            const identity = formula.getAttribute('si')!, members = sheetIndex.shared.get(identity) ?? [];
+            members.push([`${position.row}:${position.column}`, cell]); sheetIndex.shared.set(identity, members);
+          }
+          if (formula?.getAttribute('t') === 'shared' && !options.retainFormulaCaches) {
             const resolved = sourceCells.get(sheet.id)!.get(`${position.row}:${position.column}`)?.formula;
             if (!resolved) throw new WorkbookFormatError('Shared workbook formula is unresolved.');
             const explicit = element(document, cell, 'f'); explicit.appendChild(document.createTextNode(resolved.slice(1))); cell.replaceChild(explicit, formula);
@@ -129,9 +133,26 @@ export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly W
         }
       }
     }
+    if (options.retainFormulaCaches) {
+      const index = indexes.get(part)!, edited = child(index.cells.get(`${value.row}:${value.column}`) ?? document.documentElement!, 'f');
+      if (edited?.getAttribute('t') === 'shared' && value.formula !== previous?.formula) {
+        const identity = edited.getAttribute('si');
+        for (const [position, cell] of index.shared.get(identity!) ?? []) {
+          const formula = child(cell, 'f')!;
+          const resolved = sourceCells.get(sheet.id)!.get(position)?.formula;
+          if (!resolved) throw new WorkbookFormatError('Shared workbook formula is unresolved.');
+          const explicit = formula.cloneNode(false) as Element;
+          for (const attribute of ['t', 'si', 'ref']) explicit.removeAttribute(attribute);
+          explicit.appendChild(document.createTextNode(resolved.slice(1))); cell.replaceChild(explicit, formula);
+        }
+        index.shared.delete(identity!);
+      }
+    }
     const root = document.documentElement!;
     rejectProtectedEdit(restrictions.get(part)!, value);
-    writeValue(document, ensureCell(document, root, value, indexes.get(part)!), value);
+    // Same-formula values are untrusted browser caches, not authored edits.
+    // Retain the source cell/cache exactly; supported results are computed later.
+    if (!options.retainFormulaCaches || !value.formula || value.formula !== previous?.formula) writeValue(document, ensureCell(document, root, value, indexes.get(part)!), value);
     // Optional used-range hints must not prevent an application finding a new
     // cell. Recompute on open instead of retaining a stale dimension hint.
     remove(root, 'dimension');
@@ -147,7 +168,7 @@ export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly W
         for (const cell of children(row, 'c').sort((a, b) => address(a.getAttribute('r')!).column - address(b.getAttribute('r')!).column)) row.appendChild(cell);
       }
     }
-    for (const row of data ? children(data, 'row') : []) for (const cell of children(row, 'c')) if (child(cell, 'f')) {
+    for (const row of data ? children(data, 'row') : []) for (const cell of children(row, 'c')) if (child(cell, 'f') && !options.retainFormulaCaches) {
       remove(cell, 'v'); cell.removeAttribute('t'); changed = true;
     }
     if (changed) output.set(source.sheetParts.get(sheetId)!, writeWorkbookXml(document));
