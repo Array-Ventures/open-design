@@ -143,3 +143,11 @@ it('journals formatting-only intent and retries its exact identity after a lost 
   expect(intents[0]).toBe(intents[1]); expect(intents[0]!.plan.edits).toEqual([]); expect(intents[0]!.plan.styles).toEqual([{ sheetId: 's', row: 0, column: 0, bold: true }]);
   expect(writer.state()).toEqual({ dirty: false, saving: false, error: null }); await writer.close();
 });
+
+it('keeps exact rich runs in a frozen pending intent and checkpoint, and ignores its late acknowledgement after disposal', async () => {
+ const {source,initial}=fixture(),desired=structuredClone(initial),response=deferred<typeof source>(),accepted=vi.fn(),changed=vi.fn();
+ desired.sheets.s!.cellData![0]![0]!.p={id:'rich',documentStyle:{},body:{dataStream:'rich 😀\r\n',paragraphs:[{startIndex:7,paragraphId:'p'}],textRuns:[{st:0,ed:5,ts:{bl:1}},{st:5,ed:7,ts:{it:1}}]}};
+ const writer=new WorkbookWriter(source,initial,()=>response.promise,changed,accepted);writer.update(desired);const running=writer.flush();await Promise.resolve();
+ const checkpoint=writer.checkpoint();expect(checkpoint.desired).toEqual(desired);expect(checkpoint.pending?.intent.plan.edits[0]!.cell).toMatchObject({kind:'string',value:'rich 😀',runs:[{text:'rich ',font:{bold:true}},{text:'😀',font:{italic:true}}]});
+ writer.dispose();changed.mockClear();response.resolve({...source,sourceSha256:'b'.repeat(64)});await running;expect(changed).not.toHaveBeenCalled();expect(accepted).not.toHaveBeenCalled();expect(checkpoint.desired).toEqual(desired);
+});

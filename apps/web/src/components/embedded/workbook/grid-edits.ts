@@ -1,6 +1,7 @@
 import { CellValueType, type ICellData, type IWorkbookData } from '@univerjs/presets';
 import { workbookEditPlanSchema, type WorkbookCell, type WorkbookDimensionEdit, type WorkbookDocument, type WorkbookStyleEdit } from '@open-design/contracts/runtime/workbook';
 
+import { workbookRichText } from './grid-rich-text';
 import { gridDimensionEdits } from './grid-dimensions';
 
 export class WorkbookEditError extends Error {}
@@ -62,16 +63,13 @@ function positions(matrix: IWorkbookData['sheets'][string]['cellData']) {
   return result;
 }
 function cellAt(matrix: IWorkbookData['sheets'][string]['cellData'], row: number, column: number): ICellData { return matrix?.[row]?.[column] ?? {}; }
-function richText(cell: ICellData): string | undefined {
-  if (!cell.p) return undefined;
-  const text = cell.p.body?.dataStream;
-  if (typeof text !== 'string' || !text.endsWith('\r\n')) return fail('This cell contains unsupported text content. Your changes are still in the workbook.');
-  return text.slice(0, -2);
-}
-function scalar(cell: ICellData, original: WorkbookCell | undefined, row: number, column: number): WorkbookCell {
+function scalar(cell: ICellData, original: WorkbookCell | undefined, row: number, column: number, model: WorkbookDocument): WorkbookCell {
+  if(original?.kind==='string'&&original.runs!==undefined&&model.richTextMetadata!=='verified')return fail('This rich draft uses an older source preview. Keep the draft; verify the source before saving rich edits.');
   const position = { row, column, ...(original?.style === undefined ? {} : { style: original.style }) };
   if (cell.f) return { ...position, kind: 'blank', value: null, formula: cell.f };
-  const rich = richText(cell), value = rich ?? cell.v;
+  let rich: ReturnType<typeof workbookRichText>;try { rich=workbookRichText(cell,original,model); }catch(error){return fail(error instanceof Error?error.message:'The rich cell could not be validated.');}
+  if(rich)return {...position,kind:'string',...rich};
+  const value = cell.v;
   if (value === null || value === undefined) return { ...position, kind: 'blank', value: null };
   if (cell.t === CellValueType.BOOLEAN) {
     if (value !== 0 && value !== 1 && typeof value !== 'boolean') return fail('The boolean cell value could not be validated.');
@@ -120,13 +118,11 @@ export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string,
           styles.push({ sheetId: sheet.id, row, column, ...delta });
         }
       }
+      if (bf && bp && !same(ap,bp)) fail('Replace the formula before authoring rich cell content.');
       if (af && af === bf && same(ap, bp)) continue; // cached results are not user edits
       if (same({ v: av, t: at, f: af, p: ap }, { v: bv, t: bt, f: bf, p: bp })) continue;
-      if (bp && !same(ap, bp)) {
-        const runs = bp.body?.textRuns ?? [];
-        if (runs.some(run => run.ts && Object.values(run.ts).some(value => value !== undefined))) fail('Rich text formatting changed. Keep this workbook open; these changes cannot be saved yet.');
-      }
-      edits.push({ sheetId: sheet.id, cell: scalar(b, originals.get(coordinate), row, column) });
+      const next = scalar(b, originals.get(coordinate), row, column, model);
+      if (!same(next,originals.get(coordinate))) edits.push({sheetId:sheet.id,cell:next});
     }
   }
   return workbookEditPlanSchema.parse({ sourceSha256, edits, ...(dimensions.length ? { dimensions } : {}), ...(styles.length ? { styles } : {}) });

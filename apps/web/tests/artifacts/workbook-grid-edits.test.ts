@@ -50,12 +50,12 @@ it('blocks an entire save containing unsupported formatting rather than partiall
   current.sheets.s1!.mergeData = [{ startRow: 0, endRow: 1, startColumn: 0, endColumn: 0 }];
   expect(() => workbookGridEdits(model, hash, initial, current)).toThrow('Sheet formatting or structure changed');
 });
-it('rejects sheet additions, out-of-bounds cells, invalid values and rich-format mutations', () => {
+it('rejects sheet additions, out-of-bounds cells, invalid values and unrepresentable rich-format mutations', () => {
   for (const mutate of [
     (current: IWorkbookData) => { current.sheetOrder.push('new'); },
     (current: IWorkbookData) => { current.sheets.s1!.cellData![1048576] = { 0: { v: 1 } }; },
     (current: IWorkbookData) => { current.sheets.s1!.cellData![0]![0]!.v = Infinity; },
-    (current: IWorkbookData) => { current.sheets.s1!.cellData![2]![0]!.p!.body!.textRuns![0]!.ts = { it: 1 }; },
+    (current: IWorkbookData) => { current.sheets.s1!.cellData![2]![0]!.p!.body!.textRuns![0]!.ts = { ol: {s:1} }; },
   ]) { const { model, initial, current } = fixture(); mutate(current); expect(() => workbookGridEdits(model, hash, initial, current)).toThrow(); }
 });
 it('allows view changes without inventing content edits', () => {
