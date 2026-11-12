@@ -169,6 +169,48 @@ describe('FileViewer manual edit regressions', () => {
     expect(cancelManualEditPendingStyleSnapshot(otherTargetPending, 'cta', ['fontSize'])).toBe(otherTargetPending);
   });
 
+  it.each([false, true])('flushes the panel draft before safe exit and retains it after a failed write (failure: %s)', async (failFirst) => {
+    const source = '<!doctype html><html><body><main data-od-id="hero">Hero</main></body></html>';
+    const saved: string[] = [];
+    let exit: (() => Promise<boolean>) | null = null;
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes('/api/projects/project-1/files') && init?.method === 'POST') {
+        saved.push(String(init.body));
+        if (failFirst && saved.length === 1) {
+          return new Response(JSON.stringify({ error: { message: 'disk full' } }), {
+            status: 500, headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response(JSON.stringify({ file: htmlPreviewFile() }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(source, { status: 200, headers: { 'Content-Type': 'text/html' } });
+    }));
+    render(<FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()}
+      liveHtml={source} onManualEditExitHandlerChange={(_file, handler) => { exit = handler; }} />);
+    await enterManualEditMode();
+    await selectManualEditTarget();
+    const textarea = document.querySelector('.manual-edit-right textarea') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'Preserved panel draft' } });
+    expect(exit).not.toBeNull();
+    let accepted: boolean | undefined;
+    await act(async () => { accepted = await exit!(); });
+    expect(saved).toHaveLength(1);
+    expect(JSON.parse(saved[0]!).content).toContain('<main data-od-id="hero">Preserved panel draft</main>');
+    expect(accepted).toBe(!failFirst);
+    if (failFirst) {
+      expect(screen.getByTestId('manual-edit-mode-toggle').getAttribute('aria-pressed')).toBe('true');
+      expect((document.querySelector('.manual-edit-right textarea') as HTMLTextAreaElement).value).toBe('Preserved panel draft');
+      expect(screen.getByText(/Could not save the edited file/)).toBeTruthy();
+      await act(async () => { accepted = await exit!(); });
+      expect(accepted).toBe(true);
+      expect(saved).toHaveLength(2);
+      expect(JSON.parse(saved[1]!).content).toContain('Preserved panel draft');
+    }
+    expect(screen.getByTestId('manual-edit-mode-toggle').getAttribute('aria-pressed')).toBe('false');
+  });
+
   it('opens edit mode with a clean canvas and no docked panel', async () => {
     const source = '<!doctype html><html><body><main data-od-id="hero">Hero</main></body></html>';
     vi.stubGlobal('fetch', vi.fn(async () =>

@@ -13768,6 +13768,9 @@ function HtmlViewer({
   }
 
   async function exitManualEditModeAfterFlush(): Promise<boolean> {
+    // The properties panel has its own content draft, separate from inline
+    // text sessions and debounced styles. A safe exit must persist it too.
+    if (manualEditDraftDirty && !(await saveManualEditPanelDraft())) return false;
     // A failed text commit must keep edit mode open with its error visible,
     // rather than tearing down (which would clear the error) and looking saved.
     if (!(await settlePendingManualEditCommit())) {
@@ -13943,7 +13946,7 @@ function HtmlViewer({
     return null;
   }
 
-  async function saveManualEditPanelDraft() {
+  async function saveManualEditPanelDraft(): Promise<boolean> {
     const selectedTarget = selectedManualEditTarget;
     const contentPatchBeforeText = selectedTarget
       ? manualEditContentPatchForDraft(selectedTarget, manualEditDraft, sourceRef.current ?? '')
@@ -13951,19 +13954,20 @@ function HtmlViewer({
     const panelContentChanged = contentPatchBeforeText !== null;
     const textCommitSequenceBeforeSave = manualEditTextCommitSequenceRef.current;
     const hadTextCommitInFlight = Boolean(manualEditTextCommitInFlightRef.current);
-    if (!(await settlePendingManualEditCommit(!panelContentChanged))) return;
+    if (!(await settlePendingManualEditCommit(!panelContentChanged))) return false;
     const inlineTextCommitted =
       hadTextCommitInFlight ||
       manualEditTextCommitSequenceRef.current !== textCommitSequenceBeforeSave;
     if (selectedTarget && (panelContentChanged || !inlineTextCommitted)) {
       const base = sourceRef.current ?? '';
       const contentPatch = manualEditContentPatchForDraft(selectedTarget, manualEditDraft, base);
-      if (contentPatch && !(await applyManualEdit(contentPatch.patch, contentPatch.label))) return;
+      if (contentPatch && !(await applyManualEdit(contentPatch.patch, contentPatch.label))) return false;
     }
     const ok = await flushManualEditStyleSave();
-    if (!ok) return;
+    if (!ok) return false;
     if (selectedManualEditTarget) void clearManualEditTargetSelection();
     else setManualEditPageStylesOpen(false);
+    return true;
   }
 
   function syncRetainedManualEditDocument(savedSource: string, patch: ManualEditPatch): void {
