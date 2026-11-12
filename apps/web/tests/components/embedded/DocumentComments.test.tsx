@@ -200,3 +200,14 @@ it.each(['ltr', 'rtl'])('resizes the comments pane with logical keyboard directi
   fireEvent.keyDown(separator, { key: 'Home' }); expect(separator).toHaveAttribute('aria-valuenow', '240');
   fireEvent.keyDown(separator, { key: 'End' }); expect(separator).toHaveAttribute('aria-valuenow', '480');
 });
+
+it('withdraws document formatting while reviewing comments and restores it after close', async () => {
+  render(<Harness />);
+  expect(screen.getByRole('toolbar', { name: 'Document insertion' })).toBeTruthy();
+  await selectAndOpen();
+  await waitFor(() => expect(screen.queryByRole('toolbar', { name: 'Document insertion' })).toBeNull());
+  expect(editor().isEditable()).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Close comments' }));
+  await waitFor(() => expect(screen.getByRole('toolbar', { name: 'Document insertion' })).toBeTruthy());
+  expect(api.documentSave).not.toHaveBeenCalled();
+});

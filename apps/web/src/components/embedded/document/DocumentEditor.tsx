@@ -74,6 +74,7 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
   const [headingFont, setHeadingFont] = useState<'sans' | 'serif'>('serif');
   const [imageStatus, setImageStatus] = useState<string | null>(null);
   const [editing, setEditing] = useState(true);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const writer = useRef<DocumentWriter | null>(null);
   const controllerId = useRef(crypto.randomUUID()).current;
   useLayoutEffect(() => {
@@ -134,9 +135,9 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
           placeholder={<div className={styles.placeholder}>Start writing…</div>} ErrorBoundary={LexicalErrorBoundary} />
       </div>
     </div>
-    {feedback ? <DocumentComments onDirtyChange={onCommentDirtyChange} projectId={projectId} fileName={fileName} feedback={feedback} /> : null}
+    {feedback ? <DocumentComments onOpenChange={setCommentsOpen} onDirtyChange={onCommentDirtyChange} projectId={projectId} fileName={fileName} feedback={feedback} /> : null}
     <ScrollFade progress={fade.progress} surfaceClassName="from-background-primary-default" />
     </div>
-    {editing ? <DocumentToolbar font={font} headingFont={headingFont} onImageStatus={setImageStatus} /> : null}
+    {editing && !commentsOpen ? <DocumentToolbar font={font} headingFont={headingFont} onImageStatus={setImageStatus} /> : null}
   </>;
 }

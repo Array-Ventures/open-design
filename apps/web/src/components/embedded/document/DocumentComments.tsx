@@ -22,9 +22,10 @@ import { captureDocumentComment, documentCommentQuote, documentCommentTarget, re
 
 /** Uses the existing authorized comment/CAS/reply/handoff services. The editor
  * owns exact text anchors; annotations never replace or freeze the document. */
-export function DocumentComments({ projectId, fileName, feedback, onDirtyChange }: { onDirtyChange?(dirty: boolean): void; projectId: string; fileName: string; feedback: ArtifactFeedbackProps }) {
+export function DocumentComments({ projectId, fileName, feedback, onDirtyChange, onOpenChange }: { onOpenChange?(open: boolean): void; onDirtyChange?(dirty: boolean): void; projectId: string; fileName: string; feedback: ArtifactFeedbackProps }) {
   const [editor] = useLexicalComposerContext(), viewer = useEmbeddedViewer(), review = useCommentReview();
   const [open, setOpen] = useState(false), [list, setList] = useState(false);
+  useEffect(() => { onOpenChange?.(open); return () => onOpenChange?.(false); }, [open, onOpenChange]);
   const [selected, setSelected] = useState<PreviewComment | null>(null), [target, setTarget] = useState<PreviewCommentTarget | null>(null);
   const [draft, setDraft] = useState(''), [editing, setEditing] = useState(false), [busy, setBusy] = useState(false), [replyDirty, setReplyDirty] = useState(false), [handoffPending, setHandoffPending] = useState(false), [notice, setNotice] = useState<string | null>(null);
   const [width, setWidth] = useState(320), [replyRevision, setReplyRevision] = useState(0);
