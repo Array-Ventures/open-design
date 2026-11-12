@@ -24,10 +24,10 @@ function command(action: string, overrides = {}) {
   const state = host.postMessage.mock.calls.filter(call => call[0].type === 'studio:feedback-state').at(-1)![0];
   act(() => window.dispatchEvent(new MessageEvent('message', { source: host as unknown as Window, origin: window.location.origin, data: { type: 'studio:feedback-control', projectId: 'project', controllerId: state.controllerId, action, ...overrides } })));
 }
-function Harness({ initial = [] }: { initial?: PreviewComment[] }) {
+function Harness({ initial = [], documentObserved = observed }: { initial?: PreviewComment[]; documentObserved?: typeof observed }) {
   const [comments, update] = useState(initial);
   return <CommentReviewProvider projectId="project" changeStatus={async (id, status) => { api.status(id, status); update(current => current.map(comment => comment.id === id ? { ...comment, status } : comment)); return true; }}>
-    <DocumentEditor projectId="project" fileName="report.html" title="Report" observed={observed} onSaved={() => {}} feedback={{ previewComments: comments, previewCommentsState: 'success', onSavePreviewComment: async (...args) => {
+    <DocumentEditor projectId="project" fileName="report.html" title="Report" observed={documentObserved} onSaved={() => {}} feedback={{ previewComments: comments, previewCommentsState: 'success', onSavePreviewComment: async (...args) => {
       const saved = await api.save(...args); if (saved) update(current => [...current.filter(comment => comment.id !== saved.id), saved]); return saved;
     }, onRemovePreviewComment: async id => { api.remove(id); update(current => current.filter(comment => comment.id !== id)); return true; }, onSendBoardCommentAttachments: api.send }} />
   </CommentReviewProvider>;
@@ -232,4 +232,19 @@ it('keeps a pending image upload and its receipt through comment visibility chan
   fireEvent.click(insert);
   expect(await screen.findByRole('img', { name: 'Retained upload' })).toBeTruthy();
   expect(imageUpload).toHaveBeenCalledTimes(1);
+});
+
+it('keeps unsent selected-text feedback and the same editor while navigating a document section', async () => {
+  const documentObserved = { ...observed, html: documentHtml('Report', '<h1 data-od-id="intro">Intro</h1><p data-od-id="body">Body</p><h2 data-od-id="next">Next section</h2>') };
+  render(<Harness documentObserved={documentObserved} />);
+  const active = editor(), content = screen.getByRole('textbox', { name: 'Report' });
+  const input = await selectAndOpen(); fireEvent.change(input, { target: { value: 'Unsent section feedback' } });
+  const quote = screen.getByLabelText('Selected document text');
+  const before = quote.textContent;
+  fireEvent.click(screen.getByRole('button', { name: 'Document outline' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Section 2, heading level 2: Next section' }));
+  await waitFor(() => expect(content.querySelector('h2')).toHaveFocus());
+  expect(editor()).toBe(active); expect(screen.getByRole('textbox', { name: 'Report' })).toBe(content);
+  expect(input).toHaveValue('Unsent section feedback'); expect(quote).toHaveTextContent(before!);
+  expect(api.save).not.toHaveBeenCalled(); expect(api.documentSave).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
 });

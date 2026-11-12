@@ -28,6 +28,7 @@ import { saveDocumentFile, type DocumentFile } from './document-file';
 import { DocumentWriter, type DocumentWriteState } from './document-writer';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
 import { DocumentImageNode, DocumentImageScope } from './DocumentImageNode';
+import { DocumentOutline } from './DocumentOutline';
 import { DocumentToolbar } from './DocumentToolbar';
 import styles from './DocumentEditor.module.css';
 import { Button } from '../boardui/button';
@@ -116,6 +117,7 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
   const status = writeState.error ? 'Not saved' : writeState.saving ? 'Saving…' : writeState.dirty ? 'Unsaved changes' : 'Saved';
   return <>
     <div className="flex shrink-0 items-center justify-end gap-2 px-3 py-2 text-caption-1-regular text-text-tertiary" >
+      <DocumentOutline />
       <span role="status">{status}</span>
       {writeState.dirty ? <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiSaveLine} aria-label="Save document" title="Save" disabled={writeState.saving || !writeState.dirty} onClick={() => { void writer.current?.flush(); }} /> : null}
       <Dropdown>
