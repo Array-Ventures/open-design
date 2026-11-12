@@ -24,7 +24,7 @@ it('accepts only its host-bound save command and acknowledges only a refreshed m
   const post = vi.spyOn(window, 'postMessage'), acknowledged = vi.fn(), dirty = vi.fn();
   host.save.mockResolvedValue({ targetSha256: target.sourceSha256 }); host.load.mockResolvedValue(target);
   const { result } = renderHook(() => useWorkbookEditor(projectId, 'Forecast.xlsx', source, acknowledged, dirty));
-  act(() => { result.current.ready(initial); result.current.snapshot(edit()); });
+  await act(async () => { await result.current.ready(initial); result.current.snapshot(edit()); });
   const { controllerId } = latestController(post);
   act(() => { command(controllerId, 'http://wrong.test'); command('wrong'); command(controllerId, window.location.origin, {} as Window); }); expect(host.save).not.toHaveBeenCalled();
   await act(async () => command(controllerId));
@@ -34,7 +34,7 @@ it('accepts only its host-bound save command and acknowledges only a refreshed m
 it('retains the frozen operation and dirty grid when a refreshed file is newer than the receipt', async () => {
   const post = vi.spyOn(window, 'postMessage'), acknowledged = vi.fn(); host.save.mockResolvedValue({ targetSha256: target.sourceSha256 }); host.load.mockResolvedValue({ ...target, sourceSha256: 'c'.repeat(64) });
   const { result } = renderHook(() => useWorkbookEditor(projectId, 'Forecast.xlsx', source, acknowledged));
-  act(() => { result.current.ready(initial); result.current.snapshot(edit()); }); const { controllerId } = latestController(post);
+  await act(async () => { await result.current.ready(initial); result.current.snapshot(edit()); }); const { controllerId } = latestController(post);
   await act(async () => command(controllerId)); await waitFor(() => expect(result.current.state.error).toContain('changed after saving'));
   expect(result.current.state.dirty).toBe(true); expect(acknowledged).not.toHaveBeenCalled();
   host.load.mockResolvedValue(target); await act(async () => command(controllerId)); await waitFor(() => expect(result.current.state.dirty).toBe(false));
@@ -44,7 +44,7 @@ it('aborts on unmount and ignores late save responses', async () => {
   const post = vi.spyOn(window, 'postMessage'), acknowledged = vi.fn(); let resolve!: (value: unknown) => void;
   host.save.mockImplementation(() => new Promise(done => { resolve = done; }));
   const view = renderHook(() => useWorkbookEditor(projectId, 'Forecast.xlsx', source, acknowledged));
-  act(() => { view.result.current.ready(initial); view.result.current.snapshot(edit()); }); await act(async () => command(latestController(post).controllerId));
+  await act(async () => { await view.result.current.ready(initial); view.result.current.snapshot(edit()); }); await act(async () => command(latestController(post).controllerId));
   const signal = host.save.mock.calls[0]![1] as AbortSignal; view.unmount(); expect(signal.aborted).toBe(true);
   await act(async () => resolve({ targetSha256: target.sourceSha256 })); expect(acknowledged).not.toHaveBeenCalled();
 });
@@ -52,7 +52,25 @@ it('stops the old writer when access removes its source and clears the visible d
   const post = vi.spyOn(window, 'postMessage'), acknowledged = vi.fn(); let observed: typeof source | null = source;
   host.save.mockImplementation(() => new Promise(() => {}));
   const view = renderHook(() => useWorkbookEditor(projectId, 'Forecast.xlsx', observed, acknowledged));
-  act(() => { view.result.current.ready(initial); view.result.current.snapshot(edit()); }); await act(async () => command(latestController(post).controllerId));
+  await act(async () => { await view.result.current.ready(initial); view.result.current.snapshot(edit()); }); await act(async () => command(latestController(post).controllerId));
   const signal = host.save.mock.calls[0]![1] as AbortSignal; observed = null; view.rerender();
   expect(signal.aborted).toBe(true); expect(view.result.current.state.dirty).toBe(false); expect(acknowledged).not.toHaveBeenCalled();
+});
+
+it('pauses only a clean writer and ignores snapshots until that writer resumes', async () => {
+  const view = renderHook(() => useWorkbookEditor(projectId, 'Forecast.xlsx', source, vi.fn()));
+  await act(async () => { await view.result.current.ready(initial); });
+  await act(async () => { expect(await view.result.current.pause()).toBe(true); });
+  act(() => view.result.current.snapshot(edit())); expect(view.result.current.state.dirty).toBe(false);
+  await act(async () => view.result.current.resumeClean());
+  act(() => view.result.current.snapshot(edit())); expect(view.result.current.state.dirty).toBe(true);
+  await act(async () => { expect(await view.result.current.pause()).toBe(false); });
+});
+it('opens history only for the exact host/controller and publishes its pending restore guard', async () => {
+  const post = vi.spyOn(window, 'postMessage'), show = vi.fn();
+  const view = renderHook(() => useWorkbookEditor(projectId, 'Forecast.xlsx', source, vi.fn(), undefined, undefined, undefined, { open: true, blocked: true, show }));
+  const controllerId = view.result.current.controllerId;
+  for (const origin of ['http://wrong.test', window.location.origin]) act(() => window.dispatchEvent(new MessageEvent('message', { source: window, origin, data: { type: 'studio:workbook-control', projectId, controllerId, action: 'history' } })));
+  expect(show).toHaveBeenCalledOnce();
+  expect(latestController(post)).toMatchObject({ dirty: true, restoring: true, historyOpen: true });
 });

@@ -1,0 +1,26 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { WorkbookHistory } from '../../../src/components/embedded/workbook/WorkbookHistory';
+import type { useWorkbookHistory } from '../../../src/components/embedded/workbook/use-workbook-history';
+const sha = 'a'.repeat(64), target = 'b'.repeat(64);
+function fixture() {
+  return { open: true, versions: [{ id: 'v1', fileName: 'book.xlsx', version: 1, label: 'Original', createdAt: 1, source: 'manual', size: 10, current: false, contentDigest: target }],
+    selected: { id: 'v1', version: 1, contentDigest: target }, cursor: 'older', sha, error: null, loading: false, working: false, checking: false, intent: null,
+    close: vi.fn(), select: vi.fn(), refresh: vi.fn(), more: vi.fn(), restore: vi.fn() } as unknown as ReturnType<typeof useWorkbookHistory>;
+}
+afterEach(cleanup);
+it('uses a compact nonmodal history card with distinct select, pagination and restore actions', () => {
+  const history = fixture(); render(<WorkbookHistory history={history} dirty={false} sourceSha256={sha} reload={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Version 1' })); expect(history.select).toHaveBeenCalledWith(history.versions[0]);
+  fireEvent.click(screen.getByRole('button', { name: 'Load older' })); expect(history.more).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole('button', { name: /^Restore$/ })); expect(history.restore).toHaveBeenCalledOnce();
+  fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' }); expect(history.close).toHaveBeenCalledOnce();
+});
+it('blocks restoration for unsaved edits but keeps pending-receipt checks available across a current-source mismatch', () => {
+  const history = fixture(); const view = render(<WorkbookHistory history={history} dirty={true} sourceSha256={sha} reload={vi.fn()} />);
+  expect(screen.getByRole('button', { name: /^Restore$/ }).hasAttribute('disabled')).toBe(true);
+  expect(screen.getByText('Save or discard your edits before restoring.')).toBeTruthy();
+  view.rerender(<WorkbookHistory history={{ ...history, intent: {} as never }} dirty={false} sourceSha256={target} reload={vi.fn()} />);
+  expect(screen.getByRole('button', { name: 'Check status' }).hasAttribute('disabled')).toBe(false);
+});

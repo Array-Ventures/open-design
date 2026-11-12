@@ -7,6 +7,7 @@ import { cx } from '../boardui/cx';
 export interface WorkbookRecoveryCardProps {
   drafts: { draftId: string; updatedAt: number }[];
   busy: boolean;
+  restoreDisabled?: boolean;
   error: string | null;
   onRestore(draftId: string): void;
   onDiscard(draftId: string): void;
@@ -24,7 +25,7 @@ function draftTime(updatedAt: number) {
 }
 
 /** Presentation only: the caller owns access, draft storage and recovery. */
-export function WorkbookRecoveryCard({ drafts, busy, error, onRestore, onDiscard, onContinue, onDownload }: WorkbookRecoveryCardProps) {
+export function WorkbookRecoveryCard({ drafts, busy, restoreDisabled, error, onRestore, onDiscard, onContinue, onDownload }: WorkbookRecoveryCardProps) {
   const titleId = useId(), descriptionId = useId();
   return <section aria-labelledby={titleId} aria-describedby={descriptionId} aria-busy={busy}
     className="w-full max-w-sm rounded-xl border border-border-button-default bg-background-primary-default p-4 text-text-primary shadow-sm">
@@ -39,7 +40,7 @@ export function WorkbookRecoveryCard({ drafts, busy, error, onRestore, onDiscard
         return <li key={draftId} className="flex min-w-0 items-center gap-2 rounded-lg bg-background-secondary-default px-2 py-2">
           <time dateTime={time.iso} className="min-w-0 flex-1 truncate text-caption-1-regular text-text-secondary" title={time.label}>{time.label}</time>
           <div className="flex shrink-0 items-center gap-1">
-            <Button type="button" variant="ghost" size="xs" className={cx(ARTIFACT_ICON_BUTTON, 'text-text-secondary')} disabled={busy} aria-label={`Restore ${name}`} onClick={() => onRestore(draftId)}>Restore</Button>
+            <Button type="button" variant="ghost" size="xs" className={cx(ARTIFACT_ICON_BUTTON, 'text-text-secondary')} disabled={busy || restoreDisabled} aria-label={`Restore ${name}`} onClick={() => onRestore(draftId)}>Restore</Button>
             {onDownload ? <Button type="button" variant="ghost" size="small" className={ARTIFACT_ICON_BUTTON} iconOnly leadingIcon={RiDownloadLine} disabled={busy}
               aria-label={`Download ${name}`} title="Download recovery copy (JSON)" onClick={() => onDownload(draftId)} /> : null}
             <Button type="button" variant="ghost" size="small" className={ARTIFACT_ICON_BUTTON} iconOnly leadingIcon={RiDeleteBinLine} disabled={busy}

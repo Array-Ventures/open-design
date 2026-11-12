@@ -76,3 +76,17 @@ it('refuses invalid coordinates and inconsistent sheet identities before replaci
   }
   expect(await readWorkbookDraft(scope)).toEqual(checkpoint);
 });
+
+it('keeps a restore identity account-scoped and compare-and-set without altering editable drafts', async () => {
+  const { accessWorkbookRestore } = await import('../../src/components/embedded/workbook/draft-store');
+  const { checkpoint } = fixture(); await saveWorkbookDraft(scope, checkpoint);
+  const intent = { version: 1 as const, viewerId: scope.viewerId, projectId: scope.projectId, fileName: scope.fileName, operationId: '18a8301a-b6e1-4001-8000-c967b1eab229', preparationId: '18a8301a-b6e1-4001-8000-c967b1eab228', versionId: 'v1', sourceSha256: 'a'.repeat(64), versionSha256: 'b'.repeat(64) };
+  await accessWorkbookRestore(scope, { expected: null, value: intent });
+  expect(await accessWorkbookRestore(scope)).toEqual(intent);
+  expect(await accessWorkbookRestore({ ...scope, viewerId: 'another' })).toBeNull();
+  await expect(accessWorkbookRestore(scope, { expected: null, value: { ...intent, operationId: '18a8301a-b6e1-4001-8000-c967b1eab227' } })).rejects.toThrow('unresolved');
+  await expect(accessWorkbookRestore(scope, { expected: 'wrong', value: null })).rejects.toThrow('unresolved');
+  expect(await readWorkbookDraft(scope)).toEqual(checkpoint);
+  await accessWorkbookRestore(scope, { expected: intent.operationId, value: null });
+  expect(await accessWorkbookRestore(scope)).toBeNull(); expect(await readWorkbookDraft(scope)).toEqual(checkpoint);
+});

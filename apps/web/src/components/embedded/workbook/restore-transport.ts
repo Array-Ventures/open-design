@@ -20,3 +20,52 @@ export async function prepareWorkbookRestore(projectId: string, body: WorkbookRe
   if (prepared.sha256 !== body.versionSha256) throw new WorkbookHostError('The prepared restore does not match the selected workbook revision.');
   return job;
 }
+
+/** Exact binary restore uses the same durable save receipt, never an edit-plan
+ * reprepare. Retain both IDs until that receipt is authoritative. */
+export async function restoreWorkbookVersion(intent: import('./restore-intent').WorkbookRestoreIntent, protect: () => Promise<void>, signal?: AbortSignal) {
+  const { workbookSaveReceiptSchema } = await import('./save-transport');
+  const check = (raw: unknown) => {
+    const save = workbookSaveReceiptSchema.parse(raw);
+    if (save.id !== intent.operationId || save.projectId !== intent.projectId || save.fileName !== intent.fileName
+      || save.sourceSha256 !== intent.sourceSha256 || save.targetSha256 !== intent.versionSha256
+      || intent.renderId && save.renderId !== intent.renderId
+      || save.state === 'applied' && (!save.versionId || save.actualSha256 !== intent.versionSha256)
+      || save.state !== 'applied' && (save.versionId !== null || ['pending', 'cancelled'].includes(save.state) && save.actualSha256 !== null)) throw new WorkbookHostError('The restore receipt does not match the selected revision.');
+    return save;
+  };
+  const read = async () => {
+    try { return check(await workbookHostRequest(intent.projectId, { action: 'read-save', saveId: intent.operationId }, signal)); }
+    catch (error) { if (error instanceof WorkbookHostError && error.status === 404) return null; throw error; }
+  };
+  let save = await read();
+  if (!save) {
+    try {
+      const job = await prepareWorkbookRestore(intent.projectId, { operationId: intent.preparationId, fileName: intent.fileName,
+        versionId: intent.versionId, versionSha256: intent.versionSha256, sourceSha256: intent.sourceSha256 }, signal);
+      if (intent.renderId && intent.renderId !== job.id) throw new WorkbookHostError('The restore preparation identity changed.');
+      intent.renderId = job.id; await protect();
+    } catch (error) {
+      if (!(error instanceof WorkbookPreparationGoneError || error instanceof WorkbookPreparationTerminalError)) throw error;
+      const job = error.job;
+      const raw = job.state === 'deleted' ? job : await workbookHostRequest(intent.projectId, { action: 'remove-render', renderId: job.id }, signal);
+      const removed = checkedWorkbookJob(raw ?? await workbookHostRequest(intent.projectId, { action: 'read-render', renderId: job.id }, signal), intent.projectId, intent.fileName, 'xlsx');
+      if (removed.id !== job.id || removed.state !== 'deleted') throw new WorkbookHostError('The restore preparation could not be retired safely.');
+      save = await read();
+      if (!save) throw new WorkbookRestoreFinishedError('unadmitted', 'This revision could not be prepared. No restore was admitted; select it again to retry.');
+    }
+    if (!save && !intent.renderId) throw new WorkbookHostError('The restore preparation has no immutable identity.');
+    if (!save) save = check(await workbookHostRequest(intent.projectId, { action: 'save', body: { operationId: intent.operationId, renderId: intent.renderId! } }, signal));
+  }
+  while (save.state === 'pending') {
+    await workbookPollDelay(signal);
+    const next = await read(); if (!next) throw new WorkbookHostError('The restore receipt is temporarily unavailable. Check this same operation again.');
+    save = next;
+  }
+  if (save.state !== 'applied') throw new WorkbookRestoreFinishedError(save.state,
+    save.state === 'conflict' ? 'The current workbook changed. Nothing was overwritten; refresh history before choosing a revision again.' : 'The restore was cancelled. The current workbook was kept.');
+  return save;
+}
+export class WorkbookRestoreFinishedError extends WorkbookHostError {
+  constructor(readonly outcome: 'conflict' | 'cancelled' | 'unadmitted', message: string) { super(message); }
+}

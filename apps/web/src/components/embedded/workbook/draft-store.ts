@@ -61,3 +61,37 @@ export async function saveWorkbookDraft(scope: WorkbookDraftScope, state: Workbo
     return tx.objectStore(STORE).put(serialized, key);
   });
 }
+
+/** A restore stores only immutable identities, separately from editable drafts.
+ * Compare-and-set prevents another tab replacing an unresolved operation. */
+export async function accessWorkbookRestore(scope: import('./restore-intent').WorkbookRestoreScope,
+  change?: { expected: string | null; value: import('./restore-intent').WorkbookRestoreIntent | null }): Promise<import('./restore-intent').WorkbookRestoreIntent | null> {
+  const { workbookRestoreIntentSchema } = await import('./restore-intent');
+  const key = `restore:${workbookDraftArtifactKey(scope)}`;
+  const database = await openDrafts();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = database.transaction(STORE, change ? 'readwrite' : 'readonly', { durability: 'strict' });
+      const store = tx.objectStore(STORE), request = store.get(key);
+      let result: import('./restore-intent').WorkbookRestoreIntent | null = null, failure: unknown;
+      request.onsuccess = () => {
+        try {
+          if (request.result !== undefined) {
+            if (typeof request.result !== 'string' || request.result.length > 16000) throw Error('The restore record could not be read.');
+            result = workbookRestoreIntentSchema.parse(JSON.parse(request.result));
+            if (workbookDraftArtifactKey(result) !== workbookDraftArtifactKey(scope)) throw Error('This restore belongs to another account or workbook.');
+          }
+          if (change) {
+            if ((result?.operationId ?? null) !== change.expected) throw Error('Another restore is unresolved. Check its status before starting another.');
+            const next = change.value && workbookRestoreIntentSchema.parse(change.value);
+            if (next && workbookDraftArtifactKey(next) !== workbookDraftArtifactKey(scope)) throw Error('This restore belongs to another account or workbook.');
+            if (next) store.put(JSON.stringify(next), key); else store.delete(key);
+            result = next;
+          }
+        } catch (error) { failure = error; tx.abort(); }
+      };
+      tx.oncomplete = () => resolve(result);
+      tx.onerror = tx.onabort = () => reject(failure ?? Error('The restore identity could not be protected on this device.'));
+    });
+  } finally { database.close(); }
+}

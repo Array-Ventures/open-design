@@ -12,13 +12,14 @@ import { connectWorkbookDiscard, WorkbookDiscardNotCommittedError, type Prepared
 type Preview = { sourceSha256: string; model: WorkbookDocument };
 
 export function useWorkbookEditor(projectId: string, fileName: string, source: Preview | null,
-  onAcknowledged: (source: Preview) => void, onDirtyChange?: (dirty: boolean) => void, journal?: WorkbookJournal, onDiscarded?: () => void) {
+  onAcknowledged: (source: Preview) => void, onDirtyChange?: (dirty: boolean) => void, journal?: WorkbookJournal, onDiscarded?: () => void, history?: { open: boolean; blocked: boolean; show(): void }) {
   const [state, setState] = useState<WorkbookWriteState>({ dirty: false, saving: false, error: null });
   const [discarding, setDiscarding] = useState(false);
-  const current = useRef({ projectId, fileName, source, onAcknowledged, onDirtyChange, journal, onDiscarded }); current.current = { projectId, fileName, source, onAcknowledged, onDirtyChange, journal, onDiscarded };
+  const current = useRef({ projectId, fileName, source, onAcknowledged, onDirtyChange, journal, onDiscarded, history, discarding }); current.current = { projectId, fileName, source, onAcknowledged, onDirtyChange, journal, onDiscarded, history, discarding };
   const restored = useRef(new WeakSet<WorkbookJournal>());
   const resume = useRef<ReturnType<WorkbookWriter['checkpoint']> | null>(null);
   const suspended = useRef<ReturnType<WorkbookWriter['checkpoint']> | null>(null);
+  const paused = useRef(false), pausedSnapshot = useRef<IWorkbookData | null>(null);
   const discardTask = useRef<Promise<PreparedWorkbookDiscard> | null>(null);
   const writer = useRef<WorkbookWriter | null>(null), running = useRef<AbortController | null>(null);
   const stateRef = useRef(state); stateRef.current = state;
@@ -74,13 +75,15 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     stateRef.current = empty; setState(empty); current.current.onDirtyChange?.(false);
   }, [source, closeWriter]);
   const snapshot = useCallback((value: IWorkbookData) => {
-    if (discardTask.current) return;
+    if (discardTask.current || paused.current || current.current.history?.blocked) return;
     writer.current?.update(value);
   }, []);
   const close = useCallback(() => discardTask.current ? discardTask.current.then(() => closeWriter()) : closeWriter(), [closeWriter]);
   const prepareDiscard = useCallback((signal: AbortSignal) => {
+    if (paused.current || current.current.history?.blocked) return Promise.reject(Error('Check the pending restore in History before discarding.'));
     if (discardTask.current) return Promise.reject(Error('A workbook discard is already being checked.'));
     const task = Promise.resolve().then(async (): Promise<PreparedWorkbookDiscard> => {
+      if (paused.current || current.current.history?.blocked) throw Error('Check the pending restore in History before discarding.');
       const owned = writer.current, journal = current.current.journal, openedSource = current.current.source;
       if (!owned || !journal || !openedSource) throw Error('The workbook connection changed. Reopen it before discarding.');
       setDiscarding(true);
@@ -136,22 +139,33 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
   }, [projectId, fileName, closeWriter, ready]);
   useEffect(() => connectWorkbookDiscard(projectId, controllerId, prepareDiscard), [projectId, controllerId, prepareDiscard, source?.sourceSha256]);
   useEffect(() => {
-    const publish = () => window.parent.postMessage({ type: 'studio:workbook-state', projectId, controllerId, ...state, error: state.error?.slice(0, 1000) ?? null }, window.location.origin);
+    const publish = () => window.parent.postMessage({ type: 'studio:workbook-state', projectId, controllerId, ...state, dirty: state.dirty || Boolean(history?.blocked), historyOpen: history?.open ?? false, restoring: history?.blocked ?? false, error: state.error?.slice(0, 1000) ?? null }, window.location.origin);
     const receive = (event: MessageEvent) => {
       if (event.source !== window.parent || event.origin !== window.location.origin || event.data?.projectId !== projectId) return;
       if (event.data.type === 'studio:artifact-request') publish();
-      if (!discardTask.current && event.data.type === 'studio:workbook-control' && event.data.controllerId === controllerId && event.data.action === 'save') void writer.current?.flush();
+      if (event.data.type === 'studio:workbook-control' && event.data.controllerId === controllerId && event.data.action === 'history') current.current.history?.show();
+      if (!paused.current && !current.current.history?.blocked && !discardTask.current && event.data.type === 'studio:workbook-control' && event.data.controllerId === controllerId && event.data.action === 'save') void writer.current?.flush();
 
     };
     publish(); window.addEventListener('message', receive);
-    const unload = (event: BeforeUnloadEvent) => { if (stateRef.current.dirty) { event.preventDefault(); event.returnValue = ''; } };
+    const unload = (event: BeforeUnloadEvent) => { if (stateRef.current.dirty || current.current.history?.blocked) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', unload);
     return () => { window.removeEventListener('message', receive); window.removeEventListener('beforeunload', unload); };
-  }, [projectId, controllerId, state]);
+  }, [projectId, controllerId, state, history?.open, history?.blocked]);
   useEffect(() => () => {
     void closeWriter();
     window.parent.postMessage({ type: 'studio:workbook-unavailable', projectId, controllerId }, window.location.origin);
   }, [projectId, controllerId, closeWriter]);
   const checkpoint = useCallback(() => writer.current?.checkpoint() ?? suspended.current, []);
-  return { controllerId, state, stateRef, ready, snapshot, close, checkpoint, discarding };
+  const pause = useCallback(async () => {
+    if (paused.current) return true;
+    if (!writer.current || stateRef.current.dirty || stateRef.current.saving || discardTask.current || current.current.discarding) return false;
+    paused.current = true; pausedSnapshot.current = writer.current.checkpoint().desired;
+    await closeWriter(); return true;
+  }, [closeWriter]);
+  const resumeClean = useCallback(async (accepted = false) => {
+    const previous = pausedSnapshot.current; pausedSnapshot.current = null; paused.current = false;
+    if (!accepted && previous) await ready(previous);
+  }, [ready]);
+  return { controllerId, state, stateRef, ready, snapshot, close, checkpoint, discarding, pause, resumeClean };
 }
