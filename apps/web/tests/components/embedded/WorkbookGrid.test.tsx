@@ -9,12 +9,12 @@ import { CommandType } from '@univerjs/presets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookGrid } from '../../../src/components/embedded/workbook/WorkbookGrid';
 
-const runtime = vi.hoisted(() => ({ context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
+const runtime = vi.hoisted(() => ({ rendered: Promise.resolve(), context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
   calculation: null as null | ((state: { phase: string; stored: number; unavailable: number; paused: boolean }) => void),
   input: null as null | ((message: string) => void), live: false, fail: null as null | (() => void), calculationDisposed: vi.fn(),
   getRange: vi.fn(), select: vi.fn(), createWorkbook: vi.fn(), editable: vi.fn(), activeSheet: vi.fn(), saved: vi.fn(), listener: null as null | ((event: { type: number; id: string }) => void) }));
 vi.mock('@univerjs/presets', async original => ({ ...await original<typeof import('@univerjs/presets')>(),
-  Univer: class { constructor() { runtime.created(); } registerPlugin = runtime.register; dispose = runtime.dispose; __getInjector = () => ({ get: () => ({ setContextValue: runtime.context }) }); },
+  Univer: class { constructor() { runtime.created(this); } registerPlugin = runtime.register; dispose = () => runtime.dispose(this); __getInjector = () => ({ get: () => ({ setContextValue: runtime.context, onStage: () => runtime.rendered }) }); },
   FUniver: { newAPI: () => ({ createWorkbook: runtime.createWorkbook, getActiveWorkbook: () => runtime.createWorkbook.mock.results.at(-1)?.value, Event: { CommandExecuted: 'CommandExecuted' },
     addEvent: (_event: string, callback: NonNullable<typeof runtime.listener>) => { runtime.listener = callback; return { dispose: runtime.off }; }, setTheme: runtime.theme, toggleDarkMode: runtime.dark }) },
 }));
@@ -26,7 +26,7 @@ vi.mock('@univerjs/rpc', () => ({ UniverRPCMainThreadPlugin: 'UniverRPCMainThrea
 const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 'inputs', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
   sheets: [{ id: 'inputs', name: 'Inputs', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
 beforeEach(() => {
-  runtime.live = false; runtime.fail = null;
+  runtime.live = false; runtime.fail = null; runtime.rendered = Promise.resolve();
   runtime.createWorkbook.mockReturnValue({ onSelectionChange: () => ({ dispose: runtime.selectionOff }), getWorkbookPermission: () => ({ canEdit: () => true }), setActiveSheet: runtime.activeSheet, setEditable: runtime.editable, save: runtime.saved, getActiveSheet: () => ({ getSheetId: () => 'inputs', getMaxRows: () => 100, getMaxColumns: () => 26, getSelection: () => ({ getActiveRange: () => ({ getRange: () => ({ startRow: 5, endRow: 5, startColumn: 2, endColumn: 2 }) }) }), getRange: runtime.getRange, setActiveRange: runtime.select }) });
   runtime.getRange.mockReturnValue({ boundWorksheet: 'inputs' });
   runtime.saved.mockReturnValue({ id: 'current-grid-state' });
@@ -223,4 +223,49 @@ it('retains CSV sizing through the real writer acknowledgement and refreshed sou
   expect(saved.sheets.inputs!.columnData![1]!.w).toBe(148); expect(saved.sheets.inputs!.rowData![2]!.h).toBe(42);
   expect(saved.sheets.inputs!.cellData![0]![0]!.v).toBe('00017');
   expect(writer.state().dirty).toBe(false); view.unmount(); await writer.close();
+});
+
+it('retains an inert rendered canvas until the replacement renderer is ready, then releases the old kernel', async () => {
+  runtime.saved.mockReturnValue(gridWorkbook(model, 'grid', 'Revenue').data);
+  const view = render(<WorkbookGrid id="grid" title="Revenue" model={model} />);
+  const host = screen.getByRole('region', { name: 'Workbook grid' });
+  await waitFor(() => expect(runtime.listener).not.toBeNull());
+  await waitFor(() => expect(host).not.toHaveAttribute('aria-busy'));
+  const previous = host.firstElementChild as HTMLElement;
+  const previousKernel = runtime.created.mock.calls[0]![0];
+  expect(previous).not.toBeNull();
+  let rendered!: () => void;
+  runtime.rendered = new Promise<void>(resolve => { rendered = resolve; });
+  view.rerender(<WorkbookGrid id="grid" title="Revenue" model={{ ...model }} />);
+  await waitFor(() => expect(runtime.created).toHaveBeenCalledTimes(2));
+  expect(previous.isConnected).toBe(true); expect(previous.inert).toBe(true);
+  expect(previous).toHaveAttribute('aria-hidden', 'true');
+  expect(host.children).toHaveLength(2);
+  expect(runtime.dispose).not.toHaveBeenCalledWith(previousKernel);
+  expect(host.lastElementChild).toHaveStyle({ visibility: 'hidden' });
+  await act(async () => { rendered(); });
+  await waitFor(() => expect(host).not.toHaveAttribute('aria-busy'));
+  expect(previous.isConnected).toBe(false); expect(host.children).toHaveLength(1);
+  expect(runtime.dispose).toHaveBeenCalledWith(previousKernel);
+  expect((host.firstElementChild as HTMLElement).inert).toBe(false);
+  const replacementKernel = runtime.created.mock.calls[1]![0];
+  expect(runtime.dispose).not.toHaveBeenCalledWith(replacementKernel);
+  view.unmount(); expect(runtime.dispose).toHaveBeenCalledWith(replacementKernel);
+  expect(runtime.dispose.mock.calls.filter(([kernel]) => kernel === previousKernel)).toHaveLength(1);
+  expect(runtime.dispose.mock.calls.filter(([kernel]) => kernel === replacementKernel)).toHaveLength(1);
+});
+
+it('withdraws a retained canvas immediately when its artifact identity changes', async () => {
+  runtime.saved.mockReturnValue(gridWorkbook(model, 'first', 'First').data);
+  const view = render(<WorkbookGrid id="first" title="First" model={model} />);
+  const host = screen.getByRole('region', { name: 'Workbook grid' });
+  await waitFor(() => expect(runtime.listener).not.toBeNull());
+  await waitFor(() => expect(host).not.toHaveAttribute('aria-busy'));
+  const previous = host.firstElementChild!;
+  runtime.rendered = new Promise<void>(() => {});
+  view.rerender(<WorkbookGrid id="second" title="Second" model={{ ...model }} />);
+  expect(previous.isConnected).toBe(false);
+  await waitFor(() => expect(runtime.created).toHaveBeenCalledTimes(2));
+  expect(previous.isConnected).toBe(false); expect(runtime.dispose).toHaveBeenCalledTimes(1);
+  view.unmount(); expect(runtime.dispose).toHaveBeenCalledTimes(2);
 });

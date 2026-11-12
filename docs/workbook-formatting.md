@@ -81,3 +81,20 @@ number-format plugin disables the optional text-number warning triangle and
 conversion prompt through `disableTextFormatMark`/`disableTextFormatAlert`.
 XLSX keeps the plugin defaults; actual CSV input refusals still use the scoped
 header notice rather than changing or converting valid literal values.
+
+## Retained canvas during acknowledged refresh
+
+A source acknowledgement can replace the disposable spreadsheet kernel. Keep
+its last rendered layer inert and read-only while the replacement initializes;
+stop retired calculation workers and event listeners immediately. Swap layers
+only after the pinned public Rendered lifecycle and its two-frame workbench
+skeleton release have completed, then dispose the old kernel. Artifact identity
+changes and whole-surface unmounts withdraw old content immediately. View capture
+runs before kernel disposal. This retains the actual canvas, not a screenshot,
+and does not carry old cell content into the new authoritative source.
+
+Focused component regressions cover delayed renderer readiness, disposal once,
+read-only retirement, immediate cross-artifact withdrawal, the existing dirty
+worker-fallback handoff and CSV dimensions across acknowledged writer refresh.
+Actual packaged transition recording remains required before claiming the
+skeleton flash fixed in the product preview.

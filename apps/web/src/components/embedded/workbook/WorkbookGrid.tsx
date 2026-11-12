@@ -17,6 +17,8 @@ import { ownWorkbookCalculationWorker } from './calculation-worker-owner';
 import { attachWorkbookCalculation, workbookLiveCalculationEligible } from './grid-calculation';
 import { restoreCsvViewDimensions } from './csv-view-dimensions';
 import { restoreWorkbookSelection } from './grid-selection';
+import { LifecycleService, LifecycleStages } from '@univerjs/core';
+import { WorkbookViewLayers } from './grid-view-layers';
 
 export interface WorkbookGridProps {
   id: string; title: string; model: WorkbookDocument;
@@ -32,6 +34,8 @@ export interface WorkbookGridProps {
  * do not recreate the grid unless the acknowledged source model changes. */
 export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, onReady, onDisplayGaps, formatScope }: WorkbookGridProps) {
   const container = useRef<HTMLDivElement>(null), callbacks = useRef({ id, model, title, onSnapshot, onReady, onDisplayGaps });
+  const views = useRef<WorkbookViewLayers | null>(null);
+  const viewScope = useRef(id);
   callbacks.current = { id, model, title, onSnapshot, onReady, onDisplayGaps };
   const view = useRef<{ id: string; sourceFormat: WorkbookDocument['sourceFormat']; sheetId: string; snapshot: IWorkbookData; range?: IRange } | null>(null);
   const restored = useRef(initialSnapshot);
@@ -70,6 +74,9 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
     calculationState.current = null;
     const root = document.documentElement;
     let dispose = () => {}, active = true;
+    // Crossing artifact identity withdraws old content synchronously, even if
+    // the next lazy import or source preparation never completes.
+    if (viewScope.current !== id) { views.current?.dispose(); views.current = null; viewScope.current = id; }
     const current = () => active && callbacks.current.id === id && callbacks.current.model === model;
     const close = () => { const owned = dispose; dispose = () => {}; owned(); };
     const start = async () => {
@@ -80,10 +87,14 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       const { DISABLE_AUTO_FOCUS_KEY, CalculationMode, UniverDocsPlugin, UniverDocsUIPlugin, UniverFormulaEnginePlugin, UniverRenderEnginePlugin, UniverSheetsPlugin, UniverSheetsUIPlugin, UniverSheetsFormulaPlugin, UniverSheetsFormulaUIPlugin, UniverSheetsNumfmtPlugin, UniverSheetsNumfmtUIPlugin, UniverUIPlugin } = kernel;
       if (!current() || !container.current) return;
       const theme = workbookGridTheme(root), prepared = gridWorkbook(model, id, callbacks.current.title, theme.gray[900]);
+      const layers = views.current && !views.current.closed ? views.current : (views.current = new WorkbookViewLayers(container.current));
+      const layer = layers.begin();
+      dispose = () => layer.retire();
       const univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: English }, theme, darkMode: root.dataset.theme === 'dark' });
       // The original model is the only authority for loaded formula caches.
       const original = structuredClone(prepared.data) as IWorkbookData;
       let calculationOwner: ReturnType<typeof ownWorkbookCalculationWorker> | null = null;
+      const stopCalculation = () => { const owned = calculationOwner; calculationOwner = null; owned?.dispose(); };
       let readSnapshot: (() => IWorkbookData) | undefined;
       const fallback = () => {
         if (!current()) return;
@@ -96,7 +107,8 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
         }
       };
       // Own every instance before an asynchronous startup or plugin setup.
-      dispose = () => { calculationOwner?.dispose(); univer.dispose(); };
+      layer.own(() => { stopCalculation(); univer.dispose(); });
+      dispose = () => { stopCalculation(); layer.retire(); };
       const recovered = carried.current?.id === id && carried.current.model === model ? carried.current.snapshot : undefined;
       const sourceSeed = recovered ?? restored.current ?? original;
       if (model.sourceFormat !== 'csv' && stored.current !== model && workbookLiveCalculationEligible(model, sourceSeed)) {
@@ -113,7 +125,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       }
       univer.registerPlugin(UniverRenderEnginePlugin);
       univer.registerPlugin(UniverFormulaEnginePlugin, { notExecuteFormula: true });
-      univer.registerPlugin(UniverUIPlugin, { container: container.current, header: false, toolbar: false, contextMenu: false, disableAutoFocus: true });
+      univer.registerPlugin(UniverUIPlugin, { container: layer.element, header: false, toolbar: false, contextMenu: false, disableAutoFocus: true });
       univer.registerPlugin(UniverDocsPlugin); univer.registerPlugin(UniverDocsUIPlugin); univer.registerPlugin(UniverSheetsPlugin, { notExecuteFormula: true });
       univer.registerPlugin(UniverSheetsUIPlugin, { formulaBar: model.sourceFormat !== 'csv', footer: { sheetBar: model.sourceFormat !== 'csv', statisticBar: false, menus: false, zoomSlider: true, addSheetButtonConfig: { show: false } } });
       // In this pin the sheets flag routes function registration through RPC.
@@ -136,7 +148,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       const calculation = attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, value => { if (current()) { calculationState.current = value; publish.current(); } });
       dispose = () => {
         try { const sheet = workbook.getActiveSheet(); view.current = { id, sourceFormat: model.sourceFormat, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() }; }
-        finally { calculation.dispose(); calculationOwner?.dispose(); univer.dispose(); }
+        finally { workbook.setEditable(false); calculation.dispose(); stopCalculation(); layer.retire(); }
       };
       const selected = workbook.getActiveSheet();
       restoreWorkbookSelection(selected, previous?.range);
@@ -171,14 +183,23 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
         try {
           const sheet = workbook.getActiveSheet();
           view.current = { id, sourceFormat: model.sourceFormat, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() };
-        } finally { element.removeEventListener('pointerdown', activate, true); element.removeEventListener('focusin', activate); window.removeEventListener('blur', release); themes.disconnect(); literal?.dispose(); formatting.dispose(); formattingRef.current = null; changed.dispose(); calculation.dispose(); calculationOwner?.dispose(); univer.dispose(); }
+        } finally { element.removeEventListener('pointerdown', activate, true); element.removeEventListener('focusin', activate); window.removeEventListener('blur', release); themes.disconnect(); literal?.dispose(); formatting.dispose(); formattingRef.current = null; changed.dispose(); calculation.dispose(); workbook.setEditable(false); stopCalculation(); layer.retire(); }
       };
+      await univer.__getInjector().get(LifecycleService).onStage(LifecycleStages.Rendered);
+      // The pinned UI releases its initial workbench skeleton two frames after
+      // Rendered. Reveal only after that real layout/paint handoff completes.
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      if (!current()) return;
+      layer.show();
       callbacks.current.onDisplayGaps?.(prepared.gaps); setError(null);
     } catch { close(); if (current()) setError('The workbook grid could not be opened.'); }
     };
     void start();
     return () => { active = false; close(); };
   }, [id, model, editable, kernel]);
+  // Run after the grid effect's cleanup has captured view state and detached
+  // listeners. Disposing the kernel first would make workbook.save() invalid.
+  useEffect(() => () => { views.current?.dispose(); views.current = null; }, []);
   return <div className="relative h-full min-h-0 w-full">
     <div ref={container} className={cx(styles.grid, 'h-full min-h-0 w-full')} role="region" aria-label="Workbook grid" tabIndex={0} />
     {error ? <div role="alert" className="absolute inset-0 bg-background-primary-default p-4 text-body-2-regular text-text-error-primary">{error}</div> : null}
