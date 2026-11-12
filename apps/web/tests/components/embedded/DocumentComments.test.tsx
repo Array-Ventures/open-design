@@ -257,7 +257,7 @@ it('returns from All comments to the same thread without discarding its unsent r
   const reply = await screen.findByRole('textbox', { name: 'Reply' });
   fireEvent.change(reply, { target: { value: 'Keep this unsent reply' } });
   const thread = screen.getByTestId('saved-comment-thread');
-  fireEvent.click(screen.getByRole('button', { name: 'All comments', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: /^All comments$/ }));
   fireEvent.click(await screen.findByRole('button', { name: /Retained thread/ }));
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'Reply' })).toBeVisible());
   expect(screen.getByRole('textbox', { name: 'Reply' })).toBe(reply);
