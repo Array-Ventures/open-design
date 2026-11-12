@@ -130,3 +130,22 @@ it('terminates an actual pinned-worker executor that stops yielding while the ma
   expect(book.save().sheets.s!.cellData![0]![0]!.v).toBe(19);
   await failed; expect(deadline.begin()).toBeNull();
 });
+
+it('creates an inert stored kernel after RPC was loaded without requiring an RPC channel', async () => {
+  // The same imported pinned RPC module has already served the live tests.
+  // The sheet plugin's flag means remote function routing, not engine execution.
+  const English = pinned('@univerjs/preset-sheets-core/locales/en-US');
+  const univer = new core.Univer({ locale: core.LocaleType.EN_US, locales: { [core.LocaleType.EN_US]: English.default ?? English } }); closers.push(() => univer.dispose());
+  univer.registerPlugin(engine.UniverFormulaEnginePlugin, { notExecuteFormula: true });
+  univer.registerPlugin(sheets.UniverSheetsPlugin, { notExecuteFormula: true });
+  univer.registerPlugin(formula.UniverSheetsFormulaPlugin, { notExecuteFormula: false, initialFormulaComputing: formula.CalculationMode.NO_CALCULATION });
+  const api = FUniver.newAPI(univer);
+  const book = api.createWorkbook({ id: 'stored-no-rpc', name: 'Stored', sheetOrder: ['s'], styles: {}, sheets: { s: { id: 's', name: 'Inputs', rowCount: 100, columnCount: 20, cellData: { 0: { 0: { v: 2, t: 2 }, 1: { f: '=A1+3', v: 999, t: 2 } } } } } });
+  let derived = 0;
+  const listen = univer.__getInjector().get(core.ICommandService).onCommandExecuted(command => { if (command.id === engine.SetFormulaCalculationResultMutation.id) derived++; }); closers.push(() => listen.dispose());
+  book.getActiveSheet().getRange('A1').setValue(7);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  expect(book.save().sheets.s!.cellData![0]![0]!.v).toBe(7);
+  expect(book.save().sheets.s!.cellData![0]![1]!.v).toBe(999);
+  expect(derived).toBe(0);
+});

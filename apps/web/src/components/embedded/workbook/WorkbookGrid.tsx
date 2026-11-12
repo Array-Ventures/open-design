@@ -88,7 +88,9 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       univer.registerPlugin(UniverUIPlugin, { container: container.current, header: false, toolbar: false, contextMenu: false, disableAutoFocus: true });
       univer.registerPlugin(UniverDocsPlugin); univer.registerPlugin(UniverDocsUIPlugin); univer.registerPlugin(UniverSheetsPlugin, { notExecuteFormula: true });
       univer.registerPlugin(UniverSheetsUIPlugin, { formulaBar: true, footer: { sheetBar: true, statisticBar: false, menus: false, zoomSlider: true, addSheetButtonConfig: { show: false } } });
-      univer.registerPlugin(UniverSheetsFormulaPlugin, { notExecuteFormula: true, initialFormulaComputing: CalculationMode.NO_CALCULATION });
+      // In this pin the sheets flag routes function registration through RPC.
+      // The engine flag above keeps stored mode inert without an RPC service.
+      univer.registerPlugin(UniverSheetsFormulaPlugin, { notExecuteFormula: Boolean(calculationOwner), initialFormulaComputing: CalculationMode.NO_CALCULATION });
       univer.registerPlugin(UniverSheetsFormulaUIPlugin); univer.registerPlugin(UniverSheetsNumfmtPlugin); univer.registerPlugin(UniverSheetsNumfmtUIPlugin);
       const univerAPI = FUniver.newAPI(univer);
       const previous = view.current?.id === id ? view.current : null;
