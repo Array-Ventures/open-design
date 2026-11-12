@@ -18,13 +18,19 @@ export function useWorkbookHistory(options: Options) {
   const [sha, setSha] = useState<string | null>(null), [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false), [working, setWorking] = useState(false), [checking, setChecking] = useState(true);
   const [available, setAvailable] = useState(false), [denied, setDenied] = useState(false), [accessAttempt, setAccessAttempt] = useState(0);
+  const [fresh, setFresh] = useState(false), [opening, setOpening] = useState(0);
+  const freshFor = useRef<string | null>(null), refreshedOpening = useRef(0);
+  const listing = useRef<AbortController | null>(null);
   const [intent, setIntent] = useState<WorkbookRestoreIntent | null>(null);
   const generation = useRef(0);
   const life = useRef<AbortController | null>(null), busy = useRef(false), paging = useRef(false);
   const selection = useRef<WorkbookHistoryVersion | null>(null); selection.current = selected;
   const scopeKey = JSON.stringify(options.scope);
+  const headKey = JSON.stringify([scopeKey, options.source?.sourceSha256 ?? null]);
+  const readKey = useRef({ headKey, opening }); readKey.current = { headKey, opening };
+  const headFresh = fresh && freshFor.current === headKey && refreshedOpening.current === opening;
   const revoke = useCallback(() => {
-    life.current?.abort(); life.current = null; generation.current += 1;
+    life.current?.abort(); life.current = null; listing.current?.abort(); listing.current = null; setFresh(false); generation.current += 1;
     setAvailable(false); setDenied(true); setChecking(false); setWorking(false); setLoading(false); setIntent(null); setVersions([]); setSelected(null); setCursor(null); setSha(null); setOpen(false);
     latest.current.onAccessLost?.();
   }, []);
@@ -33,6 +39,7 @@ export function useWorkbookHistory(options: Options) {
   // in useWorkbookRecovery; a corrupt current XLSX never grants draft access.
   useEffect(() => {
     const controller = new AbortController(); life.current = controller;
+    const initialRead = readKey.current; setFresh(false);
     busy.current = false; paging.current = false; setWorking(false); setLoading(false); setChecking(true); setAvailable(false); setError(null);
     void (async () => {
       try {
@@ -41,6 +48,7 @@ export function useWorkbookHistory(options: Options) {
         setVersions(result.versions); setCursor(result.nextCursor); setSha(result.currentSha256); setDenied(false);
         const saved = await accessWorkbookRestore(options.scope);
         if (controller.signal.aborted) return;
+        freshFor.current = initialRead.headKey; refreshedOpening.current = initialRead.opening; setFresh(true);
         setAvailable(true); setIntent(saved); if (saved) setOpen(true);
       } catch (cause) {
         if (controller.signal.aborted) return;
@@ -49,28 +57,40 @@ export function useWorkbookHistory(options: Options) {
         setError(cause instanceof Error ? cause.message : 'Restore recovery is unavailable.');
       } finally { if (!controller.signal.aborted) setChecking(false); }
     })();
-    return () => { controller.abort(); if (life.current === controller) life.current = null; };
+    return () => { controller.abort(); listing.current?.abort(); if (life.current === controller) life.current = null; };
   }, [scopeKey, accessAttempt, revoke]);
   const page = useCallback(async (next = false) => {
-    const signal = life.current?.signal; if (!signal || signal.aborted || paging.current || busy.current) return;
-    paging.current = true; setLoading(true); setError(null);
+    const lifetime = life.current?.signal;
+    if (!lifetime || lifetime.aborted || busy.current || next && paging.current) return;
+    if (!next) listing.current?.abort();
+    const controller = new AbortController(); listing.current = controller;
+    const abort = () => controller.abort(); lifetime.addEventListener('abort', abort, { once: true });
+    const signal = controller.signal, requested = readKey.current;
+    paging.current = true; setLoading(true); setError(null); if (!next) setFresh(false);
     try {
       const result = await listWorkbookHistory(options.scope.projectId, options.scope.fileName, signal, { limit: 20, ...(next && cursor ? { cursor } : {}) });
-      if (signal.aborted) return;
+      if (signal.aborted || requested.headKey !== readKey.current.headKey || requested.opening !== readKey.current.opening) return;
       if (next && result.currentSha256 !== sha) throw Error('The workbook changed while loading history. Refresh history to see its current revision.');
       setVersions(current => next ? [...current, ...result.versions.filter(item => !current.some(previous => previous.id === item.id))] : result.versions);
       setCursor(result.nextCursor); setSha(result.currentSha256);
-      if (!next) setSelected(null);
+      if (!next) { setSelected(null); freshFor.current = requested.headKey; refreshedOpening.current = requested.opening; setFresh(true); }
     } catch (cause) { if (!signal.aborted) { if (accessDenied(cause)) revoke(); setError(cause instanceof Error ? cause.message : 'History could not be loaded.'); } }
-    finally { if (!signal.aborted) { paging.current = false; setLoading(false); } }
+    finally { lifetime.removeEventListener('abort', abort); if (listing.current === controller) { listing.current = null; paging.current = false; if (!lifetime.aborted) setLoading(false); } }
   }, [scopeKey, cursor, sha, revoke]);
-  const show = useCallback(() => { setOpen(true); }, []);
-  const close = useCallback(() => { setOpen(false); latest.current.focusOnClose?.(); }, []);
-  const toggle = useCallback(() => setOpen(value => !value), []);
-  useEffect(() => { if (available && open && !versions.length && !loading) void page(); }, [open, available]);
+  const openRef = useRef(open); openRef.current = open;
+  const invalidate = useCallback(() => { listing.current?.abort(); setFresh(false); }, []);
+  const show = useCallback(() => { invalidate(); setOpening(value => value + 1); setOpen(true); }, [invalidate]);
+  const close = useCallback(() => { invalidate(); setOpen(false); latest.current.focusOnClose?.(); }, [invalidate]);
+  const toggle = useCallback(() => { if (openRef.current) close(); else show(); }, [close, show]);
+  const pageRef = useRef(page); pageRef.current = page;
+  // One bounded refresh for an opening or acknowledged source-head change.
+  // The read marker is not an effect dependency: completing a page cannot loop.
+  useEffect(() => {
+    if (available && open && !working && (freshFor.current !== headKey || refreshedOpening.current !== opening)) void pageRef.current(false);
+  }, [open, opening, headKey, available, working]);
   const restore = useCallback(async () => {
     const current = latest.current, signal = life.current?.signal, chosen = selection.current;
-    if (!signal || signal.aborted || busy.current || checking || !available) return;
+    if (!signal || signal.aborted || busy.current || paging.current || checking || !available || !headFresh) return;
     // A retained operation is reconciled by receipt even if its source was
     // changed/deleted or a local draft is open. Only a new write needs a clean
     // editor and a non-null unchanged source.
@@ -181,7 +201,7 @@ export function useWorkbookHistory(options: Options) {
       catch { if (!signal.aborted) setError('Reopen this workbook to resume editing. Your restore identity is protected.'); }
       finally { if (!signal.aborted) { busy.current = false; setWorking(false); } }
     }
-  }, [checking, intent, sha, available, revoke]);
-  return { generation: () => generation.current, isRestoring: () => busy.current || Boolean(intent), available, canOpen: !denied, missing: available && sha === null, denyAccess: revoke, open, show, toggle, close, versions, selected, select: setSelected, cursor, sha, error, loading, working, checking, intent,
+  }, [checking, intent, sha, available, revoke, headFresh]);
+  return { generation: () => generation.current, isRestoring: () => busy.current || Boolean(intent), available, canOpen: !denied, missing: available && sha === null, denyAccess: revoke, open, show, toggle, close, versions, selected, select: setSelected, cursor, sha, error, fresh: headFresh, loading, working, checking, intent,
     blocked: checking || !available || Boolean(intent) || working, refresh: () => available ? page() : Promise.resolve(setAccessAttempt(value => value + 1)), more: () => page(true), restore };
 }

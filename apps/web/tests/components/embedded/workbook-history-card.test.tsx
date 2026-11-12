@@ -41,3 +41,14 @@ it('keeps a retained receipt status check enabled when the current file is missi
   expect(screen.getByRole('button', { name: 'Check status' }).hasAttribute('disabled')).toBe(false);
   expect(screen.getByText('The current file is missing. Check status only; it will not be recreated.')).toBeTruthy();
 });
+it('suppresses stale mismatch/reload copy and holds Restore until the fresh head finishes loading', () => {
+  const history = { ...fixture(), available: true, canOpen: true, fresh: false, loading: true };
+  const reload = vi.fn(); const view = render(<WorkbookHistory history={history} dirty={false} sourceSha256={target} reload={reload} />);
+  expect(screen.queryByText('The workbook changed elsewhere. Reload it before restoring.')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Reload current workbook' })).toBeNull();
+  expect(screen.getByRole('button', { name: /^Restore$/ }).hasAttribute('disabled')).toBe(true);
+  expect(screen.queryByRole('button', { name: 'Version 1' })).toBeNull();
+  view.rerender(<WorkbookHistory history={{ ...history, fresh: true, loading: false, sha: target }} dirty={false} sourceSha256={target} reload={reload} />);
+  expect(screen.queryByText('The workbook changed elsewhere. Reload it before restoring.')).toBeNull();
+  expect(reload).not.toHaveBeenCalled();
+});

@@ -61,7 +61,7 @@ it('does not acknowledge or clear an old account generation after unmount', asyn
   expect(options.accepted).not.toHaveBeenCalled(); expect(mocks.preview).not.toHaveBeenCalled(); expect(record()).toEqual(saved);
 });
 it('refuses a stale current SHA before starting a restore and rejects pagination across source changes', async () => {
-  const { options } = fixture(); mocks.list.mockResolvedValueOnce({ versions: [revision], nextCursor: 'next', currentSha256: 'c'.repeat(64) });
+  const { options } = fixture(); mocks.list.mockResolvedValueOnce({ versions: [revision], nextCursor: 'next', currentSha256: 'c'.repeat(64) }).mockResolvedValueOnce({ versions: [revision], nextCursor: 'next', currentSha256: 'c'.repeat(64) });
   const view = renderHook(() => useWorkbookHistory(options)); await waitFor(() => expect(view.result.current.checking).toBe(false));
   act(() => view.result.current.show()); await waitFor(() => expect(view.result.current.versions).toHaveLength(1)); act(() => view.result.current.select(revision));
   await act(async () => view.result.current.restore()); expect(mocks.restore).not.toHaveBeenCalled(); expect(view.result.current.error).toContain('current workbook changed');
@@ -207,4 +207,49 @@ it.each([false, true])('classifies preview 404 through fresh history (project de
   expect(view.result.current.canOpen).toBe(!denied);
   if (denied) { expect(record()).toEqual(pending); expect(view.result.current.versions).toEqual([]); expect(unreadable).not.toHaveBeenCalled(); }
   else { expect(record()).toBeNull(); expect(view.result.current.missing).toBe(true); expect(unreadable).toHaveBeenCalledWith(expect.stringContaining('not recreated'), false); }
+});
+it('refreshes V5 to V6 on opening after an own save without asking the workbook to reload or polling while closed', async () => {
+  const { options } = fixture(); let observed = source;
+  const v5 = { ...revision, id: 'v5', version: 5, contentDigest: sha, current: true };
+  const v6 = { ...revision, id: 'v6', version: 6, contentDigest: target, current: true };
+  mocks.list.mockResolvedValueOnce({ versions: [v5], nextCursor: null, currentSha256: sha });
+  const view = renderHook(() => useWorkbookHistory({ ...options, source: observed }));
+  await waitFor(() => expect(view.result.current.checking).toBe(false));
+  observed = { ...source, sourceSha256: target }; view.rerender();
+  await act(async () => {}); expect(mocks.list).toHaveBeenCalledOnce();
+  let resolve!: (value: unknown) => void; mocks.list.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  act(() => view.result.current.show());
+  await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2));
+  expect(view.result.current.fresh).toBe(false); expect(view.result.current.loading).toBe(true); expect(view.result.current.error).toBeNull();
+  await act(async () => view.result.current.restore()); expect(mocks.restore).not.toHaveBeenCalled();
+  await act(async () => { resolve({ versions: [v6, { ...v5, current: false }], nextCursor: null, currentSha256: target }); });
+  await waitFor(() => expect(view.result.current.fresh).toBe(true));
+  expect(view.result.current.sha).toBe(target); expect(view.result.current.versions[0]).toEqual(v6); expect(view.result.current.error).toBeNull();
+  expect(mocks.preview).not.toHaveBeenCalled(); expect(options.accepted).not.toHaveBeenCalled();
+  await act(async () => {}); expect(mocks.list).toHaveBeenCalledTimes(2);
+  act(() => view.result.current.close()); mocks.list.mockResolvedValueOnce({ versions: [v6], nextCursor: null, currentSha256: target });
+  act(() => view.result.current.show()); await waitFor(() => expect(view.result.current.fresh).toBe(true));
+  expect(mocks.list).toHaveBeenCalledTimes(3);
+});
+it('refreshes an open history on acknowledged-head changes and suppresses its late previous-head response', async () => {
+  const { options } = fixture(); let observed = source;
+  const view = renderHook(() => useWorkbookHistory({ ...options, source: observed }));
+  await waitFor(() => expect(view.result.current.checking).toBe(false));
+  let old!: (value: unknown) => void; mocks.list.mockImplementationOnce(() => new Promise(done => { old = done; }));
+  act(() => view.result.current.show()); await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2));
+  const oldSignal = mocks.list.mock.calls[1]![2] as AbortSignal;
+  const v6 = { ...revision, id: 'v6', version: 6, contentDigest: target, current: true };
+  mocks.list.mockResolvedValueOnce({ versions: [v6], nextCursor: null, currentSha256: target });
+  observed = { ...source, sourceSha256: target }; view.rerender();
+  await waitFor(() => expect(view.result.current.fresh).toBe(true)); expect(oldSignal.aborted).toBe(true);
+  await act(async () => { old({ versions: [revision], nextCursor: null, currentSha256: sha }); });
+  expect(view.result.current.sha).toBe(target); expect(view.result.current.versions).toEqual([v6]); expect(mocks.list).toHaveBeenCalledTimes(3);
+});
+it('keeps a failed head refresh retryable without admitting a restore or continuously refetching', async () => {
+  const { options } = fixture(); const view = renderHook(() => useWorkbookHistory(options));
+  await waitFor(() => expect(view.result.current.checking).toBe(false)); mocks.list.mockRejectedValueOnce(Error('Offline'));
+  act(() => view.result.current.show()); await waitFor(() => expect(view.result.current.error).toBe('Offline'));
+  expect(view.result.current.fresh).toBe(false); expect(view.result.current.loading).toBe(false);
+  await act(async () => view.result.current.restore()); expect(mocks.restore).not.toHaveBeenCalled(); expect(mocks.list).toHaveBeenCalledTimes(2);
+  await act(async () => view.result.current.refresh()); expect(view.result.current.fresh).toBe(true); expect(mocks.list).toHaveBeenCalledTimes(3);
 });
