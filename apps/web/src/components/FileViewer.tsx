@@ -9386,6 +9386,7 @@ function HtmlViewer({
   const [manualEditPageStylesOpen, setManualEditPageStylesOpen] = useState(false);
   const [manualEditPanelPosition, setManualEditPanelPosition] = useState<{ left: number; top: number } | null>(null);
   const [manualEditDraftDirty, setManualEditDraftDirty] = useState(false);
+  const selectManualEditTargetRef = useRef<(target: ManualEditTarget | null) => Promise<void>>(async () => {});
   const selectedManualEditTargetIdRef = useRef<string | null>(null);
   const manualEditSelectionDraftRef = useRef<{ id: string; draft: ManualEditDraft } | null>(null);
   // Tracks the iframe's in-flight inline text edit. `finishManualEditTextSession`
@@ -13394,7 +13395,7 @@ function HtmlViewer({
       }
       if (data.type === 'od-edit-select') {
         setManualEditHoverTarget(null);
-        void selectManualEditTarget(data.target);
+        void selectManualEditTargetRef.current(data.target);
         return;
       }
       if (data.type === 'od-edit-hover') {
@@ -13415,8 +13416,7 @@ function HtmlViewer({
         // card — only meaningful for full HTML documents.
         setManualEditHoverTarget(null);
         if (typeof source === 'string' && isManualEditFullHtmlDocument(source)) {
-          void clearManualEditTargetSelection();
-          setManualEditPageStylesOpen(true);
+          void selectManualEditTargetRef.current(null);
         }
         return;
       }
@@ -13770,7 +13770,7 @@ function HtmlViewer({
   async function exitManualEditModeAfterFlush(): Promise<boolean> {
     // The properties panel has its own content draft, separate from inline
     // text sessions and debounced styles. A safe exit must persist it too.
-    if (manualEditDraftDirty && !(await saveManualEditPanelDraft())) return false;
+    if (manualEditDraftDirty && !(await flushManualEditPanelDraft())) return false;
     // A failed text commit must keep edit mode open with its error visible,
     // rather than tearing down (which would clear the error) and looking saved.
     if (!(await settlePendingManualEditCommit())) {
@@ -13848,18 +13848,47 @@ function HtmlViewer({
     if (win) win.postMessage({ type: 'od-edit-hover-reset' }, '*');
   }
 
-  async function selectManualEditTarget(target: ManualEditTarget) {
-    setManualEditPageStylesOpen(false);
-    if (manualEditPendingStyleRef.current?.id !== target.id) cancelManualEditStyleDraft();
-    const base = sourceRef.current ?? '';
-    const nextDraft = manualEditDraftForTarget(target, base);
-    selectedManualEditTargetIdRef.current = target.id;
-    manualEditSelectionDraftRef.current = { id: target.id, draft: nextDraft };
-    setSelectedManualEditTarget(target);
-    setManualEditDraft(nextDraft);
-    setManualEditDraftDirty(false);
-    setManualEditError(null);
+  const manualEditSelectionChangingRef = useRef(false);
+  async function selectManualEditTarget(target: ManualEditTarget | null) {
+    // Repeated selection reports must not replace a draft with its saved value.
+    if (target && selectedManualEditTargetIdRef.current === target.id) return;
+    if (manualEditSelectionChangingRef.current) {
+      postSelectedManualEditTargetToIframe(selectedManualEditTargetIdRef.current);
+      return;
+    }
+    manualEditSelectionChangingRef.current = true;
+    try {
+      // Keep the first selection synchronous. A later drag report belongs to
+      // that new object, not to the previous selection's save boundary.
+      const needsFlush = selectedManualEditTargetIdRef.current !== null
+        || manualEditPendingStyleRef.current !== null
+        || manualEditTextCommitInFlightRef.current !== null
+        || manualEditTextSessionIdRef.current !== null
+        || manualEditTextFailedSessionIdsRef.current.size > 0;
+      if (needsFlush && !(await flushManualEditPanelDraft())) {
+        postSelectedManualEditTargetToIframe(selectedManualEditTargetIdRef.current);
+        return;
+      }
+      if (!target) {
+        await clearManualEditTargetSelection();
+        setManualEditPageStylesOpen(true);
+        return;
+      }
+      setManualEditPageStylesOpen(false);
+      const base = sourceRef.current ?? '';
+      const nextDraft = manualEditDraftForTarget(target, base);
+      selectedManualEditTargetIdRef.current = target.id;
+      manualEditSelectionDraftRef.current = { id: target.id, draft: nextDraft };
+      setSelectedManualEditTarget(target);
+      setManualEditDraft(nextDraft);
+      setManualEditDraftDirty(false);
+      setManualEditError(null);
+    } finally {
+      manualEditSelectionChangingRef.current = false;
+    }
   }
+
+  selectManualEditTargetRef.current = selectManualEditTarget;
 
   function manualEditDraftForTarget(target: ManualEditTarget, base: string): ManualEditDraft {
     const fields = readManualEditFields(base, target.id);
@@ -13899,13 +13928,7 @@ function HtmlViewer({
   // the toolbar toggle's job. Dismiss flushes any in-flight tweak first so
   // nothing is lost; cancel reverts the in-flight unsaved tweak instead.
   async function dismissManualEditPanel() {
-    // Closing the panel must not swallow a failed text commit: keep it open
-    // with the error if the pending edit could not be saved.
-    if (!(await settlePendingManualEditCommit())) {
-      return;
-    }
-    const ok = await flushManualEditStyleSave();
-    if (!ok) return;
+    if (!(await flushManualEditPanelDraft())) return;
     if (selectedManualEditTarget) void clearManualEditTargetSelection();
     else setManualEditPageStylesOpen(false);
   }
@@ -13946,7 +13969,7 @@ function HtmlViewer({
     return null;
   }
 
-  async function saveManualEditPanelDraft(): Promise<boolean> {
+  async function flushManualEditPanelDraft(): Promise<boolean> {
     const selectedTarget = selectedManualEditTarget;
     const contentPatchBeforeText = selectedTarget
       ? manualEditContentPatchForDraft(selectedTarget, manualEditDraft, sourceRef.current ?? '')
@@ -13965,6 +13988,11 @@ function HtmlViewer({
     }
     const ok = await flushManualEditStyleSave();
     if (!ok) return false;
+    return true;
+  }
+
+  async function saveManualEditPanelDraft(): Promise<boolean> {
+    if (!(await flushManualEditPanelDraft())) return false;
     if (selectedManualEditTarget) void clearManualEditTargetSelection();
     else setManualEditPageStylesOpen(false);
     return true;

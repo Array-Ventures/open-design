@@ -211,6 +211,53 @@ describe('FileViewer manual edit regressions', () => {
     expect(screen.getByTestId('manual-edit-mode-toggle').getAttribute('aria-pressed')).toBe('false');
   });
 
+  it.each([
+    ['close', false], ['close', true], ['select', false], ['select', true], ['background', false], ['background', true],
+  ] as const)('preserves properties drafts on %s (first write fails: %s)', async (action, failFirst) => {
+    const source = '<html><body><main data-od-id="hero">Hero</main><p data-od-id="other">Other</p></body></html>';
+    const saved: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes('/api/projects/project-1/files') && init?.method === 'POST') {
+        saved.push(String(init.body));
+        return new Response(JSON.stringify(saved.length === 1 && failFirst
+          ? { error: { message: 'disk full' } } : { file: htmlPreviewFile() }), {
+          status: saved.length === 1 && failFirst ? 500 : 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(source, { status: 200 });
+    }));
+    render(<FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()} liveHtml={source} />);
+    await enterManualEditMode();
+    await selectManualEditTarget();
+    const textarea = () => document.querySelector('.manual-edit-right textarea') as HTMLTextAreaElement | null;
+    fireEvent.change(textarea()!, { target: { value: 'Kept across selection' } });
+    // Duplicate bridge reports must preserve the unsaved draft without writing.
+    await selectManualEditTarget();
+    expect(textarea()!.value).toBe('Kept across selection');
+    expect(saved).toHaveLength(0);
+    const change = async () => {
+      if (action === 'close') fireEvent.click(screen.getByLabelText('Close edit panel'));
+      else if (action === 'background') {
+        const frame = await previewFrame();
+        act(() => { window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: { type: 'od-edit-background' } })); });
+      }
+      else await selectManualEditTarget({ ...heroTarget(), id: 'other', label: 'Other', text: 'Other',
+        fields: { text: 'Other' }, tagName: 'p', outerHtml: '<p data-od-id="other">Other</p>' });
+    };
+    await change();
+    await waitFor(() => expect(saved).toHaveLength(1));
+    if (failFirst) {
+      await screen.findByText(/Could not save the edited file/);
+      expect(textarea()!.value).toBe('Kept across selection');
+      await change();
+      await waitFor(() => expect(saved).toHaveLength(2));
+    }
+    await waitFor(() => expect(textarea()?.value ?? null).toBe(action !== 'select' ? null : 'Other'));
+    for (const body of saved) expect(JSON.parse(body).content).toContain('<main data-od-id="hero">Kept across selection</main>');
+    expect(screen.getByTestId('manual-edit-mode-toggle').getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('opens edit mode with a clean canvas and no docked panel', async () => {
     const source = '<!doctype html><html><body><main data-od-id="hero">Hero</main></body></html>';
     vi.stubGlobal('fetch', vi.fn(async () =>
