@@ -34,7 +34,7 @@ export async function prepareWorkbookJob(projectId: string, fileName: string, fo
     if (job.id !== id) throw new WorkbookHostError('The workbook preparation identity changed.');
   }
   if (job.state === 'deleted') throw new WorkbookPreparationGoneError(job);
-  if (job.state !== 'ready') throw new WorkbookHostError(job.error || 'The workbook could not be prepared.', job.state === 'deleted' ? 410 : 422);
+  if (job.state !== 'ready') throw new WorkbookHostError(job.error || 'The workbook could not be prepared.', 422);
   return job;
   } catch (error) {
     if (signal?.aborted && format === 'workbook') {
