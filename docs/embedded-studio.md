@@ -263,3 +263,16 @@ layer/selection/format suite passes eight cases. Initial test attempts lacked a
 DOM environment and are not counted as behavioral reproduction. Guard and full
 workspace typecheck pass. A new clean package must still pass paired-browser
 acceptance before this navigation change is considered active.
+
+### Programmatic selection metadata
+
+Package39 manual inspection showed the canvas returning to A1 while the native
+format controls retained the prior formula-cell state. The keyboard focus wait
+alone did not resolve it. In this pin, the facade's programmatic selection emits
+selectionSet, whereas onSelectionChange observes move-end (and supplies an
+immediate initial value). A real pinned-runtime regression verifies that the
+completed SetSelectionsOperation contains the new scoped range without a new
+pointer callback. The grid now republishes formatting and export metadata after
+that completed view operation, without creating an edit checkpoint. Nine focused
+selection/format/resource tests, guard and workspace types pass. A fresh paired
+package remains the browser acceptance gate.

@@ -204,7 +204,12 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
         return scope ? { ...scope, blocked: scope.blocked || !readyForInput } : undefined;
       }); exportBridge.current = exporter;
       const changed = univerAPI.addEvent(univerAPI.Event.CommandExecuted, event => {
-        if (current() && event.type === CommandType.MUTATION && event.id.startsWith('sheet.')) { callbacks.current.onSnapshot?.(workbook.save()); formatting.publish(); }
+        if (!current()) return;
+        if (event.type === CommandType.MUTATION && event.id.startsWith('sheet.')) { callbacks.current.onSnapshot?.(workbook.save()); formatting.publish(); }
+        // The pinned facade's programmatic selections emit selectionSet,
+        // while onSelectionChange observes only selectionMoveEnd. Publish
+        // after the command has settled, without treating view state as edits.
+        else if (event.id === kernel.SetSelectionsOperation.id) { formatting.publish(); exporter.publish(); }
       });
       let themeIdentity = JSON.stringify({ theme, dark: root.dataset.theme === 'dark' });
       const themes = new MutationObserver(() => {
