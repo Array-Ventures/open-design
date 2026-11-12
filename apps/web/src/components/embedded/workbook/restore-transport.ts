@@ -1,3 +1,5 @@
+import { Save } from './save-identity';
+import type { WorkbookRestoreIntent } from './restore-intent';
 import { z } from 'zod';
 import { workbookHostRequest, WorkbookHostError } from './host-request';
 import { checkedWorkbookJob, workbookPollDelay, WorkbookPreparationGoneError, WorkbookPreparationTerminalError } from './preview-transport';
@@ -21,19 +23,24 @@ export async function prepareWorkbookRestore(projectId: string, body: WorkbookRe
   return job;
 }
 
+/** Every restore receipt must name the selected immutable revision, including
+ * pending and rejected receipts. A transport failure or missing lineage never
+ * authorizes clearing the protected local operation. */
+export function checkedWorkbookRestoreReceipt(raw: unknown, intent: WorkbookRestoreIntent) {
+  const save = Save.parse(raw);
+  if (save.id !== intent.operationId || save.projectId !== intent.projectId || save.fileName !== intent.fileName
+    || save.sourceSha256 !== intent.sourceSha256 || save.targetSha256 !== intent.versionSha256
+    || save.restoreFromVersionId !== intent.versionId
+    || intent.renderId && save.renderId !== intent.renderId
+    || save.state === 'applied' && (!save.versionId || save.actualSha256 !== intent.versionSha256)
+    || save.state !== 'applied' && (save.versionId !== null || ['pending', 'cancelled'].includes(save.state) && save.actualSha256 !== null)) throw new WorkbookHostError('The restore receipt does not match the selected revision.');
+  return save;
+}
+
 /** Exact binary restore uses the same durable save receipt, never an edit-plan
  * reprepare. Retain both IDs until that receipt is authoritative. */
-export async function restoreWorkbookVersion(intent: import('./restore-intent').WorkbookRestoreIntent, protect: () => Promise<void>, signal?: AbortSignal) {
-  const { workbookSaveReceiptSchema } = await import('./save-transport');
-  const check = (raw: unknown) => {
-    const save = workbookSaveReceiptSchema.parse(raw);
-    if (save.id !== intent.operationId || save.projectId !== intent.projectId || save.fileName !== intent.fileName
-      || save.sourceSha256 !== intent.sourceSha256 || save.targetSha256 !== intent.versionSha256
-      || intent.renderId && save.renderId !== intent.renderId
-      || save.state === 'applied' && (!save.versionId || save.actualSha256 !== intent.versionSha256)
-      || save.state !== 'applied' && (save.versionId !== null || ['pending', 'cancelled'].includes(save.state) && save.actualSha256 !== null)) throw new WorkbookHostError('The restore receipt does not match the selected revision.');
-    return save;
-  };
+export async function restoreWorkbookVersion(intent: WorkbookRestoreIntent, protect: () => Promise<void>, signal?: AbortSignal) {
+  const check = (raw: unknown) => checkedWorkbookRestoreReceipt(raw, intent);
   const read = async () => {
     try { return check(await workbookHostRequest(intent.projectId, { action: 'read-save', saveId: intent.operationId }, signal)); }
     catch (error) { if (error instanceof WorkbookHostError && error.status === 404) return null; throw error; }

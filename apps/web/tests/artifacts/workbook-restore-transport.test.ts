@@ -21,7 +21,7 @@ it('never admits a mismatched output or turns a failed preparation into an impli
 it('recovers an admitted restore through its exact receipt without preparing or submitting again', async () => {
   const { restoreWorkbookVersion } = await import('../../src/components/embedded/workbook/restore-transport');
   const intent = { version: 1 as const, viewerId: 'human', projectId, fileName: input.fileName, operationId: input.operationId, preparationId: '18a8301a-b6e1-4001-8000-c967b1eab225', sourceSha256: input.sourceSha256, versionId: input.versionId, versionSha256: input.versionSha256 };
-  const receipt = { id: intent.operationId, projectId, fileName: input.fileName, renderId: id, state: 'applied', sourceSha256: input.sourceSha256, targetSha256: input.versionSha256, actualSha256: input.versionSha256, versionId: 'restored-v2' };
+  const receipt = { id: intent.operationId, projectId, fileName: input.fileName, renderId: id, state: 'applied', sourceSha256: input.sourceSha256, targetSha256: input.versionSha256, actualSha256: input.versionSha256, versionId: 'restored-v2', restoreFromVersionId: intent.versionId };
   vi.mocked(workbookHostRequest).mockResolvedValueOnce(receipt);
   expect(await restoreWorkbookVersion(intent, vi.fn())).toEqual(receipt);
   expect(workbookHostRequest).toHaveBeenCalledExactlyOnceWith(projectId, { action: 'read-save', saveId: intent.operationId }, undefined);
@@ -46,4 +46,20 @@ it('does not admit a restore when its identity cannot be protected or its receip
   expect(vi.mocked(workbookHostRequest).mock.calls.some(call => call[1].action === 'save')).toBe(false);
   vi.mocked(workbookHostRequest).mockResolvedValueOnce({ id: intent.operationId, projectId, fileName: input.fileName, renderId: id, state: 'applied', sourceSha256: input.sourceSha256, targetSha256: 'c'.repeat(64), actualSha256: 'c'.repeat(64), versionId: 'wrong' });
   await expect(restoreWorkbookVersion(intent, vi.fn())).rejects.toThrow('selected revision');
+});
+
+it('rejects missing or different restore lineage in every receipt state even when all hashes match', async () => {
+  const { checkedWorkbookRestoreReceipt, WorkbookRestoreFinishedError } = await import('../../src/components/embedded/workbook/restore-transport');
+  const intent = { version: 1 as const, viewerId: 'human', projectId, fileName: input.fileName, operationId: input.operationId, preparationId: '18a8301a-b6e1-4001-8000-c967b1eab225', sourceSha256: input.sourceSha256, versionId: input.versionId, versionSha256: input.versionSha256 };
+  for (const state of ['pending', 'applied', 'conflict', 'cancelled']) {
+    const receipt = { id: intent.operationId, projectId, fileName: input.fileName, renderId: id, state, sourceSha256: input.sourceSha256, targetSha256: input.versionSha256,
+      actualSha256: state === 'applied' || state === 'conflict' ? input.versionSha256 : null, versionId: state === 'applied' ? 'restored-v2' : null };
+    for (const lineage of [undefined, 'another-version']) {
+      let failure: unknown;
+      try { checkedWorkbookRestoreReceipt({ ...receipt, ...(lineage ? { restoreFromVersionId: lineage } : {}) }, intent); } catch (error) { failure = error; }
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).not.toBeInstanceOf(WorkbookRestoreFinishedError);
+    }
+    expect(checkedWorkbookRestoreReceipt({ ...receipt, restoreFromVersionId: input.versionId }, intent).restoreFromVersionId).toBe(input.versionId);
+  }
 });

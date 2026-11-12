@@ -19,15 +19,22 @@ export function useWorkbookHistory(options: Options) {
   const generation = useRef(0);
   const life = useRef<AbortController | null>(null), busy = useRef(false), paging = useRef(false);
   const selection = useRef<WorkbookHistoryVersion | null>(null); selection.current = selected;
-  const scopeKey = JSON.stringify(options.scope);
+  const scopeKey = JSON.stringify(options.scope), readable = options.source !== null;
+  // The frame's host access check is not the local recovery-read boundary.
+  // A source exists only after a fresh authorized workbook preview. This does
+  // not depend on the draft lease/editor, so preview acquisition cannot deadlock.
+  // This presentation gate does not grant access: host reads and saves still
+  // independently authorize the current account/project on the server.
+
   useEffect(() => {
+    setChecking(true); busy.current = false; paging.current = false; setWorking(false); setLoading(false);
+    if (!readable) return;
     const controller = new AbortController(); life.current = controller;
-    setChecking(true);
     void accessWorkbookRestore(options.scope).then(saved => { if (!controller.signal.aborted) { setIntent(saved); if (saved) setOpen(true); } })
       .catch(cause => { if (!controller.signal.aborted) { setError(cause instanceof Error ? cause.message : 'Restore recovery is unavailable.'); setOpen(true); } })
       .finally(() => { if (!controller.signal.aborted) setChecking(false); });
     return () => { controller.abort(); life.current = null; };
-  }, [scopeKey]);
+  }, [scopeKey, readable]);
   const page = useCallback(async (next = false) => {
     const signal = life.current?.signal; if (!signal || signal.aborted || paging.current || busy.current) return;
     paging.current = true; setLoading(true); setError(null);
@@ -44,7 +51,7 @@ export function useWorkbookHistory(options: Options) {
   const show = useCallback(() => { setOpen(true); }, []);
   const close = useCallback(() => { setOpen(false); latest.current.focusOnClose?.(); }, []);
   const toggle = useCallback(() => setOpen(value => !value), []);
-  useEffect(() => { if (open && !versions.length && !loading) void page(); }, [open]);
+  useEffect(() => { if (open && !versions.length && !loading) void page(); }, [open, readable]);
   const restore = useCallback(async () => {
     const current = latest.current, signal = life.current?.signal, chosen = selection.current;
     if (!signal || signal.aborted || busy.current || checking || !current.ready || current.dirty()) {

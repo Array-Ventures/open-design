@@ -23,7 +23,7 @@ export function WorkbookHistory({ history, dirty, sourceSha256, reload }: { hist
     </header>
     <div className="relative min-h-0 flex-1">
       <div tabIndex={0} onScroll={fade.onScroll} className="max-h-72 overflow-y-auto px-2 pb-2 outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring">
-        {!history.versions.length ? <p role="status" className="m-0 p-2 text-caption-1-regular text-text-tertiary">{history.loading ? 'Loading history…' : 'No saved revisions yet.'}</p> :
+        {!history.versions.length ? <p role="status" className="m-0 p-2 text-caption-1-regular text-text-tertiary">{history.loading || history.checking ? 'Loading history…' : 'No saved revisions yet.'}</p> :
           <ul aria-label="Workbook revisions" className="m-0 list-none space-y-1 p-0">{history.versions.map(version => <li key={version.id}>
             <Button variant="ghost" size="small" aria-label={`Version ${version.version}${version.current ? ', current' : ''}`} aria-pressed={(history.intent?.versionId ?? history.selected?.id) === version.id}
               disabled={history.working || Boolean(history.intent)} onClick={() => history.select(version)}

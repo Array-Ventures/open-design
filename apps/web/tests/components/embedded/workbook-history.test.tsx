@@ -67,3 +67,27 @@ it('refuses a stale current SHA before starting a restore and rejects pagination
   await act(async () => view.result.current.restore()); expect(mocks.restore).not.toHaveBeenCalled(); expect(view.result.current.error).toContain('current workbook changed');
   await act(async () => view.result.current.more()); expect(view.result.current.error).toContain('while loading history'); expect(view.result.current.versions).toHaveLength(1);
 });
+
+it.each([undefined, 'another-version'])('keeps the protected restore when receipt lineage is %s despite matching bytes', async lineage => {
+  const { checkedWorkbookRestoreReceipt } = await vi.importActual<typeof import('../../../src/components/embedded/workbook/restore-transport')>('../../../src/components/embedded/workbook/restore-transport');
+  const { options, record } = fixture();
+  mocks.restore.mockImplementation(async intent => checkedWorkbookRestoreReceipt({ id: intent.operationId, projectId: intent.projectId, fileName: intent.fileName,
+    renderId: '18a8301a-b6e1-4001-8000-c967b1eab223', state: 'applied', sourceSha256: intent.sourceSha256, targetSha256: intent.versionSha256,
+    actualSha256: intent.versionSha256, versionId: 'restored-v2', ...(lineage ? { restoreFromVersionId: lineage } : {}) }, intent));
+  const view = renderHook(() => useWorkbookHistory(options)); await waitFor(() => expect(view.result.current.checking).toBe(false));
+  act(() => view.result.current.show()); await waitFor(() => expect(view.result.current.versions).toHaveLength(1)); act(() => view.result.current.select(revision));
+  await act(async () => view.result.current.restore());
+  expect(record()).toEqual(view.result.current.intent); expect(record()).toBeTruthy(); expect(view.result.current.blocked).toBe(true);
+  expect(options.accepted).not.toHaveBeenCalled(); expect(mocks.preview).not.toHaveBeenCalled();
+  expect(mocks.store.mock.calls.some(([, change]) => change && change.value === null)).toBe(false);
+});
+it('waits for an authorized preview before reading restore IDs without depending on editor recovery readiness', async () => {
+  const { options } = fixture(); let readable = false;
+  const view = renderHook(() => useWorkbookHistory({ ...options, source: readable ? source : null, ready: false }));
+  expect(mocks.store).not.toHaveBeenCalled(); expect(view.result.current.checking).toBe(true);
+  act(() => view.result.current.show()); expect(mocks.list).not.toHaveBeenCalled();
+  readable = true; view.rerender(); await waitFor(() => expect(view.result.current.checking).toBe(false));
+  expect(mocks.store).toHaveBeenCalledExactlyOnceWith(scope);
+  await waitFor(() => expect(mocks.list).toHaveBeenCalledOnce());
+  expect(mocks.restore).not.toHaveBeenCalled();
+});

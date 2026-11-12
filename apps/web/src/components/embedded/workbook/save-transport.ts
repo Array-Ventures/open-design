@@ -97,6 +97,3 @@ async function settleWorkbookSave(attempt: WorkbookSaveAttempt, signal: AbortSig
 
 /** Shared strict identity check for explicit cancellation/reconciliation. */
 export { checkedSave as checkedWorkbookSave };
-
-// History restoration shares the same strict receipt shape as edit saves.
-export { Save as workbookSaveReceiptSchema } from './save-identity';

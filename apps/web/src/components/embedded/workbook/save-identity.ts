@@ -4,6 +4,7 @@ import type { WorkbookSaveAttempt } from './save-transport';
 const digest = z.string().regex(/^[0-9a-f]{64}$/);
 export const Save = z.object({ id: z.string().uuid(), projectId: z.string().uuid(), renderId: z.string().uuid(), fileName: z.string(),
   state: z.enum(['pending', 'applied', 'conflict', 'cancelled']), sourceSha256: digest, targetSha256: digest, actualSha256: digest.nullable(),
+  restoreFromVersionId: z.string().regex(/^[A-Za-z0-9_-]{1,200}$/).optional(),
   versionId: z.string().regex(/^[A-Za-z0-9_-]{1,200}$/).nullable() }).passthrough();
 export function checkedWorkbookSave(raw: unknown, attempt: WorkbookSaveAttempt) {
   const save = Save.parse(raw);
