@@ -5,7 +5,8 @@ type Request = { action: 'prepare'; body: { operationId: string; fileName: strin
   | { action: 'read-render' | 'read-preview' | 'remove-render' | 'cancel-render'; renderId: string }
   | { action: 'save'; body: { operationId: string; renderId: string } }
   | { action: 'read-save'; saveId: string }
-  | { action: 'list-history'; fileName: string; limit?: number; cursor?: string };
+  | { action: 'list-history'; fileName: string; limit?: number; cursor?: string }
+  | { action: 'prepare-restore'; body: { operationId: string; fileName: string; versionId: string; versionSha256: string; sourceSha256: string } };
 
 /** The trusted parent owns the native API client and authentication. Authored
  * content lives in a different opaque frame and cannot answer this channel. */

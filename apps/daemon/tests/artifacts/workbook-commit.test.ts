@@ -141,4 +141,50 @@ describe('workbook save receipt coordination', () => {
     expect(first.state).toBe('applied'); expect(second.state).toBe('conflict'); expect(files.write).toHaveBeenCalledTimes(1);
     expect((await pinned.read('book.xlsx')).buffer).toEqual(candidate);
   });
+  async function restoreRequest() {
+    const saved = await commit();
+    const restore = { versionId: saved.sourceVersionId!, contentDigest: digest(original) };
+    return { ...input, operationId: randomUUID(), sourceSha256: digest(candidate), bytes: original, restore };
+  }
+  it('conditionally restores exact bytes with immutable restore lineage and terminal replay', async () => {
+    const request = await restoreRequest(), restored = await commit(request);
+    expect(restored).toMatchObject({ state: 'applied', restoreFromVersionId: request.restore.versionId, targetSha256: digest(original) });
+    expect((await pinned.read('book.xlsx')).buffer).toEqual(original);
+    const history = await versions(); expect(history.find(version => version.id === restored.versionId)).toMatchObject({ source: 'restore', restoreFromVersionId: request.restore.versionId, parentVersionId: request.restore.versionId });
+    expect(history.find(version => version.id === restored.sourceVersionId)?.contentDigest).toBe(digest(candidate));
+    await pinned.write('book.xlsx', later); const writes = vi.mocked(files.write).mock.calls.length;
+    expect(await commit(request)).toEqual(restored); expect(vi.mocked(files.write).mock.calls.length).toBe(writes); expect((await pinned.read('book.xlsx')).buffer).toEqual(later);
+    await expect(commit({ ...request, restore: { ...request.restore, versionId: 'different-version' } })).rejects.toMatchObject({ code: 'WORKBOOK_OPERATION_CONFLICT' });
+    const legacy = { ...request }; delete (legacy as Partial<typeof request>).restore;
+    await expect(commit(legacy)).rejects.toMatchObject({ code: 'WORKBOOK_OPERATION_CONFLICT' });
+  });
+  it('keeps normal-save request hashes compatible and refuses unknown restore history before admission', async () => {
+    await commit();
+    const row = db.prepare('SELECT request_hash FROM workbook_writes WHERE operation_id=?').get(input.operationId) as { request_hash: string };
+    expect(row.request_hash).toBe(digest(Buffer.from(JSON.stringify({ fileName: input.fileName, sourceSha256: input.sourceSha256, targetSha256: digest(input.bytes) }))));
+    const unknown = { ...input, operationId: randomUUID(), sourceSha256: digest(candidate), bytes: original, restore: { versionId: 'missing', contentDigest: digest(original) } };
+    await expect(commit(unknown)).rejects.toMatchObject({ code: 'WORKBOOK_RESTORE_VERSION_MISMATCH' });
+    expect(db.prepare('SELECT 1 FROM workbook_writes WHERE operation_id=?').get(unknown.operationId)).toBeUndefined();
+  });
+  it('settles a restore after a lost write response under revoked write authority without writing again', async () => {
+    const request = await restoreRequest(), actualWrite = files.write;
+    files.write = vi.fn(async (bytes, expected) => { await actualWrite(bytes, expected); throw Error('Coordinator died after rename'); });
+    await expect(commit(request)).rejects.toThrow('Coordinator died'); expect((await pinned.read('book.xlsx')).buffer).toEqual(original);
+    files.write = vi.fn(async () => { throw Error('must not write after revocation'); }); files.mayWrite = false;
+    expect(await commit(request)).toMatchObject({ state: 'applied', restoreFromVersionId: request.restore.versionId }); expect(files.write).not.toHaveBeenCalled();
+  });
+  it('makes revoked prewrite restore conflict terminal and refuses a stale source without clobbering it', async () => {
+    const request = await restoreRequest(); files.mayWrite = false;
+    expect(await commit(request)).toMatchObject({ state: 'conflict', actualSha256: digest(candidate) });
+    files.mayWrite = true; expect(await commit(request)).toMatchObject({ state: 'conflict' }); expect((await pinned.read('book.xlsx')).buffer).toEqual(candidate);
+    await pinned.write('book.xlsx', later);
+    expect(await commit({ ...request, operationId: randomUUID() })).toMatchObject({ state: 'conflict', actualSha256: digest(later) }); expect((await pinned.read('book.xlsx')).buffer).toEqual(later);
+  });
+
+  it('refuses to resurrect a missing current workbook during restore', async () => {
+    const request = await restoreRequest(); await rm(path.join(directory, 'book.xlsx')); vi.mocked(files.write).mockClear();
+    expect(await commit(request)).toMatchObject({ state: 'conflict', actualSha256: null }); expect(files.write).not.toHaveBeenCalled();
+    await expect(pinned.read('book.xlsx')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
 });

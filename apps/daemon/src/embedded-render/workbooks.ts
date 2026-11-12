@@ -9,8 +9,18 @@ import { WorkbookFormatError } from '../artifacts/workbook/package.js';
 /** Called only by the existing networkless, memory-limited render container.
  * Input is the host's immutable source snapshot; workspace files are not mounted
  * writable and this worker never persists a live edit. */
-export async function renderWorkbook(output: string, input: { fileName: string; format: 'workbook' | 'xlsx'; dataFile?: string }, asset: (name: string) => Promise<Buffer>): Promise<{ file: string; mime: string }> {
+export async function renderWorkbook(output: string, input: { fileName: string; format: 'workbook' | 'xlsx'; dataFile?: string; restore?: { fileName: string; sourceSha256: string; targetSha256: string } }, asset: (name: string) => Promise<Buffer>): Promise<{ file: string; mime: string }> {
   const bytes = await asset(input.fileName), sourceSha256 = createHash('sha256').update(bytes).digest('hex');
+  if (input.restore) {
+    if (input.format !== 'xlsx' || input.dataFile || input.restore.sourceSha256 !== sourceSha256) throw new WorkbookFormatError('The workbook changed after this restore was selected.');
+    const retained = await asset(input.restore.fileName);
+    if (retained.length > 25 * 1024 * 1024 || createHash('sha256').update(retained).digest('hex') !== input.restore.targetSha256) throw new WorkbookFormatError('The retained workbook revision does not match this restore.');
+    const restored = await readXlsxWorkbook(retained);
+    if (restored.model.features.macros) throw new WorkbookFormatError('Macro-enabled workbooks cannot be restored as XLSX.', 'WORKBOOK_UNSUPPORTED');
+    // Restoration is binary identity, not a recalculated/reserialized export.
+    await writeFile(path.join(output, 'artifact.xlsx'), retained, { flag: 'wx', mode: 0o600 });
+    return { file: 'artifact.xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+  }
   const source = await readXlsxWorkbook(bytes);
   let prepared: Awaited<ReturnType<typeof calculateWorkbookCellEdits>> | undefined;
   if (input.dataFile) {

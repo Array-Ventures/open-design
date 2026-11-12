@@ -1,11 +1,11 @@
 import type Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
-import { workbookWriteIdentitySchema, type WorkbookWriteReceipt } from '@open-design/contracts/runtime/workbook';
+import { workbookWriteIdentitySchema, workbookRestoreSelectionSchema, type WorkbookRestoreSelection, type WorkbookWriteReceipt } from '@open-design/contracts/runtime/workbook';
 import { withProjectFileVersionBytesLock } from '../../project-file-versions.js';
-import { admitWorkbookWrite, finishWorkbookWrite, readWorkbookWrite, recordWorkbookSourceVersion, type WorkbookWriteIdentity } from '../../storage/workbook-writes.js';
+import { admitWorkbookWrite, finishWorkbookWrite, readWorkbookWrite, recordWorkbookSourceVersion, WorkbookWriteError, type WorkbookWriteIdentity } from '../../storage/workbook-writes.js';
 import { requireWorkbookHistoryBytes } from './history-storage.js';
 
-export interface WorkbookCommitInput { projectId: string; actor: string; operationId: string; fileName: string; sourceSha256: string; bytes: Buffer }
+export interface WorkbookCommitInput { projectId: string; actor: string; operationId: string; fileName: string; sourceSha256: string; bytes: Buffer; restore?: WorkbookRestoreSelection }
 export interface WorkbookCommitFiles {
   authorize: () => Promise<void>;
   /** Recovery after revocation may settle a receipt but must not install bytes. */
@@ -23,15 +23,18 @@ const digest = (value: Buffer | null) => value === null ? null : createHash('sha
  * operations. This does not claim kernel CAS against unmanaged sandbox writes. */
 export async function commitWorkbook(db: Database.Database, projectsRoot: string, raw: WorkbookCommitInput, metadata: unknown, files: WorkbookCommitFiles): Promise<WorkbookWriteReceipt> {
   const bytes = requireWorkbookHistoryBytes(raw.bytes), targetSha256 = digest(bytes)!;
+  if (raw.restore && workbookRestoreSelectionSchema.parse(raw.restore).contentDigest !== targetSha256) throw new WorkbookWriteError('WORKBOOK_RESTORE_VERSION_MISMATCH');
   workbookWriteIdentitySchema.parse({ operationId: raw.operationId, sourceSha256: raw.sourceSha256 });
   if (!raw.actor || raw.actor.trim() !== raw.actor || raw.actor.length > 200) throw new Error('Invalid workbook actor identity.');
   return withProjectFileVersionBytesLock(projectsRoot, raw.projectId, raw.fileName, metadata, async history => {
     await files.authorize();
-    const identity: WorkbookWriteIdentity = { projectId: raw.projectId, actor: raw.actor, operationId: raw.operationId, fileName: history.safeName, sourceSha256: raw.sourceSha256, targetSha256 };
-    let receipt = readWorkbookWrite(db, identity) ?? admitWorkbookWrite(db, identity);
+    const identity: WorkbookWriteIdentity = { projectId: raw.projectId, actor: raw.actor, operationId: raw.operationId, fileName: history.safeName, sourceSha256: raw.sourceSha256, targetSha256, ...(raw.restore ? { restore: workbookRestoreSelectionSchema.parse(raw.restore) } : {}) };
+    let receipt = readWorkbookWrite(db, identity);
     // Terminal replay does no file I/O and never changes the history head. A
     // later revision or renamed file cannot make an old receipt run again.
-    if (receipt.state !== 'pending') return receipt;
+    if (receipt && receipt.state !== 'pending') return receipt;
+    if (identity.restore && (await history.matchVersionContent(bytes, identity.restore.versionId)).status !== 'matched') throw new WorkbookWriteError('WORKBOOK_RESTORE_VERSION_MISMATCH');
+    receipt ??= admitWorkbookWrite(db, identity);
     let current = await files.read(), actual = digest(current);
     if (actual !== identity.sourceSha256 && actual !== targetSha256) return finishWorkbookWrite(db, identity, { state: 'conflict', actualSha256: actual });
     if (actual !== targetSha256) {
@@ -50,7 +53,7 @@ export async function commitWorkbook(db: Database.Database, projectsRoot: string
       current = await files.read(); actual = digest(current);
       if (actual !== targetSha256) return finishWorkbookWrite(db, identity, { state: 'conflict', actualSha256: actual });
     }
-    const version = await history.ensureCurrentVersion(bytes, { source: 'manual', label: 'Saved workbook', ...(receipt.sourceVersionId ? { parentVersionId: receipt.sourceVersionId } : {}) });
+    const version = await history.ensureCurrentVersion(bytes, { source: identity.restore ? 'restore' : 'manual', label: identity.restore ? 'Restored workbook' : 'Saved workbook', ...(identity.restore ? { restoreFromVersionId: identity.restore.versionId } : {}), ...(receipt.sourceVersionId ? { parentVersionId: receipt.sourceVersionId } : {}) });
     if (!version) throw new Error('Workbook saved history was not captured.');
     return finishWorkbookWrite(db, identity, { state: 'applied', versionId: version.id });
   });

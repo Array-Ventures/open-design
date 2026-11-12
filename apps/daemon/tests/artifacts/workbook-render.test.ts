@@ -51,4 +51,18 @@ describe('isolated workbook render preparation', () => {
     await expect(renderWorkbook(directory, { fileName: 'book.xlsx', dataFile: 'edits.json', format: 'xlsx' }, async name => name === 'edits.json' ? invalid : bytes)).rejects.toThrow();
     expect(await readdir(directory)).toEqual([]);
   });
+  it('restores exact retained bytes without recalculation or rewriting their package', async () => {
+    const retained = Buffer.from(bytes), current = Buffer.from('damaged current workbook but a known exact identity');
+    const result = await renderWorkbook(directory, { fileName: 'book.xlsx', format: 'xlsx', restore: { fileName: 'retained.xlsx', sourceSha256: createHash('sha256').update(current).digest('hex'), targetSha256: sourceSha256 } }, async name => name === 'retained.xlsx' ? retained : current);
+    expect(result.file).toBe('artifact.xlsx'); expect(await readFile(path.join(directory, 'artifact.xlsx'))).toEqual(retained);
+    const reopened = new ExcelJS.Workbook(); await reopened.xlsx.load(Uint8Array.from(retained).buffer);
+    expect(reopened.getWorksheet('Inputs')!.getCell('B1').value).toEqual({ formula: 'A1*2', result: 4 });
+  });
+  it('rejects changed current or retained restore identities before emitting output', async () => {
+    for (const restore of [{ fileName: 'retained.xlsx', sourceSha256: '0'.repeat(64), targetSha256: sourceSha256 }, { fileName: 'retained.xlsx', sourceSha256, targetSha256: '0'.repeat(64) }]) {
+      await expect(renderWorkbook(directory, { fileName: 'book.xlsx', format: 'xlsx', restore }, async () => bytes)).rejects.toThrow();
+    }
+    await expect(readFile(path.join(directory, 'artifact.xlsx'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
 });

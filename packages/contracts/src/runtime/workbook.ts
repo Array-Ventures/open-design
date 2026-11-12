@@ -153,17 +153,22 @@ export const workbookDocumentSchema = z.object({
 export type WorkbookDocument = z.infer<typeof workbookDocumentSchema>;
 export const workbookPreviewSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), model: workbookDocumentSchema }).strict();
 export const workbookWriteIdentitySchema = z.object({ operationId: z.string().uuid(), sourceSha256: z.string().regex(/^[0-9a-f]{64}$/) }).strict();
+const workbookVersionIdentity = z.string().regex(/^[A-Za-z0-9_-]{1,200}$/);
+export const workbookRestoreSelectionSchema = z.object({ versionId: workbookVersionIdentity, contentDigest: z.string().regex(/^[0-9a-f]{64}$/) }).strict();
+export type WorkbookRestoreSelection = z.infer<typeof workbookRestoreSelectionSchema>;
 /** Host-service metadata; workbook bytes use a bounded octet-stream body. */
 export const workbookCommitRequestSchema = workbookWriteIdentitySchema.extend({
   fileName: z.string().min(1).max(500).refine(value => /\.xlsx$/i.test(value) && value.split('/').every(part => part && part !== '.' && part !== '..' && !/[\\\u0000]/.test(part))),
   targetSha256: z.string().regex(/^[0-9a-f]{64}$/),
   actor: z.string().regex(/^[A-Za-z0-9:_-]{1,200}$/),
   mode: z.enum(['commit', 'reconcile']),
+  restore: workbookRestoreSelectionSchema.optional(),
 }).strict();
 export const workbookWriteReceiptSchema = workbookWriteIdentitySchema.extend({
   fileName: z.string().min(1).max(500), state: z.enum(['pending', 'applied', 'conflict']),
   targetSha256: z.string().regex(/^[0-9a-f]{64}$/),
-  actualSha256: z.string().regex(/^[0-9a-f]{64}$/).nullable(), versionId: id.nullable(), sourceVersionId: id.nullable(),
+  actualSha256: z.string().regex(/^[0-9a-f]{64}$/).nullable(), versionId: workbookVersionIdentity.nullable(), sourceVersionId: workbookVersionIdentity.nullable(),
+  restoreFromVersionId: workbookVersionIdentity.optional(),
   createdAt: z.number().int().nonnegative(), updatedAt: z.number().int().nonnegative(),
 }).strict().superRefine((receipt, context) => {
   if (receipt.state === 'applied' ? !receipt.versionId || receipt.actualSha256 !== receipt.targetSha256 : receipt.versionId !== null
