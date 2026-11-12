@@ -371,6 +371,7 @@ import {
   readManualEditOuterHtml,
   readManualEditStyles,
 } from '../edit-mode/source-patches';
+import { usePreviewSourceHandoff } from '../runtime/use-preview-source-handoff';
 import { verifySavedManualEditPreview } from '../edit-mode/saved-preview';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
@@ -9161,6 +9162,15 @@ function HtmlViewer({
     } | null) => void;
     timeout: number;
   }>());
+  useLayoutEffect(() => {
+    previewScrollRestoreRef.current = null;
+    previewScrollPositionRef.current = { frameLeft: 0, frameTop: 0, canvasLeft: 0, canvasTop: 0 };
+    previewScrollRequestAtRef.current = 0;
+    for (const pending of pendingPreviewScrollCapturesRef.current.values()) {
+      window.clearTimeout(pending.timeout); pending.resolve(null);
+    }
+    pendingPreviewScrollCapturesRef.current.clear();
+  }, [sourceAuthorizationScopeKey, projectId, file.name]);
   const dcViewportRef = useRef({
     x: 0,
     y: 0,
@@ -9248,7 +9258,7 @@ function HtmlViewer({
     const next = target.isConnected ? target : fallback;
     next?.focus();
   }, [commentPanelOpen]);
-  const capturePreviewScrollPosition = useCallback(async (): Promise<void> => {
+  const capturePreviewScrollPosition = useCallback(async (waitForOpaque = false): Promise<void> => {
     const host = previewBodyRef.current;
     const frame = iframeRef.current;
     let position = previewScrollPositionRef.current;
@@ -9329,7 +9339,7 @@ function HtmlViewer({
       || position.canvasLeft !== 0
       || position.canvasTop !== 0
     );
-    if (!hasKnownNonZeroScroll) {
+    if (!hasKnownNonZeroScroll && !waitForOpaque) {
       // At the origin there is no jump-to-top to prevent. Keep the precise
       // capture in flight for subsequent transitions, but do not serialize an
       // otherwise instant save behind a bridge timeout if the iframe is gone.
@@ -9353,6 +9363,7 @@ function HtmlViewer({
       return;
     }
     const apply = () => {
+      if (previewScrollRestoreRef.current !== snapshot) return;
       const previewBody = previewBodyRef.current;
       if (typeof previewBody?.scrollTo === 'function') {
         previewBody.scrollTo(snapshot.hostLeft, snapshot.hostTop);
@@ -9361,18 +9372,18 @@ function HtmlViewer({
         const frameDocument = iframeRef.current?.contentWindow?.document;
         frameDocument?.scrollingElement?.scrollTo(snapshot.frameLeft, snapshot.frameTop);
         frameDocument?.querySelector<HTMLElement>('.design-canvas')?.scrollTo(snapshot.canvasLeft, snapshot.canvasTop);
-        iframeRef.current?.contentWindow?.postMessage({
-          type: 'od:preview-scroll-restore',
-          frameLeft: snapshot.frameLeft,
-          frameTop: snapshot.frameTop,
-          canvasLeft: snapshot.canvasLeft,
-          canvasTop: snapshot.canvasTop,
-        }, '*');
       } catch (error) {
-        // The host still restores its own scroll when the iframe denies DOM access.
-        if (error instanceof DOMException && error.name === 'SecurityError') return;
-        console.warn('Could not restore preview frame scroll', error);
+        // Opaque frames still receive the restore below. Direct DOM access is
+        // only a readable-frame fast path, never a prerequisite for messaging.
+        if (!(error instanceof DOMException && error.name === 'SecurityError')) console.warn('Could not restore preview frame scroll', error);
       }
+      iframeRef.current?.contentWindow?.postMessage({
+        type: 'od:preview-scroll-restore',
+        frameLeft: snapshot.frameLeft,
+        frameTop: snapshot.frameTop,
+        canvasLeft: snapshot.canvasLeft,
+        canvasTop: snapshot.canvasTop,
+      }, '*');
     };
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
@@ -9381,6 +9392,7 @@ function HtmlViewer({
         window.setTimeout(() => {
           if (previewScrollRestoreRef.current === snapshot) {
             apply();
+            previewScrollRestoreRef.current = null;
           }
         }, 260);
       });
@@ -11530,8 +11542,16 @@ function HtmlViewer({
       // paint proof is pending, retain the exact challenged transport rather
       // than replacing it with that older frozen candidate.
       || (embedded && manualEditMode && persistedManualEditCandidate.transportGeneration === committedSrcDocTransportRef.current.generation));
-  if (!candidateRepresentsPersistedManualEditDocument) {
+  const committedSrcDocScopeRef = useRef(srcDocPreviewBaseIdentity);
+  const captureBeforeSourceReplacement = embedded && mode === 'preview' && !useUrlLoadPreview
+    && !interactivePreviewModeActive && !candidateRepresentsPersistedManualEditDocument
+    && committedSrcDocScopeRef.current === srcDocPreviewBaseIdentity
+    && committedSrcDocTransportRef.current !== candidateSrcDocTransport
+    && Boolean(committedSrcDocTransportRef.current.sourceFingerprint && candidateSrcDocTransport.sourceFingerprint);
+  const sourceReplacementReady = usePreviewSourceHandoff(candidateSrcDocTransport, srcDocPreviewBaseIdentity, captureBeforeSourceReplacement, capturePreviewScrollPosition);
+  if (!candidateRepresentsPersistedManualEditDocument && sourceReplacementReady) {
     committedSrcDocTransportRef.current = candidateSrcDocTransport;
+    committedSrcDocScopeRef.current = srcDocPreviewBaseIdentity;
   }
   const srcDocTransport = committedSrcDocTransportRef.current;
   const srcDocTransportGeneration = srcDocTransport.generation;

@@ -4751,6 +4751,29 @@ describe('FileViewer SVG artifacts', () => {
     await waitFor(() => expect(frame.srcdoc).toContain('Saved A'));
   });
 
+  it('captures an opaque outgoing document before an external source replacement and restores through messaging', async () => {
+    const file = baseFile({ name: 'external.html', path: 'external.html', mime: 'text/html', kind: 'html' });
+    const props = { projectId: 'project-1', projectKind: 'prototype' as const, embedded: true, inlineAnnotations: true, file };
+    const { rerender } = render(<FileViewer {...props} liveHtml='<html><body><p>Original external source</p></body></html>' />);
+    const frame = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;
+    const sourceBefore = frame.srcdoc;
+    const opaque = installSandboxedPreviewWindow(frame), post = vi.mocked(opaque.postMessage);
+    rerender(<FileViewer {...props} liveHtml='<html><body><p>Next external source</p></body></html>' />);
+    await waitFor(() => expect(post.mock.calls.some(([value]) => value.type === 'od:preview-scroll-capture')).toBe(true));
+    expect(frame.srcdoc).toBe(sourceBefore);
+    const capture = post.mock.calls.map(([value]) => value).find(value => value.type === 'od:preview-scroll-capture');
+    act(() => window.dispatchEvent(new MessageEvent('message', { source: opaque, data: { type: 'od:preview-scroll', requestId: capture.requestId, frameLeft: 0, frameTop: 817, canvasLeft: 0, canvasTop: 817 } })));
+    await waitFor(() => expect(frame.srcdoc).toContain('Next external source'));
+    fireEvent.load(frame);
+    await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'od:preview-scroll-restore', frameTop: 817, canvasTop: 817 }), '*'));
+    rerender(<FileViewer {...props} projectId="other-project" file={{ ...file, name: 'other.html', path: 'other.html' }} liveHtml='<html><body><p>Other source scope</p></body></html>' />);
+    await waitFor(() => expect((screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement).srcdoc).toContain('Other source scope'));
+    const otherFrame = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;
+    const otherWindow = installSandboxedPreviewWindow(otherFrame), otherPost = vi.mocked(otherWindow.postMessage);
+    act(() => window.dispatchEvent(new MessageEvent('message', { source: otherWindow, data: { type: 'od:preview-scroll-request' } })));
+    expect(otherPost).toHaveBeenCalledWith(expect.objectContaining({ type: 'od:preview-scroll-restore', frameTop: 0, canvasTop: 0 }), '*');
+  });
+
   it('waits for the opaque preview scroll snapshot before committing a content edit', async () => {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       callback(0);
