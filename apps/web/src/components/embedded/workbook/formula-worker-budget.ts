@@ -2,6 +2,9 @@ import type { ICellData, IWorkbookData } from '@univerjs/presets';
 import { WORKBOOK_MODEL_LIMITS } from '@open-design/contracts/runtime/workbook';
 
 export class WorkbookCalculationBudgetError extends Error {}
+// These pinned layout-only mutations cannot insert cells or change registered
+// geometry. They preserve calculation admission when a person resizes a row.
+const layoutMutations = new Set(['sheet.mutation.set-worksheet-col-width', 'sheet.mutation.set-worksheet-row-height', 'sheet.mutation.set-worksheet-row-auto-height', 'sheet.mutation.set-worksheet-row-is-auto-height']);
 /** A browser worker is separately disposable, not an OS memory sandbox. Keep
  * its admitted geometry bounded before execution; the owning UI also enforces
  * a wall-clock deadline and terminates a failed worker. */
@@ -22,7 +25,9 @@ export function assertWorkbookCalculationBudget(books: readonly IWorkbookData[],
         if (!/^(0|[1-9][0-9]*)$/.test(rowText) || !/^(0|[1-9][0-9]*)$/.test(columnText) || !Number.isSafeInteger(row) || !Number.isSafeInteger(column) || row < 0 || column < 0 || row >= rows || column >= columns || ++cells > WORKBOOK_MODEL_LIMITS.cells) throw new WorkbookCalculationBudgetError('Workbook calculation contains out-of-bounds cells.');
         if (cell != null) {
           if (typeof cell !== 'object' || Array.isArray(cell)) throw new WorkbookCalculationBudgetError('Workbook calculation cells are malformed.');
-          const data = cell as ICellData; text += typeof data.v === 'string' ? data.v.length : 0; text += typeof data.f === 'string' ? data.f.length : 0; text += data.p ? JSON.stringify(data.p).length : 0;
+          const data = cell as ICellData;
+          if (data.si) throw new WorkbookCalculationBudgetError('Shared formula edits require a separate calculation adapter.');
+          text += typeof data.v === 'string' ? data.v.length : 0; text += typeof data.f === 'string' ? data.f.length : 0; text += data.p ? JSON.stringify(data.p).length : 0;
         }
         if (text > WORKBOOK_MODEL_LIMITS.text) throw new WorkbookCalculationBudgetError('Workbook calculation text exceeds its limit.');
       }
@@ -37,7 +42,7 @@ export interface WorkbookCalculationMutation {
  * through paste, insertion, count changes or a future unreviewed mutation. */
 export function assertWorkbookCalculationMutation(command: WorkbookCalculationMutation, books: readonly IWorkbookData[], rangeMutationId: string): void {
   assertWorkbookCalculationBudget(books);
-  if (!command.id.startsWith('sheet.mutation.')) return;
+  if (!command.id.startsWith('sheet.mutation.') || layoutMutations.has(command.id)) return;
   if (command.id !== rangeMutationId) throw new WorkbookCalculationBudgetError('Structural workbook changes need a separate calculation adapter.');
   const params = command.params as { unitId?: unknown; subUnitId?: unknown; cellValue?: unknown } | undefined;
   if (!params || typeof params.unitId !== 'string' || typeof params.subUnitId !== 'string') throw new WorkbookCalculationBudgetError('Workbook calculation mutation identity is unavailable.');
@@ -51,6 +56,8 @@ export function assertWorkbookCalculationMutation(command: WorkbookCalculationMu
     if (!/^(0|[1-9][0-9]*)$/.test(rowText) || !Number.isSafeInteger(row) || row < 0 || row >= (sheet.rowCount ?? 0) || !entries || typeof entries !== 'object' || Array.isArray(entries)) throw new WorkbookCalculationBudgetError('Workbook calculation mutation exceeds its registered bounds.');
     for (const columnText of Object.keys(entries)) {
       const column = Number(columnText);
+      const cell = (entries as Record<string, ICellData | null>)[columnText];
+      if (cell?.si) throw new WorkbookCalculationBudgetError('Shared formula edits require a separate calculation adapter.');
       if (!/^(0|[1-9][0-9]*)$/.test(columnText) || !Number.isSafeInteger(column) || column < 0 || column >= (sheet.columnCount ?? 0) || ++count > WORKBOOK_MODEL_LIMITS.cells) throw new WorkbookCalculationBudgetError('Workbook calculation mutation exceeds its registered bounds.');
     }
   }

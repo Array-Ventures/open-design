@@ -13,3 +13,8 @@ it('bounds values/paste coordinates and refuses unreviewed structural mutation b
   expect(() => assertWorkbookCalculationMutation(command, [book], mutation)).not.toThrow();
   for (const changed of [{ ...command, id: 'sheet.mutation.insert-row' }, { ...command, id: 'sheet.mutation.set-worksheet-row-count' }, { ...command, id: 'sheet.mutation.future-growth' }, { ...command, params: { ...command.params, cellValue: { 100: { 0: { v: 3 } } } } }, { ...command, params: { ...command.params, cellValue: { 0: { 20: { v: 3 } } } } }, { ...command, params: { ...command.params, unitId: 'other' } }]) expect(() => assertWorkbookCalculationMutation(changed, [book], mutation)).toThrow();
 });
+
+it('admits reviewed row/column layout without admitting geometry or shared-formula aliases', () => {
+  for (const id of ['sheet.mutation.set-worksheet-col-width', 'sheet.mutation.set-worksheet-row-height', 'sheet.mutation.set-worksheet-row-auto-height', 'sheet.mutation.set-worksheet-row-is-auto-height']) expect(() => assertWorkbookCalculationMutation({ id }, [book], mutation)).not.toThrow();
+  expect(() => assertWorkbookCalculationMutation({ id: mutation, params: { unitId: book.id, subUnitId: 's', cellValue: { 0: { 0: { si: 'unqualified-shared-formula' } } } } }, [book], mutation)).toThrow('Shared formula');
+});

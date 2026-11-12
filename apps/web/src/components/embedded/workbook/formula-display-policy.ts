@@ -92,7 +92,8 @@ export class WorkbookFormulaDisplay {
     for (const [sheetId, rows] of Object.entries(params.unitData[this.current.id] ?? {})) for (const [r, columns] of Object.entries(rows)) for (const [c, value] of Object.entries(columns)) {
       const row = Number(r), column = Number(c), coordinate = key(sheetId, row, column), formula = at(this.current, sheetId, row, column)?.f;
       const retained = params.sourceFormulaData?.[this.current.id]?.[sheetId]?.[row]?.[column]?.f;
-      if (!formula || limited.has(coordinate) || retained !== undefined && retained !== formula) continue;
+      if (!formula || retained !== undefined && retained !== formula) { delete columns[Number(c)]; continue; }
+      if (limited.has(coordinate)) continue;
       // The matching input digest already binds exact formula spelling. Add
       // the pinned atomic-application guard when an older kernel omits it.
       const source = params.sourceFormulaData ??= {}, unit = source[this.current.id] ??= {}, sheet = unit[sheetId] ??= {}, cells = sheet[row] ??= {};

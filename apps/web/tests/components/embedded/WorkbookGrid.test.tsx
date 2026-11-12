@@ -6,6 +6,7 @@ import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookGrid } from '../../../src/components/embedded/workbook/WorkbookGrid';
 
 const runtime = vi.hoisted(() => ({ context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
+  live: false, fail: null as null | (() => void), calculationDisposed: vi.fn(),
   getRange: vi.fn(), select: vi.fn(), createWorkbook: vi.fn(), editable: vi.fn(), activeSheet: vi.fn(), saved: vi.fn(), listener: null as null | ((event: { type: number; id: string }) => void) }));
 vi.mock('@univerjs/presets', async original => ({ ...await original<typeof import('@univerjs/presets')>(),
   Univer: class { constructor() { runtime.created(); } registerPlugin = runtime.register; dispose = runtime.dispose; __getInjector = () => ({ get: () => ({ setContextValue: runtime.context }) }); },
@@ -13,9 +14,13 @@ vi.mock('@univerjs/presets', async original => ({ ...await original<typeof impor
     addEvent: (_event: string, callback: NonNullable<typeof runtime.listener>) => { runtime.listener = callback; return { dispose: runtime.off }; }, setTheme: runtime.theme, toggleDarkMode: runtime.dark }) },
 }));
 vi.mock('@univerjs/preset-sheets-core', () => ({ ...Object.fromEntries(['UniverRenderEnginePlugin', 'UniverFormulaEnginePlugin', 'UniverUIPlugin', 'UniverDocsPlugin', 'UniverDocsUIPlugin', 'UniverSheetsPlugin', 'UniverSheetsUIPlugin', 'UniverSheetsFormulaPlugin', 'UniverSheetsFormulaUIPlugin', 'UniverSheetsNumfmtPlugin', 'UniverSheetsNumfmtUIPlugin'].map(name => [name, name])), DISABLE_AUTO_FOCUS_KEY: 'disableAutoFocus', CalculationMode: { NO_CALCULATION: 2 } }));
+vi.mock('../../../src/components/embedded/workbook/grid-calculation', () => ({ workbookLiveCalculationEligible: () => runtime.live, attachWorkbookCalculation: () => ({ dispose() {} }) }));
+vi.mock('../../../src/components/embedded/workbook/calculation-worker-owner', () => ({ ownWorkbookCalculationWorker: (fail: () => void) => { runtime.fail = fail; return { loaded: Promise.resolve(true), ready: true, worker: {}, dispose: runtime.calculationDisposed }; } }));
+vi.mock('@univerjs/rpc', () => ({ UniverRPCMainThreadPlugin: 'UniverRPCMainThreadPlugin' }));
 const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 'inputs', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
   sheets: [{ id: 'inputs', name: 'Inputs', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
 beforeEach(() => {
+  runtime.live = false; runtime.fail = null;
   runtime.createWorkbook.mockReturnValue({ onSelectionChange: () => ({ dispose: runtime.selectionOff }), getWorkbookPermission: () => ({ canEdit: () => true }), setActiveSheet: runtime.activeSheet, setEditable: runtime.editable, save: runtime.saved, getActiveSheet: () => ({ getSheetId: () => 'inputs', getMaxRows: () => 100, getMaxColumns: () => 26, getSelection: () => ({ getActiveRange: () => ({ getRange: () => ({ startRow: 5, endRow: 5, startColumn: 2, endColumn: 2 }) }) }), getRange: runtime.getRange, setActiveRange: runtime.select }) });
   runtime.getRange.mockReturnValue({ boundWorksheet: 'inputs' });
   runtime.saved.mockReturnValue({ id: 'current-grid-state' });
@@ -66,4 +71,27 @@ it('permits typing after deliberate focus while keeping startup and outside focu
   fireEvent.pointerDown(screen.getByRole('region', { name: 'Workbook grid' }));
   expect(runtime.context).toHaveBeenLastCalledWith('disableAutoFocus', false);
   fireEvent(window, new Event('blur')); expect(runtime.context).toHaveBeenLastCalledWith('disableAutoFocus', true);
+});
+
+it('carries the exact dirty snapshot through terminal worker fallback and waits for writer readiness', async () => {
+  runtime.live = true;
+  let allow!: () => void;
+  const drained = new Promise<void>(resolve => { allow = resolve; });
+  const ready = vi.fn().mockResolvedValueOnce(undefined).mockReturnValueOnce(drained), snapshot = vi.fn();
+  const source = { id: 'grid', sheets: { inputs: { cellData: { 0: { 0: { v: 2 } } } } } };
+  runtime.saved.mockReturnValue(source);
+  const view = render(<WorkbookGrid id="grid" title="Revenue" model={model} onSnapshot={snapshot} onReady={ready} />);
+  await waitFor(() => expect(runtime.editable).toHaveBeenLastCalledWith(true));
+  const dirty = { ...source, sheets: { inputs: { cellData: { 0: { 0: { v: 42 } } } } } };
+  runtime.saved.mockReturnValue(dirty);
+  act(() => runtime.fail?.());
+  await waitFor(() => expect(ready).toHaveBeenCalledTimes(2));
+  expect(snapshot).toHaveBeenCalledWith(dirty);
+  expect(snapshot.mock.invocationCallOrder[0]).toBeLessThan(runtime.calculationDisposed.mock.invocationCallOrder[0]!);
+  expect(runtime.createWorkbook.mock.calls[1]![0]).toEqual(dirty);
+  expect(runtime.editable).toHaveBeenLastCalledWith(false);
+  await act(async () => { allow(); await drained; });
+  await waitFor(() => expect(runtime.editable).toHaveBeenLastCalledWith(true));
+  expect(runtime.calculationDisposed).toHaveBeenCalledTimes(1);
+  view.unmount(); expect(runtime.dispose).toHaveBeenCalledTimes(2);
 });

@@ -319,3 +319,28 @@ The actual production-entry/RPC/interceptor test verifies scalar10, original
 unsupported55 and dependent56, genuine DIV/0, unavailable new EXPAND, and rapid
 edits converging12. These checks do not yet qualify Grid/writer recreation or
 XLSX persistence, so production Grid remains disabled at this stage.
+
+## Live Grid candidate and same-writer fallback
+
+The Grid now keeps all main-thread formula engines disabled and supplies an owned
+RPC worker only for admitted bounded workbooks whose source array ownership is
+known empty. Source arrays, older/unknown array metadata and oversized geometry
+open in explicit stored-result mode. New unsupported formulas remain recognizable
+but their unavailable executor outputs do not masquerade as calculated values.
+
+`grid-calculation.ts` installs the same input/result/display boundary qualified by
+the actual RPC test. Reviewed row-height and column-width changes preserve live
+admission; structural growth and shared-formula aliases remain unqualified.
+A terminal worker failure captures and journals the last raw snapshot before
+closing the kernel, then recreates a stored kernel from that same snapshot and
+awaits the existing scoped writer's readiness before enabling input. The hook's
+same-source checkpoint carry preserves operation IDs and pending save identity;
+a replacement source/project/account must never inherit it.
+
+Focused tests cover the actual Grid controller with production-entry worker math,
+range SUM and IF, genuine errors, stored unsupported dependents, rapid edits and
+row/column layout; component tests cover fallback ordering and writer readiness.
+Actual browser bundling, visible live math and binary Save/export acceptance
+remain integration gates. Unsupported-function cache fidelity on binary Save is
+not established by this display policy: the existing server calculation path
+owns that separate persistence boundary.
