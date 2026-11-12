@@ -52,3 +52,13 @@ export function range(value: string) {
   const start = address(pieces[0]!), end = address(pieces[1] ?? pieces[0]!);
   return { startRow: start.row, startColumn: start.column, endRow: end.row, endColumn: end.column };
 }
+
+/** Insert in O(1) before a caller-cached row extension boundary; order once after a batch. */
+export function appendWorkbookRowCell(row: Element, cell: Element, boundary: Element | null): void {
+  row.insertBefore(cell, boundary);
+}
+/** Keep source-owned extension nodes in place while putting cells in column order before extLst. */
+export function orderWorkbookRowCells(row: Element): void {
+  const boundary = child(row, 'extLst') ?? null;
+  for (const cell of children(row, 'c').sort((a, b) => address(a.getAttribute('r')!).column - address(b.getAttribute('r')!).column)) appendWorkbookRowCell(row, cell, boundary);
+}

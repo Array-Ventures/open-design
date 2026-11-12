@@ -1,7 +1,7 @@
 import type { Document, Element } from '@xmldom/xmldom';
 import { workbookStyleEditSchema, WORKBOOK_MODEL_LIMITS, type WorkbookStyleEdit } from '@open-design/contracts/runtime/workbook';
 import { WorkbookFormatError, writeWorkbookPackage } from './package.js';
-import { address, child, children, relationships, xmlPart } from './parts.js';
+import { appendWorkbookRowCell, orderWorkbookRowCells, address, child, children, relationships, xmlPart } from './parts.js';
 import type { ReadWorkbook } from './reader.js';
 import { writeWorkbookXml } from './xml.js';
 
@@ -41,17 +41,17 @@ function replace(parent: Element, name: string, replacement?: Element) {
   if (replacement) parent.insertBefore(replacement, child(parent, 'extLst') ?? null);
 }
 function coordinate(row: number, column: number) { let letters = ''; for (let n = column + 1; n; n = Math.floor((n - 1) / 26)) letters = String.fromCharCode(65 + (n - 1) % 26) + letters; return `${letters}${row + 1}`; }
-interface SheetIndex { document: Document; data: Element; rows: Map<number, Element>; cells: Map<string, Element>; columns: Map<number, number> }
+interface SheetIndex { rowExtensions: Map<Element, Element | null>; document: Document; data: Element; rows: Map<number, Element>; cells: Map<string, Element>; columns: Map<number, number> }
 function indexSheet(source: ReadWorkbook, part: string, styleCount: number): SheetIndex {
   const document = xmlPart(source.parts, part), root = document.documentElement!, data = child(root, 'sheetData');
   if (!data || child(root, 'sheetProtection')) throw new WorkbookFormatError('Protected or missing worksheets cannot be formatted here.', 'WORKBOOK_UNSUPPORTED');
-  const rows = new Map<number, Element>(), cells = new Map<string, Element>(), columns = new Map<number, number>();
+  const rowExtensions = new Map<Element, Element | null>(), rows = new Map<number, Element>(), cells = new Map<string, Element>(), columns = new Map<number, number>();
   const styleId = (value: string | null) => { const id = unsigned(value); if (id >= styleCount) throw new WorkbookFormatError('Cell style is missing.'); return id; };
   for (const row of children(data, 'row')) {
     if (!row.hasAttribute('r')) throw new WorkbookFormatError('Implicit cell coordinates need a formatting adapter.', 'WORKBOOK_UNSUPPORTED');
     const number = unsigned(row.getAttribute('r')) - 1;
     if (number < 0 || number >= WORKBOOK_MODEL_LIMITS.rows || rows.has(number)) throw new WorkbookFormatError('Invalid worksheet row.');
-    rows.set(number, row); flag(row.getAttribute('customFormat')); if (row.hasAttribute('s')) styleId(row.getAttribute('s'));
+    rows.set(number, row); rowExtensions.set(row, child(row, 'extLst') ?? null); flag(row.getAttribute('customFormat')); if (row.hasAttribute('s')) styleId(row.getAttribute('s'));
     for (const cell of children(row, 'c')) {
       if (!cell.hasAttribute('r')) throw new WorkbookFormatError('Implicit cell coordinates need a formatting adapter.', 'WORKBOOK_UNSUPPORTED');
       const position = address(cell.getAttribute('r')!), key = `${position.row}:${position.column}`;
@@ -66,7 +66,7 @@ function indexSheet(source: ReadWorkbook, part: string, styleCount: number): She
     const id = col.hasAttribute('style') ? styleId(col.getAttribute('style')) : undefined;
     for (let index = min - 1; index < max; index++) { if (coveredColumns.has(index)) throw new WorkbookFormatError('Ambiguous worksheet column ranges.'); coveredColumns.add(index); if (id !== undefined) columns.set(index, id); }
   }
-  return { document, data, rows, cells, columns };
+  return { rowExtensions, document, data, rows, cells, columns };
 }
 /** Clone only the effective cell XF and changed components. Unrepresented XML,
  * workbook parts, rich strings and formula caches remain source-owned. */
@@ -95,7 +95,7 @@ export async function patchWorkbookStyles(source: ReadWorkbook, edits: readonly 
     const sheet = source.model.sheets.find(sheet => sheet.id === edit.sheetId), part = source.sheetParts.get(edit.sheetId);
     if (!sheet || !part || edit.row >= sheet.rowCount || edit.column >= sheet.columnCount) throw new WorkbookFormatError('Style edit is outside the workbook.');
     let index = documents.get(part); if (!index) { index = indexSheet(source, part, originalStyles); documents.set(part, index); }
-    const { document, data, rows, cells, columns } = index;
+    const { document, data, rows, cells, columns, rowExtensions } = index;
     let row = rows.get(edit.row), cell = cells.get(`${edit.row}:${edit.column}`);
     const customRow = flag(row?.getAttribute('customFormat') ?? null), rowStyle = customRow && row?.hasAttribute('s') ? unsigned(row.getAttribute('s')) : undefined, columnStyle = columns.get(edit.column);
     if (!cell?.hasAttribute('s') && rowStyle !== undefined && columnStyle !== undefined && rowStyle !== columnStyle) throw new WorkbookFormatError('Intersecting row and column styles need a formatting adapter.', 'WORKBOOK_UNSUPPORTED');
@@ -115,13 +115,13 @@ export async function patchWorkbookStyles(source: ReadWorkbook, edits: readonly 
     }
     const styleId = xfs.intern(xf);
     if (!row) { row = create(document, data, 'row'); row.setAttribute('r', String(edit.row + 1)); data.appendChild(row); rows.set(edit.row, row); }
-    if (!cell) { cell = create(document, row, 'c'); cell.setAttribute('r', coordinate(edit.row, edit.column)); row.appendChild(cell); cells.set(`${edit.row}:${edit.column}`, cell); row.removeAttribute('spans'); replace(document.documentElement!, 'dimension'); }
+    if (!cell) { cell = create(document, row, 'c'); cell.setAttribute('r', coordinate(edit.row, edit.column)); appendWorkbookRowCell(row, cell, rowExtensions.get(row) ?? null); cells.set(`${edit.row}:${edit.column}`, cell); row.removeAttribute('spans'); replace(document.documentElement!, 'dimension'); }
     cell.setAttribute('s', String(styleId));
   }
   const output = new Map(source.parts); output.set(link.target, writeWorkbookXml(doc));
   for (const [part, { document, data, rows }] of documents) {
     for (const [, row] of [...rows].sort(([a], [b]) => a - b)) { data.appendChild(row);
-      for (const cell of children(row, 'c').sort((a, b) => address(a.getAttribute('r')!).column - address(b.getAttribute('r')!).column)) row.appendChild(cell);
+      orderWorkbookRowCells(row);
     }
     output.set(part, writeWorkbookXml(document));
   }

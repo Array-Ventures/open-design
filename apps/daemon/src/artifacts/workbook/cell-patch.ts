@@ -1,7 +1,7 @@
 import type { Document, Element } from '@xmldom/xmldom';
 import { workbookCellSchema, type WorkbookCell, type WorkbookCellEdit, type WorkbookRange } from '@open-design/contracts/runtime/workbook';
 import { WorkbookFormatError, writeWorkbookPackage } from './package.js';
-import { address, child, children, range, relationshipTarget, xmlPart } from './parts.js';
+import { appendWorkbookRowCell, orderWorkbookRowCells, address, child, children, range, relationshipTarget, xmlPart } from './parts.js';
 import type { ReadWorkbook } from './reader.js';
 import { writeWorkbookXml } from './xml.js';
 
@@ -38,7 +38,7 @@ function writeValue(document: Document, target: Element, value: WorkbookCell): v
     text(document, target, 'v', value.kind === 'boolean' ? value.value ? '1' : '0' : String(value.value));
   }
 }
-interface SheetIndex { rows: Map<number, Element>; cells: Map<string, Element>; shared: Map<string, [string, Element][]> }
+interface SheetIndex { rowExtensions: Map<Element, Element | null>; rows: Map<number, Element>; cells: Map<string, Element>; shared: Map<string, [string, Element][]> }
 function ensureCell(document: Document, root: Element, position: WorkbookCell, index: SheetIndex): Element {
   const data = child(root, 'sheetData');
   if (!data) throw new WorkbookFormatError('Worksheet data is missing.');
@@ -51,7 +51,7 @@ function ensureCell(document: Document, root: Element, position: WorkbookCell, i
   let cell = index.cells.get(key);
   if (!cell) {
     cell = element(document, row, 'c'); cell.setAttribute('r', cellAddress(position.row, position.column));
-    row.appendChild(cell); index.cells.set(key, cell);
+    appendWorkbookRowCell(row, cell, index.rowExtensions.get(row) ?? null); index.cells.set(key, cell);
   }
   return cell;
 }
@@ -106,7 +106,7 @@ export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly W
     if (!document) {
       document = xmlPart(source.parts, part); documents.set(part, document);
       restrictions.set(part, editRestrictions(document.documentElement!));
-      const sheetIndex: SheetIndex = { rows: new Map(), cells: new Map(), shared: new Map() }; indexes.set(part, sheetIndex);
+      const sheetIndex: SheetIndex = { rowExtensions: new Map(), rows: new Map(), cells: new Map(), shared: new Map() }; indexes.set(part, sheetIndex);
       // Normalize omitted coordinates for later sorted insertion, without
       // touching any package that does not require a worksheet rewrite.
       let lastRow = 0;
@@ -114,7 +114,7 @@ export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly W
       for (const row of data ? children(data, 'row') : []) {
         const index = row.hasAttribute('r') ? Number(row.getAttribute('r')) : lastRow + 1;
         row.setAttribute('r', String(index)); lastRow = index;
-        sheetIndex.rows.set(index - 1, row);
+        sheetIndex.rows.set(index - 1, row); sheetIndex.rowExtensions.set(row, child(row, 'extLst') ?? null);
         let lastColumn = -1;
         for (const cell of children(row, 'c')) {
           const position = cell.hasAttribute('r') ? address(cell.getAttribute('r')!) : { row: index - 1, column: lastColumn + 1 };
@@ -165,7 +165,7 @@ export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly W
     if (data && documents.has(part)) {
       for (const row of children(data, 'row').sort((a, b) => Number(a.getAttribute('r')) - Number(b.getAttribute('r')))) {
         data.appendChild(row);
-        for (const cell of children(row, 'c').sort((a, b) => address(a.getAttribute('r')!).column - address(b.getAttribute('r')!).column)) row.appendChild(cell);
+        orderWorkbookRowCells(row);
       }
     }
     for (const row of data ? children(data, 'row') : []) for (const cell of children(row, 'c')) if (child(cell, 'f') && !options.retainFormulaCaches) {
