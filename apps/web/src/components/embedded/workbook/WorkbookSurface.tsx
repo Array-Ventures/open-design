@@ -17,26 +17,26 @@ import { downloadWorkbookDraft } from './download-draft';
 
 const WorkbookGrid = lazy(() => import('./WorkbookGrid').then(module => ({ default: module.WorkbookGrid })));
 
-interface Props { projectId: string; fileName: string; title: string; sourceStamp: string; onDirtyChange?(dirty: boolean): void; onSaved?(): void }
+interface Props { projectId: string; fileName: string; title: string; sourceStamp: string; statusOnly?: boolean; onAccessLost?(): void; onDirtyChange?(dirty: boolean): void; onSaved?(): void }
 export function WorkbookSurface(props: Props) {
   const viewer = useEmbeddedViewer();
   if (!viewer) return <div role="status" className="p-4 text-body-2-regular text-text-tertiary">Loading workbook…</div>;
   return <ScopedWorkbookSurface key={`${viewer.memberId}:${props.projectId}:${props.fileName}`} {...props} viewerId={viewer.memberId} />;
 }
-function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirtyChange, onSaved, viewerId }: Props & { viewerId: string }) {
+function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirtyChange, onSaved, viewerId, statusOnly, onAccessLost }: Props & { viewerId: string }) {
   const [loaded, setLoaded] = useState<{ sourceSha256: string; model: WorkbookDocument } | null>(null);
   const [error, setError] = useState<string | null>(null), [retry, setRetry] = useState(0);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const close = useRef<() => Promise<void>>(async () => {});
   const recovery = useWorkbookRecovery({ viewerId, projectId, fileName }, Boolean(loaded), () => close.current());
   const editorRef = useRef<ReturnType<typeof useWorkbookEditor> | null>(null);
-  const history = useWorkbookHistory({ scope: { viewerId, projectId, fileName }, source: loaded, ready: Boolean(recovery.session),
+  const history = useWorkbookHistory({ statusOnly, scope: { viewerId, projectId, fileName }, source: loaded, ready: Boolean(recovery.session),
     dirty: () => !editorRef.current || editorRef.current.stateRef.current.dirty || editorRef.current.discarding,
     pause: async () => editorRef.current?.pause() ?? false,
     resume: async accepted => { await editorRef.current?.resumeClean(accepted); },
     accepted: source => { setLoaded(source); setError(null); onSaved?.(); },
     unreadable: (message, refresh = true) => { setLoaded(null); setError(message ?? 'The saved version was restored but cannot be previewed. Choose another version in History.'); if (refresh) onSaved?.(); },
-    onAccessLost: () => { void editorRef.current?.close(); setLoaded(null); setError('This workbook is unavailable. Reopen it after checking access.'); },
+    onAccessLost: () => { void editorRef.current?.close(); setLoaded(null); setError('This workbook is unavailable. Reopen it after checking access.'); onAccessLost?.(); },
     focusOnClose: () => window.parent.postMessage({ type: 'studio:workbook-history-focus', projectId, controllerId: editorRef.current?.controllerId }, window.location.origin),
   });
   const editor = useWorkbookEditor(projectId, fileName, loaded, source => { setLoaded(source); onSaved?.(); }, dirty => onDirtyChange?.(dirty || history.blocked), recovery.session?.journal, () => { setLoaded(null); setRetry(value => value + 1); }, { open: history.open, blocked: history.blocked, visible: history.canOpen, show: history.toggle });
@@ -46,6 +46,7 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
   useEffect(() => { onDirtyChange?.(editor.state.dirty || history.blocked); }, [onDirtyChange, editor.state.dirty, history.blocked]);
   const operation = useRef<{ stamp: string; id: string } | null>(null);
   useEffect(() => {
+    if (statusOnly) return;
     const controller = new AbortController(), generation = historyRef.current.generation();
     if (!operation.current || operation.current.stamp !== sourceStamp) operation.current = { stamp: sourceStamp, id: crypto.randomUUID() };
     void loadWorkbookPreview(projectId, fileName, operation.current.id, controller.signal).then(preview => {
@@ -73,7 +74,7 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
       setError(cause instanceof Error ? cause.message : 'The workbook could not be loaded.');
     });
     return () => controller.abort();
-  }, [projectId, fileName, sourceStamp, retry]);
+  }, [projectId, fileName, sourceStamp, retry, statusOnly]);
   const downloadCurrent = () => {
     try {
       const checkpoint = editor.checkpoint(); if (!checkpoint || !recovery.session) return;
@@ -81,7 +82,7 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
     } catch { setDownloadError('The recovery copy could not be downloaded. Keep this workbook open.'); }
   };
   let content;
-  if (!loaded) content = <div role={error ? 'alert' : 'status'} className="flex h-full items-center justify-center gap-2 p-4 text-body-2-regular text-text-tertiary">{error ?? 'Loading workbook…'}</div>;
+  if (!loaded) content = <div role={error ? 'alert' : 'status'} className="flex h-full items-center justify-center gap-2 p-4 text-body-2-regular text-text-tertiary">{error ?? (statusOnly ? history.available && !history.intent && !history.checking ? 'No unresolved restore remains for this file.' : 'Open History to check the pending restore.' : 'Loading workbook…')}</div>;
   else if (recovery.session) content = <Suspense fallback={<div role="status" className="p-4 text-body-2-regular text-text-tertiary">Loading workbook…</div>}>
     <WorkbookGrid id={`${projectId}:${fileName}`} title={title} model={loaded.model} initialSnapshot={recovery.session.journal.restored?.desired} onReady={editor.ready} onSnapshot={editor.snapshot} formatScope={{ projectId, controllerId: editor.controllerId, blocked: editor.discarding || history.blocked }} />
   </Suspense>;

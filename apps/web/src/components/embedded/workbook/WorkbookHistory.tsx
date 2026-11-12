@@ -15,7 +15,7 @@ export function WorkbookHistory({ history, dirty, sourceSha256, reload }: { hist
   const refreshing = history.loading || history.fresh === false;
   const mismatch = !refreshing && sourceSha256 !== undefined && (history.sha !== null || history.versions.length > 0) && history.sha !== sourceSha256;
   const missing = !refreshing && history.available && history.sha === null, recovery = !refreshing && history.available && !sourceSha256 && !missing;
-  const disabled = refreshing || history.available === false || history.working || history.checking || !history.intent && (missing || dirty || mismatch);
+  const disabled = refreshing || history.available === false || history.working || history.checking || !history.intent && (missing || dirty || mismatch || history.statusOnly);
   return <section role="dialog" aria-label="Workbook history" aria-busy={history.loading || history.working} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); history.close(); } }}
     className="absolute end-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 max-w-[calc(100%-1.5rem)] flex-col rounded-xl border border-border-button-default bg-background-primary-default text-text-primary shadow-lg">
     <header className="flex shrink-0 items-center gap-1 px-3 py-2">

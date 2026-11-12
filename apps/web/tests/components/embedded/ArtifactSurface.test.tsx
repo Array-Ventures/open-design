@@ -7,6 +7,7 @@ vi.mock('../../../src/components/FileViewer', () => ({ FileViewer: ({ file }: { 
 vi.mock('../../../src/components/embedded/useMotionTransport', () => ({ useMotionTransport: () => {} }));
 vi.mock('../../../src/components/embedded/workbook/WorkbookSurface', () => ({ WorkbookSurface: ({ fileName }: { fileName: string }) => <div data-testid="workbook-preview">{fileName}</div> }));
 vi.mock('../../../src/components/embedded/document/DocumentSurface', () => ({ DocumentSurface: ({ fileName, onDirtyChange }: { fileName: string; onDirtyChange(dirty: boolean): void }) => <div data-testid="document-preview">{fileName}<button onClick={() => onDirtyChange(true)}>Unsaved document edit</button><button onClick={() => onDirtyChange(false)}>Saved document edit</button></div> }));
+import * as restoreDiscovery from '../../../src/components/embedded/workbook/use-missing-workbook-restores';
 import { ArtifactSurface } from '../../../src/components/embedded/ArtifactSurface';
 afterEach(cleanup);
 const project = { id: 'project-a', metadata: { kind: 'prototype' } } as unknown as Project;
@@ -46,4 +47,20 @@ it('retains a dirty document when external file reconciliation changes the defau
   expect(screen.getByTestId('document-preview')).toBe(before); expect(before).toHaveTextContent('index.html');
   fireEvent.click(screen.getByRole('button', { name: 'Saved document edit' }));
   expect(screen.getByTestId('document-preview')).toHaveTextContent('other.html');
+});
+
+it('keeps another live artifact and its dirty draft mounted until recovery is explicitly safe to open', () => {
+  const discovery = vi.spyOn(restoreDiscovery, 'useMissingWorkbookRestores').mockReturnValue({ scopeKey: 'fixture', files: ['missing.xlsx'], loading: false, error: null, more: null, refresh: vi.fn() });
+  try {
+    render(<ArtifactSurface project={{ ...project, metadata: { kind: 'prototype', embeddedArtifactKind: 'document' } } as Project} files={[file('index.html')]} dashboards={[]} fileName={null} generation={1} onRefresh={async () => {}} feedback={{}} />);
+    const original = screen.getByTestId('document-preview');
+    fireEvent.click(screen.getByRole('button', { name: 'Unsaved document edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Workbook restore recovery' }));
+    const recovery = screen.getByRole('button', { name: 'Open restore status for missing.xlsx' });
+    expect(recovery).toBeDisabled(); fireEvent.click(recovery);
+    expect(screen.getByTestId('document-preview')).toBe(original); expect(screen.queryByTestId('workbook-preview')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Saved document edit' })); expect(recovery).not.toBeDisabled();
+    fireEvent.click(recovery); expect(screen.getByTestId('workbook-preview')).toHaveTextContent('missing.xlsx');
+    fireEvent.click(screen.getByRole('button', { name: 'Back to artifact' })); expect(screen.getByTestId('document-preview')).toHaveTextContent('index.html');
+  } finally { cleanup(); discovery.mockRestore(); }
 });

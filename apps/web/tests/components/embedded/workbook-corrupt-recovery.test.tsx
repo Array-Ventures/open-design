@@ -1,15 +1,21 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { IDBFactory } from 'fake-indexeddb';
+import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 import type { IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import { ArtifactSurface } from '../../../src/components/embedded/ArtifactSurface';
+import type { Project } from '../../../src/types';
 import { WorkbookSurface } from '../../../src/components/embedded/workbook/WorkbookSurface';
 import { gridWorkbook } from '../../../src/components/embedded/workbook/grid-model';
 import { WorkbookWriter } from '../../../src/components/embedded/workbook/workbook-writer';
 import { WorkbookHostError } from '../../../src/components/embedded/workbook/host-request';
 import * as drafts from '../../../src/components/embedded/workbook/draft-store';
-const host = vi.hoisted(() => ({ request: vi.fn() }));
+const host = vi.hoisted(() => ({ request: vi.fn(), artifact: vi.fn() }));
+vi.mock('../../../src/components/FileViewer', () => ({ FileViewer: () => <div>Other live artifact</div>, LiveArtifactViewer: () => <div>Other dashboard</div> }));
+vi.mock('../../../src/components/embedded/document/DocumentSurface', () => ({ DocumentSurface: () => <div>Other document</div> }));
+vi.mock('../../../src/components/embedded/useMotionTransport', () => ({ useMotionTransport: () => {} }));
+vi.mock('../../../src/components/embedded/useArtifactHostState', async original => { const actual = await original<typeof import('../../../src/components/embedded/useArtifactHostState')>(); return { useArtifactHostState: vi.fn((...args: Parameters<typeof actual.useArtifactHostState>) => { host.artifact(...args); return actual.useArtifactHostState(...args); }) }; });
 vi.mock('../../../src/components/embedded/host-viewer', () => ({ useEmbeddedViewer: () => ({ memberId: 'person' }) }));
 vi.mock('../../../src/components/embedded/workbook/host-request', async original => ({ ...await original<object>(), workbookHostRequest: host.request }));
 vi.mock('../../../src/components/embedded/workbook/draft-store', async original => {
@@ -24,20 +30,21 @@ const scope = { viewerId: 'person', projectId, fileName, draftId: '18a8301a-b6e1
 const corruptSha = 'a'.repeat(64), restoredSha = 'b'.repeat(64);
 const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 's', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 's', name: 'Sheet', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [{ row: 0, column: 0, kind: 'number', value: 1 }], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
 beforeEach(() => {
-  vi.stubGlobal('indexedDB', new IDBFactory());
+  vi.stubGlobal('indexedDB', new IDBFactory()); vi.stubGlobal('IDBKeyRange', IDBKeyRange);
   vi.stubGlobal('navigator', { locks: { request: vi.fn((_name, _options, callback) => Promise.resolve(callback({ name: 'owned-fixture-lock' }))) } });
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
 
-it.each([false, true])('recovers through real transports while retaining drafts (lost acknowledgement then deleted file: %s)', async lostThenDeleted => {
+it.each([false, true, 'transient'])('recovers through real transports while retaining drafts (lost acknowledgement then deleted file: %s)', async lostThenDeleted => {
   const initial = gridWorkbook(model, `${projectId}:${fileName}`, 'Forecast').data as IWorkbookData;
   const writer = new WorkbookWriter({ sourceSha256: 'c'.repeat(64), model }, initial, vi.fn(), vi.fn());
   const edited = structuredClone(initial); edited.sheets.s!.cellData![0]![0]!.v = 98765; writer.update(edited);
   const checkpoint = writer.checkpoint(); await drafts.saveWorkbookDraft(scope, checkpoint);
   let currentSha: string | null = corruptSha;
-  let receipt: object | null = null;
+  let receipt: object | null = null, failRecoveryOnce = false;
   const prepared = new Map<string, { id: string; projectId: string; input: { fileName: string; format: string }; state: string; error: string | null; output?: object }>();
   host.request.mockImplementation(async (_project, request) => {
+    if (request.action === 'list-history' && failRecoveryOnce) { failRecoveryOnce = false; throw new WorkbookHostError('Temporary history outage'); }
     if (request.action === 'list-history') return { projectId, fileName, currentSha256: currentSha, versions: [{ id: 'immutable-v1', fileName, version: 1, label: 'Known good', createdAt: 1, source: 'manual', size: 100, current: currentSha === restoredSha, contentDigest: restoredSha }], nextCursor: null };
     if (request.action === 'read-save') { if (receipt) return receipt; throw new WorkbookHostError('No receipt', 404); }
     if (request.action === 'prepare') {
@@ -82,9 +89,20 @@ it.each([false, true])('recovers through real transports while retaining drafts 
     expect(screen.queryByRole('button', { name: 'Retry loading workbook' })).toBeNull();
     const protectedIntent = await drafts.accessWorkbookRestore(scope); expect(protectedIntent).not.toBeNull();
     cleanup();
-    render(<WorkbookSurface projectId={projectId} fileName={fileName} title="Forecast" sourceStamp="file-deleted-after-commit" />);
+    const reloadedAt = host.request.mock.calls.length; failRecoveryOnce = lostThenDeleted === 'transient';
+    render(<ArtifactSurface project={{ id: projectId, name: 'Forecast', metadata: { embeddedArtifactKind: 'workbook' } } as Project} files={[]} dashboards={[]} fileName={null} generation={2} onRefresh={async () => {}} feedback={{}} />);
+    if (lostThenDeleted === 'transient') {
+      const retry = await screen.findByRole('button', { name: 'Retry workbook recovery' });
+      expect(screen.queryByRole('button', { name: 'Open restore status for book.xlsx' })).toBeNull();
+      expect(await drafts.accessWorkbookRestore(scope)).toEqual(protectedIntent);
+      fireEvent.click(retry);
+    }
+    fireEvent.click(await screen.findByRole('button', { name: 'Open restore status for book.xlsx' }));
+    expect(screen.queryByText('Agent is cooking')).toBeNull();
     const check = await screen.findByRole('button', { name: 'Check status' });
     expect(check.hasAttribute('disabled')).toBe(false);
+    expect(host.request.mock.calls.slice(reloadedAt).every(([, request]) => request.action === 'list-history')).toBe(true);
+    expect(host.artifact).toHaveBeenLastCalledWith(projectId, null, false);
     const callsBeforeCheck = host.request.mock.calls.length;
     fireEvent.click(check);
     await screen.findAllByText('The restore completed, but the current file is now missing. It was not recreated.');

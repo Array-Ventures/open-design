@@ -253,3 +253,25 @@ it('keeps a failed head refresh retryable without admitting a restore or continu
   await act(async () => view.result.current.restore()); expect(mocks.restore).not.toHaveBeenCalled(); expect(mocks.list).toHaveBeenCalledTimes(2);
   await act(async () => view.result.current.refresh()); expect(view.result.current.fresh).toBe(true); expect(mocks.list).toHaveBeenCalledTimes(3);
 });
+it('keeps discovery-mounted recovery strictly status-only even if an original source file reappears', async () => {
+  const { WorkbookRestoreReceiptUnavailableError } = await import('../../../src/components/embedded/workbook/restore-transport');
+  const { options, record } = fixture(); const pending = retainedIntent();
+  await mocks.store(scope, { expected: null, value: pending }); mocks.store.mockClear();
+  mocks.restore.mockRejectedValueOnce(new WorkbookRestoreReceiptUnavailableError());
+  const view = renderHook(() => useWorkbookHistory({ ...options, source: null, ready: false, statusOnly: true }));
+  await waitFor(() => expect(view.result.current.intent).toEqual(pending)); await act(async () => view.result.current.restore());
+  expect(mocks.restore).toHaveBeenCalledExactlyOnceWith(pending, expect.any(Function), expect.any(AbortSignal), { allowPrepare: false });
+  expect(record()).toEqual(pending); expect(options.pause).not.toHaveBeenCalled(); expect(mocks.list).toHaveBeenCalledTimes(2);
+});
+it('withdraws discovered recovery metadata if a receipt404 is followed by denied fresh history', async () => {
+  const { WorkbookRestoreReceiptUnavailableError } = await import('../../../src/components/embedded/workbook/restore-transport');
+  const { WorkbookHostError } = await import('../../../src/components/embedded/workbook/host-request');
+  const { options, record } = fixture(); const pending = retainedIntent();
+  await mocks.store(scope, { expected: null, value: pending }); mocks.store.mockClear();
+  mocks.list.mockResolvedValueOnce({ versions: [revision], nextCursor: null, currentSha256: null }).mockRejectedValueOnce(new WorkbookHostError('Denied', 403));
+  mocks.restore.mockRejectedValueOnce(new WorkbookRestoreReceiptUnavailableError());
+  const view = renderHook(() => useWorkbookHistory({ ...options, source: null, ready: false, statusOnly: true }));
+  await waitFor(() => expect(view.result.current.intent).toEqual(pending)); await act(async () => view.result.current.restore());
+  expect(view.result.current.canOpen).toBe(false); expect(view.result.current.intent).toBeNull(); expect(record()).toEqual(pending);
+  expect(mocks.restore).toHaveBeenCalledExactlyOnceWith(pending, expect.any(Function), expect.any(AbortSignal), { allowPrepare: false });
+});

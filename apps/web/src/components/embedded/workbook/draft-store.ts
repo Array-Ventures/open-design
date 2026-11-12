@@ -95,3 +95,35 @@ export async function accessWorkbookRestore(scope: import('./restore-intent').Wo
     });
   } finally { database.close(); }
 }
+
+/** Key-only discovery: never reads a draft or restore payload. Filenames are
+ * private candidates, not authority; authorize passive history before exposing
+ * them or calling accessWorkbookRestore. Range excludes other people/projects. */
+export async function listWorkbookRestoreFileNames(scope: { viewerId: string; projectId: string }, page: { cursor?: string; limit?: number } = {}): Promise<{ fileNames: string[]; cursor: string | null }> {
+  const checked = workbookDraftScopeSchema.pick({ viewerId: true, projectId: true }).parse(scope);
+  const prefix = `restore:${JSON.stringify([checked.viewerId, checked.projectId]).slice(0, -1)},`;
+  const limit = page.limit ?? 20;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50 || page.cursor && (!page.cursor.startsWith(prefix) || page.cursor.length > 4096)) throw Error('Invalid restore discovery page.');
+  if (typeof indexedDB === 'undefined') return { fileNames: [], cursor: null };
+  const database = await openDrafts();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = database.transaction(STORE, 'readonly'), range = IDBKeyRange.bound(page.cursor ?? prefix, prefix + '\uffff', Boolean(page.cursor));
+      const request = tx.objectStore(STORE).openKeyCursor(range);
+      const fileNames: string[] = []; let seen = 0, lastKey: string | null = null, cursor: string | null = null;
+      request.onsuccess = () => {
+        const entry = request.result; if (!entry) return;
+        if (seen++ === limit) { cursor = lastKey; return; }
+        lastKey = String(entry.key);
+        try {
+          const key: unknown = lastKey.length <= 4096 ? JSON.parse(lastKey.slice('restore:'.length)) : null;
+          if (Array.isArray(key) && key.length === 3 && key[0] === checked.viewerId && key[1] === checked.projectId && typeof key[2] === 'string'
+            && key[2].length <= 500 && /\.xlsx$/i.test(key[2]) && key[2].split('/').every(part => part && !part.startsWith('.') && !/[\\\u0000]/.test(part))) fileNames.push(key[2]);
+        } catch { /* A malformed key is never authority to read its payload. */ }
+        entry.continue();
+      };
+      tx.oncomplete = () => resolve({ fileNames: [...new Set(fileNames)], cursor });
+      tx.onerror = tx.onabort = () => reject(Error('Restore discovery is unavailable on this device.'));
+    });
+  } finally { database.close(); }
+}
