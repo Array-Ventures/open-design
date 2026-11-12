@@ -6,7 +6,7 @@ import { assertWorkbookCalculationBudget } from './formula-worker-budget';
 /** Source proof comes from the SHA-verified daemon preview. This only selects
  * a disposable display capability; the server revalidates all save ownership. */
 export function prepareWorkbookArrayLiveSource(model: WorkbookDocument, original: IWorkbookData, sourceSha256: string | undefined, restored?: IWorkbookData): IWorkbookData | undefined {
-  if (model.sourceFormat === 'csv' || model.calculationMetadata !== 'verified' || !/^[a-f0-9]{64}$/.test(sourceSha256 ?? '') || model.definedNames?.length || model.tables?.length || !model.sheets.some(sheet => sheet.arrayFormulas?.length) || model.sheets.some(sheet => sheet.arrayFormulas === undefined || sheet.arrayFormulas.some(owner => owner.kind !== 'array' || owner.calculation !== 'fixed' && owner.calculation !== 'dynamic'))) return;
+  if (model.sourceFormat === 'csv' || model.calculationMetadata !== 'verified' || !/^[a-f0-9]{64}$/.test(sourceSha256 ?? '') || model.definedNames?.length || model.tables?.length || model.sheets.some(sheet => sheet.arrayFormulas === undefined || sheet.arrayFormulas.some(owner => owner.kind !== 'array' || owner.calculation !== 'fixed' && owner.calculation !== 'dynamic'))) return;
   const candidate = sourceArrayInteractiveSnapshot(model, original);
   if (candidate.state !== 'known') return;
   try {

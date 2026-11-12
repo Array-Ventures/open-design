@@ -479,15 +479,17 @@ private calculation snapshot nor follower projections enter raw authored cells
 or the writer journal.
 
 The production Grid selects this channel only for SHA-bound previews with at
-least one verified fixed/dynamic source owner, complete source ownership,
+complete verified-empty ownership or verified fixed/dynamic source owners,
 qualified follower cache layout, bounded registered geometry and no names or
 tables. It initializes raw cells from the separate interactive source baseline,
 keeps all main-thread engines inert, and displays one complete projection through
 the cell-value interceptor. Actual unknown/unqualified formulas and their
 closure show genuine stored source caches; new unsupported formulas are blank
 and unavailable. Data tables, older unknown profiles and unqualified metadata
-remain in stored mode. Ordinary scalar-only workbooks keep the existing scalar
-channel; entering a new array there is not enabled by this profile slice.
+remain in stored mode. Qualified verified-empty workbooks use the same channel,
+so entering a new formula can discover genuine array identity and project its
+followers immediately. Scalar-only profiles outside this admission retain their
+existing scalar channel when that separate capability is qualified.
 
 Pending input changes invalidate calculated output, while prior proven follower
 ownership stays protected until a complete replacement arrives. Removing or

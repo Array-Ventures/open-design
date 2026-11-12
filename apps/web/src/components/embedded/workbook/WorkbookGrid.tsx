@@ -152,7 +152,9 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
       if (previous) for (const [sheetId, sheet] of Object.entries(prepared.data.sheets ?? {})) {
         const old = previous.snapshot.sheets[sheetId];
         if (old) {
-          Object.assign(sheet, { scrollTop: old.scrollTop, scrollLeft: old.scrollLeft, zoomRatio: old.zoomRatio });
+          const position = { scrollTop: old.scrollTop, scrollLeft: old.scrollLeft, zoomRatio: old.zoomRatio };
+          Object.assign(sheet, position);
+          if (arraySeed?.sheets[sheetId]) Object.assign(arraySeed.sheets[sheetId]!, position);
           if (model.sourceFormat === 'csv' && previous.sourceFormat === 'csv') restoreCsvViewDimensions(sheet, old);
         }
       }

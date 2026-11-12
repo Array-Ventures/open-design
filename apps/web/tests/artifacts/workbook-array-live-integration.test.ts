@@ -13,14 +13,14 @@ import { workbookGridEdits } from '../../src/components/embedded/workbook/grid-e
 const sha='a'.repeat(64);
 const source: WorkbookDocument={version:1,calculationMetadata:'verified',date1904:false,activeSheetId:'s',styles:[{}],features:{charts:0,drawings:0,externalLinks:0,macros:false,signed:false},sheets:[{id:'s',name:'Inputs',visibility:'visible',rowCount:100,columnCount:20,frozenRows:0,frozenColumns:0,rowDimensions:[],columnDimensions:[],merges:[],arrayFormulas:[{kind:'array',calculation:'dynamic',row:2,column:3,range:{startRow:2,endRow:4,startColumn:3,endColumn:3}}],cells:[{row:0,column:0,kind:'number',value:3},{row:2,column:3,kind:'number',value:10,formula:'=SEQUENCE(A1,1,10)'},{row:3,column:3,kind:'number',value:11},{row:4,column:3,kind:'number',value:12},{row:0,column:5,kind:'number',value:111,formula:'=D4+100'}]}]};
 let cleanup=()=>{};afterEach(()=>cleanup());
-function setup() {
- const kernel=qualifiedArrayKernel(source,'unit',sha),univer=new Univer({locale:LocaleType.EN_US,locales:{[LocaleType.EN_US]:English}});univer.registerPlugin(UniverFormulaEnginePlugin,{notExecuteFormula:true});univer.registerPlugin(UniverSheetsPlugin,{notExecuteFormula:true});
+function setup(model: WorkbookDocument = source) {
+ const kernel=qualifiedArrayKernel(model,'unit',sha),univer=new Univer({locale:LocaleType.EN_US,locales:{[LocaleType.EN_US]:English}});univer.registerPlugin(UniverFormulaEnginePlugin,{notExecuteFormula:true});univer.registerPlugin(UniverSheetsPlugin,{notExecuteFormula:true});
  const core=univer.createUnit<IWorkbookData,Workbook>(UniverInstanceType.UNIVER_SHEET,structuredClone(kernel.initial)),commands=univer.__getInjector().get(ICommandService),listeners=new Set<(result:QualifiedArrayProjection)=>void>();
  univer.__getInjector().get(IUniverInstanceService).setCurrentUnitForType(core.getUnitId());univer.__getInjector().get(IUniverInstanceService).focusUnit(core.getUnitId());
  const baseline=structuredClone(core.getSnapshot()),snapshot=()=>structuredClone(core.getSnapshot()),repaint=vi.fn(),states:unknown[]=[];let generation=0,pending=Promise.resolve(),active=true;
  const owner={calculate(input:IWorkbookData){const ticket=++generation;pending=kernel.calculate(input,ticket).then(result=>{if(active)for(const listener of listeners)listener(result);});return ticket;},onResult(listener:(result:QualifiedArrayProjection)=>void){listeners.add(listener);return()=>listeners.delete(listener);},fail:vi.fn()} as unknown as ReturnType<typeof ownArrayProjectionWorker>;
  const api={getActiveWorkbook:()=>({getSheets:()=>[{refreshCanvas:repaint}]})} as unknown as FUniver;
- const calculation=attachWorkbookArrayCalculation(univer,api,source,kernel.original,snapshot(),sha,snapshot,owner,state=>states.push(state));
+ const calculation=attachWorkbookArrayCalculation(univer,api,model,kernel.original,snapshot(),sha,snapshot,owner,state=>states.push(state));
  cleanup=()=>{active=false;calculation.dispose();univer.dispose();};
  return {core,commands,snapshot,baseline,kernel,calculation,repaint,states,flush:()=>pending,owner};
 }
@@ -55,4 +55,30 @@ it('permits native formatting on a projected follower without creating a literal
  expect(live.commands.syncExecuteCommand(SetStyleCommand.id,{unitId:'unit',subUnitId:'s',range:{startRow:3,endRow:3,startColumn:3,endColumn:3},style:{type:'bl',value:1}})).toBe(true);
  expect(sheet.getCell(3,3)?.v).toBe(11);expect(sheet.getCellRaw(3,3)?.v).toBeUndefined();
  const plan=workbookGridEdits(source,sha,live.baseline,live.snapshot());expect(plan.edits).toEqual([]);expect(plan.styles).toEqual([{sheetId:'s',row:3,column:3,bold:true}]);
+});
+
+function ordinarySource(): WorkbookDocument {
+ const model=structuredClone(source);model.sheets[0]!.arrayFormulas=[];model.sheets[0]!.cells=model.sheets[0]!.cells.filter(cell=>cell.column!==3);model.sheets[0]!.cells.find(cell=>cell.column===5)!.value=100;return model;
+}
+it('discovers new arrays in a verified-empty ordinary workbook through native create, undo and redo', async()=>{
+ const model=ordinarySource(),live=setup(model);await live.flush();const sheet=live.core.getSheetBySheetId('s')!;
+ expect(prepareWorkbookArrayLiveSource(model,live.kernel.original,sha)).toBeDefined();
+ expect(live.commands.syncExecuteCommand(SetRangeValuesCommand.id,{unitId:'unit',subUnitId:'s',range:{startRow:2,endRow:2,startColumn:3,endColumn:3},value:{f:'=SEQUENCE(A1,1,10)',v:null,t:null}})).toBe(true);await live.flush();
+ expect(sheet.getCell(3,3)?.v).toBe(11);expect(sheet.getCell(0,5)?.v).toBe(111);expect(sheet.getCellRaw(3,3)?.v).toBeUndefined();
+ const plan=workbookGridEdits(model,sha,live.baseline,live.snapshot());expect(plan.edits).toHaveLength(1);expect(plan.edits[0]!.cell.formula).toBe('=SEQUENCE(A1,1,10)');
+ expect(live.commands.syncExecuteCommand('univer.command.undo')).toBe(true);await live.flush();expect(sheet.getCell(3,3)?.v).toBeUndefined();expect(sheet.getCell(0,5)?.v).toBe(100);
+ expect(live.commands.syncExecuteCommand('univer.command.redo')).toBe(true);await live.flush();expect(sheet.getCell(3,3)?.v).toBe(11);
+});
+it('keeps real42 after removing a newly created owner and preserves genuine error/collision types', async()=>{
+ const model=ordinarySource(),live=setup(model);await live.flush();const sheet=live.core.getSheetBySheetId('s')!;
+ const write=(cellValue:unknown)=>live.commands.syncExecuteCommand(SetRangeValuesMutation.id,{unitId:'unit',subUnitId:'s',cellValue});
+ write({2:{3:{f:'=SEQUENCE(A1,1,10)',v:null}},0:{6:{f:'=1/0',v:null}}});await live.flush();expect(sheet.getCell(0,6)?.v).toBe('#DIV/0!');
+ write({5:{3:{v:99,t:2}}});await live.flush();write({0:{0:{v:4,t:2}}});await live.flush();expect(sheet.getCell(2,3)?.v).toBe('#SPILL!');expect(sheet.getCell(3,3)?.v).toBeUndefined();expect(sheet.getCellRaw(5,3)?.v).toBe(99);
+ write({2:{3:{f:null,v:null}},3:{3:{v:42,t:2}}});await live.flush();expect(sheet.getCell(0,5)?.v).toBe(142);const plan=workbookGridEdits(model,sha,live.baseline,live.snapshot());expect(plan.edits.some(edit=>edit.cell.row===3&&edit.cell.column===3&&edit.cell.value===42)).toBe(true);
+});
+it('rebinds an acknowledged new source owner without accepting a projection from the previous source',async()=>{
+ const ordinary=ordinarySource(),kernel=qualifiedArrayKernel(ordinary,'unit',sha),current=structuredClone(kernel.initial);(current.sheets.s!.cellData![2]??={})[3]={f:'=SEQUENCE(A1,1,10)'};const old=await kernel.calculate(current,1);
+ const acknowledged=structuredClone(source),nextSha='b'.repeat(64),next=qualifiedArrayKernel(acknowledged,'unit',nextSha);
+ const display=new (await import('../../src/components/embedded/workbook/array-projection-display')).ArrayProjectionDisplay(acknowledged,next.original,next.initial,nextSha);
+ expect(display.accept(old)).toBe(false);expect(display.accept(await next.calculate(next.initial,1))).toBe(true);expect(display.display('s',3,3,{}).v).toBe(11);expect(next.initial.sheets.s!.cellData?.[3]?.[3]?.v).toBeUndefined();display.dispose();
 });
