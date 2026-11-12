@@ -79,3 +79,11 @@ execution. Small admitted DAGs still calculate, unsupported-leaf DAGs retain the
 source/dependent caches, and local/global shadowing stays correct in independent
 reopens. This bounds named-expression admission; it does not claim huge DAG
 calculation support or replace the worker's overall runtime/memory deadline.
+
+The pinned lexer recognizes the spill-reference suffix `#`, but its current
+runtime returns `#VALUE!` for `SUM(D3#)` rather than consuming the spill. An exact
+raw lexer `#` operator token therefore retains unchanged source formulas and
+their dependent caches; new or changed spill-reference formulas refuse saving.
+Quoted `"#"` strings and genuine Excel error literals remain separate structured
+lexer nodes and continue to calculate. Explicit follower coordinates can use the
+qualified array backend; this does not claim support for the spill operator.

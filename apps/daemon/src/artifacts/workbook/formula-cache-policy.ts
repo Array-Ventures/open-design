@@ -45,7 +45,15 @@ export function createFormulaCacheAnalysis(runtime: FormulaCacheRuntime, limits:
     // engine expands named expressions before evaluating that leaf's error.
     for (let index = 0; index < nodes.length; index++) {
       spend('visits');
-      const node = nodes[index]!; if (typeof node === 'string') continue;
+      const node = nodes[index]!;
+      if (typeof node === 'string') {
+        // The pinned lexer emits spill-reference suffix # as an operator token.
+        // Its evaluator returns #VALUE instead of the owned array; retain source
+        // evidence until that public runtime capability is implemented. Quoted
+        // strings and genuine Excel errors are structured nodes, not this token.
+        if (node === '#') result.limited = true;
+        continue;
+      }
       const nextToken = nodes[index + 1], called = typeof nextToken === 'string' && nextToken.trim() === '(';
       const callable = called && runtime.hasExecutor(node.token.toUpperCase());
       const name = (node.nodeType === runtime.types.FUNCTION || node.nodeType === runtime.types.REFERENCE || node.nodeType === runtime.types.DEFINED_NAME) && !callable ? runtime.name(node.token, sheetId) : undefined;
