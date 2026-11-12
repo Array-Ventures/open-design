@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import ExcelJS from 'exceljs-community';
-import { workbookCellSchema } from '@open-design/contracts/runtime/workbook';
+import { workbookCellSchema, workbookEditPlanSchema } from '@open-design/contracts/runtime/workbook';
 import { readXlsxWorkbook } from '../../src/artifacts/workbook/reader.js';
 import { calculateWorkbookCellEdits } from '../../src/artifacts/workbook/calculated-patch.js';
 import { patchWorkbookCells } from '../../src/artifacts/workbook/cell-patch.js';
@@ -162,4 +162,70 @@ it('writes explicit rich underline and baseline resets over inherited underlined
   const value = reopened.worksheets[0]!.getCell('A1').value as ExcelJS.CellRichTextValue;
   expect(value.richText[0]!.font?.underline).toBe('none');
   expect(value.richText[0]!.font?.vertAlign).toBe('baseline');
+});
+
+it('bounds aggregate rich descriptors even when every run has empty text', () => {
+  const runs = Array.from({ length: 1024 }, () => ({ text: '' })),
+    edits = Array.from({ length: 100 }, (_, row) => ({
+      sheetId: '1',
+      cell: { row, column: 0, kind: 'string', value: '', runs },
+    }));
+  expect(workbookEditPlanSchema.safeParse({ sourceSha256: 'a'.repeat(64), edits }).success).toBe(false);
+});
+it('keeps formula caches, chain, workbook hints and external parts exact for server-proved font-only rich changes', async () => {
+  const original = await fixture(),
+    JSZip = (await import('jszip')).default,
+    zip = new JSZip();
+  for (const [part, bytes] of original.parts) zip.file(part, bytes);
+  zip.file(
+    'xl/externalLinks/externalLink1.xml',
+    '<externalLink xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>',
+  );
+  zip.file(
+    'xl/calcChain.xml',
+    '<calcChain xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><c r="C1" i="1"/></calcChain>',
+  );
+  const rel = 'xl/_rels/workbook.xml.rels',
+    content = '[Content_Types].xml';
+  zip.file(
+    rel,
+    (await zip.file(rel)!.async('string')).replace(
+      '</Relationships>',
+      '<Relationship Id="calcChain" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/calcChain" Target="calcChain.xml"/></Relationships>',
+    ),
+  );
+  zip.file(
+    content,
+    (await zip.file(content)!.async('string')).replace(
+      '</Types>',
+      '<Override PartName="/xl/calcChain.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.calcChain+xml"/></Types>',
+    ),
+  );
+  const source = await readXlsxWorkbook(await zip.generateAsync({ type: 'nodebuffer' })),
+    cell = source.model.sheets[0]!.cells[0]!;
+  if (cell.kind !== 'string') throw Error('Missing rich text');
+  const runs = structuredClone(cell.runs!);
+  runs[0]!.font!.italic = true;
+  const FWorkbook = (await import('@univerjs/sheets/facade')).FWorkbook,
+    save = (await import('vitest')).vi.spyOn(FWorkbook.prototype, 'save');
+  try {
+    const output = await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { ...cell, runs } }]),
+      reopened = await readXlsxWorkbook(output.bytes);
+    expect(save).not.toHaveBeenCalled();
+    for (const [part, bytes] of source.parts)
+      if (part !== 'xl/worksheets/sheet1.xml') expect(reopened.parts.get(part)).toEqual(bytes);
+    expect(reopened.model.sheets[0]!.cells.find((cell) => cell.column === 2)).toEqual(
+      source.model.sheets[0]!.cells.find((cell) => cell.column === 2),
+    );
+    const independent = new ExcelJS.Workbook();
+    await independent.xlsx.load(Uint8Array.from(output.bytes).buffer);
+    expect(independent.worksheets[0]!.getCell('C1').result).toBe(2);
+    await expect(
+      calculateWorkbookCellEdits(source, [
+        { sheetId: '1', cell: { ...cell, value: 'new text', runs: [{ text: 'new text', font: { bold: true } }] } },
+      ]),
+    ).rejects.toMatchObject({ code: 'WORKBOOK_UNSUPPORTED' });
+  } finally {
+    save.mockRestore();
+  }
 });

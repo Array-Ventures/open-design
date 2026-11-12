@@ -70,8 +70,9 @@ export const workbookStyleEditSchema = z.object({ sheetId: id, row, column,
 }).strict().refine(edit => edit.bold !== undefined || edit.italic !== undefined || edit.fontColor !== undefined || edit.fillColor !== undefined, 'Empty style edit.');
 export type WorkbookStyleEdit = z.infer<typeof workbookStyleEditSchema>;
 export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), styles: z.array(workbookStyleEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional() }).strict().superRefine((plan,context)=>{
-  let text=0;for(const {cell}of plan.edits){text+=(typeof cell.value==='string'?cell.value.length:0)+(cell.formula?.length??0);if(cell.kind==='string'&&cell.runs)for(const run of cell.runs)text+=run.text.length+(run.font?.name?.length??0);}
+  let text=0,runs=0;for(const {cell}of plan.edits){text+=(typeof cell.value==='string'?cell.value.length:0)+(cell.formula?.length??0);if(cell.kind==='string'&&cell.runs){runs+=cell.runs.length;for(const run of cell.runs)text+=run.text.length+(run.font?JSON.stringify(run.font).length:0);}}
   if(text>WORKBOOK_MODEL_LIMITS.text)context.addIssue({code:'custom',message:'Workbook edit text exceeds its limit.'});
+  if(runs>WORKBOOK_MODEL_LIMITS.cells)context.addIssue({code:'custom',message:'Workbook edit rich runs exceed their aggregate limit.'});
 });
 /** Source ownership from OOXML f/@t and f/@ref, never inferred from cached
  * numeric cells or a formula's function name. Dynamic/legacy array identity is

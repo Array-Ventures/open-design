@@ -85,7 +85,8 @@ function rejectProtectedEdit(restrictions: EditRestrictions, cell: WorkbookCell)
 /** Preservation primitive, not the product save API. It patches cell contents,
  * expands shared formula groups before edits and removes stale formula caches.
  * Calculation and conditional binary history must run before product export. */
-export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly WorkbookCellEdit[], options: { retainFormulaCaches?: boolean } = {}): Promise<Buffer> {
+export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly WorkbookCellEdit[], options: { retainFormulaCaches?: boolean; formattingOnly?: boolean } = {}): Promise<Buffer> {
+  if (options.formattingOnly) options = { ...options, retainFormulaCaches: true };
   if (source.model.features.signed) throw new WorkbookFormatError('Editing would invalidate workbook signatures.', 'WORKBOOK_UNSUPPORTED');
   if (edits.length > 100_000) throw new WorkbookFormatError('Too many workbook edits.', 'WORKBOOK_LIMIT');
   if (!edits.length) return writeWorkbookPackage(source.parts);
@@ -110,6 +111,7 @@ export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly W
     positions.add(key);
     const previous = sourceCells.get(sheet.id)!.get(`${value.row}:${value.column}`);
     if ((previous?.style ?? 0) !== (value.style ?? 0)) throw new WorkbookFormatError('Style edits need the formatting patch adapter.', 'WORKBOOK_UNSUPPORTED');
+    if (options.formattingOnly && (value.kind !== 'string' || value.formula || previous?.kind !== 'string' || previous.formula || previous.value !== value.value || previous.runs === undefined && value.runs === undefined)) throw new WorkbookFormatError('Rich formatting cannot change a cell input.', 'WORKBOOK_UNSUPPORTED');
     let document = documents.get(part);
     if (!document) {
       document = xmlPart(source.parts, part); documents.set(part, document);
@@ -121,12 +123,12 @@ export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly W
       const data = child(document.documentElement!, 'sheetData');
       for (const row of data ? children(data, 'row') : []) {
         const index = row.hasAttribute('r') ? Number(row.getAttribute('r')) : lastRow + 1;
-        row.setAttribute('r', String(index)); lastRow = index;
+        if (!options.formattingOnly || row.hasAttribute('r')) row.setAttribute('r', String(index)); lastRow = index;
         sheetIndex.rows.set(index - 1, row); sheetIndex.rowExtensions.set(row, child(row, 'extLst') ?? null);
         let lastColumn = -1;
         for (const cell of children(row, 'c')) {
           const position = cell.hasAttribute('r') ? address(cell.getAttribute('r')!) : { row: index - 1, column: lastColumn + 1 };
-          cell.setAttribute('r', cellAddress(position.row, position.column)); lastColumn = position.column;
+          if (!options.formattingOnly || cell.hasAttribute('r')) cell.setAttribute('r', cellAddress(position.row, position.column)); lastColumn = position.column;
           sheetIndex.cells.set(`${position.row}:${position.column}`, cell);
           const formula = child(cell, 'f');
           if (formula?.getAttribute('t') === 'shared' && options.retainFormulaCaches) {
@@ -163,14 +165,14 @@ export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly W
     if (!options.retainFormulaCaches || !value.formula || value.formula !== previous?.formula) { const target = ensureCell(document,root,value,indexes.get(part)!);writeValue(document,target,value,previous,value.kind === 'string' && value.runs ? sourceText(target) : undefined); }
     // Optional used-range hints must not prevent an application finding a new
     // cell. Recompute on open instead of retaining a stale dimension hint.
-    remove(root, 'dimension');
+    if (!options.formattingOnly) remove(root, 'dimension');
   }
   const output = new Map(source.parts);
   for (const [sheetId, part] of source.sheetParts) {
     const document = documents.get(part) ?? xmlPart(source.parts, part);
     let changed = documents.has(part);
     const data = child(document.documentElement!, 'sheetData');
-    if (data && documents.has(part)) {
+    if (data && documents.has(part) && !options.formattingOnly) {
       for (const row of children(data, 'row').sort((a, b) => Number(a.getAttribute('r')) - Number(b.getAttribute('r')))) {
         data.appendChild(row);
         orderWorkbookRowCells(row);
@@ -181,6 +183,7 @@ export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly W
     }
     if (changed) output.set(source.sheetParts.get(sheetId)!, writeWorkbookXml(document));
   }
+  if (options.formattingOnly) return writeWorkbookPackage(output);
   // Remove the obsolete calculation chain and its references. Root discovery
   // is canonical for now, matching the package admission contract.
   const relsName = 'xl/_rels/workbook.xml.rels';

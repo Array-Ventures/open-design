@@ -145,3 +145,15 @@ Explicit underline `none` and vertical `baseline` are distinct from omitted run
 properties. They reset inherited cell font styling; omission continues to inherit.
 The reader, run writer and grid all retain those distinctions, while the original
 cell XF and fonts table remain unchanged.
+
+A transaction admits at most 100,000 rich segments in aggregate, in addition to
+1,024 segments and 32,767 UTF-16 text units per cell. The eight-MiB edit budget
+counts complete font descriptors as well as text, so empty formatted runs cannot
+bypass resource admission. Existing package part/archive limits still apply.
+
+A server-proved same-string rich font-only transaction skips calculation entirely.
+The cell patch independently rechecks old/new literal identity and absence of a
+formula, retains every cached result, the calculation chain, workbook metadata and
+existing coordinate/used-range hints, and changes only the selected string XML.
+Text-changing or mixed input transactions still use the normal calculation
+admission, including existing external-workbook refusals.

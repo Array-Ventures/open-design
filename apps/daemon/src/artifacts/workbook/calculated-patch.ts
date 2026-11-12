@@ -111,6 +111,11 @@ export async function calculateWorkbookCellEdits(source: ReadWorkbook, edits: re
     const bytes = await patchWorkbookDimensions(content, dimensions);
     return { bytes, model: (await readXlsxWorkbook(bytes)).model };
   }
+  if (edits.length) {
+    const previous = new Map(source.model.sheets.flatMap(sheet => sheet.cells.map(cell => [formulaCellKey(sheet.id,cell.row,cell.column),cell] as const)));
+    const formattingOnly = edits.every(({sheetId,cell}) => { const before=previous.get(formulaCellKey(sheetId,cell.row,cell.column));return cell.kind==='string'&&!cell.formula&&before?.kind==='string'&&!before.formula&&cell.value===before.value&&(before.runs!==undefined||cell.runs!==undefined); });
+    if (formattingOnly) { const bytes=await patchWorkbookCells(source,edits,{retainFormulaCaches:true,formattingOnly:true});return{bytes,model:(await readXlsxWorkbook(bytes)).model}; }
+  }
   assertCalculationSupported(source);
   const dynamicOwners = verifiedDynamicArrayOwners(source);
   const plan = partitionRetiredFollowerEdits(source, edits, dynamicOwners);
