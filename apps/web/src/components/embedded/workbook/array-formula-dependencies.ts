@@ -1,4 +1,4 @@
-import { RTree, type IWorkbookData } from '@univerjs/presets';
+import { RTree, type IWorkbookData } from '@univerjs/core';
 import type { WorkbookDocument, WorkbookRange } from '@open-design/contracts/runtime/workbook';
 import type { FormulaDependencyNode, LimitedFormulaCell, WorkbookFormulaPolicy } from './formula-result-policy';
 

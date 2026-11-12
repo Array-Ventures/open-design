@@ -10,6 +10,7 @@ export interface FormulaDependencyNode {
 export interface FormulaAnalysisRuntime {
   sequenceNodesBuilder(formula: string): readonly (string | { nodeType: number; token: string })[] | undefined;
   hasExecutor(name: string): boolean;
+  supportedArrayFunctions?: ReadonlySet<string>;
   deserializeRangeWithSheet(token: string): { unitId: string };
   sequenceNodeType: { FUNCTION: number; REFERENCE: number; DEFINED_NAME: number; TABLE: number };
 }
@@ -44,7 +45,7 @@ function limitation(formula: string, runtime: FormulaAnalysisRuntime): FormulaCa
       if (ERROR_TYPE_SET.has(node.token as ErrorType)) continue;
       const name = node.token.toUpperCase();
       if (!runtime.hasExecutor(name)) return 'unsupported-function';
-      if (dynamicResults.has(name)) return 'dynamic-result';
+      if (dynamicResults.has(name) && !runtime.supportedArrayFunctions?.has(name)) return 'dynamic-result';
     }
     if (node.nodeType === runtime.sequenceNodeType.REFERENCE && runtime.deserializeRangeWithSheet(node.token).unitId) return 'external-reference';
     // The current display adapter does not load workbook defined names/tables

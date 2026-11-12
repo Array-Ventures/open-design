@@ -1,4 +1,4 @@
-import { BaselineOffset, BooleanNumber, BorderStyleTypes, CellValueType, DateSystem, HorizontalAlign, LocaleType, TextDecoration, VerticalAlign, WrapStrategy, WorksheetHiddenState, type ICellData, type IObjectMatrixPrimitiveType, type IStyleBase, type IStyleData, type IWorkbookData } from '@univerjs/presets';
+import { BaselineOffset, BooleanNumber, BorderStyleTypes, CellValueType, DateSystem, HorizontalAlign, LocaleType, TextDecoration, VerticalAlign, WrapStrategy, WorksheetHiddenState, type ICellData, type IObjectMatrixPrimitiveType, type IStyleBase, type IStyleData, type IWorkbookData } from '@univerjs/core';
 import { workbookFontFamily } from './grid-fonts';
 import { workbookDocumentSchema, type WorkbookCell, type WorkbookColor, type WorkbookDocument, type WorkbookFont, type WorkbookStyle } from '@open-design/contracts/runtime/workbook';
 

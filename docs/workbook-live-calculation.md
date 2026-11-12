@@ -462,3 +462,21 @@ caches readable and disables live execution; it does not become a read failure.
 These fields describe the SHA-verified preview source only. The save worker
 continues to resolve ownership from source package bytes and never treats an
 asserted client mode as permission to resize a fixed owner.
+
+The client array kernel is staged separately from Grid enablement. It uses the
+pinned public typed executor/reference APIs and dependency service in two fresh
+private kernels, admitting known fixed/dynamic source owners and actual array
+results from a constrained function set. Registered browser geometry remains
+bounded; whole-axis references, names/tables, ambiguous collisions and
+unqualified source cache layouts fall back to stored mode. A failed allocation
+admission returns an internal sentinel only until the pass completes; that pass
+is refused and no sentinel is exposed as calculated output.
+
+The dedicated projection worker publishes one complete typed result with source
+SHA, input SHA and generation. The UI owner rejects stale/mismatched results,
+terminates after five seconds, and fences disposal/source refresh. Neither its
+private calculation snapshot nor follower projections enter raw authored cells
+or the writer journal. The remaining Grid gate requires a read-only projection
+interceptor, pending/stored provenance display, protected follower edits and
+lifecycle integration with source refresh/theme/kernel fallback. Until that
+integration is qualified, production arrays remain in stored mode.
