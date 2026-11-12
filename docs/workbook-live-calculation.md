@@ -219,3 +219,28 @@ None of these helpers installs a grid lifecycle. Before enabling calculation:
   refusals until qualified. A displayed dynamic result is not a saved array.
 - Qualify source refresh, undo, changing formulas, imported/new arrays, dynamic
   references, typed error/rich caches, conflicts, and both themes in the UI.
+
+## Pinned RPC isolation qualification (not enabled)
+
+The pinned core worker preset and `UniverRPCMainThreadPlugin` provide the existing
+calculation worker mechanism. The main engine, sheets and formula plugins can all
+retain `notExecuteFormula: true` while the worker calculates. The actual RPC test
+changes A1 from 2 to 7 and observes `=A1+3` become 10. It executes
+`=SEQUENCE(10000000)` against the registered 100×20 worksheet and observes `#REF!`
+without growing its dimensions. The same runtime test installs the admission
+helper on both sides and refuses real row-count, row-insert and outside-bound
+value mutations before execution. No Grid flag or production worker is enabled
+by this qualification commit.
+
+`formula-worker-budget.ts` bounds initial registered geometry and raw cells, then
+admits only the reviewed range-value sheet mutation. Unknown structural mutations
+must not enlarge the calculation replica through paste, insertion or count
+changes. This geometry policy is not sufficient by itself: pinned RANDARRAY and
+EXPAND can allocate requested output before a sheet-bound check. A pre-execution
+function allocation policy, a worker deadline, matching result-generation
+provenance and the separate display/cache boundary are still enablement gates.
+
+The owned Node-worker fixture has a 192 MiB V8 old-generation limit and is always
+terminated during teardown. This is a test-process memory limit, **not** a claim
+that the browser Worker API supplies a portable heap limit. Browser live support
+must not silently treat the Node proof as production memory containment.
