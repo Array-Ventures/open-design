@@ -1,4 +1,4 @@
-import { RTree } from '@univerjs/core';
+import { RANGE_TYPE, RTree } from '@univerjs/core';
 import { deserializeRangeWithSheet, sequenceNodeType } from '@univerjs/engine-formula';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookFormatError } from './package.js';
@@ -33,7 +33,12 @@ export function withArrayFollowerDependencies(model: WorkbookDocument, trees: re
         if (ref.unitId) throw new WorkbookFormatError('External array references are unsupported.', 'WORKBOOK_UNSUPPORTED');
         const sheetId = ref.sheetName ? sheets.get(ref.sheetName.toLowerCase()) : sheet.id;
         if (!sheetId) throw new WorkbookFormatError('Array reference sheet is unavailable.', 'WORKBOOK_UNSUPPORTED');
-        for (const id of index.searchGenerator({ unitId, sheetId, range: ref.range })) {
+        const target = model.sheets.find(sheet => sheet.id === sheetId)!;
+        const bounds = { ...ref.range };
+        if (bounds.rangeType === RANGE_TYPE.ROW || bounds.rangeType === RANGE_TYPE.ALL) { bounds.startColumn = 0; bounds.endColumn = target.columnCount - 1; }
+        if (bounds.rangeType === RANGE_TYPE.COLUMN || bounds.rangeType === RANGE_TYPE.ALL) { bounds.startRow = 0; bounds.endRow = target.rowCount - 1; }
+        if (![bounds.startRow, bounds.endRow, bounds.startColumn, bounds.endColumn].every(value => Number.isSafeInteger(value) && value >= 0) || bounds.startRow > bounds.endRow || bounds.startColumn > bounds.endColumn || bounds.endRow >= 1_048_576 || bounds.endColumn >= 16_384) throw new WorkbookFormatError('Array reference bounds are unavailable.', 'WORKBOOK_UNSUPPORTED');
+        for (const id of index.searchGenerator({ unitId, sheetId, range: bounds })) {
           if (++work > 1_000_000) throw new WorkbookFormatError('Array dependent analysis exceeds its work limit.', 'WORKBOOK_LIMIT');
           const owner = owners[Number(id)]!, node = byCell.get(formulaCellKey(owner.sheetId, owner.row, owner.column));
           if (!node) throw new WorkbookFormatError('Array owner graph is incomplete.', 'WORKBOOK_UNSUPPORTED');
