@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { BooleanNumber, ICommandService, IConfigService, CellValueType, DateSystem, LocaleType, Univer, type ICellData, type IObjectMatrixPrimitiveType, type IWorkbookData, type IUnitRange } from '@univerjs/core';
+import { BooleanNumber, ICommandService, IConfigService, RTree, CellValueType, DateSystem, LocaleType, Univer, type ICellData, type IObjectMatrixPrimitiveType, type IWorkbookData, type IUnitRange } from '@univerjs/core';
 import { FUniver } from '@univerjs/core/facade';
 import { BaseFunction, BooleanValue, DependencyManagerService, IDependencyManagerService, ERROR_TYPE_SET, type ErrorType, ENGINE_FORMULA_RETURN_DEPENDENCY_TREE, IDefinedNamesService, IFunctionService, ISuperTableService, SetFormulaDependencyCalculationResultMutation, SetArrayFormulaDataMutation, type ISetArrayFormulaDataMutationParams, deserializeRangeWithSheet, quoteSheetName, sequenceNodeType, splitTableStructuredRef, type ISetFormulaDependencyCalculationResultMutation, SetDefinedNameMutation, SetSuperTableMutation, UniverFormulaEnginePlugin, type ArrayValueObject, type BaseValueObject } from '@univerjs/engine-formula';
 import { UniverSheetsPlugin } from '@univerjs/sheets';
@@ -8,7 +8,7 @@ import SheetsEnUS from '@univerjs/sheets/locale/en-US';
 import '@univerjs/engine-formula/facade';
 import '@univerjs/sheets/facade';
 import '@univerjs/sheets-formula/facade';
-import { workbookCellSchema, workbookDocumentSchema, type WorkbookCell, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import { workbookCellSchema, workbookDocumentSchema, type WorkbookCell, type WorkbookDocument, type WorkbookRange } from '@open-design/contracts/runtime/workbook';
 import { WorkbookFormatError } from './package.js';
 import { createFormulaCacheAnalysis, retainedFormulaCaches, formulaCellKey, type FormulaDependencyNode } from './formula-cache-policy.js';
 import { withArrayFollowerDependencies } from './array-dependencies.js';
@@ -52,17 +52,24 @@ function storedResultCell(current: WorkbookCell, stored: WorkbookCell): Workbook
 
 /** Pure model calculation, for execution inside the bounded workbook worker.
  * Does not write files or trust cached results supplied by a browser. */
-export async function calculateWorkbookResults(input: WorkbookDocument, original: WorkbookDocument = input): Promise<{ model: WorkbookDocument; retained: Set<string> }> {
+export async function calculateWorkbookResults(input: WorkbookDocument, original: WorkbookDocument = input, dynamicOwners: ReadonlySet<string> = new Set(), executionRanges: ReadonlyMap<string, WorkbookRange> = new Map(), allowNewArrays = false): Promise<{ model: WorkbookDocument; retained: Set<string> }> {
   const model = workbookDocumentSchema.parse(input);
   if (model.sheets.some(sheet => sheet.arrayFormulas?.some(array => array.kind === 'dataTable'))) {
     throw new WorkbookFormatError('Excel data tables cannot be recalculated here. Their saved results are preserved.', 'WORKBOOK_UNSUPPORTED');
   }
-  if (model.sheets.some(sheet => sheet.arrayFormulas?.length) && (model.definedNames?.length || model.tables?.length)) throw new WorkbookFormatError('Named or table array dependencies need their array adapter.', 'WORKBOOK_UNSUPPORTED');
+  if (model.sheets.some(sheet => sheet.arrayFormulas?.length) && (model.definedNames?.length || model.tables?.length)) throw new WorkbookFormatError('Array formulas with names or tables need their dependency adapter.', 'WORKBOOK_UNSUPPORTED');
   if (!model.sheets.some(sheet => sheet.cells.some(cell => cell.formula))) return { model, retained: new Set() };
   const capture = `EVEBOT_CACHE_${randomUUID().replaceAll('-', '').toUpperCase()}`;
   const results = new Map<string, TypedResult>();
+  const dynamic = new Set(dynamicOwners);
+  let capturedCells = 0;
+  const capturedSizes = new Map<string, number>();
+  let arrayLimit = false;
   const arrayResults = new Map<string, TypedResult[][]>();
   const owners = new Map(model.sheets.flatMap(sheet => (sheet.arrayFormulas ?? []).map(array => [formulaCellKey(sheet.id, array.row, array.column), { sheetId: sheet.id, ...array }] as const)));
+  const originalFormulas = new Map(original.sheets.flatMap(sheet => sheet.cells.map(cell => [formulaCellKey(sheet.id, cell.row, cell.column), cell.formula] as const)));
+  const currentFormulas = new Map(model.sheets.flatMap(sheet => sheet.cells.map(cell => [formulaCellKey(sheet.id, cell.row, cell.column), cell.formula] as const)));
+  const sourceOwnerKeys = new Set(owners.keys());
   let unsupportedArray = false;
   const mismatchedArrays = new Set<string>();
   const followers = new Set<string>();
@@ -77,11 +84,18 @@ export async function calculateWorkbookResults(input: WorkbookDocument, original
       let scalar: BaseValueObject | null | undefined | void = value;
       if (value.isArray()) {
         const array = value as ArrayValueObject;
-        const key = formulaCellKey(this.subUnitId!, this.row, this.column), owner = owners.get(key);
+        const key = formulaCellKey(this.subUnitId!, this.row, this.column);
+        let owner = owners.get(key);
         const rows = array.getRowCount(), columns = array.getColumnCount();
-        if (rows * columns > 100_000) throw new WorkbookFormatError('Array result exceeds the cell limit.', 'WORKBOOK_LIMIT');
+        const size = rows * columns;
+        capturedCells += size - (capturedSizes.get(key) ?? 0); capturedSizes.set(key, size);
+        if (!Number.isSafeInteger(size) || size < 1 || capturedCells > 100_000) { arrayLimit = true; return value; }
+        if (!owner && allowNewArrays && originalFormulas.get(key) !== currentFormulas.get(key)) {
+          owner = { sheetId: this.subUnitId!, kind: 'array', row: this.row, column: this.column, range: { startRow: this.row, startColumn: this.column, endRow: this.row + rows - 1, endColumn: this.column + columns - 1 } };
+          owners.set(key, owner); dynamic.add(key);
+        }
         if (owner) {
-          if (rows !== owner.range.endRow - owner.row + 1 || columns !== owner.range.endColumn - owner.column + 1) { mismatchedArrays.add(key); return value; }
+          if (!dynamic.has(key) && (rows !== owner.range.endRow - owner.row + 1 || columns !== owner.range.endColumn - owner.column + 1)) { mismatchedArrays.add(key); return value; }
           const values: TypedResult[][] = [];
           for (let row = 0; row < rows; row++) {
             const cells: TypedResult[] = [];
@@ -98,7 +112,9 @@ export async function calculateWorkbookResults(input: WorkbookDocument, original
       }
       if (scalar) {
         const kind = scalar.isError() ? 'error' : scalar.isBoolean() ? 'boolean' : scalar.isNumber() ? 'number' : 'string';
-        results.set(`${this.subUnitId}:${this.row}:${this.column}`, { kind, value: scalar.getValue() });
+        const typed = { kind, value: scalar.getValue() } as TypedResult;
+        results.set(`${this.subUnitId}:${this.row}:${this.column}`, typed);
+        if (!value.isArray() && dynamic.has(formulaCellKey(this.subUnitId!, this.row, this.column))) arrayResults.set(formulaCellKey(this.subUnitId!, this.row, this.column), [[typed]]);
       }
       return value;
     }
@@ -121,6 +137,7 @@ export async function calculateWorkbookResults(input: WorkbookDocument, original
     };
   }
   let arrayData: ISetArrayFormulaDataMutationParams | undefined;
+  let blockerIndex: RTree | undefined, mergeIndex: RTree | undefined;
   let subscription: { dispose(): void } | undefined;
   // The pinned generator queries dependents at an owner's anchor. Its public
   // dependency service can expand that query to explicit source ownership before
@@ -129,15 +146,15 @@ export async function calculateWorkbookResults(input: WorkbookDocument, original
     override searchDependency(search: IUnitRange[], exceptTreeIds?: Set<number>): Set<number> {
       return super.searchDependency(search.map(item => {
         if (item.unitId !== 'evebot-workbook-calculation' || item.range.startRow !== item.range.endRow || item.range.startColumn !== item.range.endColumn) return item;
-        const owner = owners.get(formulaCellKey(item.sheetId, item.range.startRow, item.range.startColumn));
-        return owner ? { ...item, range: { ...owner.range } } : item;
+        const key = formulaCellKey(item.sheetId, item.range.startRow, item.range.startColumn), bounds = executionRanges.get(key) ?? owners.get(key)?.range;
+        return bounds ? { ...item, range: { ...bounds } } : item;
       }), exceptTreeIds);
     }
   }
   class SourceArrayFormulaEnginePlugin extends UniverFormulaEnginePlugin {
     protected override _initializeWithOverride(): void {
       super._initializeWithOverride();
-      if (owners.size) this._injector.replace([IDependencyManagerService, { useClass: SourceArrayDependencyManager }]);
+      if (owners.size || allowNewArrays) this._injector.replace([IDependencyManagerService, { useClass: SourceArrayDependencyManager }]);
     }
   }
   const univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: SheetsEnUS } });
@@ -153,7 +170,7 @@ export async function calculateWorkbookResults(input: WorkbookDocument, original
       if (command.id === SetFormulaDependencyCalculationResultMutation.id) trees = (command.params as ISetFormulaDependencyCalculationResultMutation).result;
     });
     const api = FUniver.newAPI(univer);
-    api.createWorkbook({ id: 'evebot-workbook-calculation', name: 'Workbook', dateSystem: model.date1904 ? DateSystem.Date1904 : DateSystem.Date1900,
+    const workbook = api.createWorkbook({ id: 'evebot-workbook-calculation', name: 'Workbook', dateSystem: model.date1904 ? DateSystem.Date1904 : DateSystem.Date1900,
       sheetOrder: model.sheets.map(sheet => sheet.id), sheets,
       styles: Object.fromEntries(model.styles.map((style, index) => [String(index), style.numberFormat ? { n: { pattern: style.numberFormat } } : {}])),
     });
@@ -189,34 +206,78 @@ export async function calculateWorkbookResults(input: WorkbookDocument, original
     for (const sheet of model.sheets) for (const cell of sheet.cells) if (cell.formula) analysis.admit(normalized.get(formulaCellKey(sheet.id, cell.row, cell.column))!, sheet.id);
     formula.executeCalculation();
     await formula.onCalculationResultApplied(5000);
-    if (unsupportedArray) throw new WorkbookFormatError('Array formulas must match a fixed source range. New or resized arrays require the dynamic metadata adapter. Your file has not changed.', 'WORKBOOK_UNSUPPORTED');
+    if (arrayLimit) throw new WorkbookFormatError('Array calculation exceeds its aggregate cell limit.', 'WORKBOOK_LIMIT');
+    if (unsupportedArray) throw new WorkbookFormatError('Array formulas need explicit source ownership or a newly entered supported dynamic formula. Your file has not changed.', 'WORKBOOK_UNSUPPORTED');
     if (!trees) throw new WorkbookFormatError('Formula dependency results are missing.', 'WORKBOOK_UNSUPPORTED');
+    if (owners.size && (model.definedNames?.length || model.tables?.length)) throw new WorkbookFormatError('Array formulas with names or tables need their dependency adapter.', 'WORKBOOK_UNSUPPORTED');
+    for (const [key, owner] of owners) if (!sourceOwnerKeys.has(key)) {
+      const sheet = model.sheets.find(sheet => sheet.id === owner.sheetId)!;
+      (sheet.arrayFormulas ??= []).push({ kind: 'array', row: owner.row, column: owner.column, range: { ...owner.range } });
+    }
     const retained = retainedFormulaCaches(model, original, unitId, withArrayFollowerDependencies(model, trees, unitId, expression => formula.sequenceNodesBuilder(expression)), engineFormulas, normalized, analysis);
     // Source array followers are caches, never editable calculation inputs.
     // Retained owners keep their complete source range; calculated owners replace
     // every owned cache, including absent physical follower cells.
+    const snapshot = workbook.save();
+    const declaredArrays = new Map(model.sheets.flatMap(sheet => (sheet.arrayFormulas ?? []).map(owner => [formulaCellKey(sheet.id, owner.row, owner.column), owner] as const)));
+    const cellsBySheet = new Map(model.sheets.map(sheet => [sheet.id, new Map(sheet.cells.map(cell => [`${cell.row}:${cell.column}`, cell]))]));
+    const sheetsById = new Map(model.sheets.map(sheet => [sheet.id, sheet]));
+    const blockerCells = model.sheets.flatMap(sheet => sheet.cells.filter(cell => cell.formula || cell.kind !== 'blank').map(cell => ({ sheetId: sheet.id, cell })));
+    if (dynamic.size) {
+      blockerIndex = new RTree(); blockerIndex.bulkInsert(blockerCells.map(({ sheetId, cell }, id) => ({ id, unitId, sheetId, range: { startRow: cell.row, endRow: cell.row, startColumn: cell.column, endColumn: cell.column } })));
+      mergeIndex = new RTree(); mergeIndex.bulkInsert(model.sheets.flatMap(sheet => sheet.merges.map((range, id) => ({ id: `${sheet.id}:${id}`, unitId, sheetId: sheet.id, range }))));
+    }
     for (const owner of owners.values()) {
       const key = formulaCellKey(owner.sheetId, owner.row, owner.column);
       if (retained.has(key)) continue;
       if (mismatchedArrays.has(key)) throw new WorkbookFormatError('Array calculation must match its fixed source range.', 'WORKBOOK_UNSUPPORTED');
-      const bounds = arrayData?.arrayFormulaRange[unitId]?.[owner.sheetId]?.[owner.row]?.[owner.column];
-      if (!bounds || bounds.startRow !== owner.row || bounds.startColumn !== owner.column || bounds.endRow !== owner.range.endRow || bounds.endColumn !== owner.range.endColumn) throw new WorkbookFormatError('Calculated array ownership does not match its fixed source range.', 'WORKBOOK_UNSUPPORTED');
-      const values = arrayResults.get(key);
+      let values = arrayResults.get(key);
+      let bounds = arrayData?.arrayFormulaRange[unitId]?.[owner.sheetId]?.[owner.row]?.[owner.column];
+      if (dynamic.has(key) && values) {
+        const endRow = owner.row + values.length - 1, endColumn = owner.column + values[0]!.length - 1;
+        const sheet = sheetsById.get(owner.sheetId)!;
+        if (endRow >= 1_048_576 || endColumn >= 16_384) throw new WorkbookFormatError('Dynamic array exceeds worksheet bounds.', 'WORKBOOK_LIMIT');
+        if (!mergeIndex!.searchGenerator({ unitId, sheetId: owner.sheetId, range: { startRow: owner.row, endRow, startColumn: owner.column, endColumn } }).next().done) throw new WorkbookFormatError('Dynamic array merged-cell collisions are unsupported.', 'WORKBOOK_UNSUPPORTED');
+        let blocker = false;
+        for (const id of blockerIndex!.searchGenerator({ unitId, sheetId: owner.sheetId, range: { startRow: owner.row, endRow, startColumn: owner.column, endColumn } })) {
+          const cell = blockerCells[Number(id)]!.cell;
+          if (!(sourceOwnerKeys.has(key) ? cell.row >= owner.range.startRow && cell.row <= owner.range.endRow && cell.column >= owner.range.startColumn && cell.column <= owner.range.endColumn : cell.row === owner.row && cell.column === owner.column)) { blocker = true; break; }
+        }
+        const actual = snapshot.sheets[owner.sheetId]?.cellData?.[owner.row]?.[owner.column];
+        if (blocker && actual?.v !== '#SPILL!') throw new WorkbookFormatError('Dynamic array collision did not produce an authoritative spill error.', 'WORKBOOK_UNSUPPORTED');
+        if (blocker && actual?.v === '#SPILL!') {
+          values = [[{ kind: 'error', value: '#SPILL!' }]];
+          arrayResults.set(key, values); results.set(`${owner.sheetId}:${owner.row}:${owner.column}`, values[0]![0]!);
+          bounds = { startRow: owner.row, endRow: owner.row, startColumn: owner.column, endColumn: owner.column };
+        }
+      }
+      if (!bounds && dynamic.has(key) && values?.length === 1 && values[0]?.length === 1) bounds = { startRow: owner.row, startColumn: owner.column, endRow: owner.row, endColumn: owner.column };
+      if (!bounds || bounds.startRow !== owner.row || bounds.startColumn !== owner.column || (!dynamic.has(key) && (bounds.endRow !== owner.range.endRow || bounds.endColumn !== owner.range.endColumn))) throw new WorkbookFormatError('Calculated array ownership does not match its fixed source range.', 'WORKBOOK_UNSUPPORTED');
       if (!values) throw new WorkbookFormatError('Fixed source array did not produce an exact typed array result.', 'WORKBOOK_UNSUPPORTED');
-      const sheet = model.sheets.find(sheet => sheet.id === owner.sheetId)!;
-      const cells = new Map(sheet.cells.map(cell => [`${cell.row}:${cell.column}`, cell]));
+      const sheet = sheetsById.get(owner.sheetId)!;
+      if (dynamic.has(key)) {
+        const declared = declaredArrays.get(key)!;
+        declared.range = { startRow: owner.row, startColumn: owner.column, endRow: owner.row + values.length - 1, endColumn: owner.column + values[0]!.length - 1 };
+        if (bounds.endRow !== declared.range.endRow || bounds.endColumn !== declared.range.endColumn) throw new WorkbookFormatError('Dynamic array matrix and ownership disagree.', 'WORKBOOK_UNSUPPORTED');
+      }
+      const cells = cellsBySheet.get(owner.sheetId)!;
       for (let row = 0; row < values.length; row++) for (let column = 0; column < values[row]!.length; column++) {
         if (!row && !column) continue;
         const position = { row: owner.row + row, column: owner.column + column }, previous = cells.get(`${position.row}:${position.column}`);
         cells.set(`${position.row}:${position.column}`, workbookCellSchema.parse({ ...position, ...(previous?.style === undefined ? {} : { style: previous.style }), ...values[row]![column]! }));
       }
-      sheet.cells = [...cells.values()].sort((a, b) => a.row - b.row || a.column - b.column);
+      if (dynamic.has(key)) for (let row = owner.row; row <= owner.range.endRow; row++) for (let column = owner.column; column <= owner.range.endColumn; column++) {
+        if (row === owner.row && column === owner.column || row < owner.row + values.length && column < owner.column + values[0]!.length) continue;
+        const previous = cells.get(`${row}:${column}`);
+        if (previous) cells.set(`${row}:${column}`, workbookCellSchema.parse({ row, column, ...(previous.style === undefined ? {} : { style: previous.style }), kind: 'blank', value: null }));
+      }
     }
+    for (const sheet of model.sheets) sheet.cells = [...cellsBySheet.get(sheet.id)!.values()].sort((a, b) => a.row - b.row || a.column - b.column);
     const originals = new Map(original.sheets.flatMap(sheet => sheet.cells.map(cell => [formulaCellKey(sheet.id, cell.row, cell.column), cell] as const)));
     for (const sheet of model.sheets) sheet.cells = sheet.cells.map(cell => !cell.formula ? cell : retained.has(formulaCellKey(sheet.id, cell.row, cell.column))
       ? storedResultCell(cell, originals.get(formulaCellKey(sheet.id, cell.row, cell.column))!) : resultCell(cell, results.get(`${sheet.id}:${cell.row}:${cell.column}`)));
     return { model: workbookDocumentSchema.parse(model), retained };
-  } finally { subscription?.dispose(); univer.dispose(); }
+  } finally { subscription?.dispose(); blockerIndex?.dispose(); mergeIndex?.dispose(); univer.dispose(); }
 }
 
 export async function calculateWorkbook(input: WorkbookDocument): Promise<WorkbookDocument> { return (await calculateWorkbookResults(input)).model; }

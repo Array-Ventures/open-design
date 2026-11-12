@@ -384,8 +384,44 @@ edges. Original unsupported owners and their follower-dependent closure retain
 source caches. A retained branch is stored evidence, not a promise of freshness.
 Array reference analysis has an aggregate one-million-token/intersection budget.
 
-This stage refuses new or resized arrays, cell metadata (`cm`), data tables,
-names/tables in an array workbook, owner/follower edits and mismatched legacy
-array shapes. New dynamic metadata authoring and verified dynamic growth,
-shrinkage and collision persistence remain unfinished. The existing Grid source
-array gate remains in place; this backend capability does not enable it.
+### Verified dynamic persistence
+
+The daemon resolves `cm` (one-based) through `cellMetadata/bk/rc`, its
+`metadataTypes` identity and zero-based `futureMetadata` record. Only the known
+XLDAPR extension and `dynamicArrayProperties fDynamic=true, fCollapsed=false`
+qualify a source owner for growth/shrinkage. Unknown metadata, value metadata,
+ambiguous records, unsupported properties and invalid indices are refused;
+existing metadata bytes are preserved exactly.
+
+A discovery calculation derives geometry only. A second fresh calculation starts
+from the original patched inputs, clears only original source-owned followers,
+and schedules consumers using admitted server geometry. Discovery caches never
+become final input values or persisted results. Final geometry must equal the
+admitted rectangles; unstable geometry is refused. Both passes enforce the
+existing formula/name work budgets, five-second engine result deadline,
+100,000 aggregate array-result cells and one-million-token/intersection array
+reference budget. The surrounding bounded worker remains required. No third
+calculation or convergence retry is attempted.
+
+A collision is persisted as a typed `#SPILL!` only when an actual outside input
+blocks the candidate rectangle and the pinned engine's final anchor reports the
+spill error. Candidate matrices/ranges can still be emitted on collision, so
+neither alone authorizes overwriting followers. Retired source followers lose
+cache values while keeping cell styles and other XML. Merged-cell collisions
+remain refused.
+
+New or changed ordinary formulas that genuinely return arrays can author a
+dynamic owner: `f t="array" ref=...`, `cm`, the XLDAPR metadata part, workbook
+relationship and content type. Owners share one canonical immutable record;
+subsequent saves reuse it without metadata growth. Existing richer supported
+metadata can recalculate its owners but refuses new-owner authoring unless the
+single-record layout is qualified. Unchanged ordinary source formulas are never
+silently promoted to dynamic ownership.
+
+Data tables, names/tables in an array workbook, fixed-source shape changes and
+owner/follower structural edits remain refused in this stage. The existing Grid
+source-array gate remains in place; backend persistence does not enable it.
+The known XLDAPR identity follows the [Microsoft metadata extension
+specification](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-xlsx/3dd44d53-847b-402f-a8c7-41a85024caf7)
+and [dynamic-array property
+specification](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-xlsx/d1ef676d-d970-4ddd-b642-62f5e0c291e0).
