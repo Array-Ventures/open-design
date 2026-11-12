@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { useState } from 'react';
+import { WorkbookWriter } from '../../../src/components/embedded/workbook/workbook-writer';
+import { gridWorkbook } from '../../../src/components/embedded/workbook/grid-model';
+import type { IWorkbookData } from '@univerjs/presets';
 import { CommandType } from '@univerjs/presets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookGrid } from '../../../src/components/embedded/workbook/WorkbookGrid';
@@ -188,4 +192,35 @@ it('disables text-number warnings only for literal CSV while retaining XLSX defa
   await waitFor(() => expect(ready).toHaveBeenCalledTimes(2));
   expect(runtime.register).toHaveBeenLastCalledWith('UniverSheetsNumfmtUIPlugin');
   expect(runtime.register.mock.calls.filter(call => call[0] === 'UniverSheetsNumfmtPlugin').at(-1)).toEqual(['UniverSheetsNumfmtPlugin', undefined]);
+});
+
+it('retains CSV sizing through the real writer acknowledgement and refreshed source Grid handoff', async () => {
+  const csv = { ...model, sourceFormat: 'csv' as const }, ready = vi.fn();
+  let writer!: WorkbookWriter;
+  let saved = gridWorkbook(csv, 'project:file.csv', 'CSV').data as IWorkbookData;
+  runtime.saved.mockImplementation(() => structuredClone(saved));
+  const template = runtime.createWorkbook.getMockImplementation();
+  runtime.createWorkbook.mockImplementation((data: IWorkbookData) => { saved = structuredClone(data); return template!(); });
+  const journal = { save: vi.fn(async () => {}) };
+  function Harness() {
+    const [source, accept] = useState<{ model: WorkbookDocument; sourceSha256: string }>({ model: csv, sourceSha256: 'a'.repeat(64) });
+    return <WorkbookGrid id="project:file.csv" title="CSV" model={source.model} onSnapshot={snapshot => writer.update(snapshot)} onReady={async snapshot => {
+      await writer?.close();
+      writer = new WorkbookWriter(source, snapshot, async intent => {
+        expect(intent.plan).not.toHaveProperty('dimensions');
+        const next = structuredClone(source); next.sourceSha256 = 'b'.repeat(64);
+        next.model.sheets[0]!.cells = intent.plan.edits.map(edit => edit.cell);
+        return next;
+      }, () => {}, accept, journal); ready();
+    }} />;
+  }
+  const view = render(<Harness />); await waitFor(() => expect(ready).toHaveBeenCalledTimes(1));
+  saved.sheets.inputs!.columnData = { 1: { w: 148 } }; saved.sheets.inputs!.rowData = { 2: { h: 42 } };
+  saved.sheets.inputs!.cellData = { 0: { 0: { v: '00017', t: 4 } } };
+  act(() => runtime.listener?.({ id: 'sheet.mutation.set-range-values', type: CommandType.MUTATION }));
+  await act(async () => writer.flush());
+  await waitFor(() => expect(ready).toHaveBeenCalledTimes(2));
+  expect(saved.sheets.inputs!.columnData![1]!.w).toBe(148); expect(saved.sheets.inputs!.rowData![2]!.h).toBe(42);
+  expect(saved.sheets.inputs!.cellData![0]![0]!.v).toBe('00017');
+  expect(writer.state().dirty).toBe(false); view.unmount(); await writer.close();
 });
