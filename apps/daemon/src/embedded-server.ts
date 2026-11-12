@@ -16,6 +16,7 @@ import {
   registerEmbeddedStudioRoutes,
 } from "./routes/embedded-studio.js";
 import { registerEmbeddedCatalogueRoutes } from "./routes/embedded-catalogue.js";
+import { registerEmbeddedWorkbookHistoryRoutes } from './routes/embedded-workbook-history.js';
 import { registerEmbeddedWorkbookRoutes } from "./routes/embedded-workbooks.js";
 import {
   registerProjectFileRoutes,
@@ -136,6 +137,7 @@ export async function startServer({
   };
   registerEmbeddedStudioRoutes(app, db);
   registerEmbeddedWorkbookRoutes(app, db, paths.PROJECTS_DIR);
+  registerEmbeddedWorkbookHistoryRoutes(app, db, paths.PROJECTS_DIR);
   registerEmbeddedCatalogueRoutes(app, {
     noticeRoot: resourceRoot ?? projectRoot,
     skills: resource("skills"),

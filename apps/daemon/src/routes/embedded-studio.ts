@@ -54,6 +54,7 @@ export function embeddedOperationAllowed(method: string, pathname: string): bool
   if (pathname === '/embedded/catalogue' || pathname.startsWith('/embedded/catalogue/')) return method === 'GET';
   if (pathname === '/embedded/projects') return method === 'POST';
   if (/^\/embedded\/projects\/[0-9a-f-]+\/workbook-writes\/[0-9a-f-]+$/i.test(pathname)) return method === 'POST';
+  if (/^\/embedded\/projects\/[0-9a-f-]+\/workbook-history(?:\/[A-Za-z0-9_-]{1,200})?$/.test(pathname)) return method === 'GET';
   if (method === 'GET' && /^\/(health|version|app-version)$/.test(pathname)) return true;
   if (method === 'GET' && /^\/(skills|design-templates|design-systems)(\/|$)/.test(pathname)) return true;
   // No conversation, run, terminal, login, generic imports, settings or cloud deployment routes.

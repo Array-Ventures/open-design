@@ -1,0 +1,41 @@
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import type { Server } from 'node:http';
+import express from 'express';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { getProject, openDatabase } from '../../src/db.js';
+import { withProjectFileVersionBytesLock, listProjectFileVersions } from '../../src/project-file-versions.js';
+import { installEmbeddedStudioBoundary, registerEmbeddedStudioRoutes } from '../../src/routes/embedded-studio.js';
+import { registerEmbeddedWorkbookHistoryRoutes } from '../../src/routes/embedded-workbook-history.js';
+const id = '18a8301a-b6e1-4001-8000-c967b1eab222', token = 'history-fixture-service-credential';
+let root: string, projects: string, workspace: string, origin: string, server: Server, db: ReturnType<typeof openDatabase>;
+beforeEach(async () => {
+  root = await mkdtemp(path.join(tmpdir(), 'od-workbook-history-http-')); projects = path.join(root, 'metadata'); workspace = path.join(root, 'workspaces');
+  await mkdir(path.join(workspace, 'team/projects', id), { recursive: true, mode: 0o700 }); await mkdir(projects);
+  vi.stubEnv('OD_EMBEDDED_STUDIO', '1'); vi.stubEnv('OD_EMBEDDED_TOKEN', token); vi.stubEnv('OD_EMBEDDED_WORKSPACE_ROOT', workspace);
+  db = openDatabase(root, { dataDir: path.join(root, 'state') });
+  const app = express(); installEmbeddedStudioBoundary(app); app.use(express.json()); registerEmbeddedStudioRoutes(app, db); registerEmbeddedWorkbookHistoryRoutes(app, db, projects);
+  server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve)); origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const response = await fetch(`${origin}/api/embedded/projects`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ id, name: 'Workbook', kind: 'workbook', directory: path.join(workspace, 'team/projects', id) }) }); expect(response.status).toBe(201);
+});
+afterEach(async () => { server?.closeAllConnections(); if (server) await new Promise<void>(resolve => server.close(() => resolve())); db?.close(); await rm(root, { recursive: true, force: true }); vi.unstubAllEnvs(); });
+const headers = { authorization: `Bearer ${token}` };
+const endpoint = (version = '', query = 'fileName=nested%2Fbook.xlsx') => `${origin}/api/embedded/projects/${id}/workbook-history${version ? '/' + version : ''}?${query}`;
+it('serves passive scoped metadata and exact binary revisions without changing the current head', async () => {
+  const bytes = Buffer.from([0x50, 0x4b, 3, 4, 0xff, 0x80]), metadata = getProject(db, id)!.metadata;
+  const first = await withProjectFileVersionBytesLock(projects, id, 'nested/book.xlsx', metadata, history => history.createVersion(bytes, { source: 'manual' }));
+  const second = await withProjectFileVersionBytesLock(projects, id, 'nested/book.xlsx', metadata, history => history.createVersion(Buffer.from([0, 1, 2]), { source: 'manual' }));
+  const before = await listProjectFileVersions(projects, id, 'nested/book.xlsx', metadata);
+  const response = await fetch(endpoint(), { headers }); expect(response.status).toBe(200); expect(response.headers.get('cache-control')).toBe('no-store');
+  const body = await response.json(); expect(body).toMatchObject({ projectId: id, fileName: 'nested/book.xlsx', versions: expect.arrayContaining([expect.objectContaining({ id: first.id, contentDigest: createHash('sha256').update(bytes).digest('hex'), current: false })]) });
+  const content = await fetch(endpoint(first.id), { headers }); expect(content.status).toBe(200); expect(Buffer.from(await content.arrayBuffer())).toEqual(bytes);
+  expect(await listProjectFileVersions(projects, id, 'nested/book.xlsx', metadata)).toEqual(before); expect(before.find(item => item.current)?.id).toBe(second.id);
+});
+it('requires service auth, denies mutations and unsafe queries, and never bootstraps history', async () => {
+  expect((await fetch(endpoint())).status).toBe(401); expect((await fetch(endpoint(), { method: 'POST', headers })).status).toBe(403);
+  for (const query of ['fileName=..%2Fbook.xlsx', 'fileName=book.html', 'fileName=book.xlsx&baseDir=%2Ftmp', 'fileName=book.xlsx&fileName=other.xlsx']) expect((await fetch(endpoint('', query), { headers })).status).toBe(400);
+  const response = await fetch(endpoint(), { headers }); expect(response.status).toBe(200); expect((await response.json()).versions).toEqual([]);
+  expect((await fetch(endpoint('missing'), { headers })).status).toBe(404);
+});
