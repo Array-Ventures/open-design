@@ -32,7 +32,7 @@ it('acknowledges discard only after its protected draft deletion commits', async
   act(() => hook.result.current.snapshot(snapshot(2)));
   await waitFor(() => expect(save).toHaveBeenCalled());
   const requestId = crypto.randomUUID();
-  act(() => request('studio:discard-workbook', { requestId }));
+  act(() => request('studio:prepare-workbook-discard', { requestId }));
   await waitFor(() => expect(messages().some(message => message.type === 'studio:workbook-discard-ready')).toBe(true));
   expect(save).not.toHaveBeenCalledWith(null);
   act(() => request('studio:commit-workbook-discard', { requestId }));
@@ -49,7 +49,7 @@ it('keeps the editor and draft dirty when deletion fails and permits retry', asy
   await act(() => hook.result.current.ready(snapshot(1)));
   act(() => hook.result.current.snapshot(snapshot(2)));
   const requestId = crypto.randomUUID();
-  act(() => request('studio:discard-workbook', { requestId }));
+  act(() => request('studio:prepare-workbook-discard', { requestId }));
   await waitFor(() => expect(messages().some(message => message.type === 'studio:workbook-discard-ready')).toBe(true));
   act(() => request('studio:commit-workbook-discard', { requestId }));
   await waitFor(() => expect(replies()).toHaveLength(1));
@@ -64,7 +64,7 @@ it('refuses discard while a save result is uncertain', async () => {
   await act(() => hook.result.current.ready(snapshot(1)));
   act(() => { hook.result.current.snapshot(snapshot(2)); request('studio:workbook-control', { action: 'save' }); });
   await waitFor(() => expect(hook.result.current.state.error).toBe('response lost'));
-  act(() => request('studio:discard-workbook', { requestId: crypto.randomUUID() }));
+  act(() => request('studio:prepare-workbook-discard', { requestId: crypto.randomUUID() }));
   await waitFor(() => expect(replies()).toHaveLength(1));
   expect(replies()[0]!.accepted).toBe(false); expect(save).not.toHaveBeenCalledWith(null); expect(hook.result.current.state.dirty).toBe(true);
 });
@@ -74,9 +74,9 @@ it('ignores discard requests from a wrong origin, controller or invalid identity
   act(() => hook.result.current.snapshot(snapshot(2)));
   await waitFor(() => expect(save).toHaveBeenCalled()); const before = save.mock.calls.length;
   act(() => {
-    request('studio:discard-workbook', { requestId: crypto.randomUUID() }, 'https://wrong.invalid');
-    request('studio:discard-workbook', { requestId: crypto.randomUUID(), controllerId: crypto.randomUUID() });
-    request('studio:discard-workbook', { requestId: 'wrong' });
+    request('studio:prepare-workbook-discard', { requestId: crypto.randomUUID() }, 'https://wrong.invalid');
+    request('studio:prepare-workbook-discard', { requestId: crypto.randomUUID(), controllerId: crypto.randomUUID() });
+    request('studio:prepare-workbook-discard', { requestId: 'wrong' });
   });
   await act(async () => { await Promise.resolve(); }); expect(save).toHaveBeenCalledTimes(before); expect(replies()).toHaveLength(0);
 });
@@ -88,7 +88,7 @@ it('permits discard after a verified terminal conflict and preserves the pending
   await waitFor(() => expect(hook.result.current.state.error).toContain('changed elsewhere'));
   expect(hook.result.current.checkpoint()?.pending).toBeNull();
   const requestId = crypto.randomUUID();
-  act(() => request('studio:discard-workbook', { requestId }));
+  act(() => request('studio:prepare-workbook-discard', { requestId }));
   await waitFor(() => expect(messages().some(message => message.type === 'studio:workbook-discard-ready')).toBe(true));
   act(() => request('studio:commit-workbook-discard', { requestId }));
   await waitFor(() => expect(replies()).toHaveLength(1)); expect(replies()[0]!.accepted).toBe(true); expect(save).toHaveBeenCalledWith(null);
@@ -125,7 +125,7 @@ it('keeps the frozen desired edits after cancelling a prepared discard and journ
   await act(() => hook.result.current.ready(snapshot(1)));
   act(() => { hook.result.current.snapshot(snapshot(2)); request('studio:workbook-control', { action: 'save' }); });
   await waitFor(() => expect(hook.result.current.checkpoint()?.pending).not.toBeNull());
-  const requestId = crypto.randomUUID(); act(() => request('studio:discard-workbook', { requestId }));
+  const requestId = crypto.randomUUID(); act(() => request('studio:prepare-workbook-discard', { requestId }));
   await waitFor(() => expect(messages().some(message => message.type === 'studio:workbook-discard-ready')).toBe(true));
   expect(save).not.toHaveBeenCalledWith(null);
   act(() => request('studio:cancel-workbook-discard', { requestId }));
@@ -143,7 +143,7 @@ it('rejects a delayed preparation after Keep Editing without deleting its journa
   act(() => { hook.result.current.snapshot(snapshot(2)); request('studio:workbook-control', { action: 'save' }); });
   await waitFor(() => expect(hook.result.current.state.error).toBe('response lost'));
   const intent = hook.result.current.checkpoint()!.pending!.intent, requestId = crypto.randomUUID();
-  act(() => request('studio:discard-workbook', { requestId })); await waitFor(() => expect(cancelWorkbookSavePreparation).toHaveBeenCalled());
+  act(() => request('studio:prepare-workbook-discard', { requestId })); await waitFor(() => expect(cancelWorkbookSavePreparation).toHaveBeenCalled());
   act(() => request('studio:cancel-workbook-discard', { requestId }));
   await act(async () => proof.resolve({ state: 'unadmitted', projectId, operationId: intent.id, preparationId: intent.preparationId, fileName, sourceSha256: source.sourceSha256, renderId: null }));
   await waitFor(() => expect(hook.result.current.discarding).toBe(false));
@@ -153,7 +153,7 @@ it('never commits the old prepared discard against a replacement source', async 
   const save = vi.fn(async () => {}), journal = { save };
   const hook = renderHook(({ loaded }) => useWorkbookEditor(projectId, fileName, loaded, vi.fn(), undefined, journal), { initialProps: { loaded: source } });
   await act(() => hook.result.current.ready(snapshot(1))); act(() => hook.result.current.snapshot(snapshot(2)));
-  const requestId = crypto.randomUUID(); act(() => request('studio:discard-workbook', { requestId }));
+  const requestId = crypto.randomUUID(); act(() => request('studio:prepare-workbook-discard', { requestId }));
   await waitFor(() => expect(messages().some(message => message.type === 'studio:workbook-discard-ready')).toBe(true));
   hook.rerender({ loaded: { ...source, sourceSha256: 'b'.repeat(64) } });
   act(() => request('studio:commit-workbook-discard', { requestId })); await act(async () => { await Promise.resolve(); });

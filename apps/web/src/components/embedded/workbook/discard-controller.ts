@@ -1,6 +1,6 @@
 import { z } from 'zod';
 const identity = { projectId: z.string().uuid(), controllerId: z.string().uuid(), requestId: z.string().uuid() };
-const message = z.object({ ...identity, type: z.enum(['studio:discard-workbook', 'studio:commit-workbook-discard', 'studio:cancel-workbook-discard', 'studio:finish-workbook-discard']) }).strict();
+const message = z.object({ ...identity, type: z.enum(['studio:prepare-workbook-discard', 'studio:commit-workbook-discard', 'studio:cancel-workbook-discard', 'studio:finish-workbook-discard']) }).strict();
 export class WorkbookDiscardNotCommittedError extends Error {}
 export interface PreparedWorkbookDiscard { commit(): Promise<void>; cancel(): Promise<void> }
 interface Events { origin: string; parent: Window; listen(receive: (event: Pick<MessageEvent, 'source' | 'origin' | 'data'>) => void): () => void }
@@ -47,7 +47,7 @@ export function connectWorkbookDiscard(projectId: string, controllerId: string, 
       } else reply(entry);
       return;
     }
-    if (!active || request.type !== 'studio:discard-workbook') return;
+    if (!active || request.type !== 'studio:prepare-workbook-discard') return;
     const busy = [...entries.values()].some(entry => entry.granted || ['preparing', 'ready', 'committing'].includes(entry.phase));
     if (busy) { post({ id: request.requestId } as Entry, 'studio:workbook-discarded', { accepted: false, error: 'A workbook discard is already being checked.' }); return; }
     // Only settled outcomes may expire. Never evict an uncertain commit.
