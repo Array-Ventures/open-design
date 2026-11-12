@@ -1,7 +1,8 @@
 import { BaselineOffset, BooleanNumber, BorderStyleTypes, CellValueType, DateSystem, HorizontalAlign, LocaleType, TextDecoration, VerticalAlign, WrapStrategy, WorksheetHiddenState, type ICellData, type IObjectMatrixPrimitiveType, type IStyleBase, type IStyleData, type IWorkbookData } from '@univerjs/presets';
+import { workbookFontFamily } from './grid-fonts';
 import { workbookDocumentSchema, type WorkbookCell, type WorkbookColor, type WorkbookDocument, type WorkbookFont, type WorkbookStyle } from '@open-design/contracts/runtime/workbook';
 
-export type WorkbookDisplayGap = 'indexed-colors' | 'tinted-colors' | 'gradient-fills' | 'pattern-fills' | 'alignment' | 'drawings';
+export type WorkbookDisplayGap = 'indexed-colors' | 'tinted-colors' | 'gradient-fills' | 'pattern-fills' | 'alignment' | 'drawings' | 'font-families';
 export interface GridWorkbook { data: Partial<IWorkbookData>; activeSheetId: string; gaps: WorkbookDisplayGap[] }
 
 /** Input colors belong to workbook content, not the application theme. Do not
@@ -16,8 +17,9 @@ function color(input: WorkbookColor | undefined, model: WorkbookDocument, gaps: 
 }
 function font(input: WorkbookFont | undefined, model: WorkbookDocument, gaps: Set<WorkbookDisplayGap>): IStyleBase {
   if (!input) return {};
+  const family = workbookFontFamily(input); if (family.limited) gaps.add('font-families');
   const decoration = input.underline && ({ single: TextDecoration.SINGLE, double: TextDecoration.DOUBLE, singleAccounting: TextDecoration.SINGLE_ACCOUNTING, doubleAccounting: TextDecoration.DOUBLE_ACCOUNTING } as const)[input.underline];
-  return { ...(input.name === undefined ? {} : { ff: input.name }), ...(input.size === undefined ? {} : { fs: input.size }),
+  return { ...(family.value === undefined ? {} : { ff: family.value }), ...(input.size === undefined ? {} : { fs: input.size }),
     ...(input.bold === undefined ? {} : { bl: input.bold ? BooleanNumber.TRUE : BooleanNumber.FALSE }),
     ...(input.italic === undefined ? {} : { it: input.italic ? BooleanNumber.TRUE : BooleanNumber.FALSE }),
     ...(input.strike === undefined ? {} : { st: { s: input.strike ? BooleanNumber.TRUE : BooleanNumber.FALSE } }),

@@ -17,7 +17,7 @@ export const workbookColorSchema = z.discriminatedUnion('kind', [
 ]);
 export type WorkbookColor = z.infer<typeof workbookColorSchema>;
 export const workbookFontSchema = z.object({
-  name: z.string().max(256).optional(), size: z.number().positive().max(512).optional(),
+  name: z.string().max(256).optional(), family: z.number().int().min(-2147483648).max(2147483647).optional(), size: z.number().positive().max(512).optional(),
   bold: z.boolean().optional(), italic: z.boolean().optional(), strike: z.boolean().optional(),
   underline: z.enum(['single', 'double', 'singleAccounting', 'doubleAccounting']).optional(),
   vertical: z.enum(['superscript', 'subscript']).optional(), color: workbookColorSchema.optional(),

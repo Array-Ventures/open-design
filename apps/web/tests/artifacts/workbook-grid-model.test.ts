@@ -25,7 +25,7 @@ it('keeps a million-row sheet sparse and preserves cached formulas and scalar ty
 });
 it('retains styles, merged ranges, hidden sheets, dimensions and freezes', () => {
   const output = gridWorkbook(fixture(), 'owned-grid', 'Revenue'), sheet = output.data.sheets!.inputs!;
-  expect(output.data.styles!['0']).toMatchObject({ ff: 'Calibri', fs: 11, bl: BooleanNumber.TRUE, cl: { rgb: '#123456' }, bg: { rgb: '#654321' }, n: { pattern: '$#,##0.00' } });
+  expect(output.data.styles!['0']).toMatchObject({ ff: '"Calibri", sans-serif', fs: 11, bl: BooleanNumber.TRUE, cl: { rgb: '#123456' }, bg: { rgb: '#654321' }, n: { pattern: '$#,##0.00' } });
   expect(sheet.freeze).toEqual({ xSplit: 1, ySplit: 1, startRow: 1, startColumn: 1 }); expect(sheet.mergeData).toHaveLength(1);
   expect(sheet.rowData![2]).toMatchObject({ h: 40, hd: BooleanNumber.TRUE, s: '0' });
   expect(sheet.columnData![2]).toMatchObject({ w: 89, s: '0' });
@@ -52,7 +52,7 @@ it('inherits the OOXML Normal style without assigning explicit styles to sparse 
   const model = fixture(), before = structuredClone(model), grid = gridWorkbook(model, 'owned-grid', 'Revenue', '#0a0a0a').data;
   expect(grid.sheets!.inputs!.defaultStyle).toBe('0'); expect(grid.sheets!.hidden!.defaultStyle).toBe('0');
   expect(grid.sheets!.inputs!.cellData![0]![1]!.s).toBeUndefined();
-  expect(grid.styles!['0']!.cl).toEqual({ rgb: '#123456' }); expect(grid.styles!['0']!.ff).toBe('Calibri'); expect(model).toEqual(before);
+  expect(grid.styles!['0']!.cl).toEqual({ rgb: '#123456' }); expect(grid.styles!['0']!.ff).toBe('"Calibri", sans-serif'); expect(model).toEqual(before);
   model.styles[0]!.font!.color = { kind: 'auto' };
   expect(gridWorkbook(model, 'owned-grid', 'Revenue', '#0a0a0a').data.styles!['0']!.cl).toEqual({ rgb: '#0a0a0a' });
   delete model.styles[0]!.font!.color;

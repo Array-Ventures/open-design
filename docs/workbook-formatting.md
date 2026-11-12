@@ -44,3 +44,27 @@ and opaque package parts, idempotent repeated patches and inherited column font.
 verify sparse deltas, typed edits and source defaults, rejection of unsupported
 formatting, and genuine pinned-editor style interning. This is constrained basic
 formatting support, not full Excel style or rendering fidelity.
+
+## Font fallback without changing authored fonts
+
+`WorkbookFont.family` optionally retains the source OOXML family number, including
+Normal and rich-run fonts. The grid quotes the authored name and appends a generic
+family from that metadata: Roman → serif, Swiss → sans-serif, Modern → monospace,
+Script → cursive, Decorative → fantasy. Missing/unknown classification uses a
+neutral sans-serif fallback; names never determine classification. This follows
+[the OOXML/Office family definition](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oi29500/2b2b6126-7574-49f8-bbcf-6335bb1f7026).
+
+This is a presentation list, not an authored font edit. The source XML retains
+its exact font name and classification through scalar and supported style edits.
+The pinned renderer itself normalizes canvas font strings and naively splits at
+commas. Comma/quote/escape-bearing names and CSS generic/reserved names therefore
+use the declared generic and report `font-families` as a display gap; the adapter
+does not let those names inject extra families or claim their installed-font lookup
+is faithful. This does not provide an exact substitute for an unavailable font's
+metrics or appearance.
+
+`workbook-font-canvas.test.ts` exercises the actual pinned renderer and native
+Chromium canvas without starting application services. It verifies Swiss/Roman/
+Modern fallback metrics and a locally loaded bundled face winning over its generic
+fallback. The reader/writer font tests independently reopen XLSX output; pinned
+editor inheritance tests ensure display font lists do not create authored changes.

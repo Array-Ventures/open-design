@@ -15,8 +15,8 @@ it('lets the pinned editor remove inherited foreground before style interning an
   const current = structuredClone(initial), styles = new Styles(current.styles), sheet = new Worksheet(initial.id, current.sheets.s!, styles);
   initial.sheets.s = structuredClone(sheet.getSnapshot()); // the real grid baseline includes Univer defaults
   const inherited = sheet.getComposedCellStyleWithoutSelf(1, 1);
-  expect(inherited).toMatchObject({ cl: { rgb: '#0a0a0a' }, ff: 'Calibri', fs: 11 });
-  const edited: ICellData = { v: 13579, t: CellValueType.NUMBER, s: { cl: { rgb: '#0a0a0a' } } };
+  expect(inherited).toMatchObject({ cl: { rgb: '#0a0a0a' }, ff: '"Calibri", sans-serif', fs: 11 });
+  const edited: ICellData = { v: 13579, t: CellValueType.NUMBER, s: { ff: inherited.ff, cl: { rgb: '#0a0a0a' } } };
   editing._removeComposedCellStyleInCellData(edited, inherited);
   expect(edited.s).toEqual({}); edited.s = styles.setValue(edited.s as IStyleData);
   current.sheets.s!.cellData![1]![1] = edited;
@@ -28,7 +28,7 @@ it('preserves inherited authored fonts and emits a sparse genuine editor color c
   const current = structuredClone(initial), styles = new Styles(current.styles), sheet = new Worksheet(initial.id, current.sheets.s!, styles);
   initial.sheets.s = structuredClone(sheet.getSnapshot()); // the real grid baseline includes Univer defaults
   const inherited = sheet.getComposedCellStyleWithoutSelf(1, 1);
-  expect(inherited).toMatchObject({ cl: { rgb: '#123456' }, ff: 'Calibri' });
+  expect(inherited).toMatchObject({ cl: { rgb: '#123456' }, ff: '"Calibri", sans-serif' });
   const edited: ICellData = { v: 13579, t: CellValueType.NUMBER, s: { cl: { rgb: '#ff0000' } } };
   editing._removeComposedCellStyleInCellData(edited, inherited); expect(edited.s).toEqual({ cl: { rgb: '#ff0000' } });
   edited.s = styles.setValue(edited.s as IStyleData); current.sheets.s!.cellData![1]![1] = edited;

@@ -16,7 +16,7 @@ export function color(value?: Partial<ExcelJS.Color> & { tint?: unknown; indexed
 export function font(value?: Partial<ExcelJS.Font>): WorkbookFont | undefined {
   if (!value) return undefined;
   return {
-    ...(value.name === undefined ? {} : { name: value.name }), ...(value.size === undefined ? {} : { size: value.size }),
+    ...(value.name === undefined ? {} : { name: value.name }), ...(value.family === undefined ? {} : { family: value.family }), ...(value.size === undefined ? {} : { size: value.size }),
     ...(value.bold === undefined ? {} : { bold: value.bold }), ...(value.italic === undefined ? {} : { italic: value.italic }),
     ...(value.strike === undefined ? {} : { strike: value.strike }),
     ...(value.underline && value.underline !== 'none' ? { underline: value.underline === true ? 'single' : value.underline } : {}),
