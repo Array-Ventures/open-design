@@ -7,12 +7,12 @@ function model(): WorkbookDocument { return {version:1,calculationMetadata:'veri
 it('displays actual computed followers without writing them and fences pending/source refresh',async()=>{
  const source=model(),kernel=qualifiedArrayKernel(source,'unit',sha),current=structuredClone(kernel.initial),display=new ArrayProjectionDisplay(source,kernel.original,current,sha);
  expect(display.status('s',3,3)).toBe('stored');current.sheets.s!.cellData![0]![0]!.v=4;display.update(current,true);expect(display.status('s',3,3)).toBe('pending');
- const projection=await kernel.calculate(current,1);expect(display.accept(projection)).toBe(true);expect(display.display('s',5,3,{})).toMatchObject({v:13,t:2});expect(current.sheets.s!.cellData?.[5]?.[3]).toBeUndefined();
- current.sheets.s!.cellData![0]![0]!.v=1;display.update(current,true);expect(display.accept(projection)).toBe(false);expect(display.display('s',5,3,{})).toEqual({});display.pause();expect(display.status('s',3,3)).toBe('stored');
+ const projection=await kernel.calculate(current,1);expect(display.accept(projection)).toBe(true);expect(display.display('s',5,3,{})).toMatchObject({v:13,t:2});expect(current.sheets.s!.cellData?.[5]?.[3]).toBeUndefined();expect(display.isFollower('s',5,3)).toBe(true);
+ current.sheets.s!.cellData![0]![0]!.v=1;display.update(current,true);expect(display.isFollower('s',5,3)).toBe(true);expect(display.accept(projection)).toBe(false);expect(display.display('s',5,3,{})).toEqual({});display.pause();expect(display.status('s',3,3)).toBe('stored');
  const refreshed=new ArrayProjectionDisplay(source,kernel.original,current,'b'.repeat(64));expect(refreshed.accept(projection)).toBe(false);
 });
 it('labels unsupported source followers stored, changed unknown anchors unavailable and real inputs authoritative',async()=>{
  const source=model();source.sheets[0]!.cells.find(cell=>cell.formula)!.formula='=MISSING(A1)';const kernel=qualifiedArrayKernel(source,'unit',sha),current=structuredClone(kernel.initial),display=new ArrayProjectionDisplay(source,kernel.original,current,sha);
  expect(display.accept(await kernel.calculate(current,1))).toBe(true);expect(display.status('s',3,3)).toBe('stored');expect(display.display('s',3,3,{}).v).toBe(11);
- current.sheets.s!.cellData![2]![3]!.f='=NEWUNKNOWN(A1)';(current.sheets.s!.cellData![3]??={})[3]={v:42,t:2};display.update(current,true);expect(display.accept(await kernel.calculate(current,2))).toBe(true);expect(display.status('s',2,3)).toBe('unavailable');expect(display.display('s',2,3,{v:999,f:'=NEWUNKNOWN(A1)'}).v).toBeNull();expect(display.display('s',3,3,{v:42,t:2})).toEqual({v:42,t:2});
+ current.sheets.s!.cellData![2]![3]!.f='=NEWUNKNOWN(A1)';(current.sheets.s!.cellData![3]??={})[3]={v:42,t:2};display.update(current,true);expect(display.accept(await kernel.calculate(current,2))).toBe(true);expect(display.status('s',2,3)).toBe('unavailable');expect(display.display('s',2,3,{v:999,f:'=NEWUNKNOWN(A1)'}).v).toBeNull();expect(display.display('s',3,3,{v:42,t:2})).toEqual({v:42,t:2});expect(display.isFollower('s',3,3)).toBe(false);display.dispose();
 });

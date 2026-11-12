@@ -1,4 +1,4 @@
-import { CellValueType, type ICellData, type IWorkbookData } from '@univerjs/core';
+import { RTree, CellValueType, type ICellData, type IWorkbookData } from '@univerjs/core';
 import { arrayProjectionSchema, type ArrayProjection } from './array-projection-message';
 import { workbookCalculationInputSha256 } from './formula-input-provenance';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
@@ -19,6 +19,8 @@ export class ArrayProjectionDisplay {
   private stored = new Set<string>();
   private unavailable = new Set<string>();
   private pending = false;
+  private ownership = new RTree();
+  private runtimeOwners = new Map<string, ArrayProjection['owners'][number]>();
   private sourceOwners = new Map<string, { row: number; column: number }>();
   constructor(model: WorkbookDocument, original: IWorkbookData, initial: IWorkbookData, private sourceSha256: string) {
     this.original = structuredClone(original); this.current = initial; this.digest = workbookCalculationInputSha256(initial);
@@ -41,8 +43,22 @@ export class ArrayProjectionDisplay {
     if (result.sourceSha256 !== this.sourceSha256 || !tag.valid || tag.unitId !== this.current.id || tag.inputSha256 !== this.digest) return false;
     for (const [sheet, rows] of Object.entries(result.cells)) for (const [row, columns] of Object.entries(rows)) for (const column of Object.keys(columns)) if (!this.current.sheets[sheet] || Number(row) >= (this.current.sheets[sheet]!.rowCount ?? 0) || Number(column) >= (this.current.sheets[sheet]!.columnCount ?? 0)) return false;
     for (const owner of result.owners) if (at(this.current, owner.sheetId, owner.row, owner.column)?.f !== owner.formula) return false;
+    this.ownership.dispose(); this.ownership = new RTree(); this.runtimeOwners = new Map(result.owners.map(owner => [key(owner.sheetId, owner.row, owner.column), owner]));
+    this.ownership.bulkInsert(result.owners.map(owner => ({ id: key(owner.sheetId, owner.row, owner.column), unitId: this.current.id, sheetId: owner.sheetId, range: owner.range })));
     this.projection = result; this.stored = new Set(result.stored); this.unavailable = new Set(result.unavailable); this.pending = false; return true;
   }
+  /** Pending input edits retain prior proven ownership until a complete new
+   * projection arrives. Replacing/removing the anchor retires that protection. */
+  isFollower(sheet: string, row: number, column: number): boolean {
+    const source = this.sourceOwners.get(key(sheet, row, column));
+    if (source && (source.row !== row || source.column !== column) && at(this.current, sheet, source.row, source.column)?.f === at(this.original, sheet, source.row, source.column)?.f) return true;
+    for (const id of this.ownership.searchGenerator({ unitId: this.current.id, sheetId: sheet, range: { startRow: row, endRow: row, startColumn: column, endColumn: column } })) {
+      const owner = this.runtimeOwners.get(String(id));
+      if (owner && (owner.row !== row || owner.column !== column) && at(this.current, sheet, owner.row, owner.column)?.f === owner.formula) return true;
+    }
+    return false;
+  }
+  dispose() { this.pause(); this.ownership.dispose(); this.runtimeOwners.clear(); }
   private source(sheet: string, row: number, column: number) {
     const cell = at(this.current, sheet, row, column), original = at(this.original, sheet, row, column);
     if (cell?.f) return original?.f === cell.f && cached(original) ? original : undefined;
