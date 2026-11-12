@@ -134,3 +134,16 @@ it('publishes bounded CSV input refusals to the exact host controller without a 
   expect(post).toHaveBeenLastCalledWith({ type: 'studio:workbook-input-state', projectId, controllerId, error: 'x'.repeat(1000) }, window.location.origin);
   view.unmount(); expect(post).toHaveBeenLastCalledWith({ type: 'studio:workbook-input-state', projectId, controllerId, error: null }, window.location.origin);
 });
+
+it('ignores a retired CSV input callback after controller replacement and unmount', async () => {
+  const projectId = '18a8301a-b6e1-4001-8000-c967b1eab222', controllerId = '18a8301a-b6e1-4001-8000-c967b1eab223', replacement = '18a8301a-b6e1-4001-8000-c967b1eab224';
+  const post = vi.spyOn(window, 'postMessage'), csv = { ...model, sourceFormat: 'csv' as const };
+  const view = render(<WorkbookGrid id="old-csv" title="CSV" model={csv} onSnapshot={vi.fn()} formatScope={{ projectId, controllerId, blocked: false }} />);
+  await waitFor(() => expect(runtime.input).not.toBeNull()); const retired = runtime.input!;
+  view.rerender(<WorkbookGrid id="new-csv" title="CSV" model={{ ...csv }} onSnapshot={vi.fn()} formatScope={{ projectId, controllerId: replacement, blocked: false }} />);
+  await waitFor(() => { expect(runtime.input).not.toBeNull(); expect(runtime.input).not.toBe(retired); });
+  post.mockClear(); act(() => retired('Retired refusal')); expect(post).not.toHaveBeenCalled();
+  const current = runtime.input!; act(() => current('Current refusal'));
+  expect(post).toHaveBeenLastCalledWith({ type: 'studio:workbook-input-state', projectId, controllerId: replacement, error: 'Current refusal' }, window.location.origin);
+  view.unmount(); post.mockClear(); act(() => current('Late refusal')); expect(post).not.toHaveBeenCalled();
+});

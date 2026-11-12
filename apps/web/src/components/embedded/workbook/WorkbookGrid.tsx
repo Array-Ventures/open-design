@@ -149,7 +149,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       const release = () => context.setContextValue(DISABLE_AUTO_FOCUS_KEY, true);
       element.addEventListener('pointerdown', activate, true); element.addEventListener('focusin', activate);
       window.addEventListener('blur', release);
-      const literal = model.sourceFormat === 'csv' ? attachCsvLiteralInput(univer, univerAPI, kernel, element, model, message => reportInputError(message || null)) : null;
+      const literal = model.sourceFormat === 'csv' ? attachCsvLiteralInput(univer, univerAPI, kernel, element, model, message => { if (current()) reportInputError(message || null); }) : null;
       const beforeLiteral = dispose;
       if (literal) dispose = () => { try { literal.dispose(); } finally { beforeLiteral(); } };
       const formatting = workbookFormattingBridge(univerAPI, () => editable && model.sourceFormat !== 'csv' ? format.current : undefined); formattingRef.current = formatting;
