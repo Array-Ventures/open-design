@@ -1,6 +1,7 @@
+'use client';
+
 import { DocumentComments } from './DocumentComments';
 import type { ArtifactFeedbackProps } from '../LiveArtifactFeedbackPreview';
-'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';

@@ -1,5 +1,6 @@
-import type { ArtifactFeedbackProps } from '../LiveArtifactFeedbackPreview';
 'use client';
+
+import type { ArtifactFeedbackProps } from '../LiveArtifactFeedbackPreview';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { RiRefreshLine } from '@remixicon/react';
