@@ -21,7 +21,7 @@ import { workbookGridEdits } from '../../src/components/embedded/workbook/grid-e
 import { attachWorkbookRichInput } from '../../src/components/embedded/workbook/rich-cell-input';
 let cleanup = () => {};
 afterEach(() => cleanup());
-it('keeps single-run rich ownership through the actual in-cell editor normalization, native undo and disposal', async () => {
+it.each([false, true])('keeps rich ownership through native editing, undo and disposal (fitted renderer: %s)', async rendered => {
   const model: WorkbookDocument = {
     version: 1,
     richTextMetadata: 'verified',
@@ -59,8 +59,9 @@ it('keeps single-run rich ownership through the actual in-cell editor normalizat
     initial = book.save(),
     injector = univer.__getInjector(),
     sheet = core.getSheetBySheetId('s')!;
+  let layoutState: Partial<kernel.IEditorBridgeServiceParam> = {};
   const bridge = {
-    getEditCellState: () => ({ unitId: 'rich-grid', sheetId: 's', row: 0, column: 0 }),
+    getEditCellState: () => ({ unitId: 'rich-grid', sheetId: 's', row: 0, column: 0, ...layoutState }),
     getEditorDirty: () => true,
     getCurrentEditorId: () => DOCS_NORMAL_EDITOR_UNIT_ID_KEY,
   };
@@ -89,6 +90,16 @@ it('keeps single-run rich ownership through the actual in-cell editor normalizat
   sourceCell.p!.body!.paragraphs![0]!.startIndex = sourceCell.p!.body!.dataStream.length - 2;
   const layout = sheet.getCellDocumentModel(sourceCell, inherited, { isDeepClone: true })!;
   const snapshot = structuredClone(layout.documentModel!.getSnapshot());
+  if (rendered) {
+    // Read-only render metrics boundary: the browser resize service fits a
+    // 16px text skeleton plus 2px bottom padding into this 20px cell.
+    layoutState = { documentLayoutObject: layout, position: { startX: 0, endX: 100, startY: 0, endY: 20 }, scaleX: 1, scaleY: 1 };
+    const renders = {
+      getRenderUnitById: () => ({ with: () => ({ getSkeleton: () => ({ getActualSize: () => ({ actualWidth: 60, actualHeight: 16 }) }) }) }),
+    } as unknown as kernel.IRenderManagerService;
+    injector.add([kernel.IRenderManagerService, { useValue: renders }]);
+    snapshot.documentStyle!.marginTop = 2;
+  }
   layout.documentModel!.dispose();
   snapshot.id = DOCS_NORMAL_EDITOR_UNIT_ID_KEY;
   snapshot.body!.textRuns = [{ st: 0, ed: 12, ts: { bl: 1 } }];
@@ -134,6 +145,7 @@ it('keeps single-run rich ownership through the actual in-cell editor normalizat
   const resetEditor = (text: string) => {
     const next = createDocumentModelWithStyle(text, inherited).getSnapshot();
     next.id = DOCS_NORMAL_EDITOR_UNIT_ID_KEY;
+    if (rendered) next.documentStyle!.marginTop = 2;
     next.body!.textRuns = [{ st: 0, ed: text.length, ts: { bl: 1 } }];
     doc.reset(next);
   };

@@ -1,5 +1,7 @@
 import {
   CellValueType,
+  VerticalAlign,
+  HorizontalAlign,
   DOCS_NORMAL_EDITOR_UNIT_ID_KEY,
   DOCS_FORMULA_BAR_EDITOR_UNIT_ID_KEY,
   IUniverInstanceService,
@@ -17,6 +19,7 @@ function contentSnapshot(
   style: IStyleData,
   formulaBar: boolean,
   defaults: IDocumentData['documentStyle'],
+  rendererMargins?: { marginTop: number; marginLeft: number; marginBottom: number; marginRight: number },
 ): IDocumentData | undefined {
   const doc = structuredClone(snapshot),
     layout = doc.documentStyle ?? {},
@@ -26,6 +29,7 @@ function contentSnapshot(
     marginBottom: style.pd?.b ?? 2,
     marginLeft: style.pd?.l ?? 2,
     marginRight: style.pd?.r ?? 2,
+    ...rendererMargins,
   };
   const margins = formulaBar ? { marginTop: 5, marginBottom: 5, marginLeft: 0, marginRight: 0 } : inline;
   const renderKeys = new Set([
@@ -41,7 +45,8 @@ function contentSnapshot(
   for (const [key, value] of Object.entries(layout)) {
     if (value == null) continue;
     if (key in margins) {
-      if (value !== margins[key as keyof typeof margins]) return;
+      const expected = margins[key as keyof typeof margins];
+      if (typeof value !== 'number' || Math.abs(value - expected) > 1e-6) return;
     } else if (key === 'pageSize') {
       if (
         typeof value !== 'object' ||
@@ -131,8 +136,27 @@ export function attachWorkbookRichInput(univer: Univer, api: FUniver, kernel: Ke
       // migrated into a supported one by discarding its authored properties.
       if (previous?.p && Object.keys(previous.p.documentStyle ?? {}).length)
         throw Error('Keep this rich draft open; its document formatting needs its own edit adapter.');
+      // The pinned resize service fits the editor's top/left padding to its
+      // rendered text. Validate those numbers against the same source layout
+      // and measured skeleton, rather than accepting arbitrary document margins.
+      let rendererMargins: { marginTop: number; marginLeft: number; marginBottom: number; marginRight: number } | undefined;
+      if (editorId === DOCS_NORMAL_EDITOR_UNIT_ID_KEY && edit.documentLayoutObject && injector.has(kernel.IRenderManagerService)) {
+        const render = injector.get(kernel.IRenderManagerService).getRenderUnitById(editorId);
+        const size = render?.with(kernel.DocSkeletonManagerService).getSkeleton()?.getActualSize();
+        const { paddingData: padding, verticalAlign, horizontalAlign } = edit.documentLayoutObject;
+        const scale = edit.scaleY, height = edit.position && (edit.position.endY - edit.position.startY);
+        const pageWidth = snapshot.documentStyle?.pageSize?.width;
+        if (size && Number.isFinite(size.actualHeight) && Number.isFinite(size.actualWidth) && Number.isFinite(scale) && scale > 0 && Number.isFinite(height)) {
+          const top = padding.t ?? 0, bottom = padding.b ?? 0, left = padding.l ?? 0, right = padding.r ?? 0;
+          const textHeight = size.actualHeight * scale + (top + bottom) * scale;
+          const spare = (Math.max(height, textHeight) - textHeight) / scale;
+          const fittedTop = verticalAlign === VerticalAlign.TOP ? top : verticalAlign === VerticalAlign.MIDDLE ? spare / 2 : spare;
+          const fittedLeft = horizontalAlign === HorizontalAlign.RIGHT && typeof pageWidth === 'number' && Number.isFinite(pageWidth) ? pageWidth - size.actualWidth - left - right : left;
+          rendererMargins = { marginTop: Math.max(top, fittedTop), marginLeft: Math.max(left, fittedLeft), marginBottom: bottom, marginRight: right };
+        }
+      }
       let doc =
-          contentSnapshot(snapshot, style, editorId === DOCS_FORMULA_BAR_EDITOR_UNIT_ID_KEY, defaults) ??
+          contentSnapshot(snapshot, style, editorId === DOCS_FORMULA_BAR_EDITOR_UNIT_ID_KEY, defaults, rendererMargins) ??
           structuredClone(snapshot),
         value = body.dataStream.slice(0, -2);
       if (cell?.t === CellValueType.FORCE_STRING && typeof cell.v === 'string' && value === `'${cell.v}` && !body.customRanges?.length && !body.customBlocks?.length && !body.customDecorations?.length && !body.tables?.length) {
