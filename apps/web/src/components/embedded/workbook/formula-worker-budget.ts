@@ -1,4 +1,4 @@
-import type { IWorkbookData } from '@univerjs/presets';
+import type { ICellData, IWorkbookData } from '@univerjs/presets';
 import { WORKBOOK_MODEL_LIMITS } from '@open-design/contracts/runtime/workbook';
 
 export class WorkbookCalculationBudgetError extends Error {}
@@ -20,7 +20,10 @@ export function assertWorkbookCalculationBudget(books: readonly IWorkbookData[],
       for (const [rowText, entries] of Object.entries(sheet.cellData ?? {})) for (const [columnText, cell] of Object.entries(entries ?? {})) {
         const row = Number(rowText), column = Number(columnText);
         if (!Number.isSafeInteger(row) || !Number.isSafeInteger(column) || row < 0 || column < 0 || row >= rows || column >= columns || ++cells > WORKBOOK_MODEL_LIMITS.cells) throw new WorkbookCalculationBudgetError('Workbook calculation contains out-of-bounds cells.');
-        if (cell) { text += typeof cell.v === 'string' ? cell.v.length : 0; text += cell.f?.length ?? 0; }
+        if (cell != null) {
+          if (typeof cell !== 'object' || Array.isArray(cell)) throw new WorkbookCalculationBudgetError('Workbook calculation cells are malformed.');
+          const data = cell as ICellData; text += typeof data.v === 'string' ? data.v.length : 0; text += typeof data.f === 'string' ? data.f.length : 0;
+        }
         if (text > WORKBOOK_MODEL_LIMITS.text) throw new WorkbookCalculationBudgetError('Workbook calculation text exceeds its limit.');
       }
     }

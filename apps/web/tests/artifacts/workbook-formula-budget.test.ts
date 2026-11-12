@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type { IWorkbookData } from '@univerjs/presets';
 import { assertWorkbookCalculationBudget, assertWorkbookCalculationMutation } from '../../src/components/embedded/workbook/formula-worker-budget';
-const book = { id: 'bounded', name: 'Bounded', sheetOrder: ['s'], styles: {}, sheets: { s: { id: 's', name: 'Inputs', rowCount: 100, columnCount: 20, cellData: { 0: { 0: { v: 2, t: 2 } } } } } } as IWorkbookData;
+const book = { id: 'bounded', name: 'Bounded', appVersion: '1.4.0', locale: 'enUS' as IWorkbookData['locale'], sheetOrder: ['s'], styles: {}, sheets: { s: { id: 's', name: 'Inputs', rowCount: 100, columnCount: 20, cellData: { 0: { 0: { v: 2, t: 2 } } } } } } as IWorkbookData;
 const mutation = 'sheet.mutation.set-range-values';
 it('admits the actual bounded source and refuses expanded or foreign geometry', () => {
   expect(() => assertWorkbookCalculationBudget([book], true)).not.toThrow();
