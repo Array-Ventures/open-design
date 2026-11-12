@@ -1,6 +1,6 @@
 'use client';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { RiDownloadLine, RiRefreshLine } from '@remixicon/react';
+import { RiRefreshLine } from '@remixicon/react';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { useEmbeddedViewer } from '../host-viewer';
 import { Button } from '../boardui/button';
@@ -26,7 +26,6 @@ export function WorkbookSurface(props: Props) {
 function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirtyChange, onSaved, viewerId, statusOnly, onAccessLost }: Props & { viewerId: string }) {
   const [loaded, setLoaded] = useState<{ sourceSha256: string; model: WorkbookDocument } | null>(null);
   const [error, setError] = useState<string | null>(null), [retry, setRetry] = useState(0);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
   const close = useRef<() => Promise<void>>(async () => {});
   const recovery = useWorkbookRecovery({ viewerId, projectId, fileName }, Boolean(loaded), () => close.current());
   const editorRef = useRef<ReturnType<typeof useWorkbookEditor> | null>(null);
@@ -76,11 +75,26 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
     return () => controller.abort();
   }, [projectId, fileName, sourceStamp, retry, statusOnly]);
   const downloadCurrent = () => {
-    try {
-      const checkpoint = editor.checkpoint(); if (!checkpoint || !recovery.session) return;
-      downloadWorkbookDraft(recovery.session.scope, checkpoint); setDownloadError(null);
-    } catch { setDownloadError('The recovery copy could not be downloaded. Keep this workbook open.'); }
+    const checkpoint = editor.checkpoint();
+    if (!checkpoint || !recovery.session) throw Error('This draft is no longer available.');
+    downloadWorkbookDraft(recovery.session.scope, checkpoint);
   };
+  const download = useRef(downloadCurrent); download.current = downloadCurrent;
+  useEffect(() => {
+    const receive = (event: MessageEvent) => {
+      const data = event.data;
+      if (event.source !== window.parent || event.origin !== window.location.origin || !data || typeof data !== 'object'
+        || Object.keys(data).length !== 5 || data.type !== 'studio:workbook-control' || data.projectId !== projectId
+        || data.controllerId !== editor.controllerId || data.action !== 'download-recovery'
+        || typeof data.requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(data.requestId)) return;
+      let error: string | null = null;
+      try { download.current(); }
+      catch { error = 'The recovery copy could not be downloaded. Keep this workbook open.'; }
+      window.parent.postMessage({ type: 'studio:workbook-recovery-copy', projectId, controllerId: editor.controllerId, requestId: data.requestId, error }, window.location.origin);
+    };
+    window.addEventListener('message', receive);
+    return () => window.removeEventListener('message', receive);
+  }, [projectId, editor.controllerId]);
   let content;
   if (!loaded) content = history.open ? null : <div role={error ? 'alert' : 'status'} className="flex h-full items-center justify-center gap-2 p-4 text-body-2-regular text-text-tertiary">{error ?? history.notice ?? (statusOnly ? history.available && !history.intent && !history.checking ? 'No unresolved restore remains for this file.' : 'Open History to check the pending restore.' : 'Loading workbook…')}</div>;
   else if (recovery.session) content = <Suspense fallback={<div role="status" className="p-4 text-body-2-regular text-text-tertiary">Loading workbook…</div>}>
@@ -96,10 +110,6 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
     {history.blocked && !history.open ? <div role="status" className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-background-primary-default/80 p-4 text-caption-1-regular text-text-secondary"><span>{history.checking ? 'Checking restore recovery…' : !history.available ? 'Workbook recovery is unavailable. Retry to check access.' : history.missing ? 'The current workbook is missing. History restore will not recreate it.' : 'A restore needs confirmation before editing.'}</span>{!history.checking && history.canOpen ? <Button variant="secondary" size="small" onClick={history.show}>History</Button> : null}</div> : null}
     <WorkbookHistory history={history} dirty={editor.state.dirty || editor.discarding} sourceSha256={loaded?.sourceSha256} reload={() => { setRetry(value => value + 1); void history.refresh(); }} />
     {editor.discarding ? <div role="status" className="absolute inset-0 z-20 flex items-center justify-center bg-background-primary-default/80 text-body-2-regular text-text-tertiary">Discarding changes…</div> : null}
-    {editor.state.error || downloadError ? <div role="alert" className="absolute bottom-12 start-3 end-3 z-10 flex items-center gap-3 rounded-lg border border-border-button-default bg-background-primary-default p-3 text-body-2-regular text-text-error-primary">
-      <span className="min-w-0 flex-1">{downloadError ?? editor.state.error}</span>
-      <Button variant="ghost" size="small" iconOnly leadingIcon={RiDownloadLine} className={cx(ARTIFACT_ICON_BUTTON, 'shrink-0')} aria-label="Download recovery copy (JSON)" title="Download recovery copy (JSON)" onClick={downloadCurrent} />
-    </div> : null}
     {error && !history.open && !history.blocked ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry loading workbook" title={error} className={cx(ARTIFACT_ICON_BUTTON, 'absolute end-3 top-3 z-30')} onClick={() => { setRetry(value => value + 1); void history.refresh(); }} /> : null}
   </div>;
 }
