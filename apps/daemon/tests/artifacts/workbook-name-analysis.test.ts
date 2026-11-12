@@ -12,8 +12,9 @@ import '@univerjs/sheets/facade';
 import '@univerjs/sheets-formula/facade';
 import { createFormulaCacheAnalysis, WORKBOOK_FORMULA_ANALYSIS_LIMITS, type FormulaCacheRuntime } from '../../src/artifacts/workbook/formula-cache-policy.js';
 import { readXlsxWorkbook } from '../../src/artifacts/workbook/reader.js';
+import { writeWorkbookPackage } from '../../src/artifacts/workbook/package.js';
 import { calculateWorkbookCellEdits } from '../../src/artifacts/workbook/calculated-patch.js';
-import { child } from '../../src/artifacts/workbook/parts.js';
+import { child, children } from '../../src/artifacts/workbook/parts.js';
 import { parseWorkbookXml, writeWorkbookXml } from '../../src/artifacts/workbook/xml.js';
 
 type Name = { name: string; formula: string; localSheet?: number };
@@ -134,5 +135,30 @@ it('enforces the name depth bound before execution even for a non-doubling chain
   try {
     await expect(calculateWorkbookCellEdits(source, [{ sheetId: '2', cell: { row: 0, column: 1, kind: 'number', value: 3 } }])).rejects.toMatchObject({ code: 'WORKBOOK_LIMIT', message: expect.stringContaining('depth limit') });
     expect(execute).not.toHaveBeenCalled();
+  } finally { execute.mockRestore(); }
+});
+
+it('counts cached tail depth on every reuse and admits exactly the configured depth boundary', async () => {
+  const definitions = dag(100).map((name, index, all) => ({ ...name, formula: index + 1 === all.length ? '=1' : `=Node_${index + 1}` }));
+  const source = await namedWorkbook(definitions), { runtime } = runtimeFor(source), analysis = createFormulaCacheAnalysis(runtime);
+  expect(analysis.limited('=Node_60', '1')).toBe(false); // cache a forty-name tail first
+  expect(analysis.limited('=Node_36', '1')).toBe(false); // exactly sixty-four names
+  expect(() => analysis.limited('=Node_35', '1')).toThrow('depth limit');
+  expect(() => analysis.limited('=Node_0', '1')).toThrow('depth limit');
+});
+it('refuses a tail-first workbook with an over-depth second formula before execution', async () => {
+  const definitions = dag(100).map((name, index, all) => ({ ...name, formula: index + 1 === all.length ? '=1' : `=Node_${index + 1}` }));
+  const original = await namedWorkbook(definitions), zip = await JSZip.loadAsync(await writeWorkbookPackage(original.parts));
+  const document = parseWorkbookXml(Buffer.from(await zip.file('xl/worksheets/sheet1.xml')!.async('uint8array')));
+  const row = child(child(document.documentElement!, 'sheetData')!, 'row')!;
+  const cells = children(row, 'c');
+  child(cells[0]!, 'f')!.textContent = 'Node_60';
+  child(cells[1]!, 'f')!.textContent = 'Node_0';
+  zip.file('xl/worksheets/sheet1.xml', writeWorkbookXml(document));
+  const source = await readXlsxWorkbook(await zip.generateAsync({ type: 'nodebuffer' })), before = new Map(source.parts);
+  const execute = vi.spyOn(FFormula.prototype, 'executeCalculation');
+  try {
+    await expect(calculateWorkbookCellEdits(source, [{ sheetId: '2', cell: { row: 0, column: 1, kind: 'number', value: 3 } }])).rejects.toMatchObject({ code: 'WORKBOOK_LIMIT', message: expect.stringContaining('depth limit') });
+    expect(execute).not.toHaveBeenCalled(); expect(source.parts).toEqual(before);
   } finally { execute.mockRestore(); }
 });

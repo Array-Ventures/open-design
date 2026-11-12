@@ -50,7 +50,8 @@ conditional commit/history transaction accepts the prepared XLSX.
 ## Named-expression work admission
 
 Each calculation shares lexical caches and cycle-safe results keyed by resolved
-name identity **and effective sheet**. Global names can resolve different local
+name identity **and effective sheet**, with each memo entry retaining its relative
+maximum named-reference depth. Global names can resolve different local
 names in each caller sheet, so sharing by name identity alone is incorrect. Both
 name occurrences in a doubling DAG contribute to its estimated expansion, while
 the analyzer visits the resolved definition only once per effective context.
@@ -62,8 +63,10 @@ scans the full expression even after finding an unsupported leaf: the pinned
 engine can expand later named expressions before evaluating that leaf. Aggregate
 limits are 110,000 distinct lexer calls, 1,000,000 lexical tokens, 2,000,000 analyzer
 visits, 262,144 resolved name contexts, 8,000,000 estimated expanded work units and
-64 levels of name recursion. Limits can be lowered internally, never raised.
-Cycles refuse with `WORKBOOK_UNSUPPORTED`; excessive work/depth refuses with
+64 levels of name recursion. Limits can be lowered internally, never raised. A cached tail still contributes
+its full depth when reused beneath a different prefix; traversal order cannot
+bypass the depth boundary.
+Detected cycles refuse with `WORKBOOK_UNSUPPORTED`; excessive work/depth refuses with
 `WORKBOOK_LIMIT`, before the engine's explicit execution call. Source bytes remain
 unchanged and protected drafts are retained by the existing save transaction.
 
@@ -71,7 +74,7 @@ The actual pinned-lexer regression reads a forty-level doubling DAG from XLSX an
 analyzes it across a thousand source cells with at most 42 lexer calls. Separate
 real XLSX save tests instrument the execution call: a large DAG, an unsupported
 prefix followed by a large DAG, a repeated large string payload, aggregate shared
-names across cells, excessive depth and cyclic metadata all refuse before
+names across cells, excessive depth (including tail-first memo reuse) and cyclic metadata all refuse before
 execution. Small admitted DAGs still calculate, unsupported-leaf DAGs retain their
 source/dependent caches, and local/global shadowing stays correct in independent
 reopens. This bounds named-expression admission; it does not claim huge DAG

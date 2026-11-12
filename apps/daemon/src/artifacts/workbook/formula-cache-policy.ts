@@ -14,7 +14,7 @@ export interface FormulaCacheRuntime {
 export const formulaCellKey = (sheet: string, row: number, column: number) => JSON.stringify([sheet, row, column]);
 const richOrDynamicReferences = new Set(['HYPERLINK', 'IMAGE', 'INDIRECT', 'OFFSET']);
 export const WORKBOOK_FORMULA_ANALYSIS_LIMITS = { lexerCalls: 110_000, tokens: 1_000_000, visits: 2_000_000, names: 262_144, expanded: 8_000_000, depth: 64 } as const;
-interface NameAnalysis { limited: boolean; expanded: number; cyclic: boolean }
+interface NameAnalysis { limited: boolean; expanded: number; cyclic: boolean; namedDepth: number }
 /** One analyzer per calculation. Global names can resolve local dependencies in
  * the caller's sheet, so identity alone is not a safe memoization key. Expanded
  * cost counts repeated occurrences, while actual analysis visits each name once. */
@@ -40,7 +40,7 @@ export function createFormulaCacheAnalysis(runtime: FormulaCacheRuntime, limits:
     }
     // Relative named references can gain longer row/column coordinates during
     // engine substitution. Pad each reference for both range endpoints.
-    const result: NameAnalysis = { limited: false, expanded: Math.min(limits.expanded + 1, formula.length + nodes.length + nodes.filter(node => typeof node !== 'string' && node.nodeType === runtime.types.REFERENCE).length * 24), cyclic: false };
+    const result: NameAnalysis = { limited: false, expanded: Math.min(limits.expanded + 1, formula.length + nodes.length + nodes.filter(node => typeof node !== 'string' && node.nodeType === runtime.types.REFERENCE).length * 24), cyclic: false, namedDepth: 0 };
     // Scan every occurrence, even after finding an unsupported leaf: the pinned
     // engine expands named expressions before evaluating that leaf's error.
     for (let index = 0; index < nodes.length; index++) {
@@ -55,7 +55,7 @@ export function createFormulaCacheAnalysis(runtime: FormulaCacheRuntime, limits:
         if (child && child.formula !== name.formula) throw new WorkbookFormatError('Name metadata changed during formula analysis.', 'WORKBOOK_UNSUPPORTED');
         if (!child) {
           if (visiting.has(identity)) {
-            result.limited = true; result.cyclic = true; result.expanded = limits.expanded + 1; continue;
+            result.limited = true; result.cyclic = true; result.namedDepth = Math.max(result.namedDepth, 1); result.expanded = limits.expanded + 1; continue;
           }
           if (depth >= limits.depth) throw new WorkbookFormatError('Formula name analysis exceeds its depth limit. Your file has not changed.', 'WORKBOOK_LIMIT');
           spend('names'); visiting.add(identity);
@@ -64,6 +64,11 @@ export function createFormulaCacheAnalysis(runtime: FormulaCacheRuntime, limits:
           finally { visiting.delete(identity); }
           child = { ...analyzed, formula: name.formula }; names.set(identity, child);
         }
+        // A cached tail may have been proved at a shallower root. Its full
+        // relative height still counts when reused beneath another prefix.
+        const namedDepth = child.namedDepth + 1;
+        if (depth + namedDepth > limits.depth) throw new WorkbookFormatError('Formula name analysis exceeds its depth limit. Your file has not changed.', 'WORKBOOK_LIMIT');
+        result.namedDepth = Math.max(result.namedDepth, namedDepth);
         result.expanded = saturate(result.expanded, child.expanded);
         result.cyclic ||= child.cyclic; result.limited ||= child.limited || called;
         continue;
