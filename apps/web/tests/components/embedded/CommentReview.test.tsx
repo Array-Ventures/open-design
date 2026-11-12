@@ -85,3 +85,21 @@ it('requires saving unsent changes before starting resolution', () => {
   expect(resolve).toBeDisabled(); expect(resolve).toHaveAttribute('title', 'Save your comment changes before resolving');
   fireEvent.click(resolve); expect(change).not.toHaveBeenCalled();
 });
+
+it('offers page scope only while commenting and retains the chosen scope when temporarily unavailable', async () => {
+  const { CommentReviewPage } = await import('../../../src/components/embedded/CommentReview');
+  function State({ available }: { available: boolean }) { const review = useCommentReview(); return <CommentReviewPage value={available}><CommentReviewFilter /><output aria-label="Page scope">{review?.pageScope}</output></CommentReviewPage>; }
+  const view = (available: boolean) => <CommentReviewProvider changeStatus={vi.fn()}><State available={available} /></CommentReviewProvider>;
+  const rendered = render(view(false));
+  fireEvent.click(screen.getByRole('button', { name: 'Filter comments' }));
+  expect(await screen.findByRole('button', { name: 'This page' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'All pages' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.keyDown(screen.getByRole('button', { name: 'All pages' }), { key: 'Escape' });
+  rendered.rerender(view(true));
+  // The menu may still be mounted during its closing animation.
+  const page = screen.queryByRole('button', { name: 'This page' });
+  if (!page) fireEvent.click(screen.getByRole('button', { name: 'Filter comments' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'This page' }));
+  expect(screen.getByLabelText('Page scope')).toHaveTextContent('page');
+  rendered.rerender(view(false)); expect(screen.getByLabelText('Page scope')).toHaveTextContent('page');
+});

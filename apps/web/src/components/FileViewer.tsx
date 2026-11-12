@@ -4,7 +4,8 @@ import type { CommentSaveResult } from './comment-send-result';
 import { confirmHostFeedbackDiscard, prepareHostFeedback } from './embedded/host-context';
 import { CommentMentions } from './embedded/CommentMentions';
 import { DeckPresentationMenu } from './embedded/DeckPresentationMenu';
-import { CommentListPopover, ResolveCommentButton, useCommentReview } from './embedded/CommentReview';
+import { commentsInReviewScope } from './embedded/comment-page-scope';
+import { CommentListPopover, CommentReviewPage, ResolveCommentButton, useCommentReview } from './embedded/CommentReview';
 import { CommentThreadMenu } from './embedded/CommentThreadMenu';
 import { ArtifactAnnotationControls } from './embedded/ArtifactAnnotationControls';
 import { SpeakerNotesDrawer } from './embedded/SpeakerNotesDrawer';
@@ -16591,14 +16592,16 @@ function HtmlViewer({
   // which reproduces the exact same "newest first" default. Persisted
   // server-side (see the `/reorder` route) instead of living only in React
   // state, so a drag survives a refresh/tab-switch/device-switch.
+  const reviewPageAvailable = boardMode && (!effectiveDeck || typeof slideState?.active === 'number');
   const visibleSideComments = useMemo(
     () =>
-      (commentReview?.showResolved
-        ? previewComments.filter(comment => comment.filePath === file.name && ['open', 'resolved'].includes(comment.status))
-        : [...creationSortedSideComments]).sort(
+      commentsInReviewScope(commentReview?.showResolved ? previewComments : creationSortedSideComments, {
+        fileName: file.name, showResolved: Boolean(commentReview?.showResolved), pageScope: commentReview?.pageScope ?? 'all',
+        pageAvailable: reviewPageAvailable, slideIndex: effectiveDeck ? slideState?.active ?? null : null,
+      }).sort(
         (a, b) => commentEffectiveSortKey(b) - commentEffectiveSortKey(a),
       ),
-    [creationSortedSideComments, commentReview?.showResolved, previewComments, file.name],
+    [creationSortedSideComments, commentReview?.showResolved, commentReview?.pageScope, previewComments, file.name, reviewPageAvailable, effectiveDeck, slideState?.active],
   );
   // A member id is a trusted current identity only when the workspace context
   // supplies one. Never let two absent ids compare equal and accidentally
@@ -17210,6 +17213,8 @@ function HtmlViewer({
           ...(typeof comment.slideIndex === 'number' ? { slideIndex: comment.slideIndex } : {}),
         };
         requestComposerRetarget(() => {
+          const page = comment.slideIndex;
+          if (effectiveDeck && typeof page === 'number' && Number.isSafeInteger(page) && page >= 0 && page < (slideState?.count ?? deckSlideCount)) goToSlide(page);
           const needsLocation = ownerCommentNeedsLocation(comment, collab.enabled);
           if (needsLocation) setCommentLocationIntent(intent => intent + 1);
           setActiveCommentTarget(needsLocation ? null : snapshot);
@@ -17351,8 +17356,8 @@ function HtmlViewer({
     />
   ) : null;
   const commentComposer = workspaceActive && commentComposerNode && commentComposerPortalMetrics
-    ? createPortal(commentComposerNode, commentComposerPortalMetrics.host)
-    : workspaceActive ? commentComposerNode : null;
+    ? createPortal(<CommentReviewPage value={reviewPageAvailable}>{commentComposerNode}</CommentReviewPage>, commentComposerPortalMetrics.host)
+    : workspaceActive ? <CommentReviewPage value={reviewPageAvailable}>{commentComposerNode}</CommentReviewPage> : null;
   const speakerNotesFeedback = speakerNotesStatus === 'saved'
       ? { className: 'saved', label: t('fileViewer.speakerNotesSaved') }
       : speakerNotesStatus === 'error'

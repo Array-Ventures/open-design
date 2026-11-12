@@ -3,19 +3,25 @@ import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState, 
 import { RiCheckLine, RiFilter3Line, RiCloseLine } from '@remixicon/react';
 import type { PreviewComment } from '../../types';
 import { Button } from './boardui/button';
-import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem } from './boardui/dropdown';
+import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem, DropdownDivider } from './boardui/dropdown';
 
 type Review = {
   projectId?: string;
+  pageScope: 'page' | 'all';
+  setPageScope(value: 'page' | 'all'): void;
   showResolved: boolean;
   setShowResolved(value: boolean): void;
   changeStatus(id: string, status: 'open' | 'resolved'): Promise<boolean>;
 };
+const PageContext = createContext(false);
+/** Context follows portals without changing the mounted comment composer. */
+export const CommentReviewPage = PageContext.Provider;
 const ReviewContext = createContext<Review | null>(null);
 export const useCommentReview = () => useContext(ReviewContext);
 export function CommentReviewProvider({ projectId, changeStatus, children }: { projectId?: string; changeStatus: Review['changeStatus']; children: ReactNode }) {
+  const [pageScope, setPageScope] = useState<'page' | 'all'>('all');
   const [showResolved, setShowResolved] = useState(false);
-  const value = useMemo(() => ({ ...(projectId ? { projectId } : {}), showResolved, setShowResolved, changeStatus }), [projectId, showResolved, changeStatus]);
+  const value = useMemo(() => ({ ...(projectId ? { projectId } : {}), pageScope, setPageScope, showResolved, setShowResolved, changeStatus }), [projectId, pageScope, showResolved, changeStatus]);
   return <ReviewContext.Provider value={value}>{children}</ReviewContext.Provider>;
 }
 
@@ -47,10 +53,14 @@ export function ResolveCommentButton({ comment, allowed, blocked = false, onReso
 
 export function CommentReviewFilter() {
   const review = useCommentReview();
+  const pageAvailable = useContext(PageContext);
   if (!review) return null;
   return <Dropdown>
     <DropdownTrigger aria-label="Filter comments" className="box-border flex size-8 shrink-0 items-center justify-center rounded-lg border-0 p-0 text-foreground-icon-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiFilter3Line className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
     <DropdownPopover aria-label="Filter comments" placement="bottom end" className="w-44">
+      <DropdownItem disabled={!pageAvailable} selected={pageAvailable && review.pageScope === 'page'} onSelect={() => review.setPageScope('page')}><span>This page</span>{pageAvailable && review.pageScope === 'page' ? <RiCheckLine className="ms-auto size-4 shrink-0" aria-hidden /> : null}</DropdownItem>
+      <DropdownItem selected={!pageAvailable || review.pageScope === 'all'} onSelect={() => review.setPageScope('all')}><span>All pages</span>{!pageAvailable || review.pageScope === 'all' ? <RiCheckLine className="ms-auto size-4 shrink-0" aria-hidden /> : null}</DropdownItem>
+      <DropdownDivider />
       <DropdownItem selected={review.showResolved} onSelect={() => review.setShowResolved(!review.showResolved)}><span>Show resolved</span>{review.showResolved ? <RiCheckLine className="ms-auto size-4 shrink-0" aria-hidden /> : null}</DropdownItem>
     </DropdownPopover>
   </Dropdown>;

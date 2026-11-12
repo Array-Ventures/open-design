@@ -201,6 +201,7 @@ export function DropdownGroup({ label, className, children }: DropdownGroupProps
 export interface DropdownItemProps {
   /** Highlights the row like the hover state (current selection). */
   selected?: boolean;
+  disabled?: boolean;
   onSelect?: () => void;
   /** Leave the menu open after a pick, for a menu that takes several in a row. */
   keepOpen?: boolean;
@@ -213,11 +214,12 @@ export interface DropdownItemProps {
  * A menu row. Content is free-form — icon + label, avatar + name, label +
  * trailing badge — laid out in a gap-2 flex row.
  */
-export function DropdownItem({ selected, onSelect, keepOpen, className, children }: DropdownItemProps) {
+export function DropdownItem({ selected, disabled = false, onSelect, keepOpen, className, children }: DropdownItemProps) {
   const context = useContext(DropdownContext);
   return (
     <button
       type="button"
+      disabled={disabled}
       data-boardui-menu-item=""
       aria-pressed={selected}
       onClick={() => {
@@ -226,6 +228,7 @@ export function DropdownItem({ selected, onSelect, keepOpen, className, children
       }}
       className={cx(
         MENU_ITEM,
+        disabled && "disabled:cursor-default disabled:text-text-tertiary disabled:hover:bg-transparent",
         selected ? MENU_ITEM_ACTIVE : MENU_ITEM_INTERACTIVE,
         className,
       )}

@@ -56,3 +56,27 @@ it('does not replace unsaved root edits when the same saved root changes externa
   rendered.rerender(<ControlledThread existing={{ ...root, note: 'Externally updated root' }} edit={1} />);
   expect(screen.getByTestId('comment-popover-input')).toHaveValue('My local root edit');
 });
+
+it('keeps unsent root text and its image receipt while page and resolution filters change', async () => {
+  const { CommentReviewPage } = await import('../../src/components/embedded/CommentReview');
+  const image = { file: new File(['image'], 'note.png', { type: 'image/png' }), url: 'blob:owned-note-image' };
+  function Draft() {
+    const [draft, setDraft] = useState('Unsent root text'); const [list, setList] = useState(false);
+    return <CommentReviewProvider projectId="project" changeStatus={vi.fn()}><CommentReviewPage value>
+      <button onClick={() => setList(value => !value)}>Toggle list</button>
+      <BoardComposerPopover target={target} existing={null} draft={draft} notes={[]} images={[image]} compact onDraft={setDraft}
+        onAddDraft={vi.fn()} onRemoveQueuedNote={vi.fn()} onClose={vi.fn()} onSaveComment={vi.fn()} onSendBatch={vi.fn()} onRemoveMember={vi.fn()}
+        sending={false} t={((key: string) => key) as never} commentsView={list ? <p>Saved comments</p> : undefined} />
+    </CommentReviewPage></CommentReviewProvider>;
+  }
+  render(<Draft />);
+  const input = screen.getByTestId('comment-popover-input'); expect(input).toHaveValue('Unsent root text');
+  const imageBefore = screen.getByRole('button', { name: 'note.png' }).querySelector('img'); expect(imageBefore).toHaveAttribute('src', image.url);
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle list' }));
+  const filter = screen.getByRole('button', { name: 'Filter comments' });
+  fireEvent.click(filter); fireEvent.click(await screen.findByRole('button', { name: 'This page' }));
+  fireEvent.click(filter); fireEvent.click(await screen.findByRole('button', { name: 'Show resolved' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle list' }));
+  expect(screen.getByTestId('comment-popover-input')).toHaveValue('Unsent root text');
+  expect(screen.getByRole('button', { name: 'note.png' }).querySelector('img')).toHaveAttribute('src', image.url);
+});
