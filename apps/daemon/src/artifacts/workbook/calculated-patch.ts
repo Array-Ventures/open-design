@@ -14,15 +14,21 @@ function assertCalculationSupported(source: ReadWorkbook): void {
   if (source.model.features.externalLinks) {
     throw new WorkbookFormatError('External reference calculation needs its workbook adapter.', 'WORKBOOK_UNSUPPORTED');
   }
+  if (source.model.sheets.some(sheet => sheet.arrayFormulas?.length) && (source.model.definedNames?.length || source.model.tables?.length)) throw new WorkbookFormatError('Named or table array dependencies need their array adapter.', 'WORKBOOK_UNSUPPORTED');
   for (const part of source.sheetParts.values()) {
     const root = xmlPart(source.parts, part).documentElement!, data = child(root, 'sheetData');
     for (const row of data ? children(data, 'row') : []) for (const cell of children(row, 'c')) {
       const formula = child(cell, 'f');
-      if (formula && ['array', 'dataTable'].includes(formula.getAttribute('t') ?? '') || cell.hasAttribute('cm')) {
+      if (formula && formula.getAttribute('t') === 'dataTable' || cell.hasAttribute('cm')) {
         throw new WorkbookFormatError('Array and dynamic formula calculation needs its workbook adapter.', 'WORKBOOK_UNSUPPORTED');
       }
     }
   }
+}
+function cellAddress(row: number, column: number): string {
+  let letters = '';
+  for (let value = column + 1; value; value = Math.floor((value - 1) / 26)) letters = String.fromCharCode(65 + (value - 1) % 26) + letters;
+  return `${letters}${row + 1}`;
 }
 function valueElement(document: Document, cell: Element, value: string): Element {
   const item = document.createElementNS(cell.namespaceURI, cell.prefix ? `${cell.prefix}:v` : 'v');
@@ -32,14 +38,28 @@ async function writeCalculatedCaches(source: ReadWorkbook, model: WorkbookDocume
   const output = new Map(source.parts);
   for (const sheet of model.sheets) {
     const before = new Map(source.model.sheets.find(previous => previous.id === sheet.id)!.cells.map(cell => [`${cell.row}:${cell.column}`, cell]));
-    const formulas = new Map(sheet.cells.filter(cell => cell.formula && !retained.has(formulaCellKey(sheet.id, cell.row, cell.column)) && (before.get(`${cell.row}:${cell.column}`)?.kind !== cell.kind || before.get(`${cell.row}:${cell.column}`)?.value !== cell.value)).map(cell => [`${cell.row}:${cell.column}`, cell]));
+    const ownedCells = new Set<string>();
+    for (const owner of sheet.arrayFormulas ?? []) if (!retained.has(formulaCellKey(sheet.id, owner.row, owner.column))) for (let row = owner.row; row <= owner.range.endRow; row++) for (let column = owner.column; column <= owner.range.endColumn; column++) ownedCells.add(`${row}:${column}`);
+    const owned = (row: number, column: number) => ownedCells.has(`${row}:${column}`);
+    const formulas = new Map(sheet.cells.filter(cell => (cell.formula || owned(cell.row, cell.column)) && !retained.has(formulaCellKey(sheet.id, cell.row, cell.column)) && (before.get(`${cell.row}:${cell.column}`)?.kind !== cell.kind || before.get(`${cell.row}:${cell.column}`)?.value !== cell.value)).map(cell => [`${cell.row}:${cell.column}`, cell]));
     if (!formulas.size) continue;
     const part = source.sheetParts.get(sheet.id)!, document = xmlPart(output, part), data = child(document.documentElement!, 'sheetData');
-    for (const row of data ? children(data, 'row') : []) for (const cell of children(row, 'c')) {
+    if (!data) throw new WorkbookFormatError('Worksheet data is missing.');
+    const rows = new Map(children(data, 'row').map(row => [Number(row.getAttribute('r')) - 1, row]));
+    const existing = new Set([...rows.values()].flatMap(row => children(row, 'c').map(cell => { const position = address(cell.getAttribute('r')!); return `${position.row}:${position.column}`; })));
+    let addedCells = false;
+    for (const [key, calculated] of formulas) if (!existing.has(key)) {
+      addedCells = true;
+      if (calculated.formula) throw new WorkbookFormatError('Calculated owner is missing from its package.');
+      let row = rows.get(calculated.row);
+      if (!row) { row = document.createElementNS(data.namespaceURI, data.prefix ? `${data.prefix}:row` : 'row'); row.setAttribute('r', String(calculated.row + 1)); data.appendChild(row); rows.set(calculated.row, row); }
+      const cell = document.createElementNS(data.namespaceURI, data.prefix ? `${data.prefix}:c` : 'c'); cell.setAttribute('r', cellAddress(calculated.row, calculated.column)); row.appendChild(cell);
+    }
+    for (const row of children(data, 'row')) for (const cell of children(row, 'c')) {
       const position = address(cell.getAttribute('r')!), calculated = formulas.get(`${position.row}:${position.column}`);
       if (!calculated) continue;
-      if (!child(cell, 'f')) throw new WorkbookFormatError('Calculated formula no longer matches its package.');
-      for (const previous of children(cell, 'v')) cell.removeChild(previous);
+      if (calculated.formula && !child(cell, 'f')) throw new WorkbookFormatError('Calculated formula no longer matches its package.');
+      for (const name of ['v', 'is']) for (const previous of children(cell, name)) cell.removeChild(previous);
       cell.removeAttribute('t');
       if (calculated.kind === 'boolean') cell.setAttribute('t', 'b');
       if (calculated.kind === 'string') cell.setAttribute('t', 'str');
@@ -48,6 +68,11 @@ async function writeCalculatedCaches(source: ReadWorkbook, model: WorkbookDocume
       formulas.delete(`${position.row}:${position.column}`);
     }
     if (formulas.size) throw new WorkbookFormatError('Calculated formula cells are missing from the package.');
+    for (const row of children(data, 'row')) {
+      for (const cell of children(row, 'c').sort((a, b) => address(a.getAttribute('r')!).column - address(b.getAttribute('r')!).column)) row.appendChild(cell);
+    }
+    for (const row of children(data, 'row').sort((a, b) => Number(a.getAttribute('r')) - Number(b.getAttribute('r')))) data.appendChild(row);
+    if (addedCells) { const dimension = child(document.documentElement!, 'dimension'); if (dimension) dimension.parentNode!.removeChild(dimension); }
     output.set(part, writeWorkbookXml(document));
   }
   return writeWorkbookPackage(output);

@@ -365,3 +365,27 @@ function registration. Stored kernels therefore set it false while keeping the
 actual formula engine disabled; otherwise kernel recreation throws a missing
 `IRPCChannelService` dependency error. The actual pinned no-RPC test verifies
 stored cache999 remains999 after an input changes and emits no calculation result.
+
+### Backend fixed-source array persistence
+
+The daemon can recalculate an explicit source `t="array"` owner without cell
+metadata when the pinned engine returns exactly its declared source rectangle.
+This is a fixed-range capability, not an inference that `t="array"` identifies a
+modern spill. The source formula text, attributes and range remain unchanged.
+Only typed server-derived caches are replaced; follower cells are disposable
+calculation overlays, never input literals. Missing physical followers can be
+created, retaining existing follower styles. Error-looking strings and actual
+errors remain distinct in OOXML.
+
+The emitted array range must agree with the captured typed matrix. Scalar
+reference dependencies intersect explicit ownership with the pinned lexer,
+reference decoder and spatial index, because the engine graph can omit follower
+edges. Original unsupported owners and their follower-dependent closure retain
+source caches. A retained branch is stored evidence, not a promise of freshness.
+Array reference analysis has an aggregate one-million-token/intersection budget.
+
+This stage refuses new or resized arrays, cell metadata (`cm`), data tables,
+names/tables in an array workbook, owner/follower edits and mismatched legacy
+array shapes. New dynamic metadata authoring and verified dynamic growth,
+shrinkage and collision persistence remain unfinished. The existing Grid source
+array gate remains in place; this backend capability does not enable it.
