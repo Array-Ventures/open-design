@@ -3,6 +3,7 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Worker as NodeWorker } from 'node:worker_threads';
 import { afterEach, expect, it, vi } from 'vitest';
+import { workbookCalculationDeadline } from '../../src/components/embedded/workbook/formula-worker-deadline';
 import { assertWorkbookCalculationBudget, assertWorkbookCalculationMutation } from '../../src/components/embedded/workbook/formula-worker-budget';
 const packageRoot = realpathSync(fileURLToPath(new URL('../../node_modules/@univerjs/preset-sheets-core/package.json', import.meta.url)));
 const pinned = createRequire(packageRoot), core = pinned('@univerjs/core'), engine = pinned('@univerjs/engine-formula'), sheets = pinned('@univerjs/sheets'), formula = pinned('@univerjs/sheets-formula'), rpc = pinned('@univerjs/rpc');
@@ -13,17 +14,17 @@ afterEach(async () => { for (const close of closers.splice(0).reverse()) await c
 class WorkerAdapter {
   readonly thread: NodeWorker;
   private listeners = new Map<EventListener, (data: unknown) => void>();
-  constructor(budget = false) {
-    this.thread = new NodeWorker(new URL('../fixtures/workbook-formula-rpc-worker.cjs', import.meta.url), { workerData: { packageRoot, budgetModule: budget ? fileURLToPath(new URL('../../src/components/embedded/workbook/formula-worker-budget.ts', import.meta.url)) : undefined }, execArgv: ['--experimental-transform-types', '--no-warnings'], resourceLimits: { maxOldGenerationSizeMb: 192, maxYoungGenerationSizeMb: 32 } });
+  constructor(budget = false, execution = false, stall = false) {
+    this.thread = new NodeWorker(new URL('../fixtures/workbook-formula-rpc-worker.cjs', import.meta.url), { workerData: { packageRoot, stall, executionModule: execution ? fileURLToPath(new URL('../../src/components/embedded/workbook/formula-execution-policy.ts', import.meta.url)) : undefined, budgetModule: budget ? fileURLToPath(new URL('../../src/components/embedded/workbook/formula-worker-budget.ts', import.meta.url)) : undefined }, execArgv: ['--experimental-transform-types', '--no-warnings'], resourceLimits: { maxOldGenerationSizeMb: 192, maxYoungGenerationSizeMb: 32 } });
     closers.push(async () => { await this.thread.terminate(); }); }
   postMessage(data: unknown) { this.thread.postMessage(data); }
-  addEventListener(type: string, listener: EventListener) { if (type !== 'message') return; const handler = (data: unknown) => listener({ data } as MessageEvent); this.listeners.set(listener, handler); this.thread.on('message', handler); }
+  addEventListener(type: string, listener: EventListener) { if (type !== 'message') return; const handler = (data: unknown) => { if (data && typeof data === 'object' && ('fixtureReady' in data || 'fixtureEnteredStall' in data)) return; listener({ data } as MessageEvent); }; this.listeners.set(listener, handler); this.thread.on('message', handler); }
   removeEventListener(_type: string, listener: EventListener) { const handler = this.listeners.get(listener); if (handler) this.thread.off('message', handler); this.listeners.delete(listener); }
   async ready() { await new Promise<void>((resolve, reject) => { const timer = setTimeout(() => reject(Error('Owned RPC worker did not start.')), 5000); this.thread.once('error', reject); const listen = (data: { fixtureReady?: boolean }) => { if (data.fixtureReady) { clearTimeout(timer); this.thread.off('message', listen); resolve(); } }; this.thread.on('message', listen); }); }
 }
-it('runs genuine scalar RPC calculation off the main thread and refuses a 10-million-row SEQUENCE at actual registered bounds', async () => {
+it.each([false, true])('runs genuine scalar RPC calculation and bounds execution (qualified policy=%s)', async execution => {
   vi.stubGlobal('Worker', WorkerAdapter);
-  const worker = new WorkerAdapter(true); await worker.ready();
+  const worker = new WorkerAdapter(true, execution); await worker.ready();
   const English = pinned('@univerjs/preset-sheets-core/locales/en-US');
   const univer = new core.Univer({ locale: core.LocaleType.EN_US, locales: { [core.LocaleType.EN_US]: English.default ?? English } }); closers.push(() => univer.dispose());
   const units = univer.__getInjector().get(core.IUniverInstanceService), commands = univer.__getInjector().get(core.ICommandService);
@@ -43,7 +44,13 @@ it('runs genuine scalar RPC calculation off the main thread and refuses a 10-mil
   await calculate(() => book.getActiveSheet().getRange('A1').setValue(7));
   expect(book.save().sheets.s.cellData[0][1].v).toBe(10);
   await calculate(() => book.getActiveSheet().getRange('C1').setValue({ f: '=SEQUENCE(10000000)' }));
-  expect(book.save().sheets.s.cellData[0][2]).toMatchObject({ f: '=SEQUENCE(10000000)', v: '#REF!' });
+  expect(book.save().sheets.s.cellData[0][2]).toMatchObject({ f: '=SEQUENCE(10000000)', v: execution ? '#N/A' : '#REF!' });
+  if (execution) {
+    await calculate(() => book.getActiveSheet().getRange('D1').setValue({ f: '=RANDARRAY(10000000)' }));
+    expect(book.save().sheets.s.cellData[0][3]).toMatchObject({ f: '=RANDARRAY(10000000)', v: '#N/A' });
+    await calculate(() => book.getActiveSheet().getRange('E1').setValue({ f: '=EXPAND(A1,10000000,10000000)' }));
+    expect(book.save().sheets.s.cellData[0][4]).toMatchObject({ f: '=EXPAND(A1,10000000,10000000)', v: '#N/A' });
+  }
   expect(book.getActiveSheet().getSheet().getRowCount()).toBe(100);
   expect(() => api.syncExecuteCommand(sheets.SetWorksheetRowCountMutation.id, { unitId: 'bounded-rpc', subUnitId: 's', rowCount: 1000000 })).toThrow('Structural');
   expect(() => api.syncExecuteCommand(sheets.InsertRowMutation.id, { unitId: 'bounded-rpc', subUnitId: 's', range: { startRow: 100, endRow: 999999, startColumn: 0, endColumn: 19 } })).toThrow('Structural');
@@ -51,4 +58,26 @@ it('runs genuine scalar RPC calculation off the main thread and refuses a 10-mil
   expect(book.getActiveSheet().getSheet().getRowCount()).toBe(100);
   expect(book.save().sheets.s.cellData[100]).toBeUndefined();
   expect(() => assertWorkbookCalculationBudget(books(), true)).not.toThrow();
+});
+
+it('terminates an actual pinned-worker executor that stops yielding while the main workbook remains responsive', async () => {
+  vi.stubGlobal('Worker', WorkerAdapter);
+  const worker = new WorkerAdapter(true, false, true); await worker.ready();
+  const English = pinned('@univerjs/preset-sheets-core/locales/en-US');
+  const univer = new core.Univer({ locale: core.LocaleType.EN_US, locales: { [core.LocaleType.EN_US]: English.default ?? English } }); closers.push(() => univer.dispose());
+  univer.registerPlugin(rpc.UniverRPCMainThreadPlugin, { workerURL: worker });
+  univer.registerPlugin(engine.UniverFormulaEnginePlugin, { notExecuteFormula: true }); univer.registerPlugin(sheets.UniverSheetsPlugin, { notExecuteFormula: true });
+  univer.registerPlugin(formula.UniverSheetsFormulaPlugin, { notExecuteFormula: true, initialFormulaComputing: formula.CalculationMode.NO_CALCULATION });
+  const api = FUniver.newAPI(univer), book = api.createWorkbook({ id: 'blocked-rpc', name: 'Blocked RPC', sheetOrder: ['s'], styles: {}, sheets: { s: { id: 's', name: 'Inputs', rowCount: 100, columnCount: 20, cellData: {} } } });
+  let stopped!: () => void; const failed = new Promise<void>(resolve => { stopped = resolve; });
+  const deadline = workbookCalculationDeadline({ terminate: () => { void worker.thread.terminate(); } }, stopped, 25); closers.push(() => deadline.dispose());
+  const entered = new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(Error('Pinned fixture executor did not start.')), 3000);
+    const receive = (data: { fixtureEnteredStall?: boolean }) => { if (data.fixtureEnteredStall) { clearTimeout(timer); worker.thread.off('message', receive); deadline.begin(); resolve(); } }; worker.thread.on('message', receive);
+  });
+  book.getActiveSheet().getRange('C2').setValue({ f: '=EVEBOT_TEST_BLOCK()' }); await entered;
+  // The worker is now inside its deliberately non-yielding fixture kernel.
+  book.getActiveSheet().getRange('A1').setValue(19);
+  expect(book.save().sheets.s.cellData[0][0].v).toBe(19);
+  await failed; expect(deadline.begin()).toBeNull();
 });

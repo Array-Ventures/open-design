@@ -235,8 +235,8 @@ by this qualification commit.
 `formula-worker-budget.ts` bounds initial registered geometry and raw cells, then
 admits only the reviewed range-value sheet mutation. Unknown structural mutations
 must not enlarge the calculation replica through paste, insertion or count
-changes. This geometry policy is not sufficient by itself: pinned RANDARRAY and
-EXPAND can allocate requested output before a sheet-bound check. A pre-execution
+changes. This geometry policy is not sufficient by itself: pinned EXPAND can allocate requested output without a sheet-bound check
+(RANDARRAY, like SEQUENCE, does check its registered sheet dimensions). A pre-execution
 function allocation policy, a worker deadline, matching result-generation
 provenance and the separate display/cache boundary are still enablement gates.
 
@@ -244,3 +244,30 @@ The owned Node-worker fixture has a 192 MiB V8 old-generation limit and is alway
 terminated during teardown. This is a test-process memory limit, **not** a claim
 that the browser Worker API supplies a portable heap limit. Browser live support
 must not silently treat the Node proof as production memory containment.
+
+## Pre-execution capability and deadline qualification (not yet wired to Grid)
+
+`formula-execution-policy.ts` uses the pinned lexer, reference decoder and
+function override configuration. A reviewed allowlist admits common scalar math,
+comparisons, IF/IFERROR and range reductions. Internal arithmetic kernels such as
+PLUS and DIVIDED are included explicitly. Other implemented functions retain
+recognizable formula text but receive an unavailable executor before their
+allocation-capable kernel runs. The display policy must classify those names as
+stored/unavailable rather than interpreting the placeholder as a live result.
+Unimplemented functions have no executor. No source formula/reference is rewritten.
+
+The lexer gate bounds per-formula length/token count, formula count, aggregate
+reference/broadcast work and actual registered whole-row/column geometry. Array
+literals and text concatenation remain explicit execution limitations until their
+allocation paths are qualified. Geometry checks still prohibit insertion/count
+changes and outside-bound writes. These limits describe the qualified path, not
+all of Excel or the browser's total heap consumption.
+
+The actual RPC fixture verifies normal scalar math still works with this policy,
+while SEQUENCE, RANDARRAY and a huge EXPAND request return unavailable without
+running their original executors. A deliberately non-yielding fixture function,
+registered through the same pinned API, proves the owning deadline terminates
+that worker while the main workbook remains responsive. The deadline is terminal
+and generation-bound; it never silently restarts against a different draft.
+Matching result provenance, immutable cache/display authority and writer/archive
+integration remain required before production Grid enablement.
