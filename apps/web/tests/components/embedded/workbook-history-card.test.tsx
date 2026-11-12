@@ -10,6 +10,17 @@ function fixture() {
     close: vi.fn(), select: vi.fn(), refresh: vi.fn(), more: vi.fn(), restore: vi.fn() } as unknown as ReturnType<typeof useWorkbookHistory>;
 }
 afterEach(cleanup);
+it('offers only receipt reconciliation in status-only recovery even when the working file exists again', () => {
+  const history = { ...fixture(), statusOnly: true, available: true, canOpen: true, intent: {} as never };
+  const view = render(<WorkbookHistory history={history} dirty={false} reload={vi.fn()} />);
+  expect(screen.getByRole('button', { name: 'Check status' }).hasAttribute('disabled')).toBe(false);
+  expect(screen.queryByText(/Restore a saved version/)).toBeNull();
+  expect(screen.getByRole('button', { name: 'Version 1' }).hasAttribute('disabled')).toBe(true);
+  view.rerender(<WorkbookHistory history={{ ...history, intent: null }} dirty={false} reload={vi.fn()} />);
+  expect(screen.queryByRole('button', { name: /^Restore$/ })).toBeNull();
+  expect(screen.queryByText('Restore version 1 as a new revision.')).toBeNull();
+  expect(screen.queryByText(/Restore a saved version/)).toBeNull();
+});
 it('uses a compact nonmodal history card with distinct select, pagination and restore actions', () => {
   const history = fixture(); render(<WorkbookHistory history={history} dirty={false} sourceSha256={sha} reload={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: 'Version 1' })); expect(history.select).toHaveBeenCalledWith(history.versions[0]);
