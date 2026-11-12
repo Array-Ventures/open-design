@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Server } from 'node:http';
@@ -27,13 +27,17 @@ it('serves passive scoped metadata and exact binary revisions without changing t
   const bytes = Buffer.from([0x50, 0x4b, 3, 4, 0xff, 0x80]), metadata = getProject(db, id)!.metadata;
   const first = await withProjectFileVersionBytesLock(projects, id, 'nested/book.xlsx', metadata, history => history.createVersion(bytes, { source: 'manual', label: 'x'.repeat(5000) }));
   const second = await withProjectFileVersionBytesLock(projects, id, 'nested/book.xlsx', metadata, history => history.createVersion(Buffer.from([0, 1, 2]), { source: 'manual' }));
+  await mkdir(path.join(workspace, 'team/projects', id, 'nested')); await writeFile(path.join(workspace, 'team/projects', id, 'nested/book.xlsx'), Buffer.from([0, 1, 2]));
   const before = await listProjectFileVersions(projects, id, 'nested/book.xlsx', metadata);
   const response = await fetch(endpoint(), { headers }); expect(response.status).toBe(200); expect(response.headers.get('cache-control')).toBe('no-store');
-  const body = await response.json(); expect(body).toMatchObject({ projectId: id, fileName: 'nested/book.xlsx', versions: expect.arrayContaining([expect.objectContaining({ id: first.id, contentDigest: createHash('sha256').update(bytes).digest('hex'), current: false })]) });
+  const body = await response.json(); expect(body).toMatchObject({ projectId: id, fileName: 'nested/book.xlsx', currentSha256: createHash('sha256').update(Buffer.from([0, 1, 2])).digest('hex'), versions: expect.arrayContaining([expect.objectContaining({ id: first.id, contentDigest: createHash('sha256').update(bytes).digest('hex'), current: false })]) });
   const exact = await fetch(endpoint(first.id + '/metadata'), { headers }); expect(exact.status).toBe(200); const exactVersion = (await exact.json()).version; expect(exactVersion).toMatchObject({ id: first.id, contentDigest: createHash('sha256').update(bytes).digest('hex'), labelTruncated: true }); expect(exactVersion.label).toHaveLength(4000); expect(exactVersion.label.endsWith('…')).toBe(true);
   const page = await (await fetch(endpoint('', 'fileName=nested%2Fbook.xlsx&limit=1'), { headers })).json(); expect(page.versions).toHaveLength(1); expect(page.nextCursor).toEqual(expect.any(String));
   const next = await (await fetch(endpoint('', 'fileName=nested%2Fbook.xlsx&limit=1&cursor=' + page.nextCursor), { headers })).json(); expect(next.versions.map((item: { id: string }) => item.id)).toEqual([first.id]); expect(next.nextCursor).toBeNull();
   const content = await fetch(endpoint(first.id), { headers }); expect(content.status).toBe(200); expect(Buffer.from(await content.arrayBuffer())).toEqual(bytes);
+  await writeFile(path.join(workspace, 'team/projects', id, 'nested/book.xlsx'), Buffer.from('outside-versioning'));
+  expect((await fetch(endpoint('', 'fileName=nested%2Fbook.xlsx&limit=1&cursor=' + page.nextCursor), { headers })).status).toBe(409);
+  const changed = await (await fetch(endpoint(), { headers })).json(); expect(changed.versions.every((item: { current: boolean }) => !item.current)).toBe(true); expect(changed.currentSha256).toBe(createHash('sha256').update('outside-versioning').digest('hex'));
   expect(await listProjectFileVersions(projects, id, 'nested/book.xlsx', metadata)).toEqual(before); expect(before.find(item => item.current)?.id).toBe(second.id);
 });
 it('requires service auth, denies mutations and unsafe queries, and never bootstraps history', async () => {

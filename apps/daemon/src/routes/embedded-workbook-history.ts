@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { withEmbeddedProject } from '../embedded-files/pinned-project.js';
 import { z } from 'zod';
 import type { Express, RequestHandler } from 'express';
 import type Database from 'better-sqlite3';
@@ -25,9 +27,12 @@ export function registerEmbeddedWorkbookHistoryRoutes(app: Express, db: Database
         const saved = await readProjectFileVersionBytes(root, project.id, parsed.data.fileName, selected, project.metadata);
         return res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(saved.content);
       }
+      let currentSha256: string | null = null;
+      try { currentSha256 = createHash('sha256').update(await withEmbeddedProject(project.id, project.metadata ?? {}, async pinned => (await pinned.read(parsed.data.fileName, 25 * 1024 * 1024)).buffer)).digest('hex'); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
       const versions = await listProjectFileVersions(root, project.id, parsed.data.fileName, project.metadata);
       const summary = (item: typeof versions[number]) => ({ id: item.id, fileName: item.fileName, version: item.version, label: item.label.length > 4000 ? item.label.slice(0, 3999).replace(/[\uD800-\uDBFF]$/, '') + '…' : item.label, ...(item.label.length > 4000 ? { labelTruncated: true } : {}), createdAt: item.createdAt,
-        source: item.source, size: item.size, current: item.current, contentDigest: item.contentDigest,
+        source: item.source, size: item.size, current: item.current && item.contentDigest === currentSha256, contentDigest: item.contentDigest,
         ...(item.parentVersionId ? { parentVersionId: item.parentVersionId } : {}), ...(item.restoreFromVersionId ? { restoreFromVersionId: item.restoreFromVersionId } : {}) });
       if (selected !== undefined) {
         const version = versions.find(item => item.id === selected);
@@ -35,9 +40,10 @@ export function registerEmbeddedWorkbookHistoryRoutes(app: Express, db: Database
         return res.json({ projectId: project.id, fileName: parsed.data.fileName, version: summary(version) });
       }
       const page = listQuery.parse(req.query);
-      return res.json({ projectId: project.id, fileName: page.fileName, ...workbookHistoryPage(versions.map(summary), { projectId: project.id, fileName: page.fileName, limit: page.limit, ...(page.cursor ? { cursor: page.cursor } : {}) }) });
+      return res.json({ projectId: project.id, fileName: page.fileName, currentSha256, ...workbookHistoryPage(versions.map(summary), { projectId: project.id, fileName: page.fileName, limit: page.limit, currentSha256, ...(page.cursor ? { cursor: page.cursor } : {}) }) });
     } catch (error) {
       const missing = (error as NodeJS.ErrnoException).code === 'ENOENT';
+      if ((error as NodeJS.ErrnoException).code === 'ESTALE') return res.status(409).json({ error: { code: 'WORKBOOK_HISTORY_CHANGED', message: 'The current workbook changed. Refresh history before restoring.' } });
       if ((error as NodeJS.ErrnoException).code === 'EINVAL') return res.status(400).json({ error: { code: 'INVALID_WORKBOOK_HISTORY', message: 'The history cursor is invalid. Refresh workbook history.' } });
       return res.status(missing ? 404 : 409).json({ error: { code: missing ? 'WORKBOOK_VERSION_NOT_FOUND' : 'WORKBOOK_HISTORY_UNAVAILABLE', message: 'The retained workbook history could not be verified.' } });
     }
