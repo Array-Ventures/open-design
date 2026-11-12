@@ -23,7 +23,7 @@ export function connectWorkbookDiscard(projectId: string, controllerId: string, 
   const cancel = (entry: Entry) => {
     if (entry.granted || entry.phase === 'committing' || entry.phase === 'done' || entry.phase === 'cancelled') return;
     entry.phase = 'cancelled'; entry.controller.abort();
-    entry.task = Promise.resolve(entry.prepared?.cancel()).catch(() => {}).then(() => { delete entry.prepared; reply(entry); expire(); });
+    entry.task = Promise.resolve().then(() => entry.prepared?.cancel()).catch(() => {}).then(() => { delete entry.prepared; reply(entry); expire(); });
   };
   disconnect = events.listen(event => {
     if (event.source !== events.parent || event.origin !== events.origin) return;
@@ -48,7 +48,7 @@ export function connectWorkbookDiscard(projectId: string, controllerId: string, 
       return;
     }
     if (!active || request.type !== 'studio:discard-workbook') return;
-    const busy = [...entries.values()].some(entry => ['preparing', 'ready', 'committing'].includes(entry.phase));
+    const busy = [...entries.values()].some(entry => entry.granted || ['preparing', 'ready', 'committing'].includes(entry.phase));
     if (busy) { post({ id: request.requestId } as Entry, 'studio:workbook-discarded', { accepted: false, error: 'A workbook discard is already being checked.' }); return; }
     // Only settled outcomes may expire. Never evict an uncertain commit.
     for (const [key, old] of entries) if (entries.size >= 32 && !old.granted && ['cancelled', 'failed'].includes(old.phase)) entries.delete(key);

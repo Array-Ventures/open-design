@@ -18,6 +18,8 @@ it('prepares without deleting, grants exactly once and replays a lost acknowledg
   link.send('studio:commit-workbook-discard'); link.send('studio:commit-workbook-discard'); await tick();
   link.send('studio:commit-workbook-discard'); await tick(); expect(commit).toHaveBeenCalledOnce();
   expect(vi.mocked(link.parent.postMessage)).toHaveBeenLastCalledWith(expect.objectContaining({ accepted: true }), origin);
+  link.send('studio:discard-workbook', { requestId: crypto.randomUUID() }); await tick();
+  expect(link.prepare).toHaveBeenCalledOnce(); // unacknowledged grant blocks newer branch substitution
   link.send('studio:finish-workbook-discard'); link.close(); await tick();
 });
 it('cancels before grant and never accepts an old grant against a reopened writer', async () => {
