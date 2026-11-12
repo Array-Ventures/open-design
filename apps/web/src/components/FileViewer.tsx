@@ -371,6 +371,7 @@ import {
   readManualEditOuterHtml,
   readManualEditStyles,
 } from '../edit-mode/source-patches';
+import { verifySavedManualEditPreview } from '../edit-mode/saved-preview';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 import {
@@ -14009,7 +14010,7 @@ function HtmlViewer({
     return true;
   }
 
-  function syncRetainedManualEditDocument(savedSource: string, patch: ManualEditPatch): void {
+  async function syncRetainedManualEditDocument(savedSource: string, patch: ManualEditPatch): Promise<void> {
     // The write has committed. Refresh the hidden canonical URL exactly once
     // for this persisted revision; keystrokes and live preview messages do not
     // navigate it.
@@ -14037,10 +14038,22 @@ function HtmlViewer({
       manualEditPersistedDocumentRef.current = null;
       return;
     }
-    manualEditPersistedDocumentRef.current = {
-      sourceFingerprint: previewSourceFingerprint(savedSource),
-      reloadKey,
-    };
+    const retained = { sourceFingerprint: previewSourceFingerprint(savedSource), reloadKey };
+    // Hold the still-active document while the asynchronous paint challenge is
+    // pending. Exit awaits this function, so this provisional latch cannot
+    // authorize leaving Edit. A failed challenge releases it for source reload.
+    manualEditPersistedDocumentRef.current = retained;
+    if (embedded && !urlLoadPreviewSupportedWithoutManualEdit) {
+      const frame = iframeRef.current;
+      const generation = expectedSrcDocTransportGenerationRef.current;
+      const painted = await verifySavedManualEditPreview(frame, patch)
+        && iframeRef.current === frame
+        && expectedSrcDocTransportGenerationRef.current === generation
+        && sourceRef.current === savedSource;
+      if (!painted && manualEditPersistedDocumentRef.current === retained) {
+        manualEditPersistedDocumentRef.current = null;
+      }
+    }
   }
 
   function reconcileRetainedManualEditHistoryDocument(
@@ -14232,7 +14245,7 @@ function HtmlViewer({
       // does not navigate an equivalent srcDoc over the visible document.
       // Other content patches still take one normal document refresh because
       // they do not yet have a live bridge equivalent.
-      syncRetainedManualEditDocument(result.source, patch);
+      await syncRetainedManualEditDocument(result.source, patch);
       setManualEditError(null);
       finish('success');
       await onFileSaved?.();
@@ -14323,7 +14336,7 @@ function HtmlViewer({
       setSource(latest.beforeSource);
       sourceRef.current = latest.beforeSource;
       setInlinedSource(null);
-      syncRetainedManualEditDocument(
+      await syncRetainedManualEditDocument(
         latest.beforeSource,
         reconcileRetainedManualEditHistoryDocument(latest.beforeSource, latest.patch),
       );
@@ -14388,7 +14401,7 @@ function HtmlViewer({
       setSource(latest.afterSource);
       sourceRef.current = latest.afterSource;
       setInlinedSource(null);
-      syncRetainedManualEditDocument(
+      await syncRetainedManualEditDocument(
         latest.afterSource,
         reconcileRetainedManualEditHistoryDocument(latest.afterSource, latest.patch),
       );

@@ -990,6 +990,29 @@ export function buildManualEditBridge(enabled: boolean): string {
       applyPreviewStyles(ev.data.id, ev.data.styles || {}, ev.data.version);
       return;
     }
+    if (ev.data.type === 'od-edit-verify-saved-preview') {
+      if (ev.source !== window.parent || typeof ev.data.requestId !== 'string') return;
+      var proofPatch = ev.data.patch || {};
+      var proofEl = findById(proofPatch.id || '');
+      var proofOk = false;
+      if (proofEl && proofPatch.kind === 'set-text') {
+        proofOk = proofEl !== document.body && proofEl.children.length === 0
+          && typeof proofPatch.value === 'string' && proofEl.textContent === proofPatch.value;
+      } else if (proofEl && proofPatch.kind === 'set-style' && proofPatch.styles && typeof proofPatch.styles === 'object') {
+        var expectedStyle = document.createElement('span').style;
+        var proofKeys = Object.keys(proofPatch.styles);
+        proofOk = proofKeys.every(function(key){
+          var value = proofPatch.styles[key];
+          if (typeof value !== 'string') return false;
+          var cssName = camelToKebab(key);
+          expectedStyle.setProperty(cssName, value.trim());
+          return proofEl.style.getPropertyValue(cssName) === expectedStyle.getPropertyValue(cssName)
+            && proofEl.style.getPropertyPriority(cssName) === expectedStyle.getPropertyPriority(cssName);
+        });
+      }
+      window.parent.postMessage({ type: 'od-edit-saved-preview-result', requestId: ev.data.requestId, ok: proofOk }, '*');
+      return;
+    }
     if (ev.data.type === 'od-edit-preview-text') {
       // Live text preview from the host panel's 文本 textarea — the counterpart
       // to od-edit-preview-style. Setting textContent on the (blurred, the host

@@ -1309,3 +1309,23 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 });
+
+describe('saved preview paint verification', () => {
+  it('verifies actual text and normalized styles, rejecting missing or structurally different targets', async () => {
+    const dom = new JSDOM(`<main><h1 data-od-id="hero" style="color:rgb(255, 0, 0);font-size:24px">Saved heading</h1><p data-od-id="rich"><b>Saved heading</b></p></main>${buildManualEditBridge(true)}`, { runScripts: 'dangerously', url: 'http://localhost' });
+    const post = vi.spyOn(dom.window.parent, 'postMessage');
+    const verify = (patch: unknown, source: Window | null = dom.window as unknown as Window) => {
+      post.mockClear();
+      dom.window.dispatchEvent(new dom.window.MessageEvent('message', { source, data: { type: 'od-edit-verify-saved-preview', requestId: 'paint-proof', patch } }));
+      return post.mock.calls.map(([message]) => message).find(message => message.type === 'od-edit-saved-preview-result');
+    };
+    expect(verify({ kind: 'set-text', id: 'hero', value: 'Saved heading' })?.ok).toBe(true);
+    expect(verify({ kind: 'set-text', id: 'hero', value: 'Different text' })?.ok).toBe(false);
+    expect(verify({ kind: 'set-text', id: 'rich', value: 'Saved heading' })?.ok).toBe(false);
+    expect(verify({ kind: 'set-text', id: 'missing', value: 'Saved heading' })?.ok).toBe(false);
+    expect(verify({ kind: 'set-style', id: 'hero', styles: { color: '#ff0000', fontSize: '24px' } })?.ok).toBe(true);
+    expect(verify({ kind: 'set-style', id: 'hero', styles: { color: '#0000ff' } })?.ok).toBe(false);
+    expect(verify({ kind: 'set-text', id: 'hero', value: 'Saved heading' }, null)).toBeUndefined();
+    dom.window.close();
+  });
+});
