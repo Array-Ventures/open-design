@@ -1,4 +1,6 @@
 import { expect, it, vi } from 'vitest';
+import { CellValueType } from '@univerjs/core';
+import { FWorkbook } from '@univerjs/sheets/facade';
 import { functionMath, type BaseFunction } from '@univerjs/engine-formula';
 import ExcelJS from 'exceljs-community';
 import JSZip from 'jszip';
@@ -120,6 +122,7 @@ it('uses discovery geometry to order a reverse-sheet consumer of a newly grown f
 });
 it.each([
   ['cm="1"', 'cm="01"', 'xl/worksheets/sheet1.xml'],
+  ['http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata', 'https://fixture.invalid/sheetMetadata', 'xl/_rels/workbook.xml.rels'],
   ['t="1" v="0"', 't="2" v="0"', 'xl/metadata.xml'],
   ['fDynamic="1"', 'fDynamic="0"', 'xl/metadata.xml'],
   ['fCollapsed="0"', 'fCollapsed="1"', 'xl/metadata.xml'],
@@ -168,4 +171,207 @@ it('refuses a real volatile array whose geometry changes between discovery and f
     expect({ error: error?.message, calls }).toEqual({ error: expect.stringContaining('geometry changed'), calls: 4 });
     expect(source.parts).toEqual(before);
   } finally { spy.mockRestore(); }
+});
+it('retires verified dynamic ownership before applying a real follower input in the same batch', async () => {
+  const source = await dynamicFixture();
+  const { bytes } = await calculateWorkbookCellEdits(source, [
+    { sheetId: '1', cell: { row: 2, column: 3, kind: 'blank', value: null } },
+    { sheetId: '1', cell: { row: 3, column: 3, kind: 'number', value: 42, style: 1 } },
+  ]);
+  const book = new ExcelJS.Workbook(); await book.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(book.worksheets[0]!.getCell('D3').value).toBeNull();
+  expect(book.worksheets[0]!.getCell('D4').value).toBe(42);
+  expect(book.worksheets[0]!.getCell('D4').font.italic).toBe(true);
+  expect(book.worksheets[0]!.getCell('D5').value).toBeNull();
+  expect(book.worksheets[1]!.getCell('A1').result).toBe(142);
+  const reopened = await readXlsxWorkbook(bytes);
+  expect(reopened.model.sheets[0]!.arrayFormulas).toEqual([]);
+  expect(reopened.parts.get('xl/metadata.xml')).toEqual(source.parts.get('xl/metadata.xml'));
+});
+it('replaces a verified dynamic owner with a new server-calculated array without retaining old followers or supplied caches', async () => {
+  const source = await dynamicFixture();
+  const { bytes } = await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 2, column: 3, kind: 'number', value: 99999, formula: '=SEQUENCE(2,1,70)' } }]);
+  const book = new ExcelJS.Workbook(); await book.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(book.worksheets[0]!.getCell('D3').result).toBe(70);
+  expect(book.worksheets[0]!.getCell('D4').value).toBe(71);
+  expect(book.worksheets[0]!.getCell('D5').value).toBeNull();
+  const reopened = await readXlsxWorkbook(bytes);
+  expect(reopened.model.sheets[0]!.arrayFormulas?.[0]!.range.endRow).toBe(3);
+  expect(reopened.parts.get('xl/metadata.xml')).toEqual(source.parts.get('xl/metadata.xml'));
+  await expect(calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 2, column: 3, kind: 'number', value: 7777, formula: '=MISSING(A1)' } }])).rejects.toMatchObject({ code: 'WORKBOOK_UNSUPPORTED' });
+});
+it('refuses direct follower mutation while an unchanged verified owner still owns it', async () => {
+  const source = await dynamicFixture(), before = new Map(source.parts);
+  await expect(calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 3, column: 3, kind: 'number', value: 42, style: 1 } }])).rejects.toMatchObject({ code: 'WORKBOOK_UNSUPPORTED' });
+  expect(source.parts).toEqual(before);
+});
+it('keeps a genuine follower input as a blocker when the owner formula changes in the same batch', async () => {
+  const source = await dynamicFixture();
+  const { bytes } = await calculateWorkbookCellEdits(source, [
+    { sheetId: '1', cell: { row: 2, column: 3, kind: 'number', value: 8888, formula: '=SEQUENCE(4)' } },
+    { sheetId: '1', cell: { row: 3, column: 3, kind: 'number', value: 42, style: 1 } },
+  ]);
+  const book = new ExcelJS.Workbook(); await book.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(book.worksheets[0]!.getCell('D3').result).toEqual({ error: '#SPILL!' });
+  expect(book.worksheets[0]!.getCell('D4').value).toBe(42);
+  expect(book.worksheets[0]!.getCell('D5').value).toBeNull();
+  expect(book.worksheets[1]!.getCell('A1').result).toBe(142);
+});
+it('grows beyond the imported used geometry without treating the viewport as an Excel boundary', async () => {
+  const source = await dynamicFixture(); expect(source.model.sheets[0]!.rowCount).toBe(100);
+  const { bytes } = await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 0, column: 0, kind: 'number', value: 200 } }]);
+  const book = new ExcelJS.Workbook(); await book.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(book.worksheets[0]!.getCell('D3').result).toBe(1);
+  expect(book.worksheets[0]!.getCell('D202').value).toBe(200);
+  const reopened = await readXlsxWorkbook(bytes);
+  expect(reopened.model.sheets[0]!.rowCount).toBeGreaterThanOrEqual(202);
+});
+
+it('preserves unsupported spill-reference evidence against a genuinely recalculated owned source array', async () => {
+  const initial = await dynamicFixture(), zip = new JSZip();
+  for (const [name, bytes] of initial.parts) zip.file(name, bytes);
+  const path = 'xl/worksheets/sheet2.xml';
+  zip.file(path, (await zip.file(path)!.async('string')).replace('Inputs!D4+100', 'SUM(Inputs!D3#)'));
+  const source = await readXlsxWorkbook(await zip.generateAsync({ type: 'nodebuffer' }));
+  const { bytes } = await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 0, column: 0, kind: 'number', value: 3 } }]);
+  const book = new ExcelJS.Workbook(); await book.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(book.worksheets[0]!.getCell('D5').value).toBe(3);
+  expect(book.worksheets[1]!.getCell('A1').result).toBe(111);
+});
+it('orders reverse-sheet whole-axis consumers after growth beyond the old used extent', async () => {
+  const initial = await dynamicFixture(), zip = new JSZip();
+  for (const [name, bytes] of initial.parts) zip.file(name, bytes);
+  const workbook = 'xl/workbook.xml', summary = 'xl/worksheets/sheet2.xml';
+  zip.file(workbook, (await zip.file(workbook)!.async('string')).replace(/<sheets>(.*?)<\/sheets>/, (_all, sheets: string) => `<sheets>${sheets.match(/<sheet\b[^>]*\/>/g)!.reverse().join('')}</sheets>`));
+  zip.file(summary, (await zip.file(summary)!.async('string')).replace('Inputs!D4+100', 'SUM(Inputs!202:202)').replace('</row>', '<c r="B1"><f>SUM(Inputs!D:D)</f><v>112</v></c></row>'));
+  const source = await readXlsxWorkbook(await zip.generateAsync({ type: 'nodebuffer' }));
+  expect(source.model.sheets[0]!.name).toBe('Summary');
+  const { bytes } = await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 0, column: 0, kind: 'number', value: 200 } }]);
+  const book = new ExcelJS.Workbook(); await book.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(book.getWorksheet('Inputs')!.getCell('D202').value).toBe(200);
+  expect(book.getWorksheet('Summary')!.getCell('A1').result).toBe(200);
+  expect(book.getWorksheet('Summary')!.getCell('B1').result).toBe(20100);
+});
+it('calculates a one-cell fixed array without inventing dynamic metadata or clearing outside literals', async () => {
+  const initial = await fixture('SUM(A1)'), zip = new JSZip();
+  for (const [name, bytes] of initial.parts) zip.file(name, bytes);
+  const path = 'xl/worksheets/sheet1.xml'; zip.file(path, (await zip.file(path)!.async('string')).replace('ref="D3:D5"', 'ref="D3:D3"'));
+  const source = await readXlsxWorkbook(await zip.generateAsync({ type: 'nodebuffer' }));
+  const { bytes } = await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 0, column: 0, kind: 'number', value: 20 } }]);
+  const book = new ExcelJS.Workbook(); await book.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(book.worksheets[0]!.getCell('D3').result).toBe(20); expect(book.worksheets[0]!.getCell('D4').value).toBe(11);
+  expect((await readXlsxWorkbook(bytes)).parts.has('xl/metadata.xml')).toBe(false);
+});
+it('returns the independently reopened model including inherited row formatting on new followers', async () => {
+  const initial = await dynamicFixture(), zip = new JSZip();
+  for (const [name, bytes] of initial.parts) zip.file(name, bytes);
+  const path = 'xl/worksheets/sheet1.xml';
+  zip.file(path, (await zip.file(path)!.async('string')).replace('</sheetData>', '<row r="6" s="1" customFormat="true"/></sheetData>'));
+  const source = await readXlsxWorkbook(await zip.generateAsync({ type: 'nodebuffer' }));
+  const { bytes, model } = await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 0, column: 0, kind: 'number', value: 5 } }]);
+  const reopened = await readXlsxWorkbook(bytes); expect(model).toEqual(reopened.model);
+  const cell = model.sheets[0]!.cells.find(cell => cell.row === 5 && cell.column === 3)!;
+  expect(cell.value).toBe(4);
+  const row = model.sheets[0]!.rowDimensions.find(row => row.index === 5)!;
+  expect(model.styles[cell.style ?? row.style!]?.font?.italic).toBe(true);
+  const saved = await JSZip.loadAsync(bytes), rowXml = (await saved.file(path)!.async('string')).match(/<row r="6"[^>]*>/)?.[0];
+  expect(rowXml).toContain('customFormat="true"'); expect(rowXml).toContain('s="1"');
+  expect(reopened.parts.get('xl/styles.xml')).toEqual(source.parts.get('xl/styles.xml'));
+});
+
+it('refuses a newly discovered array whose owner disappears in the fresh final calculation', async () => {
+  const book = new ExcelJS.Workbook(); book.addWorksheet('Inputs').getCell('A1').value = 1;
+  const source = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer())), before = new Map(source.parts);
+  const constructor = functionMath.find(entry => entry[1] === 'RANDBETWEEN')![0] as { prototype: BaseFunction }, calculate = constructor.prototype.calculate;
+  let calls = 0;
+  const spy = vi.spyOn(constructor.prototype, 'calculate').mockImplementation(function(this: BaseFunction, ...args) {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(calls++ < 2 ? 0 : 0.9999);
+    try { return calculate.apply(this, args); } finally { random.mockRestore(); }
+  });
+  try {
+    const error = await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 2, column: 3, kind: 'number', value: 99999, formula: '=IF(RANDBETWEEN(0,1)=0,SEQUENCE(2),42)' } }]).then(() => undefined, error => error as Error);
+    expect({ error: error?.message, calls }).toEqual({ error: expect.stringContaining('owner set changed'), calls: 3 });
+    expect(source.parts).toEqual(before);
+  } finally { spy.mockRestore(); }
+});
+
+it('does not mistake a computed #SPILL! string for an error when an empty-string input is not a real engine blocker', async () => {
+  const initial = await dynamicFixture(), zip = new JSZip();
+  for (const [name, bytes] of initial.parts) zip.file(name, bytes);
+  const path = 'xl/worksheets/sheet1.xml';
+  zip.file(path, (await zip.file(path)!.async('string')).replace('SEQUENCE(A1)', 'IF(SEQUENCE(A1)=1,"#SPILL!",99)').replace('</sheetData>', '<row r="6"><c r="D6" t="str"><v></v></c></row></sheetData>'));
+  const source = await readXlsxWorkbook(await zip.generateAsync({ type: 'nodebuffer' })), before = new Map(source.parts), save = vi.spyOn(FWorkbook.prototype, 'save');
+  try {
+    await expect(calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 0, column: 0, kind: 'number', value: 4 } }])).rejects.toMatchObject({ code: 'WORKBOOK_UNSUPPORTED', message: expect.stringContaining('Empty-string') });
+    const types = save.mock.results.filter(result => result.type === 'return').map(result => result.value.sheets['1']?.cellData?.[2]?.[3]).filter(cell => cell?.v === '#SPILL!').map(cell => cell?.t);
+    expect(types).toContain(CellValueType.FORCE_STRING); expect(source.parts).toEqual(before);
+  } finally { save.mockRestore(); }
+});
+
+it('persists an actual #SPILL! string array as text, with followers, rather than inventing an error', async () => {
+  const initial = await dynamicFixture(), zip = new JSZip();
+  for (const [name, bytes] of initial.parts) zip.file(name, bytes);
+  const path = 'xl/worksheets/sheet1.xml';
+  zip.file(path, (await zip.file(path)!.async('string')).replace('SEQUENCE(A1)', 'IF(SEQUENCE(A1)=1,"#SPILL!",99)'));
+  const source = await readXlsxWorkbook(await zip.generateAsync({ type: 'nodebuffer' }));
+  const { bytes } = await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 0, column: 0, kind: 'number', value: 4 } }]);
+  const book = new ExcelJS.Workbook(); await book.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(book.worksheets[0]!.getCell('D3').result).toBe('#SPILL!'); expect(book.worksheets[0]!.getCell('D6').value).toBe(99);
+  expect((await readXlsxWorkbook(bytes)).model.sheets[0]!.cells.find(cell => cell.row === 2 && cell.column === 3)).toMatchObject({ kind: 'string', value: '#SPILL!' });
+});
+it('keeps a new ordinary one-cell reference ordinary instead of inventing array ownership', async () => {
+  const book = new ExcelJS.Workbook(); book.addWorksheet('Inputs').getCell('A1').value = 7;
+  const source = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer()));
+  const { bytes, model } = await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 0, column: 1, kind: 'number', value: 9999, formula: '=A1' } }]);
+  expect(model.sheets[0]!.arrayFormulas).toEqual([]); expect((await readXlsxWorkbook(bytes)).parts.has('xl/metadata.xml')).toBe(false);
+  expect(model.sheets[0]!.cells.find(cell => cell.row === 0 && cell.column === 1)).toMatchObject({ formula: '=A1', kind: 'number', value: 7 });
+});
+it('keeps genuine one-cell array identity so an initially single-cell SEQUENCE can later grow', async () => {
+  const book = new ExcelJS.Workbook(); book.addWorksheet('Inputs').getCell('A1').value = 1;
+  const source = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer()));
+  const first = await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 0, column: 1, kind: 'number', value: 9999, formula: '=SEQUENCE(A1)' } }]);
+  const single = await readXlsxWorkbook(first.bytes);
+  expect(single.model.sheets[0]!.arrayFormulas).toHaveLength(1);
+  const next = await calculateWorkbookCellEdits(single, [{ sheetId: '1', cell: { row: 0, column: 0, kind: 'number', value: 3 } }]);
+  const independent = new ExcelJS.Workbook(); await independent.xlsx.load(Uint8Array.from(next.bytes).buffer);
+  expect(independent.worksheets[0]!.getCell('B3').value).toBe(3);
+  expect((await readXlsxWorkbook(next.bytes)).parts.get('xl/metadata.xml')).toEqual(single.parts.get('xl/metadata.xml'));
+});
+it('creates array follower caches before an opaque row extension even without scalar edits', async () => {
+  const initial = await fixture('SEQUENCE(1,2,A1)'), zip = new JSZip();
+  for (const [name, bytes] of initial.parts) zip.file(name, bytes);
+  const path = 'xl/worksheets/sheet1.xml', extension = '<extLst><ext uri="urn:test:row"><x:opaque xmlns:x="urn:test:opaque" marker="keep"/></ext></extLst>';
+  zip.file(path, (await zip.file(path)!.async('string')).replace('ref="D3:D5"', 'ref="D3:E3"').replace(/(<row r="3"[^>]*>.*?)(<\/row>)/, `$1${extension}$2`));
+  const source = await readXlsxWorkbook(await zip.generateAsync({ type: 'nodebuffer' }));
+  const { bytes } = await calculateWorkbookCellEdits(source, []), saved = await JSZip.loadAsync(bytes);
+  const row = (await saved.file(path)!.async('string')).match(/<row r="3"[^>]*>(.*?)<\/row>/)![1]!;
+  expect(row.indexOf('r="E3"')).toBeLessThan(row.indexOf('<extLst>')); expect(row).toContain(extension);
+  const independent = new ExcelJS.Workbook(); await independent.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(independent.worksheets[0]!.getCell('E3').value).toBe(11);
+});
+it('preserves actual blank array members distinctly from numeric zero and a scalar empty-cell reference', async () => {
+  const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('Inputs'), summary = book.addWorksheet('Summary');
+  sheet.getCell('A1').value = 1; sheet.getCell('A3').value = 3;
+  summary.getCell('A1').value = { formula: 'Inputs!E2+10', result: 100 };
+  const source = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer()));
+  const { bytes, model } = await calculateWorkbookCellEdits(source, [
+    { sheetId: '1', cell: { row: 0, column: 4, kind: 'number', value: 9999, formula: '=A1:A3' } },
+    { sheetId: '1', cell: { row: 0, column: 5, kind: 'number', value: 9999, formula: '=A2' } },
+  ]);
+  const independent = new ExcelJS.Workbook(); await independent.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(independent.worksheets[0]!.getCell('E2').value).toBeNull(); expect(independent.worksheets[0]!.getCell('E3').value).toBe(3);
+  expect(independent.worksheets[0]!.getCell('F1').result).toBe(0); expect(independent.worksheets[1]!.getCell('A1').result).toBe(10);
+  expect(model.sheets[0]!.cells.find(cell => cell.row === 1 && cell.column === 4)).toMatchObject({ kind: 'blank', value: null });
+  expect(model.sheets[0]!.arrayFormulas).toHaveLength(1);
+});
+it('refuses overlapping array candidates without changing source ownership or caches', async () => {
+  const source = await dynamicFixture(), before = new Map(source.parts);
+  await expect(calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 2, column: 2, kind: 'number', value: 99999, formula: '=SEQUENCE(3,2)' } }])).rejects.toMatchObject({ code: 'WORKBOOK_UNSUPPORTED', message: expect.stringContaining('Overlapping') });
+  expect(source.parts).toEqual(before);
+});
+it('bounds the number of new array owners before metadata authoring', async () => {
+  const book = new ExcelJS.Workbook(); book.addWorksheet('Inputs').getCell('A1').value = 1;
+  const source = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer())), before = new Map(source.parts);
+  const edits = Array.from({ length: 4097 }, (_, index) => ({ sheetId: '1', cell: { row: 0, column: index + 1, kind: 'number' as const, value: 99999, formula: '=SEQUENCE(1)' } }));
+  await expect(calculateWorkbookCellEdits(source, edits)).rejects.toMatchObject({ code: 'WORKBOOK_LIMIT' }); expect(source.parts).toEqual(before);
 });

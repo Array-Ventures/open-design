@@ -5,6 +5,7 @@ import { MAIN_NAMESPACES, address, child, children, relationships, xmlPart } fro
 import { writeWorkbookXml } from './xml.js';
 import { formulaCellKey } from './formula-cache-policy.js';
 
+const METADATA_RELATIONSHIPS = new Set(['http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata', 'http://purl.oclc.org/ooxml/officeDocument/relationships/sheetMetadata']);
 const DYNAMIC_NS = 'http://schemas.microsoft.com/office/spreadsheetml/2017/dynamicarray';
 const DYNAMIC_EXT = '{BDBB8CDC-FA1E-496E-A857-3C3F30C029C3}';
 const fail = () => new WorkbookFormatError('Dynamic array metadata is not supported or is ambiguous. Source metadata is preserved.', 'WORKBOOK_UNSUPPORTED');
@@ -38,7 +39,7 @@ function dynamicRecord(future: Element): void {
  * t=array identify a dynamic owner. Unsupported metadata is never normalized. */
 export function verifiedDynamicArrayOwners(source: ReadWorkbook): Set<string> {
   const result = new Set<string>();
-  const metadata = [...relationships(source.parts, 'xl/workbook.xml').values()].filter(rel => rel.type.endsWith('/sheetMetadata'));
+  const metadata = [...relationships(source.parts, 'xl/workbook.xml').values()].filter(rel => METADATA_RELATIONSHIPS.has(rel.type));
   let root: Element | undefined;
   if (metadata.length) {
     if (metadata.length !== 1 || metadata[0]!.external) throw fail();
@@ -81,7 +82,7 @@ export function verifiedDynamicArrayOwners(source: ReadWorkbook): Set<string> {
  * to be preserved and its new-owner save is refused. */
 export function ensureDynamicArrayMetadata(source: ReadWorkbook, output: Map<string, Buffer>): number {
   verifiedDynamicArrayOwners(source);
-  const found = [...relationships(source.parts, 'xl/workbook.xml').values()].filter(rel => rel.type.endsWith('/sheetMetadata'));
+  const found = [...relationships(source.parts, 'xl/workbook.xml').values()].filter(rel => METADATA_RELATIONSHIPS.has(rel.type));
   if (found.length) {
     const root = xmlPart(source.parts, found[0]!.target).documentElement!;
     const types = exactChildren(only(root, 'metadataTypes'), 'metadataType'), records = exactChildren(only(root, 'cellMetadata'), 'bk'), futures = children(root, 'futureMetadata');

@@ -1,6 +1,6 @@
 import { RANGE_TYPE, RTree } from '@univerjs/core';
 import { deserializeRangeWithSheet, sequenceNodeType } from '@univerjs/engine-formula';
-import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import type { WorkbookDocument, WorkbookRange } from '@open-design/contracts/runtime/workbook';
 import { WorkbookFormatError } from './package.js';
 import { formulaCellKey, type FormulaDependencyNode } from './formula-cache-policy.js';
 
@@ -9,10 +9,10 @@ import { formulaCellKey, type FormulaDependencyNode } from './formula-cache-poli
  * Names/tables in array workbooks are refused at admission until their expanded
  * reference ownership is available; no formula parser is invented here. */
 export function withArrayFollowerDependencies(model: WorkbookDocument, trees: readonly FormulaDependencyNode[], unitId: string,
-  nodes: (formula: string) => readonly (string | { nodeType: number; token: string })[] | undefined): FormulaDependencyNode[] {
+  nodes: (formula: string) => readonly (string | { nodeType: number; token: string })[] | undefined, executionRanges: ReadonlyMap<string, WorkbookRange> = new Map()): FormulaDependencyNode[] {
   const result = trees.map(tree => ({ ...tree, parents: [...tree.parents] }));
   const byCell = new Map(result.filter(tree => tree.unitId === unitId).map(tree => [formulaCellKey(tree.subUnitId, tree.row, tree.column), tree]));
-  const owners = model.sheets.flatMap(sheet => (sheet.arrayFormulas ?? []).map(owner => ({ ...owner, sheetId: sheet.id })));
+  const owners = model.sheets.flatMap(sheet => (sheet.arrayFormulas ?? []).map(owner => ({ ...owner, sheetId: sheet.id, range: executionRanges.get(formulaCellKey(sheet.id, owner.row, owner.column)) ?? owner.range })));
   if (!owners.length) return result;
   const sheets = new Map(model.sheets.map(sheet => [sheet.name.toLowerCase(), sheet.id]));
   const index = new RTree();
@@ -33,10 +33,9 @@ export function withArrayFollowerDependencies(model: WorkbookDocument, trees: re
         if (ref.unitId) throw new WorkbookFormatError('External array references are unsupported.', 'WORKBOOK_UNSUPPORTED');
         const sheetId = ref.sheetName ? sheets.get(ref.sheetName.toLowerCase()) : sheet.id;
         if (!sheetId) throw new WorkbookFormatError('Array reference sheet is unavailable.', 'WORKBOOK_UNSUPPORTED');
-        const target = model.sheets.find(sheet => sheet.id === sheetId)!;
         const bounds = { ...ref.range };
-        if (bounds.rangeType === RANGE_TYPE.ROW || bounds.rangeType === RANGE_TYPE.ALL) { bounds.startColumn = 0; bounds.endColumn = target.columnCount - 1; }
-        if (bounds.rangeType === RANGE_TYPE.COLUMN || bounds.rangeType === RANGE_TYPE.ALL) { bounds.startRow = 0; bounds.endRow = target.rowCount - 1; }
+        if (bounds.rangeType === RANGE_TYPE.ROW || bounds.rangeType === RANGE_TYPE.ALL) { bounds.startColumn = 0; bounds.endColumn = 16_383; }
+        if (bounds.rangeType === RANGE_TYPE.COLUMN || bounds.rangeType === RANGE_TYPE.ALL) { bounds.startRow = 0; bounds.endRow = 1_048_575; }
         if (![bounds.startRow, bounds.endRow, bounds.startColumn, bounds.endColumn].every(value => Number.isSafeInteger(value) && value >= 0) || bounds.startRow > bounds.endRow || bounds.startColumn > bounds.endColumn || bounds.endRow >= 1_048_576 || bounds.endColumn >= 16_384) throw new WorkbookFormatError('Array reference bounds are unavailable.', 'WORKBOOK_UNSUPPORTED');
         for (const id of index.searchGenerator({ unitId, sheetId, range: bounds })) {
           if (++work > 1_000_000) throw new WorkbookFormatError('Array dependent analysis exceeds its work limit.', 'WORKBOOK_LIMIT');

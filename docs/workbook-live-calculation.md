@@ -393,22 +393,40 @@ qualify a source owner for growth/shrinkage. Unknown metadata, value metadata,
 ambiguous records, unsupported properties and invalid indices are refused;
 existing metadata bytes are preserved exactly.
 
+The disposable backend registers Excel's physical row/column limits. The model's
+used/display extent is not a semantic worksheet boundary: `SEQUENCE(200)` can
+grow beyond an imported 100-row viewport. Only actual output cells extend the
+returned/persisted model. Whole-axis references normalize to full Excel bounds
+in the spatial policy; final scheduling and retention also use the admitted
+server rectangles. Full-sheet reductions can still reach the surrounding
+worker's time/memory limit and fail without persisting.
+
 A discovery calculation derives geometry only. A second fresh calculation starts
 from the original patched inputs, clears only original source-owned followers,
 and schedules consumers using admitted server geometry. Discovery caches never
 become final input values or persisted results. Final geometry must equal the
-admitted rectangles; unstable geometry is refused. Both passes enforce the
+admitted rectangles, including the exact owner-key set; a disappearing or new
+owner and unstable geometry are refused. Both passes enforce the
 existing formula/name work budgets, five-second engine result deadline,
-100,000 aggregate array-result cells and one-million-token/intersection array
+100,000 aggregate array-result cells, the 4,096-owner admission limit for new
+owner authoring, and one-million-token/intersection array
 reference budget. The surrounding bounded worker remains required. No third
 calculation or convergence retry is attempted.
 
-A collision is persisted as a typed `#SPILL!` only when an actual outside input
-blocks the candidate rectangle and the pinned engine's final anchor reports the
-spill error. Candidate matrices/ranges can still be emitted on collision, so
+A collision is persisted as a typed `#SPILL!` only when an actual nonempty
+outside input blocks the rectangle and the final anchor has both the error text
+and this pin's error type (`STRING`; error-looking strings use `FORCE_STRING`).
+Ambiguous empty-string literal inputs and overlapping candidate arrays refuse
+saving. Candidate matrices/ranges can still be emitted on collision, so
 neither alone authorizes overwriting followers. Retired source followers lose
 cache values while keeping cell styles and other XML. Merged-cell collisions
 remain refused.
+
+The capture function requests actual public reference objects and returns them
+unchanged. A normal one-cell `=A1` remains ordinary; genuine one-cell array
+objects can retain dynamic identity and grow later. Verified dynamic singleton
+ranges are not seeded as fixed CSE into the pin's legacy-singleton engine path.
+Actual blank members, numeric zero and error-looking strings remain distinct.
 
 New or changed ordinary formulas that genuinely return arrays can author a
 dynamic owner: `f t="array" ref=...`, `cm`, the XLDAPR metadata part, workbook
@@ -418,8 +436,17 @@ metadata can recalculate its owners but refuses new-owner authoring unless the
 single-record layout is qualified. Unchanged ordinary source formulas are never
 silently promoted to dynamic ownership.
 
-Data tables, names/tables in an array workbook, fixed-source shape changes and
-owner/follower structural edits remain refused in this stage. The existing Grid
+Verified dynamic anchors can be replaced or removed. The internal transaction
+retires only ownership whose anchor formula actually changes, clears only that
+source rectangle's cache values, and then applies the explicit edit batch. A
+genuine new follower input such as 42 survives; it can block a replacement spill.
+Unused XLDAPR records remain intact for exact source preservation and reuse.
+Unchanged dynamic and all fixed-source followers remain protected.
+
+Data tables, names/tables in an array workbook, merged collisions, empty-string literal collision ambiguity, overlapping
+candidates and fixed-source shape/owner edits remain refused. The pinned `#` spill-reference
+operator preserves unchanged source caches and refuses new/changed formulas;
+explicit follower coordinates can calculate. The existing Grid
 source-array gate remains in place; backend persistence does not enable it.
 The known XLDAPR identity follows the [Microsoft metadata extension
 specification](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-xlsx/3dd44d53-847b-402f-a8c7-41a85024caf7)

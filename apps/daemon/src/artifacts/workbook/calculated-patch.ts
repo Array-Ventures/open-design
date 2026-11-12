@@ -6,9 +6,10 @@ import { patchWorkbookStyles } from './style-patch.js';
 import { patchWorkbookDimensions } from './dimension-patch.js';
 import { readXlsxWorkbook, type ReadWorkbook } from './reader.js';
 import { WorkbookFormatError, writeWorkbookPackage } from './package.js';
+import { prepareDynamicArrayOwnerEdits } from './array-structural-patch.js';
 import { verifiedDynamicArrayOwners, ensureDynamicArrayMetadata } from './dynamic-array-metadata.js';
 import { formulaCellKey } from './formula-cache-policy.js';
-import { address, child, children, xmlPart } from './parts.js';
+import { address, appendWorkbookRowCell, orderWorkbookRowCells, child, children, xmlPart } from './parts.js';
 import { writeWorkbookXml } from './xml.js';
 
 function assertCalculationSupported(source: ReadWorkbook): void {
@@ -55,14 +56,15 @@ async function writeCalculatedCaches(source: ReadWorkbook, model: WorkbookDocume
     const part = source.sheetParts.get(sheet.id)!, document = xmlPart(output, part), data = child(document.documentElement!, 'sheetData');
     if (!data) throw new WorkbookFormatError('Worksheet data is missing.');
     const rows = new Map(children(data, 'row').map(row => [Number(row.getAttribute('r')) - 1, row]));
+    const boundaries = new Map([...rows.values()].map(row => [row, child(row, 'extLst') ?? null]));
     const existing = new Set([...rows.values()].flatMap(row => children(row, 'c').map(cell => { const position = address(cell.getAttribute('r')!); return `${position.row}:${position.column}`; })));
     let addedCells = false;
     for (const [key, calculated] of formulas) if (!existing.has(key)) {
       addedCells = true;
       if (calculated.formula) throw new WorkbookFormatError('Calculated owner is missing from its package.');
       let row = rows.get(calculated.row);
-      if (!row) { row = document.createElementNS(data.namespaceURI, data.prefix ? `${data.prefix}:row` : 'row'); row.setAttribute('r', String(calculated.row + 1)); data.appendChild(row); rows.set(calculated.row, row); }
-      const cell = document.createElementNS(data.namespaceURI, data.prefix ? `${data.prefix}:c` : 'c'); cell.setAttribute('r', cellAddress(calculated.row, calculated.column)); row.appendChild(cell); row.removeAttribute('spans');
+      if (!row) { row = document.createElementNS(data.namespaceURI, data.prefix ? `${data.prefix}:row` : 'row'); row.setAttribute('r', String(calculated.row + 1)); data.appendChild(row); rows.set(calculated.row, row); boundaries.set(row, null); }
+      const cell = document.createElementNS(data.namespaceURI, data.prefix ? `${data.prefix}:c` : 'c'); cell.setAttribute('r', cellAddress(calculated.row, calculated.column)); appendWorkbookRowCell(row, cell, boundaries.get(row) ?? null); row.removeAttribute('spans');
     }
     for (const row of children(data, 'row')) for (const cell of children(row, 'c')) {
       const position = address(cell.getAttribute('r')!), calculated = formulas.get(`${position.row}:${position.column}`);
@@ -82,7 +84,7 @@ async function writeCalculatedCaches(source: ReadWorkbook, model: WorkbookDocume
     }
     if (formulas.size) throw new WorkbookFormatError('Calculated formula cells are missing from the package.');
     for (const row of children(data, 'row')) {
-      for (const cell of children(row, 'c').sort((a, b) => address(a.getAttribute('r')!).column - address(b.getAttribute('r')!).column)) row.appendChild(cell);
+      orderWorkbookRowCells(row);
     }
     for (const row of children(data, 'row').sort((a, b) => Number(a.getAttribute('r')) - Number(b.getAttribute('r')))) data.appendChild(row);
     if (addedCells) { const dimension = child(document.documentElement!, 'dimension'); if (dimension) dimension.parentNode!.removeChild(dimension); }
@@ -109,17 +111,22 @@ export async function calculateWorkbookCellEdits(source: ReadWorkbook, edits: re
   }
   assertCalculationSupported(source);
   const dynamicOwners = verifiedDynamicArrayOwners(source);
-  const patched = await readXlsxWorkbook(await patchWorkbookCells(source, edits, { retainFormulaCaches: true }));
+  const prepared = await prepareDynamicArrayOwnerEdits(source, edits, dynamicOwners);
+  const patched = await readXlsxWorkbook(await patchWorkbookCells(prepared, edits, { retainFormulaCaches: true }));
   let calculated = await calculateWorkbookResults(patched.model, source.model, dynamicOwners, new Map(), true);
   if (dynamicOwners.size || calculated.model.sheets.some(sheet => (sheet.arrayFormulas?.length ?? 0) !== (patched.model.sheets.find(previous => previous.id === sheet.id)!.arrayFormulas?.length ?? 0))) {
     const admitted = new Map(calculated.model.sheets.flatMap(sheet => (sheet.arrayFormulas ?? []).map(owner => [formulaCellKey(sheet.id, owner.row, owner.column), owner.range] as const)));
     const final = await calculateWorkbookResults(patched.model, source.model, dynamicOwners, admitted, true);
+    let observed = 0;
     for (const sheet of final.model.sheets) for (const owner of sheet.arrayFormulas ?? []) {
+      observed++;
       const bounds = admitted.get(formulaCellKey(sheet.id, owner.row, owner.column));
       if (!bounds || bounds.startRow !== owner.range.startRow || bounds.endRow !== owner.range.endRow || bounds.startColumn !== owner.range.startColumn || bounds.endColumn !== owner.range.endColumn) throw new WorkbookFormatError('Dynamic array geometry changed during calculation. Your file has not changed.', 'WORKBOOK_UNSUPPORTED');
     }
+    if (observed !== admitted.size) throw new WorkbookFormatError('Dynamic array owner set changed during calculation. Your file has not changed.', 'WORKBOOK_UNSUPPORTED');
     calculated = final;
   }
   const { model, retained } = calculated;
-  return { bytes: await writeCalculatedCaches(patched, model, retained), model };
+  const bytes = await writeCalculatedCaches(patched, model, retained);
+  return { bytes, model: (await readXlsxWorkbook(bytes)).model };
 }
