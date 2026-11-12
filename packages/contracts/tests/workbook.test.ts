@@ -17,6 +17,27 @@ function fixture(): WorkbookDocument {
   };
 }
 describe('workbook model boundary', () => {
+  it('keeps workbook and sheet name scopes distinct and validates table geometry', () => {
+    const input = fixture();
+    input.definedNames = [{ name: 'Rate', formula: '3' }, { name: 'Rate', formula: '2', sheetId: 'summary' }];
+    input.tables = [{ name: 'Sales', sheetId: 'inputs', range: { startRow: 3, endRow: 6, startColumn: 2, endColumn: 3 }, columns: ['Amount', 'Flag'], header: true, totals: true }];
+    expect(workbookDocumentSchema.parse(input)).toEqual(input);
+    input.definedNames.push({ name: 'RATE', formula: '4', sheetId: 'summary' });
+    expect(workbookDocumentSchema.safeParse(input).success).toBe(false);
+    input.definedNames.pop(); input.tables[0]!.columns.push('Extra');
+    expect(workbookDocumentSchema.safeParse(input).success).toBe(false);
+  });
+  it.each(['name-scope', 'table-scope', 'duplicate-table', 'duplicate-column', 'outside-table'])('rejects malformed %s metadata', variant => {
+    const input = fixture();
+    input.definedNames = [{ name: 'Rate', formula: '2' }];
+    input.tables = [{ name: 'Sales', sheetId: 'inputs', range: { startRow: 3, endRow: 6, startColumn: 2, endColumn: 3 }, columns: ['Amount', 'Flag'], header: true, totals: true }];
+    if (variant === 'name-scope') input.definedNames[0]!.sheetId = 'absent';
+    if (variant === 'table-scope') input.tables[0]!.sheetId = 'absent';
+    if (variant === 'duplicate-table') input.tables.push({ ...input.tables[0]!, name: 'SALES' });
+    if (variant === 'duplicate-column') input.tables[0]!.columns = ['Amount', 'AMOUNT'];
+    if (variant === 'outside-table') input.tables[0]!.range.endRow = 100;
+    expect(workbookDocumentSchema.safeParse(input).success).toBe(false);
+  });
   it('retains theme colors, inherited dimension styles and gradient geometry', () => {
     const input = fixture();
     input.themeColors = Array.from({ length: 12 }, () => 'FF123456');

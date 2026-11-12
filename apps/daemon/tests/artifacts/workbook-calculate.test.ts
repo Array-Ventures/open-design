@@ -4,7 +4,6 @@ import { readXlsxWorkbook } from '../../src/artifacts/workbook/reader.js';
 import { calculateWorkbook } from '../../src/artifacts/workbook/calculate.js';
 import { calculateWorkbookCellEdits } from '../../src/artifacts/workbook/calculated-patch.js';
 import { readWorkbookPackage } from '../../src/artifacts/workbook/package.js';
-import { parseWorkbookXml, writeWorkbookXml } from '../../src/artifacts/workbook/xml.js';
 
 async function fixture(date1904 = false) {
   const book = new ExcelJS.Workbook(); book.properties.date1904 = date1904;
@@ -19,18 +18,11 @@ async function fixture(date1904 = false) {
   return (await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer()))).model;
 }
 describe('headless workbook calculation', () => {
-  it.each(['table', 'name', 'external'])('refuses incomplete %s metadata adapters before preparing an export', async variant => {
+  it('refuses external references before preparing an export', async () => {
     const book = new ExcelJS.Workbook(); book.addWorksheet('Inputs').getCell('A1').value = 1;
-    const source = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer())), parts = new Map(source.parts);
-    if (variant === 'table') parts.set('xl/tables/table1.xml', Buffer.from('<table/>'));
-    if (variant === 'external') source.model.features.externalLinks = 1;
-    if (variant === 'name') {
-      const main = parseWorkbookXml(parts.get('xl/workbook.xml')!), root = main.documentElement!;
-      const names = main.createElementNS(root.namespaceURI, 'definedNames'), name = main.createElementNS(root.namespaceURI, 'definedName');
-      name.setAttribute('name', 'Input'); name.appendChild(main.createTextNode('Inputs!$A$1')); names.appendChild(name); root.appendChild(names);
-      parts.set('xl/workbook.xml', writeWorkbookXml(main));
-    }
-    await expect(calculateWorkbookCellEdits({ ...source, parts }, [{ sheetId: '1', cell: { row: 0, column: 0, kind: 'number', value: 2 } }])).rejects.toMatchObject({ code: 'WORKBOOK_UNSUPPORTED' });
+    const source = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer()));
+    source.model.features.externalLinks = 1;
+    await expect(calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 0, column: 0, kind: 'number', value: 2 } }])).rejects.toMatchObject({ code: 'WORKBOOK_UNSUPPORTED' });
     expect(source.model.sheets[0]!.cells[0]!.value).toBe(1);
   });
   it('rejects unmodeled spill results after calculation without emitting partial cached data', async () => {

@@ -60,11 +60,17 @@ export const workbookSheetSchema = z.object({
   frozenRows: z.number().int().min(0).max(WORKBOOK_MODEL_LIMITS.rows), frozenColumns: z.number().int().min(0).max(WORKBOOK_MODEL_LIMITS.columns),
 }).strict();
 export type WorkbookSheet = z.infer<typeof workbookSheetSchema>;
+const formulaName = z.string().min(1).max(255).refine(name => !/[\u0000-\u0020\u007f]/.test(name), 'Invalid formula name.');
+export const workbookDefinedNameSchema = z.object({ name: formulaName, formula: z.string().min(1).max(8192), sheetId: id.optional(), hidden: z.boolean().optional() }).strict();
+export const workbookTableSchema = z.object({ name: formulaName, sheetId: id, range: workbookRangeSchema, columns: z.array(z.string().min(1).max(255)).min(1).max(WORKBOOK_MODEL_LIMITS.columns), header: z.boolean(), totals: z.boolean() }).strict();
+export type WorkbookDefinedName = z.infer<typeof workbookDefinedNameSchema>;
+export type WorkbookTable = z.infer<typeof workbookTableSchema>;
 export const workbookDocumentSchema = z.object({
   version: z.literal(1), date1904: z.boolean(), activeSheetId: id,
   themeColors: z.array(z.string().regex(/^[A-Fa-f0-9]{8}$/)).length(12).optional(),
   styles: z.array(workbookStyleSchema).min(1).max(WORKBOOK_MODEL_LIMITS.styles),
   sheets: z.array(workbookSheetSchema).min(1).max(WORKBOOK_MODEL_LIMITS.sheets),
+  definedNames: z.array(workbookDefinedNameSchema).max(4096).optional(), tables: z.array(workbookTableSchema).max(1024).optional(),
   features: z.object({ charts: z.number().int().min(0).max(4096), drawings: z.number().int().min(0).max(4096), externalLinks: z.number().int().min(0).max(4096), macros: z.boolean(), signed: z.boolean() }).strict(),
 }).strict().superRefine((workbook, context) => {
   const ids = new Set<string>(), names = new Set<string>();
@@ -100,6 +106,20 @@ export const workbookDocumentSchema = z.object({
       const seen = new Set<number>();
       for (const dimension of dimensions) { if (seen.has(dimension.index) || dimension.index >= extent || dimension.style !== undefined && dimension.style >= workbook.styles.length) invalid('Invalid row or column dimensions.'); seen.add(dimension.index); }
     }
+  }
+  const defined = new Set<string>(), tables = new Set<string>();
+  for (const name of workbook.definedNames ?? []) {
+    const key = `${name.sheetId ?? ''}:${name.name.toLowerCase()}`;
+    if (defined.has(key) || name.sheetId !== undefined && !ids.has(name.sheetId)) invalid('Invalid or duplicate defined name scope.');
+    defined.add(key); text += name.name.length + name.formula.length;
+  }
+  for (const table of workbook.tables ?? []) {
+    const sheet = workbook.sheets.find(sheet => sheet.id === table.sheetId), key = table.name.toLowerCase();
+    if (tables.has(key) || !sheet || table.range.endRow >= sheet.rowCount || table.range.endColumn >= sheet.columnCount
+      || table.columns.length !== table.range.endColumn - table.range.startColumn + 1
+      || table.range.endRow - table.range.startRow + 1 < Number(table.header) + Number(table.totals)
+      || new Set(table.columns.map(column => column.toLowerCase())).size !== table.columns.length) invalid('Invalid workbook table.');
+    tables.add(key); text += table.name.length + table.columns.reduce((length, column) => length + column.length, 0);
   }
   if (count > WORKBOOK_MODEL_LIMITS.cells || text > WORKBOOK_MODEL_LIMITS.text) invalid('Workbook content exceeds its limit.');
   if (!workbook.sheets.some(sheet => sheet.id === workbook.activeSheetId && sheet.visibility === 'visible')) invalid('Active sheet must be visible.');

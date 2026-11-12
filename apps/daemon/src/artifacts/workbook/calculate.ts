@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { BooleanNumber, CellValueType, DateSystem, LocaleType, Univer, type ICellData, type IObjectMatrixPrimitiveType, type IWorkbookData } from '@univerjs/core';
 import { FUniver } from '@univerjs/core/facade';
-import { BaseFunction, UniverFormulaEnginePlugin, type ArrayValueObject, type BaseValueObject } from '@univerjs/engine-formula';
+import { BaseFunction, SetDefinedNameMutation, SetSuperTableMutation, UniverFormulaEnginePlugin, type ArrayValueObject, type BaseValueObject } from '@univerjs/engine-formula';
 import { UniverSheetsPlugin } from '@univerjs/sheets';
 import { UniverSheetsFormulaPlugin } from '@univerjs/sheets-formula';
 import SheetsEnUS from '@univerjs/sheets/locale/en-US';
@@ -10,9 +10,10 @@ import '@univerjs/sheets/facade';
 import '@univerjs/sheets-formula/facade';
 import { workbookCellSchema, workbookDocumentSchema, type WorkbookCell, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookFormatError } from './package.js';
+import { calculationFormula } from './formula-input.js';
 
-function engineCell(cell: WorkbookCell, capture: string): ICellData {
-  if (cell.formula) return { f: `=${capture}(${cell.formula.slice(1)})` };
+function engineCell(cell: WorkbookCell, capture: string, normalized?: string): ICellData {
+  if (cell.formula) return { f: `=${capture}(${normalized ?? cell.formula.slice(1)})` };
   switch (cell.kind) {
     case 'blank': return {};
     case 'string': return { v: cell.value, t: CellValueType.FORCE_STRING };
@@ -23,6 +24,17 @@ function engineCell(cell: WorkbookCell, capture: string): ICellData {
   }
 }
 interface TypedResult { kind: 'number' | 'boolean' | 'string' | 'error'; value: number | boolean | string }
+// Excel column references are case-insensitive. Univer accepts a local Map but
+// otherwise only tries exact title lookups; preserve original titles/iteration
+// while making its lookup obey workbook semantics.
+class TableColumnMap extends Map<string, number> {
+  private readonly folded: Map<string, number>;
+  constructor(columns: readonly string[]) {
+    super(columns.map((column, index) => [column, index]));
+    this.folded = new Map(columns.map((column, index) => [column.toLowerCase(), index]));
+  }
+  override get(key: string): number | undefined { return super.get(key) ?? this.folded.get(key.toLowerCase()); }
+}
 function resultCell(original: WorkbookCell, result: TypedResult | undefined): WorkbookCell {
   const base = { row: original.row, column: original.column, ...(original.style === undefined ? {} : { style: original.style }), formula: original.formula! };
   if (!result) throw new WorkbookFormatError('Formula calculation did not produce a typed result.', 'WORKBOOK_UNSUPPORTED');
@@ -60,7 +72,7 @@ export async function calculateWorkbook(input: WorkbookDocument): Promise<Workbo
   const sheets: IWorkbookData['sheets'] = {};
   for (const sheet of model.sheets) {
     const cellData: IObjectMatrixPrimitiveType<ICellData> = {};
-    for (const cell of sheet.cells) (cellData[cell.row] ??= {})[cell.column] = { ...engineCell(cell, capture), ...(cell.style === undefined ? {} : { s: String(cell.style) }) };
+    for (const cell of sheet.cells) (cellData[cell.row] ??= {})[cell.column] = { ...engineCell(cell, capture, cell.formula ? calculationFormula(cell.formula, sheet.id, cell, model.tables ?? []) : undefined), ...(cell.style === undefined ? {} : { s: String(cell.style) }) };
     sheets[sheet.id] = { id: sheet.id, name: sheet.name, rowCount: sheet.rowCount, columnCount: sheet.columnCount, cellData,
       rowData: Object.fromEntries(sheet.rowDimensions.map(row => [row.index, { hd: row.hidden ? BooleanNumber.TRUE : BooleanNumber.FALSE, ...(row.style === undefined ? {} : { s: String(row.style) }) }])),
       columnData: Object.fromEntries(sheet.columnDimensions.map(column => [column.index, { hd: column.hidden ? BooleanNumber.TRUE : BooleanNumber.FALSE, ...(column.style === undefined ? {} : { s: String(column.style) }) }])),
@@ -76,6 +88,11 @@ export async function calculateWorkbook(input: WorkbookDocument): Promise<Workbo
       sheetOrder: model.sheets.map(sheet => sheet.id), sheets,
       styles: Object.fromEntries(model.styles.map((style, index) => [String(index), style.numberFormat ? { n: { pattern: style.numberFormat } } : {}])),
     });
+    const unitId = 'evebot-workbook-calculation';
+    for (const table of model.tables ?? []) api.syncExecuteCommand(SetSuperTableMutation.id, { unitId, tableName: table.name,
+      reference: { sheetId: table.sheetId, range: table.range, titleMap: new TableColumnMap(table.columns), showHeader: table.header, showFooter: table.totals } }, { local: true });
+    for (const [index, name] of (model.definedNames ?? []).entries()) api.syncExecuteCommand(SetDefinedNameMutation.id, { unitId, id: `name-${index}`, name: name.name, formulaOrRefString: name.formula,
+      ...(name.sheetId === undefined ? {} : { localSheetId: name.sheetId }), ...(name.hidden === undefined ? {} : { hidden: name.hidden }) }, { local: true });
     const formula = api.getFormula();
     formula.executeCalculation();
     await formula.onCalculationResultApplied(5000);

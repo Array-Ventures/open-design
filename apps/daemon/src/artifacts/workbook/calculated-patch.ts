@@ -8,12 +8,9 @@ import { address, child, children, xmlPart } from './parts.js';
 import { writeWorkbookXml } from './xml.js';
 
 function assertCalculationSupported(source: ReadWorkbook): void {
-  if (source.model.features.externalLinks || [...source.parts.keys()].some(name => /\/tables\/[^/]+\.xml$/i.test(name))) {
-    throw new WorkbookFormatError('External references and table calculation need their workbook adapters.', 'WORKBOOK_UNSUPPORTED');
+  if (source.model.features.externalLinks) {
+    throw new WorkbookFormatError('External reference calculation needs its workbook adapter.', 'WORKBOOK_UNSUPPORTED');
   }
-  const main = xmlPart(source.parts, 'xl/workbook.xml').documentElement!;
-  const names = child(main, 'definedNames');
-  if (names && children(names, 'definedName').length) throw new WorkbookFormatError('Named formula calculation needs its workbook adapter.', 'WORKBOOK_UNSUPPORTED');
   for (const part of source.sheetParts.values()) {
     const root = xmlPart(source.parts, part).documentElement!, data = child(root, 'sheetData');
     for (const row of data ? children(data, 'row') : []) for (const cell of children(row, 'c')) {
