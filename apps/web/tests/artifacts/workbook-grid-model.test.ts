@@ -33,9 +33,12 @@ it('retains styles, merged ranges, hidden sheets, dimensions and freezes', () =>
 });
 it('keeps rich text runs and styled blanks instead of flattening them into strings', () => {
   const input = fixture(); input.sheets[0]!.cells.push({ row: 4, column: 0, kind: 'blank', value: null, style: 0 }, { row: 5, column: 0, kind: 'string', value: 'One two', runs: [{ text: 'One ', font: { bold: true } }, { text: 'two', font: { italic: true } }] });
-  const cells = gridWorkbook(input, 'owned-grid', 'Revenue').data.sheets!.inputs!.cellData!;
+  input.sheets[1]!.cells = [structuredClone(input.sheets[0]!.cells.at(-1)!)];
+  const sheets = gridWorkbook(input, 'owned-grid', 'Revenue').data.sheets!;
+  const cells = sheets.inputs!.cellData!;
   expect(cells[4]![0]).toEqual({ s: '0' });
   expect(cells[5]![0]?.p?.body).toMatchObject({ dataStream: 'One two\r\n', textRuns: [{ st: 0, ed: 4, ts: { bl: BooleanNumber.TRUE } }, { st: 4, ed: 7, ts: { it: BooleanNumber.TRUE } }] });
+  expect(cells[5]![0]?.p?.id).not.toBe(sheets.hidden!.cellData![5]![0]?.p?.id);
 });
 it('resolves workbook theme colors as content independently of the app theme', () => {
   const input = fixture(); input.themeColors = Array.from({ length: 12 }, () => 'FFABCDEF'); input.styles[0]!.font!.color = { kind: 'theme', index: 4 };

@@ -58,14 +58,14 @@ function style(input: WorkbookStyle, model: WorkbookDocument, gaps: Set<Workbook
   }
   return value;
 }
-function cellValue(cell: WorkbookCell, model: WorkbookDocument, gaps: Set<WorkbookDisplayGap>): ICellData {
+function cellValue(cell: WorkbookCell, model: WorkbookDocument, gaps: Set<WorkbookDisplayGap>, scope: string): ICellData {
   const value: ICellData = { ...(cell.style === undefined ? {} : { s: String(cell.style) }), ...(cell.formula === undefined ? {} : { f: cell.formula }) };
   if (cell.kind === 'blank') return value;
   value.v = cell.kind === 'boolean' ? Number(cell.value) : cell.value;
   value.t = cell.kind === 'number' ? CellValueType.NUMBER : cell.kind === 'boolean' ? CellValueType.BOOLEAN : CellValueType.FORCE_STRING;
   if (cell.kind === 'string' && cell.runs) {
     let offset = 0;
-    value.p = { id: `cell-${cell.row}-${cell.column}`, documentStyle: {}, body: { dataStream: `${cell.value}\r\n`, paragraphs: [{ startIndex: cell.value.length, paragraphId: 'p0' }],
+    value.p = { id: `${scope}:${cell.row}:${cell.column}`, documentStyle: {}, body: { dataStream: `${cell.value}\r\n`, paragraphs: [{ startIndex: cell.value.length, paragraphId: 'p0' }],
       textRuns: cell.runs.map(run => { const st = offset; offset += run.text.length; return { st, ed: offset, ts: font(run.font, model, gaps) }; }) } };
   }
   return value;
@@ -79,7 +79,7 @@ export function gridWorkbook(input: WorkbookDocument, id: string, title: string)
     sheetOrder: model.sheets.map(sheet => sheet.id), styles: Object.fromEntries(model.styles.map((input, index) => [String(index), style(input, model, gaps)])), sheets: {} };
   for (const sheet of model.sheets) {
     const cellData: IObjectMatrixPrimitiveType<ICellData> = {};
-    for (const cell of sheet.cells) (cellData[cell.row] ??= {})[cell.column] = cellValue(cell, model, gaps);
+    for (const cell of sheet.cells) (cellData[cell.row] ??= {})[cell.column] = cellValue(cell, model, gaps, `${id}:${sheet.id}`);
     data.sheets![sheet.id] = { id: sheet.id, name: sheet.name, rowCount: sheet.rowCount, columnCount: sheet.columnCount, cellData,
       hidden: sheet.visibility === 'visible' ? WorksheetHiddenState.VISIBLE : sheet.visibility === 'hidden' ? WorksheetHiddenState.HIDDEN : WorksheetHiddenState.VERY_HIDDEN,
       mergeData: sheet.merges.map(range => ({ ...range })),
