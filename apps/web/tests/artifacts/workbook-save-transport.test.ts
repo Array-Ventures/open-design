@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
+import { WorkbookSaveTerminalError } from '../../src/components/embedded/workbook/save-terminal';
 import { WorkbookHostError, workbookHostRequest } from '../../src/components/embedded/workbook/host-request';
 import { prepareWorkbookJob, WorkbookPreparationGoneError } from '../../src/components/embedded/workbook/preview-transport';
 import { newWorkbookSaveAttempt, saveWorkbook } from '../../src/components/embedded/workbook/save-transport';
@@ -149,4 +150,27 @@ it('does not rotate on generic preparation errors or loop through immediately ex
   prepare.mockRejectedValueOnce(new WorkbookPreparationGoneError(candidate())).mockRejectedValueOnce(new WorkbookPreparationGoneError(candidate()));
   await expect(saveWorkbook(intent, undefined, vi.fn(async () => {}))).rejects.toBeInstanceOf(WorkbookPreparationGoneError);
   expect(prepare).toHaveBeenCalledTimes(3); expect(request.mock.calls.filter(call => call[1].action === 'save')).toHaveLength(0);
+});
+it('brands only identity-checked durable conflict or cancelled receipts as safe terminal operations', async () => {
+  for (const state of ['conflict', 'cancelled']) {
+    const intent = attempt(); intent.renderId = renderId;
+    request.mockResolvedValueOnce(receipt(intent.operationId, state));
+    const failure = await saveWorkbook(intent).catch(error => error);
+    expect(failure).toBeInstanceOf(WorkbookSaveTerminalError);
+    expect(failure).toMatchObject({ operationId: intent.operationId, renderId, state, status: state === 'conflict' ? 409 : 410 });
+  }
+  expect(prepare).not.toHaveBeenCalled();
+});
+it('does not brand HTTP errors, preparation expiry or malformed and mismatched terminal receipts', async () => {
+  for (const status of [409, 410]) {
+    request.mockRejectedValueOnce(new WorkbookHostError('Uncertain HTTP status', status));
+    const failure = await saveWorkbook(attempt()).catch(error => error); expect(failure).not.toBeInstanceOf(WorkbookSaveTerminalError);
+  }
+  const intent = attempt(); intent.renderId = renderId;
+  for (const bad of [{ ...receipt(intent.operationId, 'conflict'), versionId: 'v2' }, { ...receipt(intent.operationId, 'cancelled'), actualSha256: target }, { ...receipt(intent.operationId, 'conflict'), id: projectId }, { ...receipt(intent.operationId, 'cancelled'), sourceSha256: target }, { ...receipt(intent.operationId, 'conflict'), renderId: projectId }]) {
+    request.mockResolvedValueOnce(bad); const failure = await saveWorkbook(intent).catch(error => error); expect(failure).toBeInstanceOf(Error); expect(failure).not.toBeInstanceOf(WorkbookSaveTerminalError);
+  }
+  request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)); prepare.mockRejectedValueOnce(new WorkbookPreparationGoneError(candidate()));
+  request.mockRejectedValueOnce(new WorkbookHostError('Access lost', 403));
+  const failure = await saveWorkbook(attempt()).catch(error => error); expect(failure).not.toBeInstanceOf(WorkbookSaveTerminalError);
 });

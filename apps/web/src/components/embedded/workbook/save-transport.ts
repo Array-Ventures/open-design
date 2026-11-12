@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { WorkbookSaveTerminalError } from './save-terminal';
 import { workbookEditPlanSchema } from '@open-design/contracts/runtime/workbook';
 import { workbookHostRequest, WorkbookHostError } from './host-request';
 import { prepareWorkbookJob, workbookPollDelay, checkedWorkbookJob, WorkbookPreparationGoneError } from './preview-transport';
@@ -6,7 +7,7 @@ import { prepareWorkbookJob, workbookPollDelay, checkedWorkbookJob, WorkbookPrep
 const digest = z.string().regex(/^[0-9a-f]{64}$/);
 const Save = z.object({ id: z.string().uuid(), projectId: z.string().uuid(), renderId: z.string().uuid(), fileName: z.string(),
   state: z.enum(['pending', 'applied', 'conflict', 'cancelled']), sourceSha256: digest, targetSha256: digest, actualSha256: digest.nullable(),
-  versionId: z.string().nullable() }).passthrough();
+  versionId: z.string().regex(/^[A-Za-z0-9_-]{1,200}$/).nullable() }).passthrough();
 export interface WorkbookSaveAttempt {
   operationId: string; preparationId: string; projectId: string; fileName: string;
   plan: z.infer<typeof workbookEditPlanSchema>; renderId?: string;
@@ -18,7 +19,8 @@ function checkedSave(raw: unknown, attempt: WorkbookSaveAttempt) {
   const save = Save.parse(raw);
   if (save.id !== attempt.operationId || save.projectId !== attempt.projectId || save.fileName !== attempt.fileName
     || save.sourceSha256 !== attempt.plan.sourceSha256 || attempt.renderId && save.renderId !== attempt.renderId
-    || save.state === 'applied' && (!save.versionId || save.actualSha256 !== save.targetSha256)) throw new WorkbookHostError('The workbook save identity could not be validated.');
+    || save.state === 'applied' && (!save.versionId || save.actualSha256 !== save.targetSha256)
+    || save.state !== 'applied' && (save.versionId !== null || ['pending', 'cancelled'].includes(save.state) && save.actualSha256 !== null)) throw new WorkbookHostError('The workbook save identity could not be validated.');
   // Status is authoritative when admission succeeded but its response was lost.
   attempt.renderId = save.renderId;
   return save;
@@ -76,7 +78,6 @@ async function settleWorkbookSave(attempt: WorkbookSaveAttempt, signal: AbortSig
     await workbookPollDelay(signal);
     save = checkedSave(await workbookHostRequest(attempt.projectId, { action: 'read-save', saveId: attempt.operationId }, signal), attempt);
   }
-  if (save.state === 'conflict') throw new WorkbookHostError('The workbook changed elsewhere. Your edits are still here; reload only after keeping a copy.', 409);
-  if (save.state !== 'applied') throw new WorkbookHostError('This save was cancelled. Your edits are still here.', 410);
+  if (save.state === 'conflict' || save.state === 'cancelled') throw new WorkbookSaveTerminalError(save.id, save.renderId, save.state);
   return save;
 }
