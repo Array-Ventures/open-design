@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { CellValueType, type IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
-import { WorkbookWriter, type WorkbookWriteIntent } from '../../src/components/embedded/workbook/workbook-writer';
+import { WorkbookWriter, type WorkbookWriteIntent, type WorkbookCheckpoint } from '../../src/components/embedded/workbook/workbook-writer';
 import { gridWorkbook } from '../../src/components/embedded/workbook/grid-model';
 function fixture() {
   const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 's', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 's', name: 'Sheet', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [{ row: 0, column: 0, kind: 'number', value: 1 }], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
@@ -53,4 +53,34 @@ it('treats a resize-only workbook as dirty and sends its dimension intent', asyn
   expect(writer.state().dirty).toBe(true); await writer.flush();
   expect(write.mock.calls[0]![0].plan.dimensions).toEqual([{ sheetId: 's', axis: 'column', index: 0, size: 25 }]);
   expect(writer.state().dirty).toBe(false);
+});
+it('persists a frozen save identity before calling the remote writer and blocks admission if protection fails', async () => {
+  const { source, initial, snapshot } = fixture(), saved: WorkbookCheckpoint[] = [], order: string[] = [];
+  const journal = { save: vi.fn(async (value: WorkbookCheckpoint | null) => { if (value) saved.push(structuredClone(value)); order.push('checkpoint'); }) };
+  const writer = new WorkbookWriter(source, initial, async intent => {
+    expect(saved.at(-1)?.pending?.intent).toEqual(intent); order.push('write'); return { ...source, sourceSha256: 'b'.repeat(64) };
+  }, () => {}, undefined, journal);
+  writer.update(snapshot(2)); await writer.flush(); expect(order.indexOf('write')).toBeGreaterThan(order.indexOf('checkpoint'));
+  expect(journal.save).toHaveBeenLastCalledWith(null);
+  const write = vi.fn(), broken = new WorkbookWriter(source, initial, write, () => {}, undefined, { save: async () => { throw new Error('Quota exceeded'); } });
+  broken.update(snapshot(2)); await broken.flush(); expect(write).not.toHaveBeenCalled(); expect(broken.state()).toMatchObject({ dirty: true, error: expect.stringContaining('could not be protected') });
+});
+it('recovers the exact pending intent and preserves edits made during the uncertain save', async () => {
+  const { source, initial, snapshot } = fixture(); const protectedState: { checkpoint: WorkbookCheckpoint | null } = { checkpoint: null };
+  const journal = { save: async (value: WorkbookCheckpoint | null) => { protectedState.checkpoint = value; } };
+  const first = new WorkbookWriter(source, initial, async () => { throw new Error('Response lost'); }, () => {}, undefined, journal);
+  first.update(snapshot(2)); await first.flush(); first.update(snapshot(3));
+  // flush reuses the pending intent and guarantees the last local update was journaled.
+  await first.flush(); const recovered = structuredClone(protectedState.checkpoint!), pending = recovered.pending!.intent;
+  first.dispose(); const intents: WorkbookWriteIntent[] = [];
+  const next = new WorkbookWriter({ ...source, sourceSha256: 'b'.repeat(64) }, initial, async intent => { intents.push(intent); return { ...source, sourceSha256: intents.length === 1 ? 'b'.repeat(64) : 'c'.repeat(64) }; }, () => {}, undefined, { ...journal, restored: recovered });
+  expect(next.recoveredSnapshot()).toEqual(snapshot(3)); await next.flush();
+  expect(intents[0]).toEqual(pending); expect(intents[0]!.plan.edits[0]!.cell.value).toBe(2); expect(intents[1]!.plan.edits[0]!.cell.value).toBe(3);
+  expect(intents[1]!.id).not.toBe(pending.id); expect(next.state().dirty).toBe(false); expect(protectedState.checkpoint).toBeNull();
+});
+it('does not write an unsaved recovered draft over a changed source without a pending operation to reconcile', async () => {
+  const { source, initial, snapshot } = fixture(), first = new WorkbookWriter(source, initial, vi.fn(), () => {});
+  first.update(snapshot(2)); const restored = first.checkpoint(), write = vi.fn(); first.dispose();
+  const next = new WorkbookWriter({ ...source, sourceSha256: 'b'.repeat(64) }, initial, write, () => {}, undefined, { save: async () => {}, restored });
+  await next.flush(); expect(write).not.toHaveBeenCalled(); expect(next.state()).toMatchObject({ dirty: true, error: expect.stringContaining('older workbook') }); expect(next.recoveredSnapshot()).toEqual(snapshot(2));
 });

@@ -25,7 +25,7 @@ function checkedSave(raw: unknown, attempt: WorkbookSaveAttempt) {
 }
 /** The caller retains this attempt across timeouts and retries. Probe durable
  * status first; a lost acknowledgement must never create a second write. */
-export async function saveWorkbook(attempt: WorkbookSaveAttempt, signal?: AbortSignal) {
+export async function saveWorkbook(attempt: WorkbookSaveAttempt, signal?: AbortSignal, beforeAdmission?: () => Promise<void>) {
   let save: z.infer<typeof Save> | undefined;
   try { save = checkedSave(await workbookHostRequest(attempt.projectId, { action: 'read-save', saveId: attempt.operationId }, signal), attempt); }
   catch (error) { if (!(error instanceof WorkbookHostError) || error.status !== 404) throw error; }
@@ -34,6 +34,7 @@ export async function saveWorkbook(attempt: WorkbookSaveAttempt, signal?: AbortS
       const job = await prepareWorkbookJob(attempt.projectId, attempt.fileName, 'xlsx', attempt.preparationId, signal, JSON.stringify(attempt.plan));
       attempt.renderId = job.id;
     }
+    await beforeAdmission?.();
     save = checkedSave(await workbookHostRequest(attempt.projectId, { action: 'save', body: { operationId: attempt.operationId, renderId: attempt.renderId } }, signal), attempt);
   }
   while (save.state === 'pending') {

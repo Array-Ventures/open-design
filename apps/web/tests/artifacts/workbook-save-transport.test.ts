@@ -57,3 +57,10 @@ it('refuses a different render identity after an attempt has been bound to its c
   request.mockResolvedValueOnce(receipt(intent.operationId, 'cancelled'));
   await expect(saveWorkbook(intent)).rejects.toMatchObject({ status: 410 });
 });
+it('does not admit a prepared candidate until its render identity has been durably checkpointed', async () => {
+  const intent = attempt(); request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404));
+  prepare.mockResolvedValueOnce({ id: renderId, projectId, input: { fileName, format: 'xlsx' }, state: 'ready', error: null });
+  const checkpoint = vi.fn(async () => { expect(intent.renderId).toBe(renderId); throw new Error('Recovery storage unavailable'); });
+  await expect(saveWorkbook(intent, undefined, checkpoint)).rejects.toThrow('Recovery storage unavailable');
+  expect(request.mock.calls.map(call => call[1].action)).toEqual(['read-save']); expect(checkpoint).toHaveBeenCalledTimes(1);
+});

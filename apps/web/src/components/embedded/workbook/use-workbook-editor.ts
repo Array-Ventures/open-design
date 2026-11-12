@@ -20,14 +20,15 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     const controller = new AbortController(); running.current = controller;
     const attempts = new Map<string, { save: ReturnType<typeof newWorkbookSaveAttempt>; previewId: string }>();
     let acknowledged: Preview | null = null;
-    writer.current = new WorkbookWriter(source, initial, async intent => {
+    writer.current = new WorkbookWriter(source, initial, async (intent, checkpoint) => {
       let attempt = attempts.get(intent.id);
-      if (!attempt) { attempt = { save: { ...newWorkbookSaveAttempt(projectId, fileName, intent.plan), operationId: intent.id }, previewId: crypto.randomUUID() }; attempts.set(intent.id, attempt); }
-      const receipt = await saveWorkbook(attempt.save, controller.signal);
+      if (!attempt) { attempt = { save: { ...newWorkbookSaveAttempt(projectId, fileName, intent.plan), operationId: intent.id, preparationId: intent.preparationId, renderId: intent.renderId }, previewId: intent.previewId }; attempts.set(intent.id, attempt); }
+      const currentAttempt = attempt;
+      const receipt = await saveWorkbook(currentAttempt.save, controller.signal, async () => { intent.renderId = currentAttempt.save.renderId; await checkpoint(); });
       let refreshed: Preview;
       try { refreshed = await loadWorkbookPreview(projectId, fileName, attempt.previewId, controller.signal); }
-      catch (error) { if (error instanceof WorkbookHostError && [410, 422].includes(error.status)) attempt.previewId = crypto.randomUUID(); throw error; }
-      attempt.previewId = crypto.randomUUID(); // a successfully consumed preview is removed
+      catch (error) { if (error instanceof WorkbookHostError && [410, 422].includes(error.status)) intent.previewId = attempt.previewId = crypto.randomUUID(); await checkpoint(); throw error; }
+      intent.previewId = attempt.previewId = crypto.randomUUID(); // a successfully consumed preview is removed
       if (refreshed.sourceSha256 !== receipt.targetSha256) throw new WorkbookHostError('The workbook changed after saving. Your edits are still here; keep a copy before reloading.', 409);
       attempts.delete(intent.id); return refreshed;
     }, next => {
