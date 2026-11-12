@@ -446,8 +446,8 @@ Unchanged dynamic and all fixed-source followers remain protected.
 Data tables, names/tables in an array workbook, merged collisions, empty-string literal collision ambiguity, overlapping
 candidates and fixed-source shape/owner edits remain refused. The pinned `#` spill-reference
 operator preserves unchanged source caches and refuses new/changed formulas;
-explicit follower coordinates can calculate. The existing Grid
-source-array gate remains in place; backend persistence does not enable it.
+explicit follower coordinates can calculate. Backend persistence is independent
+of the client profile admission described below.
 The known XLDAPR identity follows the [Microsoft metadata extension
 specification](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-xlsx/3dd44d53-847b-402f-a8c7-41a85024caf7)
 and [dynamic-array property
@@ -463,7 +463,7 @@ These fields describe the SHA-verified preview source only. The save worker
 continues to resolve ownership from source package bytes and never treats an
 asserted client mode as permission to resize a fixed owner.
 
-The client array kernel is staged separately from Grid enablement. It uses the
+The client array kernel uses the
 pinned public typed executor/reference APIs and dependency service in two fresh
 private kernels, admitting known fixed/dynamic source owners and actual array
 results from a constrained function set. Registered browser geometry remains
@@ -476,7 +476,33 @@ The dedicated projection worker publishes one complete typed result with source
 SHA, input SHA and generation. The UI owner rejects stale/mismatched results,
 terminates after five seconds, and fences disposal/source refresh. Neither its
 private calculation snapshot nor follower projections enter raw authored cells
-or the writer journal. The remaining Grid gate requires a read-only projection
-interceptor, pending/stored provenance display, protected follower edits and
-lifecycle integration with source refresh/theme/kernel fallback. Until that
-integration is qualified, production arrays remain in stored mode.
+or the writer journal.
+
+The production Grid selects this channel only for SHA-bound previews with at
+least one verified fixed/dynamic source owner, complete source ownership,
+qualified follower cache layout, bounded registered geometry and no names or
+tables. It initializes raw cells from the separate interactive source baseline,
+keeps all main-thread engines inert, and displays one complete projection through
+the cell-value interceptor. Actual unknown/unqualified formulas and their
+closure show genuine stored source caches; new unsupported formulas are blank
+and unavailable. Data tables, older unknown profiles and unqualified metadata
+remain in stored mode. Ordinary scalar-only workbooks keep the existing scalar
+channel; entering a new array there is not enabled by this profile slice.
+
+Pending input changes invalidate calculated output, while prior proven follower
+ownership stays protected until a complete replacement arrives. Removing or
+replacing the owner in the same genuine edit batch permits manual follower
+inputs. Theme changes retain the input identity. Disposal, source refresh and
+terminal worker failure fence the old channel; fallback recreates from the exact
+raw draft through the existing same-source writer checkpoint. Legacy recovery
+whose raw source followers still contain caches stays stored without guessing
+which values were authored. CSV and retained-layer Rendered/writer-ready handoff
+keep their existing paths.
+
+Focused actual-kernel integration proves native input mutation, undo/redo,
+read-only follower interception, simultaneous owner removal with manual42, and
+writer plans containing authored inputs only. Separate real XLSX qualification
+compares the resulting plan with backend output and independently reopens growth
+and owner-removal results. Packaged worker startup, canvas appearance, crash
+recovery, history and cross-theme user interaction still require browser
+qualification; these tests do not claim that acceptance.

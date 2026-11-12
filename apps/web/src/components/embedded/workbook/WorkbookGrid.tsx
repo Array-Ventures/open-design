@@ -16,13 +16,16 @@ import { workbookFormattingBridge, type WorkbookFormatScope } from './grid-forma
 import type { WorkbookCalculationState } from './calculation-state';
 import { ownWorkbookCalculationWorker } from './calculation-worker-owner';
 import { attachWorkbookCalculation, workbookLiveCalculationEligible } from './grid-calculation';
+import { ownArrayProjectionWorker } from './array-projection-owner';
+import { attachWorkbookArrayCalculation } from './grid-array-calculation';
+import { prepareWorkbookArrayLiveSource } from './array-live-source';
 import { restoreCsvViewDimensions } from './csv-view-dimensions';
 import { restoreWorkbookSelection } from './grid-selection';
 import { LifecycleService, LifecycleStages } from '@univerjs/core';
 import { WorkbookViewLayers } from './grid-view-layers';
 
 export interface WorkbookGridProps {
-  id: string; title: string; model: WorkbookDocument;
+  id: string; title: string; model: WorkbookDocument; sourceSha256?: string;
   initialSnapshot?: IWorkbookData;
   formatScope?: WorkbookFormatScope;
   exportScope?: WorkbookExportScope;
@@ -34,7 +37,7 @@ export interface WorkbookGridProps {
 /** A disposable spreadsheet UI, never an XLSX serializer. A surface must supply
  * its durable edit controller before edits are enabled. Refresh/theme changes
  * do not recreate the grid unless the acknowledged source model changes. */
-export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, onReady, onDisplayGaps, formatScope, exportScope }: WorkbookGridProps) {
+export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, onSnapshot, onReady, onDisplayGaps, formatScope, exportScope }: WorkbookGridProps) {
   const container = useRef<HTMLDivElement>(null), callbacks = useRef({ id, model, title, onSnapshot, onReady, onDisplayGaps });
   const views = useRef<WorkbookViewLayers | null>(null);
   const viewScope = useRef(id);
@@ -100,7 +103,8 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       const original = structuredClone(prepared.data) as IWorkbookData;
       let calculationOwner: ReturnType<typeof ownWorkbookCalculationWorker> | null = null;
       let readyForInput = false;
-      const stopCalculation = () => { const owned = calculationOwner; calculationOwner = null; owned?.dispose(); };
+      let arrayOwner: ReturnType<typeof ownArrayProjectionWorker> | null = null;
+      const stopCalculation = () => { const owned = calculationOwner; calculationOwner = null; owned?.dispose(); const arrays = arrayOwner; arrayOwner = null; arrays?.dispose(); };
       let readSnapshot: (() => IWorkbookData) | undefined;
       const fallback = () => {
         if (!current()) return;
@@ -117,7 +121,12 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       dispose = () => { stopCalculation(); layer.retire(); };
       const recovered = carried.current?.id === id && carried.current.model === model ? carried.current.snapshot : undefined;
       const sourceSeed = recovered ?? restored.current ?? original;
-      if (model.sourceFormat !== 'csv' && stored.current !== model && workbookLiveCalculationEligible(model, sourceSeed)) {
+      const arraySeed = prepareWorkbookArrayLiveSource(model, original, sourceSha256, recovered ?? restored.current);
+      if (arraySeed && stored.current !== model) {
+        try { arrayOwner = ownArrayProjectionWorker(model, id, sourceSha256!, fallback); if (!await arrayOwner.loaded || !arrayOwner.ready) { arrayOwner.dispose(); arrayOwner = null; stored.current = model; } }
+        catch { arrayOwner?.dispose(); arrayOwner = null; stored.current = model; }
+      }
+      if (!arraySeed && model.sourceFormat !== 'csv' && stored.current !== model && workbookLiveCalculationEligible(model, sourceSeed)) {
         try {
           calculationOwner = ownWorkbookCalculationWorker(fallback);
           if (!await calculationOwner.loaded || !calculationOwner.ready) { calculationOwner.dispose(); calculationOwner = null; stored.current = model; }
@@ -148,10 +157,11 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
         }
       }
       const seed = recovered ?? restored.current; restored.current = undefined; carried.current = null;
-      const workbook = univerAPI.createWorkbook(seed ? structuredClone(seed) : prepared.data);
+      const workbook = univerAPI.createWorkbook(seed ? structuredClone(seed) : arraySeed ?? prepared.data);
       workbook.setActiveSheet(previous && prepared.data.sheets?.[previous.sheetId] ? previous.sheetId : seed?.sheetOrder[0] ?? prepared.activeSheetId); workbook.setEditable(false);
       readSnapshot = () => workbook.save();
-      const calculation = attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, value => { if (current()) { calculationState.current = value; publish.current(); } });
+      const calculationChanged = (value: WorkbookCalculationState) => { if (current()) { calculationState.current = value; publish.current(); } };
+      const calculation = arraySeed ? attachWorkbookArrayCalculation(univer, univerAPI, model, original, workbook.save(), sourceSha256!, readSnapshot, arrayOwner, calculationChanged) : attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, calculationChanged);
       dispose = () => {
         try { const sheet = workbook.getActiveSheet(); view.current = { id, sourceFormat: model.sourceFormat, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() }; }
         finally { workbook.setEditable(false); calculation.dispose(); stopCalculation(); layer.retire(); }
@@ -211,7 +221,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
     };
     void start();
     return () => { active = false; close(); };
-  }, [id, model, editable, kernel]);
+  }, [id, model, sourceSha256, editable, kernel]);
   // Run after the grid effect's cleanup has captured view state and detached
   // listeners. Disposing the kernel first would make workbook.save() invalid.
   useEffect(() => () => { views.current?.dispose(); views.current = null; }, []);

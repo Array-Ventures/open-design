@@ -49,14 +49,22 @@ export class ArrayProjectionDisplay {
   }
   /** Pending input edits retain prior proven ownership until a complete new
    * projection arrives. Replacing/removing the anchor retires that protection. */
-  isFollower(sheet: string, row: number, column: number): boolean {
+  followerOwners(sheet: string, row: number, column: number) {
+    const owners: { row: number; column: number; formula: string }[] = [];
     const source = this.sourceOwners.get(key(sheet, row, column));
-    if (source && (source.row !== row || source.column !== column) && at(this.current, sheet, source.row, source.column)?.f === at(this.original, sheet, source.row, source.column)?.f) return true;
+    const formula = source ? at(this.original, sheet, source.row, source.column)?.f : undefined;
+    if (source && formula && (source.row !== row || source.column !== column) && at(this.current, sheet, source.row, source.column)?.f === formula) owners.push({ ...source, formula });
     for (const id of this.ownership.searchGenerator({ unitId: this.current.id, sheetId: sheet, range: { startRow: row, endRow: row, startColumn: column, endColumn: column } })) {
       const owner = this.runtimeOwners.get(String(id));
-      if (owner && (owner.row !== row || owner.column !== column) && at(this.current, sheet, owner.row, owner.column)?.f === owner.formula) return true;
+      if (owner && (owner.row !== row || owner.column !== column) && at(this.current, sheet, owner.row, owner.column)?.f === owner.formula) owners.push(owner);
     }
-    return false;
+    return owners;
+  }
+  isFollower(sheet: string, row: number, column: number): boolean { return this.followerOwners(sheet, row, column).length > 0; }
+  summary() {
+    let stored = 0, unavailable = 0;
+    for (const [sheetId, sheet] of Object.entries(this.current.sheets)) for (const [row, cells] of Object.entries(sheet.cellData ?? {})) for (const [column, cell] of Object.entries(cells ?? {})) if ((cell as ICellData | undefined)?.f) { const status = this.status(sheetId, Number(row), Number(column)); if (status === 'stored') stored++; if (status === 'unavailable') unavailable++; }
+    return { pending: this.pending, paused: !this.projection && !this.pending, stored, unavailable };
   }
   dispose() { this.pause(); this.ownership.dispose(); this.runtimeOwners.clear(); }
   private source(sheet: string, row: number, column: number) {

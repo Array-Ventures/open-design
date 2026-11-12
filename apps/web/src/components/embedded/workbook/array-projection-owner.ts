@@ -36,6 +36,7 @@ export function ownArrayProjectionWorker(model: WorkbookDocument, unitId: string
   worker.postMessage({ type: 'studio:workbook-array-projection', kind: 'initialize', model, unitId, sourceSha256 });
   return {
     loaded,
+    fail() { deadline.fail(); },
     get ready() { return ready && active && !failed; },
     calculate(snapshot: IWorkbookData) {
       if (!ready || !active || failed) return null;
