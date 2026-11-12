@@ -250,3 +250,16 @@ Registration belongs to the view layer and is disposed when that layer retires.
 The already lazy-loaded kernel supplies UI services, avoiding an eager UI import.
 Guard and workspace types pass; packaged browser focus/editing/chat checks remain
 the acceptance gate for this change.
+
+### View-resource ownership correction before activation
+
+Source review found that adding navigation through a second `layer.own()` call
+would replace the existing kernel/worker cleanup. The first navigation package
+was not activated. Ownership registrations now compose in reverse order, release
+earlier resources even if a later disposer throws, and immediately release a
+resource registered after its layer retired. Four focused browser-DOM resource
+regressions first fail on the old replacement semantics, then pass; the combined
+layer/selection/format suite passes eight cases. Initial test attempts lacked a
+DOM environment and are not counted as behavioral reproduction. Guard and full
+workspace typecheck pass. A new clean package must still pass paired-browser
+acceptance before this navigation change is considered active.

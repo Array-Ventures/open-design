@@ -25,7 +25,13 @@ export class WorkbookViewLayers {
     this.layers.add(layer);
     return {
       element,
-      own: (dispose: () => void) => { owned = dispose; },
+      own: (dispose: () => void) => {
+        if (disposed) { dispose(); return; }
+        const previous = owned;
+        // Each registration adds ownership. Later resources retire first, and
+        // cannot suppress the kernel/worker cleanup if their disposer throws.
+        owned = () => { try { dispose(); } finally { previous(); } };
+      },
       show: () => {
         if (this.closed || disposed) return;
         this.shown = element;
