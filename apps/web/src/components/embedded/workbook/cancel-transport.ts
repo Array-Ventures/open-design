@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { workbookHostRequest, WorkbookHostError } from './host-request';
-import { checkedWorkbookSave, type WorkbookSaveAttempt } from './save-transport';
+import { checkedWorkbookSave } from './save-identity';
+import type { WorkbookSaveAttempt } from './save-transport';
 const proofSchema = z.object({ state: z.literal('unadmitted'), projectId: z.string().uuid(), operationId: z.string().uuid(), preparationId: z.string().uuid(), fileName: z.string(), sourceSha256: z.string().regex(/^[a-f0-9]{64}$/), renderId: z.string().uuid().nullable() }).strict();
 const admittedSchema = z.object({ state: z.literal('admitted'), save: z.unknown() }).strict();
 /** Explicit discard reconciliation never calls prepare or save. A server claim

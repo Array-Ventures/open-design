@@ -19,8 +19,17 @@ export class WorkbookSaveUnadmittedError extends WorkbookHostError {
   }
 }
 
+/** Explicit ledger cancellation proof also covers a preparation that never
+ * acquired a render ID. A plain HTTP conflict never receives this brand. */
+export class WorkbookSavePreparationCancelledError extends WorkbookHostError {
+  constructor(readonly operationId: string, readonly preparationId: string, readonly renderId: string | null) {
+    super('This earlier save preparation was cancelled. Your edits are still here; save again to start a new operation.', 410);
+  }
+}
+
 /** Match only a verified no-future-write result for this exact local intent. */
-export function isWorkbookSaveRejection(error: unknown, intent: { id: string; renderId?: string }): error is WorkbookSaveTerminalError | WorkbookSaveUnadmittedError {
+export function isWorkbookSaveRejection(error: unknown, intent: { id: string; renderId?: string; preparationId?: string }): error is WorkbookSaveTerminalError | WorkbookSaveUnadmittedError | WorkbookSavePreparationCancelledError {
+  if (error instanceof WorkbookSavePreparationCancelledError) return error.operationId === intent.id && error.preparationId === intent.preparationId && (!intent.renderId || error.renderId === intent.renderId);
   return (error instanceof WorkbookSaveTerminalError || error instanceof WorkbookSaveUnadmittedError)
     && error.operationId === intent.id && (!intent.renderId || intent.renderId === error.renderId);
 }

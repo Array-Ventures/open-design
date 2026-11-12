@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { WorkbookSaveTerminalError, WorkbookSaveUnadmittedError } from '../../src/components/embedded/workbook/save-terminal';
+import { WorkbookSaveTerminalError, WorkbookSaveUnadmittedError, WorkbookSavePreparationCancelledError, isWorkbookSaveRejection } from '../../src/components/embedded/workbook/save-terminal';
 import { WorkbookHostError, workbookHostRequest } from '../../src/components/embedded/workbook/host-request';
 import { prepareWorkbookJob, WorkbookPreparationGoneError, WorkbookPreparationTerminalError } from '../../src/components/embedded/workbook/preview-transport';
 import { newWorkbookSaveAttempt, saveWorkbook } from '../../src/components/embedded/workbook/save-transport';
@@ -208,4 +208,20 @@ it('never labels pending output pins, missing tombstone proof or uncertain post-
     request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockResolvedValueOnce({ ...candidate(), state: 'failed' }).mockResolvedValueOnce(candidate()).mockRejectedValueOnce(new WorkbookHostError('Uncertain', status));
     const error = await saveWorkbook(intent).catch(error => error); expect(error).not.toBeInstanceOf(WorkbookSaveUnadmittedError);
   }
+});
+it('reconciles a lost never-started cancellation through explicit proof, never from a conflict alone', async () => {
+  const intent = attempt();
+  request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockResolvedValueOnce({ state: 'unadmitted', projectId, operationId: intent.operationId, preparationId: intent.preparationId, fileName, sourceSha256: source, renderId: null });
+  prepare.mockRejectedValueOnce(new WorkbookHostError('Cancelled', 409, 'workbook_preparation_cancelled'));
+  await expect(saveWorkbook(intent)).rejects.toMatchObject({ operationId: intent.operationId, preparationId: intent.preparationId, renderId: null });
+  expect(request.mock.calls.map(call => call[1].action)).toEqual(['read-save', 'cancel-preparation']);
+  const ordinary = attempt(); request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)); prepare.mockRejectedValueOnce(new WorkbookHostError('Other conflict', 409));
+  await expect(saveWorkbook(ordinary)).rejects.toThrow('Other conflict');
+  expect(request.mock.calls.filter(call => call[1].action === 'save')).toHaveLength(0);
+});
+
+it('accepts a cancelled never-started preparation only for its exact local operation and preparation', () => {
+  const current = attempt(), error = new WorkbookSavePreparationCancelledError(current.operationId, current.preparationId, null);
+  expect(isWorkbookSaveRejection(error, { id: current.operationId, preparationId: current.preparationId })).toBe(true);
+  for (const intent of [{ id: crypto.randomUUID(), preparationId: current.preparationId }, { id: current.operationId, preparationId: crypto.randomUUID() }, { id: current.operationId }, { id: current.operationId, preparationId: current.preparationId, renderId }]) expect(isWorkbookSaveRejection(error, intent)).toBe(false);
 });
