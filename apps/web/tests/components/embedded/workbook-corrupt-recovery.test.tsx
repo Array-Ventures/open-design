@@ -68,7 +68,7 @@ it.each([false, true])('recovers through real transports while retaining drafts 
   const post = vi.spyOn(window, 'postMessage');
   render(<WorkbookSurface projectId={projectId} fileName={fileName} title="Forecast" sourceStamp="corrupt-current" />);
   await screen.findByText('The current XLSX is corrupt.');
-  expect(screen.getByRole('button', { name: 'Retry loading workbook' })).toBeTruthy();
+  expect(await screen.findByRole('button', { name: 'Retry loading workbook' })).toBeTruthy();
   await waitFor(() => expect(post.mock.calls.some(([message]) => message.type === 'studio:workbook-state' && !message.restoring)).toBe(true));
   expect(drafts.listWorkbookDrafts).not.toHaveBeenCalled(); expect(drafts.readWorkbookDraft).not.toHaveBeenCalled();
   const message = post.mock.calls.map(([value]) => value).filter(value => value.type === 'studio:workbook-state').at(-1)!;

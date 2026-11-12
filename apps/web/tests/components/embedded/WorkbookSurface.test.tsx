@@ -59,6 +59,21 @@ afterEach(async () => {
 it('does not request data before a viewer is bound', () => {
   source.viewer = null; render(<WorkbookSurface {...props} />); expect(source.load).not.toHaveBeenCalled(); expect(source.authorize).not.toHaveBeenCalled(); expect(drafts.accessWorkbookRestore).not.toHaveBeenCalled(); expect(drafts.listWorkbookDrafts).not.toHaveBeenCalled(); expect(screen.getByRole('status')).toHaveTextContent('Loading workbook');
 });
+it('keeps an unresolved restore distinct from unsaved edits when its preview finishes after reload', async () => {
+  const scope = { viewerId: 'person-one', projectId: props.projectId, fileName: props.fileName };
+  const intent = { ...scope, version: 1 as const, operationId: '18a8301a-b6e1-4001-8000-c967b1eab223', preparationId: '18a8301a-b6e1-4001-8000-c967b1eab224', versionId: 'retained-v1', versionNumber: 1, sourceSha256: 'a'.repeat(64), versionSha256: 'b'.repeat(64) };
+  await drafts.accessWorkbookRestore(scope, { expected: null, value: intent });
+  let finish!: (value: { sourceSha256: string; model: WorkbookDocument }) => void;
+  source.load.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  render(<WorkbookSurface {...props} />);
+  await screen.findByRole('button', { name: 'Check status' });
+  await act(async () => finish({ sourceSha256: 'b'.repeat(64), model }));
+  expect(screen.queryByText(/refreshed while you have unsaved changes/)).toBeNull();
+  expect(screen.queryByTestId('loaded-grid')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Check status' })).toBeTruthy();
+  expect(await drafts.accessWorkbookRestore(scope)).toEqual(intent);
+  expect(drafts.listWorkbookDrafts).not.toHaveBeenCalled();
+});
 it('preserves the live grid when refreshed bytes have the same source hash', async () => {
   source.load.mockResolvedValue({ sourceSha256: 'a'.repeat(64), model });
   const firstDirty = vi.fn(), nextDirty = vi.fn();
@@ -87,7 +102,7 @@ it('aborts old account reads and does not display their late response', async ()
 });
 it('retries an uncertain read with its original operation and creates a fresh one after known expiry', async () => {
   source.load.mockRejectedValueOnce(new WorkbookHostError('Response lost')).mockRejectedValueOnce(new WorkbookHostError('Expired', 410)).mockResolvedValueOnce({ sourceSha256: 'a'.repeat(64), model });
-  render(<WorkbookSurface {...props} />); await screen.findByRole('alert'); fireEvent.click(screen.getByRole('button', { name: 'Retry loading workbook' }));
+  render(<WorkbookSurface {...props} />); await screen.findByRole('alert'); fireEvent.click(await screen.findByRole('button', { name: 'Retry loading workbook' }));
   await waitFor(() => expect(source.load).toHaveBeenCalledTimes(2));
   expect(source.load.mock.calls[1]![2]).toBe(source.load.mock.calls[0]![2]);
   await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Expired'));

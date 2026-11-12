@@ -50,7 +50,14 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
     if (!operation.current || operation.current.stamp !== sourceStamp) operation.current = { stamp: sourceStamp, id: crypto.randomUUID() };
     void loadWorkbookPreview(projectId, fileName, operation.current.id, controller.signal).then(preview => {
       if (controller.signal.aborted || generation !== historyRef.current.generation()) return;
-      if (editor.stateRef.current.dirty || historyRef.current.isRestoring()) {
+      if (historyRef.current.isRestoring()) {
+        // A preview racing reload recovery cannot acknowledge the retained
+        // restore receipt or replace its protected state. History owns that
+        // confirmation; it does not imply that the person has editable drafts.
+        operation.current = null;
+        return;
+      }
+      if (editor.stateRef.current.dirty) {
         operation.current = null;
         if (preview.sourceSha256 === loaded?.sourceSha256) return;
         setError('The workbook was refreshed while you have unsaved changes. Save or keep a copy before reloading.'); return;
