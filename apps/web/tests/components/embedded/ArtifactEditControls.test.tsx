@@ -4,14 +4,13 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { ArtifactEditControls } from '../../../src/components/embedded/ArtifactEditControls';
 const originalParent = Object.getOwnPropertyDescriptor(window, 'parent');
 afterEach(() => { cleanup(); if (originalParent) Object.defineProperty(window, 'parent', originalParent); });
-function harness(active = true, onExit = vi.fn(async () => true)) {
+function harness(active = true, onExit = vi.fn(async () => true), onEnter = vi.fn<() => Promise<boolean | "cancelled">>(async () => true)) {
   const host = { postMessage: vi.fn() };
   Object.defineProperty(window, 'parent', { configurable: true, value: host });
-  const onEnter = vi.fn(async () => true);
   const view = render(<ArtifactEditControls projectId="project-a" active={active} busy={false} onEnter={onEnter} onExit={onExit} />);
   const controllerId = host.postMessage.mock.calls[0]![0].controllerId;
   const request = { type: 'studio:edit-control', projectId: 'project-a', controllerId, requestId: crypto.randomUUID(), action: 'exit' };
-  const send = async (data = request, source: unknown = host, origin = window.location.origin) => {
+  const send = async (data: unknown = request, source: unknown = host, origin = window.location.origin) => {
     await act(async () => { window.dispatchEvent(new MessageEvent('message', { source: source as Window, origin, data })); });
   };
   const results = () => host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'studio:edit-result');
@@ -54,4 +53,15 @@ it('acknowledges entering through the actual handler, and an already closed exit
   const h = harness(false); await h.send(); expect(h.onExit).not.toHaveBeenCalled();
   await h.send({ ...h.request, requestId: crypto.randomUUID(), action: 'enter' }); expect(h.onEnter).toHaveBeenCalledOnce();
   expect(h.results().every(result => result.accepted)).toBe(true);
+});
+
+it.each([false, true])('reports human cancellation only through a negotiated extension (supported: %s)', async supported => {
+  const h = harness(false, vi.fn(async () => true), vi.fn(async () => 'cancelled' as const));
+  await h.send({ type: 'studio:edit-request', projectId: 'project-a', quietCancellation: supported });
+  await h.send({ ...h.request, action: 'enter' });
+  expect(h.onEnter).toHaveBeenCalledOnce(); expect(h.onExit).not.toHaveBeenCalled();
+  expect(h.results()).toEqual([supported
+    ? { type: 'studio:edit-result', projectId: 'project-a', controllerId: h.controllerId, requestId: h.request.requestId, accepted: false, cancelled: true }
+    : expect.objectContaining({ accepted: false, error: expect.any(String) })]);
+  if (!supported) expect(h.results()[0]).not.toHaveProperty('cancelled');
 });

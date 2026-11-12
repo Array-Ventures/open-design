@@ -1077,6 +1077,19 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 
+  it('keeps inline edits on Escape when the embedded host requests commit semantics', () => {
+    const dom = new JSDOM(`<main><p data-od-id="body">Original body</p></main>${buildManualEditBridge(true)}`, { runScripts: 'dangerously', url: 'http://localhost' });
+    const body = dom.window.document.querySelector('[data-od-id="body"]') as HTMLElement;
+    const post = vi.spyOn(dom.window.parent, 'postMessage');
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', { data: { type: 'od-edit-mode', enabled: true, commitOnEscape: true } }));
+    body.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    body.textContent = 'Kept body';
+    body.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(body.textContent).toBe('Kept body'); expect(body.hasAttribute('contenteditable')).toBe(false);
+    expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'od-edit-text-commit', id: 'body', value: 'Kept body' }), '*');
+    dom.window.close();
+  });
+
   it('cancels inline text edits with Escape without posting a commit', () => {
     const dom = new JSDOM(
       `<main><p data-od-id="body">Original body</p></main>${buildManualEditBridge(true)}`,

@@ -1026,7 +1026,7 @@ function UnitRow({ label, value, onChange, unit, autoUnit, disabled, placeholder
       <span className="cc-label">{label}</span>
       <span className="cc-value">
         <button type="button" className="cc-step" disabled={!canStep} aria-label={`${label} decrease`} onClick={() => stepBy(-1)}>−</button>
-        <input value={display} placeholder={placeholder ? stripPxUnit(placeholder) : ''} disabled={disabled} onFocus={onFocus} onChange={(e) => onChange(valueFromDisplay(e.currentTarget.value))} onBlur={(e) => handle(e.currentTarget.value)} />
+        <input aria-label={label} value={display} placeholder={placeholder ? stripPxUnit(placeholder) : ''} disabled={disabled} onFocus={onFocus} onChange={(e) => onChange(valueFromDisplay(e.currentTarget.value))} onBlur={(e) => handle(e.currentTarget.value)} />
         <button type="button" className="cc-step" disabled={!canStep} aria-label={`${label} increase`} onClick={() => stepBy(1)}>+</button>
         {/* px is implied for length fields — the unit is stored internally but
             not shown as a trailing label. Any non-px unit still renders. */}
@@ -1141,7 +1141,7 @@ function ColorRow({ label, value, placeholder, onChange, compact, onFocus }: {
       <span className={`cc-value cc-color ${compact ? 'cc-color-compact' : ''}`} ref={ref}>
         <button type="button" className="cc-swatch" style={{ background: value || 'transparent' }}
           onClick={() => setOpen((v) => !v)} aria-label={`Pick ${label}`} />
-        <input value={value} placeholder={placeholder || '#000000'}
+        <input aria-label={label} value={value} placeholder={placeholder || '#000000'}
           onChange={(e) => onChange(e.currentTarget.value)} onFocus={() => { setOpen(true); onFocus?.(); }} />
         {open ? (
           <div className="cc-color-popover">
@@ -1151,7 +1151,7 @@ function ColorRow({ label, value, placeholder, onChange, compact, onFocus }: {
                   onClick={() => { onChange(hex); setOpen(false); }} aria-label={hex} />
               ))}
             </div>
-            <input type="color" className="cc-color-native" value={normalizeColorForPicker(value)}
+            <input type="color" aria-label={label} className="cc-color-native" value={normalizeColorForPicker(value)}
               onChange={(e) => onChange(e.currentTarget.value)} />
           </div>
         ) : null}
@@ -1180,17 +1180,17 @@ function QuadRow({ label, axes, values, onChange, onFocus }: {
       </button>
       {open ? (
         <div className="cc-quad-grid">
-          <QuadCell axis={axes?.t ?? 'T'} value={values.t} onChange={(v) => onChange('t', v)} />
-          <QuadCell axis={axes?.r ?? 'R'} value={values.r} onChange={(v) => onChange('r', v)} />
-          <QuadCell axis={axes?.b ?? 'B'} value={values.b} onChange={(v) => onChange('b', v)} />
-          <QuadCell axis={axes?.l ?? 'L'} value={values.l} onChange={(v) => onChange('l', v)} />
+          <QuadCell label={`${label} ${axes?.t ?? 'T'}`} axis={axes?.t ?? 'T'} value={values.t} onChange={(v) => onChange('t', v)} />
+          <QuadCell label={`${label} ${axes?.r ?? 'R'}`} axis={axes?.r ?? 'R'} value={values.r} onChange={(v) => onChange('r', v)} />
+          <QuadCell label={`${label} ${axes?.b ?? 'B'}`} axis={axes?.b ?? 'B'} value={values.b} onChange={(v) => onChange('b', v)} />
+          <QuadCell label={`${label} ${axes?.l ?? 'L'}`} axis={axes?.l ?? 'L'} value={values.l} onChange={(v) => onChange('l', v)} />
         </div>
       ) : null}
     </div>
   );
 }
 
-function QuadCell({ axis, value, onChange }: { axis: string; value: string; onChange: (v: string) => void }) {
+function QuadCell({ label, axis, value, onChange }: { label: string; axis: string; value: string; onChange: (v: string) => void }) {
   const display = stripPxUnit(value);
   const canStep = isNumericInput(display);
   const stepBy = (direction: -1 | 1) => {
@@ -1201,7 +1201,7 @@ function QuadCell({ axis, value, onChange }: { axis: string; value: string; onCh
     <span className="cc-quad-cell">
       <em className="cc-quad-axis">{axis}</em>
       <button type="button" className="cc-step cc-step-quad" disabled={!canStep} aria-label={`${axis} decrease`} onClick={() => stepBy(-1)}>−</button>
-      <input value={display} placeholder="0"
+      <input aria-label={label} value={display} placeholder="0"
         onChange={(e) => {
           const raw = e.currentTarget.value.trim();
           if (raw === '') onChange('');

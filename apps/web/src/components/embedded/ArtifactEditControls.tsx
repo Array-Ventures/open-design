@@ -10,7 +10,7 @@ const Request = z.object({
  * acknowledge that editing has finished saving. No discard command exists. */
 export function ArtifactEditControls({ projectId, active, busy, onEnter, onExit }: {
   projectId: string; active: boolean; busy: boolean;
-  onEnter(): Promise<boolean>; onExit(): Promise<boolean>;
+  onEnter(): Promise<boolean | "cancelled">; onExit(): Promise<boolean>;
 }) {
   const controllerId = useRef(crypto.randomUUID()).current;
   const current = useRef({ active, busy, onEnter, onExit });
@@ -22,17 +22,18 @@ export function ArtifactEditControls({ projectId, active, busy, onEnter, onExit 
     const origin = window.location.origin;
     let alive = true;
     let pending = false;
+    let quietCancellation = false;
     const post = (data: object) => { if (alive) host.postMessage({ projectId, controllerId, ...data }, origin); };
-    const publish = () => post({ type: 'studio:edit-state', active: current.current.active, busy: current.current.busy || pending });
+    const publish = () => post({ type: 'studio:edit-state', active: current.current.active, busy: current.current.busy || pending, ...(quietCancellation ? { quietCancellation: true } : {}) });
     publishRef.current = publish;
     const receive = (event: MessageEvent) => {
       if (event.source !== host || event.origin !== origin || event.data?.projectId !== projectId) return;
-      if (event.data.type === 'studio:edit-request') { publish(); return; }
+      if (event.data.type === 'studio:edit-request') { quietCancellation = event.data.quietCancellation === true; publish(); return; }
       const parsed = Request.safeParse(event.data);
       if (!parsed.success || parsed.data.controllerId !== controllerId) return;
       const { action, requestId } = parsed.data;
-      const reply = (accepted: boolean) => post({ type: 'studio:edit-result', requestId, accepted,
-        ...(!accepted ? { error: 'Your changes remain open. Finish saving in the artifact, then try again.' } : {}) });
+      const reply = (outcome: boolean | 'cancelled') => post({ type: 'studio:edit-result', requestId, accepted: outcome === true,
+        ...(outcome === 'cancelled' && quietCancellation ? { cancelled: true } : outcome !== true ? { error: 'Your changes remain open. Finish saving in the artifact, then try again.' } : {}) });
       if (pending) { reply(false); return; }
       pending = true; publish();
       void (async () => {

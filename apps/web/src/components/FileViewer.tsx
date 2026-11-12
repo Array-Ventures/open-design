@@ -11650,7 +11650,7 @@ function HtmlViewer({
       enabled: boardMode,
       mode: boardTool,
     }, '*');
-    win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
+    win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode, commitOnEscape: embedded }, '*');
     win.postMessage({
       type: 'od-edit-selected-target',
       id: manualEditMode ? selectedManualEditTarget?.id ?? null : null,
@@ -12853,9 +12853,10 @@ function HtmlViewer({
     ) {
       postAndConsumePreviewRuntimeState(target);
     }
-    win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
+    win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode, commitOnEscape: embedded }, '*');
     postSelectedManualEditTargetToIframe(manualEditMode ? selectedManualEditTarget?.id ?? null : null);
   }, [
+    embedded,
     manualEditMode,
     selectedManualEditTarget?.id,
     srcDoc,
@@ -18291,8 +18292,8 @@ function HtmlViewer({
       <div className="viewer-body" ref={previewBodyRef}>
         {embedded && !viewerOnly && manualEditEntryAllowed && /\.html?$/i.test(file.name) ? <ArtifactEditControls key={file.name} projectId={projectId} active={manualEditMode} busy={manualEditSaving}
           onEnter={async () => {
-            if (composerHoldsUnsentWorkRef.current && !(await confirmHostFeedbackDiscard(projectId, 'comment'))) return false;
-            if (markupDraftDirty && !(await confirmHostFeedbackDiscard(projectId, 'markup'))) return false;
+            if (composerHoldsUnsentWorkRef.current && !(await confirmHostFeedbackDiscard(projectId, 'comment'))) return 'cancelled';
+            if (markupDraftDirty && !(await confirmHostFeedbackDiscard(projectId, 'markup'))) return 'cancelled';
             return activateManualEditTool();
           }}
           onExit={() => requestManualEditSafeExitRef.current()} /> : null}

@@ -88,6 +88,14 @@ describe('ManualEditPanel', () => {
     expect(host.querySelector('input')!.matches(':disabled')).toBe(false);
   });
 
+  it('names numeric, color and box-side inputs independently of their current values', () => {
+    renderPanel();
+    expect(host.querySelector('input[aria-label="Font size"]')).not.toBeNull();
+    expect(host.querySelector('input[aria-label="Text color"]')).not.toBeNull();
+    expect(host.querySelector('input[aria-label="Padding Top"]')).not.toBeNull();
+    expect(host.querySelector('input[aria-label="Margin Top"]')).not.toBeNull();
+  });
+
   it('renders the style inspector without the advanced editor entry', () => {
     renderPanel();
 

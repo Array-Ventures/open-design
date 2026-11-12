@@ -171,6 +171,7 @@ export function buildManualEditKeyboardGuard(): string {
 export function buildManualEditBridge(enabled: boolean): string {
   return `<script data-od-edit-bridge>(function(){
   var enabled = ${JSON.stringify(enabled)};
+  var commitOnEscape = false;
   var discoverySelector = ${JSON.stringify(MANUAL_EDIT_DISCOVERY_SELECTOR)};
   var hostNodeSelector = ${JSON.stringify(MANUAL_EDIT_HOST_NODE_SELECTOR)};
   var sourcePathAttr = ${JSON.stringify(MANUAL_EDIT_SOURCE_PATH_ATTR)};
@@ -853,7 +854,7 @@ export function buildManualEditBridge(enabled: boolean): string {
       }
       if (ev.key === 'Escape') {
         ev.preventDefault();
-        finishActiveTextEdit(false);
+        finishActiveTextEdit(commitOnEscape);
       }
     }
     activeTextEdit = { el: el, originalText: originalText, onKey: onKey };
@@ -907,6 +908,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (!ev.data) return;
     if (ev.data.type === 'od-edit-mode') {
       enabled = !!ev.data.enabled;
+      commitOnEscape = ev.data.commitOnEscape === true;
       document.documentElement.toggleAttribute('data-od-edit-mode', enabled);
       if (!enabled) {
         // Leaving edit mode commits the pending inline edit rather than
