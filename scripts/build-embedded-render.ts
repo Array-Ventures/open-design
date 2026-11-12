@@ -13,7 +13,9 @@ await mkdir(output, { recursive: true });
 // Worker imports resolve shared package exports, so refresh their compiled
 // dependency closure before bundling the isolated runtime.
 execFileSync('corepack', ['pnpm', '--filter', '@open-design/daemon^...', '--workspace-concurrency=1', 'run', '--if-present', 'build'], { cwd: root, stdio: 'inherit' });
-execFileSync('corepack', ['pnpm', '--filter', '@open-design/daemon', 'exec', 'esbuild', 'src/embedded-render/main.ts', '--bundle', '--platform=node', '--format=esm', '--target=node24', '--external:playwright-core', '--banner:js=import { createRequire } from "node:module"; const require = createRequire(import.meta.url);', `--metafile=${path.join(output, 'bundle-inputs.json')}`, `--outfile=${path.join(output, 'worker.mjs')}`], { cwd: root, stdio: 'inherit' });
+execFileSync('corepack', ['pnpm', '--filter', '@open-design/daemon', 'exec', 'esbuild', 'src/embedded-render/main.ts', '--bundle', '--platform=node', '--format=esm', '--target=node24', '--external:playwright-core', '--banner:js=import { createRequire as __odWorkerCreateRequire } from "node:module"; const require = __odWorkerCreateRequire(import.meta.url);', `--metafile=${path.join(output, 'bundle-inputs.json')}`, `--outfile=${path.join(output, 'worker.mjs')}`], { cwd: root, stdio: 'inherit' });
+// Validate the final banner+bundle before producing an executable image.
+execFileSync(process.execPath, ['--check', path.join(output, 'worker.mjs')], { cwd: root, stdio: 'inherit' });
 // Bundle the shared converter as one browser closure: serialized functions must
 // retain their helper references independently of the Node worker's bundler.
 execFileSync('corepack', ['pnpm', '--filter', '@open-design/daemon', 'exec', 'esbuild', '../../packages/deck-export/src/index.ts', '--bundle', '--platform=browser', '--format=iife', '--global-name=odDeckExport', '--target=chrome130', `--outfile=${path.join(output, 'deck-export.iife.js')}`], { cwd: root, stdio: 'inherit' });

@@ -1,4 +1,4 @@
-import { createRequire } from 'node:module';
+import StylesXform from 'exceljs-community/lib/xlsx/xform/style/styles-xform.js';
 import { Readable } from 'node:stream';
 import ExcelJS from 'exceljs-community';
 import { workbookDocumentSchema, WORKBOOK_MODEL_LIMITS, type WorkbookCell, type WorkbookSheet, type WorkbookStyle } from '@open-design/contracts/runtime/workbook';
@@ -105,9 +105,6 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
   };
   let normal: WorkbookStyle = {};
   if (styleLink && !styleLink.external) {
-    const StylesXform = createRequire(import.meta.url)('exceljs-community/lib/xlsx/xform/style/styles-xform.js') as new () => {
-      parseStream(stream: Readable): Promise<unknown>; getStyleModel(id: number): Partial<ExcelJS.Style> | null;
-    };
     const parser = new StylesXform(); await parser.parseStream(Readable.from([parts.get(styleLink.target)!]));
     normal = sourceStyle(parser.getStyleModel(0) ?? {}, 0);
   }
