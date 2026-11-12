@@ -56,7 +56,14 @@ export const workbookDimensionEditSchema = z.discriminatedUnion('axis', [
   z.object({ sheetId: id, axis: z.literal('column'), index: column, size: z.number().min(0).max(255).optional(), hidden: z.boolean().optional() }).strict(),
 ]).refine(edit => edit.size !== undefined || edit.hidden !== undefined, 'A dimension edit must change size or visibility.');
 export type WorkbookDimensionEdit = z.infer<typeof workbookDimensionEditSchema>;
-export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional() }).strict();
+/** Sparse authored formatting changes; omitted properties retain source XML. */
+export const workbookStyleEditSchema = z.object({ sheetId: id, row, column,
+  bold: z.boolean().optional(), italic: z.boolean().optional(),
+  fontColor: z.string().regex(/^[A-Fa-f0-9]{8}$/).nullable().optional(),
+  fillColor: z.string().regex(/^[A-Fa-f0-9]{8}$/).nullable().optional(),
+}).strict().refine(edit => ['bold', 'italic', 'fontColor', 'fillColor'].some(key => Object.hasOwn(edit, key)), 'Empty style edit.');
+export type WorkbookStyleEdit = z.infer<typeof workbookStyleEditSchema>;
+export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), styles: z.array(workbookStyleEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional() }).strict();
 /** Source ownership from OOXML f/@t and f/@ref, never inferred from cached
  * numeric cells or a formula's function name. Dynamic/legacy array identity is
  * intentionally not guessed: their additional source parts remain retained. */

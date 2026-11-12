@@ -44,8 +44,8 @@ it('clears cells while retaining their source formatting and permits undo back t
 });
 it('blocks an entire save containing unsupported formatting rather than partially saving the valid cells', () => {
   const { model, initial, current } = fixture(); current.sheets.s1!.cellData![0]![0]!.v = 100;
-  current.sheets.s1!.cellData![1]![0]!.s = { bl: 1 };
-  expect(() => workbookGridEdits(model, hash, initial, current)).toThrow('Cell formatting changed');
+  current.sheets.s1!.cellData![1]![0]!.s = { fs: 20 };
+  expect(() => workbookGridEdits(model, hash, initial, current)).toThrow('This formatting change cannot be saved yet');
   current.sheets.s1!.cellData![1]![0] = structuredClone(initial.sheets.s1!.cellData![1]![0]!);
   current.sheets.s1!.mergeData = [{ startRow: 0, endRow: 1, startColumn: 0, endColumn: 0 }];
   expect(() => workbookGridEdits(model, hash, initial, current)).toThrow('Sheet formatting or structure changed');
@@ -71,12 +71,31 @@ it('records row and column resizing as dimensions instead of rejecting or invent
     { sheetId: 's1', axis: 'row', index: 10, size: 36 }, { sheetId: 's1', axis: 'column', index: 2, size: 25 },
   ]);
 });
-it('accepts empty interned style aliases but rejects every positive new color or authored style change', () => {
+it('accepts empty aliases and sparse authored colors while rejecting mutation of loaded styles', () => {
   const { model, initial, current } = fixture();
   current.styles.empty = {}; current.sheets.s1!.cellData![100] = { 0: { v: 7, t: CellValueType.NUMBER, s: 'empty' } };
   expect(workbookGridEdits(model, hash, initial, current).edits).toContainEqual({ sheetId: 's1', cell: { row: 100, column: 0, kind: 'number', value: 7 } });
   current.styles.empty = { cl: { rgb: '#0a0a0a' } };
-  expect(() => workbookGridEdits(model, hash, initial, current)).toThrow('Workbook formatting changed');
+  expect(workbookGridEdits(model, hash, initial, current).styles).toEqual([{ sheetId: 's1', row: 100, column: 0, fontColor: 'FF0a0a0a' }]);
   current.styles.empty = {}; current.styles['0'] = { cl: { rgb: '#ff0000' } };
   expect(() => workbookGridEdits(model, hash, initial, current)).toThrow('Workbook formatting changed');
+});
+
+it('emits sparse style deltas for real formatting without rewriting a formula cache', () => {
+  const { model, initial, current } = fixture();
+  current.styles.authored = { bl: 1, it: 1, cl: { rgb: '#123456' }, bg: { rgb: '#abcdef' } };
+  current.sheets.s1!.cellData![1]![0]!.s = 'authored';
+  current.sheets.s1!.cellData![1]![0]!.v = 999;
+  const plan = workbookGridEdits(model, hash, initial, current);
+  expect(plan.edits).toEqual([]);
+  expect(plan.styles).toEqual([{ sheetId: 's1', row: 1, column: 0, bold: true, italic: true, fontColor: 'FF123456', fillColor: 'FFabcdef' }]);
+  expect(workbookGridEdits(model, hash, initial, structuredClone(initial)).styles).toBeUndefined();
+});
+it('blocks unsupported styles even when a permitted style is changed in the same save', () => {
+  const { model, initial, current } = fixture();
+  current.sheets.s1!.cellData![0]![0]!.s = { bl: 1, bd: { b: { s: 1, cl: { rgb: '#123456' } } } };
+  expect(() => workbookGridEdits(model, hash, initial, current)).toThrow('This formatting change cannot be saved yet');
+  current.sheets.s1!.cellData![0]![0]!.s = { bl: 1 };
+  current.sheets.s1!.cellData![2]![0]!.s = { bl: 1 };
+  expect(() => workbookGridEdits(model, hash, initial, current)).toThrow('Rich text formatting changes');
 });

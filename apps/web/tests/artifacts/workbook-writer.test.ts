@@ -131,3 +131,15 @@ it('retains the fence when a rejection identifies a different candidate', async 
   }, () => {});
   writer.update(snapshot(2)); await writer.flush(); expect(writer.checkpoint().pending).not.toBeNull(); expect(writer.state().dirty).toBe(true);
 });
+
+it('journals formatting-only intent and retries its exact identity after a lost response', async () => {
+  const { source, initial } = fixture(), intents: WorkbookWriteIntent[] = [], checkpoints: (WorkbookCheckpoint | null)[] = [];
+  const write = vi.fn(async (intent: WorkbookWriteIntent) => { intents.push(intent); if (intents.length === 1) throw new Error('Response lost'); return { ...source, sourceSha256: 'b'.repeat(64) }; });
+  const writer = new WorkbookWriter(source, initial, write, () => {}, undefined, { save: async checkpoint => { checkpoints.push(checkpoint); } });
+  const next = structuredClone(initial); next.sheets.s!.cellData![0]![0]!.s = { bl: 1 }; writer.update(next);
+  expect(writer.state().dirty).toBe(true); await writer.flush();
+  expect(checkpoints.some(checkpoint => checkpoint?.pending?.intent.plan.styles?.[0]?.bold)).toBe(true);
+  await writer.flush();
+  expect(intents[0]).toBe(intents[1]); expect(intents[0]!.plan.edits).toEqual([]); expect(intents[0]!.plan.styles).toEqual([{ sheetId: 's', row: 0, column: 0, bold: true }]);
+  expect(writer.state()).toEqual({ dirty: false, saving: false, error: null }); await writer.close();
+});

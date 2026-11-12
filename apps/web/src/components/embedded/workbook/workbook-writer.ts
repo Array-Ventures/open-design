@@ -43,7 +43,7 @@ export class WorkbookWriter {
   private plan() { return workbookGridEdits(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired); }
   state(): WorkbookWriteState {
     let dirty = Boolean(this.pending || this.running);
-    try { const plan = this.plan(); dirty ||= plan.edits.length > 0 || Boolean(plan.dimensions?.length); } catch { dirty = true; }
+    try { const plan = this.plan(); dirty ||= plan.edits.length > 0 || Boolean(plan.dimensions?.length || plan.styles?.length); } catch { dirty = true; }
     return { dirty, saving: this.running !== null, error: this.error };
   }
   update(snapshot: IWorkbookData) {
@@ -60,7 +60,7 @@ export class WorkbookWriter {
   private async persist() {
     if (!this.journal) return;
     let dirty = Boolean(this.pending);
-    try { const plan = this.plan(); dirty ||= plan.edits.length > 0 || Boolean(plan.dimensions?.length); } catch { dirty = true; }
+    try { const plan = this.plan(); dirty ||= plan.edits.length > 0 || Boolean(plan.dimensions?.length || plan.styles?.length); } catch { dirty = true; }
     const checkpoint = dirty ? this.checkpoint() : null;
     const next = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
     this.persistence = next;
@@ -79,7 +79,7 @@ export class WorkbookWriter {
       try {
         if (!this.pending) {
           if (this.recoveryConflict) throw new Error('This recovered draft is based on an older workbook. Keep a copy before reloading the current file.');
-          const plan = this.plan(); if (!plan.edits.length && !plan.dimensions?.length) { this.error = null; return; }
+          const plan = this.plan(); if (!plan.edits.length && !plan.dimensions?.length && !plan.styles?.length) { this.error = null; return; }
           this.pending = { intent: { id: crypto.randomUUID(), preparationId: crypto.randomUUID(), previewId: crypto.randomUUID(), plan }, snapshot: structuredClone(this.desired) };
         }
         // Persist identity before any side effect. A crash after admission can

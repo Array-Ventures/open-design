@@ -22,7 +22,7 @@ it('lets the pinned editor remove inherited foreground before style interning an
   current.sheets.s!.cellData![1]![1] = edited;
   expect(workbookGridEdits(model, 'a'.repeat(64), initial, current).edits).toEqual([{ sheetId: 's', cell: { row: 1, column: 1, kind: 'number', value: 13579 } }]);
 });
-it('preserves authored fonts and colors and refuses a genuine editor color change', () => {
+it('preserves inherited authored fonts and emits a sparse genuine editor color change', () => {
   const authored = structuredClone(model); authored.styles[0]!.font!.color = { kind: 'rgb', argb: 'FF123456' };
   const initial = gridWorkbook(authored, 'project:Forecast.xlsx', 'Forecast', '#0a0a0a').data as IWorkbookData;
   const current = structuredClone(initial), styles = new Styles(current.styles), sheet = new Worksheet(initial.id, current.sheets.s!, styles);
@@ -32,5 +32,7 @@ it('preserves authored fonts and colors and refuses a genuine editor color chang
   const edited: ICellData = { v: 13579, t: CellValueType.NUMBER, s: { cl: { rgb: '#ff0000' } } };
   editing._removeComposedCellStyleInCellData(edited, inherited); expect(edited.s).toEqual({ cl: { rgb: '#ff0000' } });
   edited.s = styles.setValue(edited.s as IStyleData); current.sheets.s!.cellData![1]![1] = edited;
-  expect(() => workbookGridEdits(authored, 'a'.repeat(64), initial, current)).toThrow('Workbook formatting changed');
+  const plan = workbookGridEdits(authored, 'a'.repeat(64), initial, current);
+  expect(plan.styles).toEqual([{ sheetId: 's', row: 1, column: 1, fontColor: 'FFff0000' }]);
+  expect(plan.edits).toEqual([{ sheetId: 's', cell: { row: 1, column: 1, kind: 'number', value: 13579 } }]);
 });

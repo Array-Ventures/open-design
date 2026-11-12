@@ -1,5 +1,5 @@
 import { CellValueType, type ICellData, type IWorkbookData } from '@univerjs/presets';
-import { workbookEditPlanSchema, type WorkbookCell, type WorkbookDimensionEdit, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import { workbookEditPlanSchema, type WorkbookCell, type WorkbookDimensionEdit, type WorkbookDocument, type WorkbookStyleEdit } from '@open-design/contracts/runtime/workbook';
 
 import { gridDimensionEdits } from './grid-dimensions';
 
@@ -14,17 +14,46 @@ function canonical(value: unknown): string {
 }
 function same(a: unknown, b: unknown) { return canonical(a) === canonical(b); }
 function unchangedStyles(initial: IWorkbookData['styles'], current: IWorkbookData['styles']) {
-  // Univer may intern an empty style after removing inherited editor defaults.
-  // Existing definitions remain immutable; a positive new style is unsupported.
-  return Object.entries(initial).every(([key, value]) => Object.hasOwn(current, key) && same(value, current[key]))
-    && Object.entries(current).every(([key, value]) => Object.hasOwn(initial, key) || same(value, {}));
+  return Object.entries(initial).every(([key, value]) => Object.hasOwn(current, key) && same(value, current[key]));
 }
-function formatting(cell: ICellData, styles: IWorkbookData['styles']) {
-  const other = { ...cell }, s = cell.s;
+function formatting(cell: ICellData) {
+  const other = { ...cell };
   for (const key of ['v', 't', 'f', 'p', 's'] as const) delete other[key];
-  const style = typeof s === 'string' ? styles[s] : s;
-  if (s == null || same(style, {})) return other;
-  return { ...other, s };
+  return other;
+}
+function resolvedStyle(cell: ICellData, styles: IWorkbookData['styles'], inherited: unknown) {
+  const resolve = (value: unknown): Record<string, unknown> => {
+    if (typeof value === 'string' && !Object.hasOwn(styles, value)) return fail('This cell style is missing from the workbook.');
+    const result = typeof value === 'string' ? styles[value] : value;
+    if (result == null) return {};
+    if (typeof result !== 'object' || Array.isArray(result)) return fail('This cell style cannot be validated.');
+    return result as Record<string, unknown>;
+  };
+  return { ...resolve(inherited), ...resolve(cell.s) };
+}
+function styleDelta(a: Record<string, unknown>, b: Record<string, unknown>): Partial<WorkbookStyleEdit> {
+  const result: Partial<WorkbookStyleEdit> = {};
+  const remainderA = { ...a }, remainderB = { ...b };
+  for (const [key, property] of [['bl', 'bold'], ['it', 'italic']] as const) {
+    if (!same(a[key], b[key])) {
+      if (b[key] !== undefined && b[key] !== null && b[key] !== 0 && b[key] !== 1) fail('This font change cannot be saved yet.');
+      result[property] = b[key] === 1;
+    }
+    delete remainderA[key]; delete remainderB[key];
+  }
+  for (const [key, property] of [['cl', 'fontColor'], ['bg', 'fillColor']] as const) {
+    if (!same(a[key], b[key])) {
+      const value = b[key] as { rgb?: unknown } | null | undefined;
+      if (value == null) result[property] = null;
+      else {
+        if (typeof value !== 'object' || Object.keys(value).some(key => key !== 'rgb') || typeof value.rgb !== 'string' || !/^#[a-fA-F0-9]{6}([a-fA-F0-9]{2})?$/.test(value.rgb)) fail('This color change cannot be saved yet.');
+        const rgb = value.rgb as string; result[property] = rgb.length === 7 ? `FF${rgb.slice(1)}` : `${rgb.slice(7)}${rgb.slice(1, 7)}`;
+      }
+    }
+    delete remainderA[key]; delete remainderB[key];
+  }
+  if (!same(remainderA, remainderB)) fail('This formatting change cannot be saved yet. Keep this workbook open.');
+  return result;
 }
 const sheetContent = ['name', 'hidden', 'rowCount', 'columnCount', 'mergeData', 'freeze', 'defaultRowHeight', 'defaultColumnWidth', 'defaultStyle'] as const;
 function positions(matrix: IWorkbookData['sheets'][string]['cellData']) {
@@ -64,6 +93,7 @@ export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string,
   if (!unchangedStyles(initial.styles, current.styles) || initial.dateSystem !== current.dateSystem) fail('Workbook formatting changed. Keep this workbook open; these changes cannot be saved yet.');
   const edits: { sheetId: string; cell: WorkbookCell }[] = [];
   const dimensions: WorkbookDimensionEdit[] = [];
+  const styles: WorkbookStyleEdit[] = [];
   for (const sheet of model.sheets) {
     const before = initial.sheets[sheet.id], after = current.sheets[sheet.id];
     if (!before || !after) return fail('Sheet structure changed. Keep this workbook open.');
@@ -78,10 +108,18 @@ export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string,
       if (same(a, b)) continue;
       const { v: av, t: at, f: af, p: ap } = a;
       const { v: bv, t: bt, f: bf, p: bp } = b;
-      const aFormatting = formatting(a, initial.styles), bFormatting = formatting(b, current.styles);
+      const aFormatting = formatting(a), bFormatting = formatting(b);
       // Deleting a cell may remove its grid style; the OOXML patch retains the
       // original style. Any positive new style change needs its own writer.
-      if (!same(aFormatting, bFormatting) && !(Object.keys(b).length === 0)) fail('Cell formatting changed. Keep this workbook open; these changes cannot be saved yet.');
+      if (!same(aFormatting, bFormatting) && !(Object.keys(b).length === 0)) fail('Cell metadata changed. Keep this workbook open; these changes cannot be saved yet.');
+      if (Object.keys(b).length !== 0) {
+        const inherited = before.rowData?.[row]?.s ?? before.columnData?.[column]?.s ?? before.defaultStyle;
+        const delta = styleDelta(resolvedStyle(a, initial.styles, inherited), resolvedStyle(b, current.styles, inherited));
+        if (Object.keys(delta).length) {
+          if (ap || bp) fail('Rich text formatting changes cannot be saved yet. Keep this workbook open.');
+          styles.push({ sheetId: sheet.id, row, column, ...delta });
+        }
+      }
       if (af && af === bf && same(ap, bp)) continue; // cached results are not user edits
       if (same({ v: av, t: at, f: af, p: ap }, { v: bv, t: bt, f: bf, p: bp })) continue;
       if (bp && !same(ap, bp)) {
@@ -91,5 +129,5 @@ export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string,
       edits.push({ sheetId: sheet.id, cell: scalar(b, originals.get(coordinate), row, column) });
     }
   }
-  return workbookEditPlanSchema.parse({ sourceSha256, edits, ...(dimensions.length ? { dimensions } : {}) });
+  return workbookEditPlanSchema.parse({ sourceSha256, edits, ...(dimensions.length ? { dimensions } : {}), ...(styles.length ? { styles } : {}) });
 }
