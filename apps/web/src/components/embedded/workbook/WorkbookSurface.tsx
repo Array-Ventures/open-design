@@ -34,10 +34,12 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
     dirty: () => !editorRef.current || editorRef.current.stateRef.current.dirty || editorRef.current.discarding,
     pause: async () => editorRef.current?.pause() ?? false,
     resume: async accepted => { await editorRef.current?.resumeClean(accepted); },
-    accepted: source => { setLoaded(source); onSaved?.(); },
+    accepted: source => { setLoaded(source); setError(null); onSaved?.(); },
+    unreadable: () => { setLoaded(null); setError('The saved version was restored but cannot be previewed. Choose another version in History.'); onSaved?.(); },
+    onAccessLost: () => { void editorRef.current?.close(); setLoaded(null); setError('This workbook is unavailable. Reopen it after checking access.'); },
     focusOnClose: () => window.parent.postMessage({ type: 'studio:workbook-history-focus', projectId, controllerId: editorRef.current?.controllerId }, window.location.origin),
   });
-  const editor = useWorkbookEditor(projectId, fileName, loaded, source => { setLoaded(source); onSaved?.(); }, dirty => onDirtyChange?.(dirty || history.blocked), recovery.session?.journal, () => { setLoaded(null); setRetry(value => value + 1); }, { open: history.open, blocked: history.blocked, show: history.toggle });
+  const editor = useWorkbookEditor(projectId, fileName, loaded, source => { setLoaded(source); onSaved?.(); }, dirty => onDirtyChange?.(dirty || history.blocked), recovery.session?.journal, () => { setLoaded(null); setRetry(value => value + 1); }, { open: history.open, blocked: history.blocked, visible: history.canOpen, show: history.toggle });
   editorRef.current = editor;
   const historyRef = useRef(history); historyRef.current = history;
   close.current = editor.close;
@@ -59,7 +61,7 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
     }).catch(cause => {
       if (controller.signal.aborted || generation !== historyRef.current.generation()) return;
       if (cause instanceof WorkbookHostError && [410, 422].includes(cause.status)) operation.current = null;
-      if (cause instanceof WorkbookHostError && [401, 403, 404].includes(cause.status)) setLoaded(null);
+      if (cause instanceof WorkbookHostError && [401, 403, 404].includes(cause.status)) { historyRef.current.denyAccess(); return; }
       setError(cause instanceof Error ? cause.message : 'The workbook could not be loaded.');
     });
     return () => controller.abort();
@@ -82,13 +84,13 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
   return <div className="relative h-full min-h-0 w-full">
     <div className="relative z-0 h-full" onKeyDownCapture={event => { if (editor.discarding || history.blocked) { event.preventDefault(); event.stopPropagation(); } }} onPointerDownCapture={event => { if (editor.discarding || history.blocked) { event.preventDefault(); event.stopPropagation(); } }}>{content}</div>
     {history.blocked && history.open ? <div aria-hidden className="absolute inset-0 z-20 bg-background-primary-default/60" /> : null}
-    {history.blocked && !history.open ? <div role="status" className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-background-primary-default/80 p-4 text-caption-1-regular text-text-secondary"><span>{history.checking ? 'Checking restore recovery…' : 'A restore needs confirmation before editing.'}</span>{!history.checking ? <Button variant="secondary" size="small" onClick={history.show}>History</Button> : null}</div> : null}
+    {history.blocked && !history.open ? <div role="status" className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-background-primary-default/80 p-4 text-caption-1-regular text-text-secondary"><span>{history.checking ? 'Checking restore recovery…' : !history.available ? 'Workbook recovery is unavailable. Retry to check access.' : history.missing ? 'The current workbook is missing. History restore will not recreate it.' : 'A restore needs confirmation before editing.'}</span>{!history.checking && history.canOpen ? <Button variant="secondary" size="small" onClick={history.show}>History</Button> : null}</div> : null}
     <WorkbookHistory history={history} dirty={editor.state.dirty || editor.discarding} sourceSha256={loaded?.sourceSha256} reload={() => { setRetry(value => value + 1); void history.refresh(); }} />
     {editor.discarding ? <div role="status" className="absolute inset-0 z-20 flex items-center justify-center bg-background-primary-default/80 text-body-2-regular text-text-tertiary">Discarding changes…</div> : null}
     {editor.state.error || downloadError ? <div role="alert" className="absolute bottom-12 start-3 end-3 z-10 flex items-center gap-3 rounded-lg border border-border-button-default bg-background-primary-default p-3 text-body-2-regular text-text-error-primary">
       <span className="min-w-0 flex-1">{downloadError ?? editor.state.error}</span>
       <Button variant="ghost" size="small" iconOnly leadingIcon={RiDownloadLine} className={cx(ARTIFACT_ICON_BUTTON, 'shrink-0')} aria-label="Download recovery copy (JSON)" title="Download recovery copy (JSON)" onClick={downloadCurrent} />
     </div> : null}
-    {error ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry loading workbook" title={error} className={cx(ARTIFACT_ICON_BUTTON, 'absolute end-3 top-3')} onClick={() => setRetry(value => value + 1)} /> : null}
+    {error ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry loading workbook" title={error} className={cx(ARTIFACT_ICON_BUTTON, 'absolute end-3 top-3 z-30')} onClick={() => { setRetry(value => value + 1); void history.refresh(); }} /> : null}
   </div>;
 }

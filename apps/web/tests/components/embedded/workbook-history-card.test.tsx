@@ -24,3 +24,14 @@ it('blocks restoration for unsaved edits but keeps pending-receipt checks availa
   view.rerender(<WorkbookHistory history={{ ...history, intent: {} as never }} dirty={false} sourceSha256={target} reload={vi.fn()} />);
   expect(screen.getByRole('button', { name: 'Check status' }).hasAttribute('disabled')).toBe(false);
 });
+it('allows raw-SHA recovery without a preview, refuses missing-file resurrection, and hides denied metadata', () => {
+  const history = { ...fixture(), available: true, canOpen: true };
+  const view = render(<WorkbookHistory history={history} dirty={false} reload={vi.fn()} />);
+  expect(screen.getByText('Restore a saved version to recover this file. Local drafts are kept.')).toBeTruthy();
+  expect(screen.getByRole('button', { name: /^Restore$/ }).hasAttribute('disabled')).toBe(false);
+  view.rerender(<WorkbookHistory history={{ ...history, sha: null }} dirty={false} reload={vi.fn()} />);
+  expect(screen.getByText('The current workbook is missing. History restore will not recreate it.')).toBeTruthy();
+  expect(screen.getByRole('button', { name: /^Restore$/ }).hasAttribute('disabled')).toBe(true);
+  view.rerender(<WorkbookHistory history={{ ...history, canOpen: false }} dirty={false} reload={vi.fn()} />);
+  expect(screen.queryByRole('dialog')).toBeNull();
+});

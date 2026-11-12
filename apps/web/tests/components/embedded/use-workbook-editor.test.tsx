@@ -74,3 +74,11 @@ it('opens history only for the exact host/controller and publishes its pending r
   expect(show).toHaveBeenCalledOnce();
   expect(latestController(post)).toMatchObject({ dirty: true, restoring: true, historyOpen: true });
 });
+it('can freeze an empty clean corrupt-file editor but hides controls when history access is denied', async () => {
+  const post = vi.spyOn(window, 'postMessage'), show = vi.fn();
+  const view = renderHook(() => useWorkbookEditor(projectId, 'Forecast.xlsx', null, vi.fn(), undefined, undefined, undefined, { open: false, blocked: true, visible: false, show }));
+  await act(async () => { expect(await view.result.current.pause()).toBe(true); });
+  expect(post.mock.calls.some(([value]) => value.type === 'studio:workbook-unavailable')).toBe(true);
+  act(() => window.dispatchEvent(new MessageEvent('message', { source: window, origin: window.location.origin, data: { type: 'studio:workbook-control', projectId, controllerId: view.result.current.controllerId, action: 'history' } })));
+  expect(show).not.toHaveBeenCalled();
+});

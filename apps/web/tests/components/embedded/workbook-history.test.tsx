@@ -81,13 +81,60 @@ it.each([undefined, 'another-version'])('keeps the protected restore when receip
   expect(options.accepted).not.toHaveBeenCalled(); expect(mocks.preview).not.toHaveBeenCalled();
   expect(mocks.store.mock.calls.some(([, change]) => change && change.value === null)).toBe(false);
 });
-it('waits for an authorized preview before reading restore IDs without depending on editor recovery readiness', async () => {
-  const { options } = fixture(); let readable = false;
-  const view = renderHook(() => useWorkbookHistory({ ...options, source: readable ? source : null, ready: false }));
+it('waits for fresh authorized history before reading restore IDs even when the preview is corrupt', async () => {
+  const { options } = fixture(); let resolve!: (value: unknown) => void;
+  mocks.list.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  const view = renderHook(() => useWorkbookHistory({ ...options, source: null, ready: false }));
   expect(mocks.store).not.toHaveBeenCalled(); expect(view.result.current.checking).toBe(true);
-  act(() => view.result.current.show()); expect(mocks.list).not.toHaveBeenCalled();
-  readable = true; view.rerender(); await waitFor(() => expect(view.result.current.checking).toBe(false));
-  expect(mocks.store).toHaveBeenCalledExactlyOnceWith(scope);
-  await waitFor(() => expect(mocks.list).toHaveBeenCalledOnce());
+  await act(async () => { resolve({ versions: [revision], nextCursor: null, currentSha256: sha }); });
+  await waitFor(() => expect(view.result.current.checking).toBe(false));
+  expect(mocks.store).toHaveBeenCalledExactlyOnceWith(scope); expect(view.result.current.available).toBe(true);
   expect(mocks.restore).not.toHaveBeenCalled();
+});
+it('recovers a corrupt current file with the exact raw history SHA without requiring an editable draft session', async () => {
+  const { options, record } = fixture(); const view = renderHook(() => useWorkbookHistory({ ...options, source: null, ready: false }));
+  await waitFor(() => expect(view.result.current.checking).toBe(false)); act(() => view.result.current.select(revision));
+  await act(async () => view.result.current.restore());
+  expect(mocks.restore.mock.calls[0]![0]).toMatchObject({ sourceSha256: sha, versionId: revision.id, versionSha256: target });
+  expect(options.accepted).toHaveBeenCalledWith({ ...source, sourceSha256: target }); expect(record()).toBeNull();
+});
+it('refuses source changes discovered by restore preflight and never resurrects a missing current file', async () => {
+  const { options, record } = fixture();
+  mocks.list.mockResolvedValueOnce({ versions: [revision], nextCursor: null, currentSha256: sha }).mockResolvedValueOnce({ versions: [revision], nextCursor: null, currentSha256: 'c'.repeat(64) }).mockResolvedValueOnce({ versions: [revision], nextCursor: null, currentSha256: null });
+  const view = renderHook(() => useWorkbookHistory({ ...options, source: null, ready: false }));
+  await waitFor(() => expect(view.result.current.checking).toBe(false)); act(() => view.result.current.select(revision));
+  await act(async () => view.result.current.restore()); expect(mocks.restore).not.toHaveBeenCalled(); expect(record()).toBeNull(); expect(view.result.current.error).toContain('current workbook changed');
+  await act(async () => view.result.current.refresh()); act(() => view.result.current.select(revision));
+  await act(async () => view.result.current.restore()); expect(mocks.restore).not.toHaveBeenCalled(); expect(record()).toBeNull(); expect(view.result.current.error).toContain('missing');
+});
+it.each([401, 403, 404])('hides metadata and controls on access denial %s without reading protected restore IDs', async status => {
+  const { WorkbookHostError } = await import('../../../src/components/embedded/workbook/host-request');
+  const { options } = fixture(); const lost = vi.fn(); mocks.list.mockRejectedValueOnce(new WorkbookHostError('Denied', status));
+  const view = renderHook(() => useWorkbookHistory({ ...options, source: null, ready: false, onAccessLost: lost }));
+  await waitFor(() => expect(view.result.current.canOpen).toBe(false));
+  expect(view.result.current.versions).toEqual([]); expect(view.result.current.intent).toBeNull(); expect(view.result.current.checking).toBe(false);
+  expect(mocks.store).not.toHaveBeenCalled(); expect(lost).toHaveBeenCalledOnce();
+});
+it('leaves an applied but unpreviewable revision recoverable through another selected revision', async () => {
+  const { WorkbookHostError } = await import('../../../src/components/embedded/workbook/host-request');
+  const { options, record } = fixture(); const unreadable = vi.fn();
+  mocks.preview.mockRejectedValueOnce(new WorkbookHostError('Corrupt ZIP', 422));
+  mocks.list.mockResolvedValueOnce({ versions: [revision], nextCursor: null, currentSha256: sha }).mockResolvedValueOnce({ versions: [revision], nextCursor: null, currentSha256: sha }).mockResolvedValueOnce({ versions: [revision], nextCursor: null, currentSha256: target });
+  const view = renderHook(() => useWorkbookHistory({ ...options, source: null, ready: false, unreadable }));
+  await waitFor(() => expect(view.result.current.checking).toBe(false)); act(() => view.result.current.select(revision));
+  await act(async () => view.result.current.restore());
+  expect(record()).toBeNull(); expect(view.result.current.open).toBe(true); expect(view.result.current.blocked).toBe(false);
+  expect(unreadable).toHaveBeenCalledOnce(); expect(view.result.current.error).toContain('cannot be previewed');
+});
+it('hides previously authorized restore metadata on revocation while retaining its protected record', async () => {
+  const { WorkbookHostError } = await import('../../../src/components/embedded/workbook/host-request');
+  const { options, record } = fixture();
+  const pending = { version: 1, ...scope, operationId: '18a8301a-b6e1-4001-8000-c967b1eab227', preparationId: '18a8301a-b6e1-4001-8000-c967b1eab226', sourceSha256: sha, versionSha256: target, versionId: revision.id };
+  await mocks.store(scope, { expected: null, value: pending }); mocks.store.mockClear();
+  const view = renderHook(() => useWorkbookHistory({ ...options, source: null, ready: false }));
+  await waitFor(() => expect(view.result.current.intent).toEqual(pending));
+  mocks.list.mockRejectedValueOnce(new WorkbookHostError('Access revoked', 403));
+  await act(async () => view.result.current.refresh());
+  expect(view.result.current.canOpen).toBe(false); expect(view.result.current.intent).toBeNull(); expect(view.result.current.versions).toEqual([]);
+  expect(record()).toEqual(pending); expect(mocks.store.mock.calls.every(([, change]) => change === undefined)).toBe(true);
 });

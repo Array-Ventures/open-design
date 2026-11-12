@@ -11,9 +11,10 @@ function versionTime(time: number) { return new Intl.DateTimeFormat(undefined, {
 export function WorkbookHistory({ history, dirty, sourceSha256, reload }: { history: History; dirty: boolean; sourceSha256?: string; reload(): void }) {
   const close = useRef<HTMLButtonElement>(null), fade = useScrollFade();
   useEffect(() => { if (history.open) close.current?.focus(); }, [history.open]);
-  if (!history.open) return null;
-  const mismatch = (history.sha !== null || history.versions.length > 0) && history.sha !== sourceSha256;
-  const disabled = dirty || !history.intent && mismatch || history.working || history.checking;
+  if (!history.open || history.canOpen === false) return null;
+  const mismatch = sourceSha256 !== undefined && (history.sha !== null || history.versions.length > 0) && history.sha !== sourceSha256;
+  const missing = history.available && history.sha === null, recovery = history.available && !sourceSha256 && !missing;
+  const disabled = missing || history.available === false || dirty || !history.intent && mismatch || history.working || history.checking;
   return <section role="dialog" aria-label="Workbook history" aria-busy={history.loading || history.working} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); history.close(); } }}
     className="absolute end-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 max-w-[calc(100%-1.5rem)] flex-col rounded-xl border border-border-button-default bg-background-primary-default text-text-primary shadow-lg">
     <header className="flex shrink-0 items-center gap-1 px-3 py-2">
@@ -39,10 +40,11 @@ export function WorkbookHistory({ history, dirty, sourceSha256, reload }: { hist
       </div>
       <ScrollFade progress={fade.progress} />
     </div>
-    {history.error || history.intent || dirty || mismatch || history.selected ? <footer className="flex shrink-0 flex-col gap-2 border-t border-separator-border p-3">
+    {history.error || history.intent || dirty || mismatch || missing || recovery || history.selected ? <footer className="flex shrink-0 flex-col gap-2 border-t border-separator-border p-3">
       {history.error ? <p role="alert" className="m-0 break-words text-caption-1-regular text-text-error-primary">{history.error}</p> : null}
-      {history.intent ? <p className="m-0 text-caption-1-regular text-text-secondary">{history.intent.versionNumber ? `Version ${history.intent.versionNumber} restore needs confirmation.` : 'A restore needs confirmation.'} Check its status before editing.</p> : dirty ? <p className="m-0 text-caption-1-regular text-text-secondary">Save or discard your edits before restoring.</p> : mismatch ? <div className="flex items-center gap-2"><p className="m-0 min-w-0 flex-1 text-caption-1-regular text-text-secondary">The workbook changed elsewhere. Reload it before restoring.</p><Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} className={ARTIFACT_ICON_BUTTON} aria-label="Reload current workbook" onClick={reload} /></div> : history.selected ? <p className="m-0 text-caption-1-regular text-text-secondary">Restore version {history.selected.version} as a new revision.</p> : null}
-      {history.intent || history.selected ? <div className="flex justify-end"><Button variant="secondary" size="small" disabled={disabled || !history.intent && history.selected?.contentDigest === sourceSha256} onClick={() => void history.restore()}>{history.working ? 'Restoring…' : history.intent ? 'Check status' : 'Restore'}</Button></div> : null}
+      {history.intent ? <p className="m-0 text-caption-1-regular text-text-secondary">{history.intent.versionNumber ? `Version ${history.intent.versionNumber} restore needs confirmation.` : 'A restore needs confirmation.'} Check its status before editing.</p> : missing ? <p className="m-0 text-caption-1-regular text-text-secondary">The current workbook is missing. History restore will not recreate it.</p> : dirty ? <p className="m-0 text-caption-1-regular text-text-secondary">Save or discard your edits before restoring.</p> : mismatch ? <div className="flex items-center gap-2"><p className="m-0 min-w-0 flex-1 text-caption-1-regular text-text-secondary">The workbook changed elsewhere. Reload it before restoring.</p><Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} className={ARTIFACT_ICON_BUTTON} aria-label="Reload current workbook" onClick={reload} /></div> : history.selected ? <p className="m-0 text-caption-1-regular text-text-secondary">Restore version {history.selected.version} as a new revision.</p> : null}
+      {recovery ? <p className="m-0 text-caption-1-regular text-text-secondary">Restore a saved version to recover this file. Local drafts are kept.</p> : null}
+      {history.intent || history.selected ? <div className="flex justify-end"><Button variant="secondary" size="small" disabled={disabled || !history.intent && history.selected?.contentDigest === (sourceSha256 ?? history.sha)} onClick={() => void history.restore()}>{history.working ? 'Restoring…' : history.intent ? 'Check status' : 'Restore'}</Button></div> : null}
     </footer> : null}
   </section>;
 }
