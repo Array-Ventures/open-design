@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
-import { WorkbookWriter, type WorkbookWriteState, type WorkbookJournal } from './workbook-writer';
+import { WorkbookWriter, type WorkbookWriteState, type WorkbookJournal, type WorkbookCheckpoint } from './workbook-writer';
 import { newWorkbookSaveAttempt, saveWorkbook } from './save-transport';
 import { loadWorkbookPreview } from './preview-transport';
 import { WorkbookHostError } from './host-request';
@@ -10,6 +10,12 @@ import { cancelWorkbookSavePreparation } from './cancel-transport';
 import { connectWorkbookDiscard, WorkbookDiscardNotCommittedError, type PreparedWorkbookDiscard } from './discard-controller';
 
 type Preview = { sourceSha256: string; model: WorkbookDocument };
+type WriterScope = { projectId: string; fileName: string; journal: WorkbookJournal | undefined };
+type WriterHandoff = { scope: WriterScope; checkpoint: WorkbookCheckpoint };
+// A recovery journal belongs to the current viewer's exclusive draft lease.
+// Without that identity there is no account/lease fence for an in-memory carry.
+const sameWriterScope = (a: WriterScope, b: WriterScope) => Boolean(a.journal && a.journal === b.journal && a.projectId === b.projectId && a.fileName === b.fileName);
+
 
 export function useWorkbookEditor(projectId: string, fileName: string, source: Preview | null,
   onAcknowledged: (source: Preview) => void, onDirtyChange?: (dirty: boolean) => void, journal?: WorkbookJournal, onDiscarded?: () => void, history?: { open: boolean; blocked: boolean; visible?: boolean; show(): void }) {
@@ -17,7 +23,9 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
   const [discarding, setDiscarding] = useState(false);
   const current = useRef({ projectId, fileName, source, onAcknowledged, onDirtyChange, journal, onDiscarded, history, discarding }); current.current = { projectId, fileName, source, onAcknowledged, onDirtyChange, journal, onDiscarded, history, discarding };
   const restored = useRef(new WeakSet<WorkbookJournal>());
-  const resume = useRef<ReturnType<WorkbookWriter['checkpoint']> | null>(null);
+  const resume = useRef<WriterHandoff | null>(null);
+  const writerScope = useRef<WriterScope | null>(null);
+  const handoff = useRef<Promise<WriterHandoff> | null>(null);
   const suspended = useRef<ReturnType<WorkbookWriter['checkpoint']> | null>(null);
   const paused = useRef(false), pausedSnapshot = useRef<IWorkbookData | null>(null);
   const discardTask = useRef<Promise<PreparedWorkbookDiscard> | null>(null);
@@ -26,27 +34,42 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
   const controllerId = useRef(crypto.randomUUID()).current;
   const retired = useRef(Promise.resolve());
   const generation = useRef(0);
-  const closeWriter = useCallback(() => {
+  const closeWriter = useCallback((preserveHandoff = false) => {
+    if (!preserveHandoff) handoff.current = null;
     generation.current += 1;
     running.current?.abort();
-    const owned = writer.current; writer.current = null;
+    const owned = writer.current; writer.current = null; writerScope.current = null;
     // Preserve drains even when a source-loss effect or another cleanup has
     // already detached the writer before the lease owner calls close().
     retired.current = Promise.all([retired.current, owned?.close()]).then(() => {});
     return retired.current;
   }, []);
+  const sourceIdentity = source?.sourceSha256;
   const ready = useCallback(async (initial: IWorkbookData) => {
-    const source = current.current.source; if (!source) return;
-    const closing = closeWriter(), owner = generation.current;
+    const opened = current.current, source = opened.source;
+    if (!source || opened.projectId !== projectId || opened.fileName !== fileName || source.sourceSha256 !== sourceIdentity || opened.journal !== journal) return;
+    const scope: WriterScope = { projectId, fileName, journal: opened.journal };
+    const previous = writer.current, previousScope = writerScope.current;
+    const closing = closeWriter(true), owner = generation.current;
+    // Read after the whole drain, including final render/preparation identity
+    // checkpoints. Concurrent ready calls share the retiring writer's handoff.
+    if (previous && previousScope) handoff.current = closing.then(() => ({ scope: previousScope, checkpoint: previous.checkpoint() }));
+    const pendingHandoff = handoff.current;
     await closing;
-    if (generation.current !== owner || current.current.source?.sourceSha256 !== source.sourceSha256) return;
+    const carried = await pendingHandoff;
+    if (generation.current !== owner || current.current.projectId !== projectId || current.current.fileName !== fileName
+      || current.current.journal !== scope.journal || current.current.source?.sourceSha256 !== source.sourceSha256) return;
+    handoff.current = null;
     const controller = new AbortController(); running.current = controller;
     const attempts = new Map<string, { save: ReturnType<typeof newWorkbookSaveAttempt>; previewId: string }>();
     let acknowledged: Preview | null = null;
-    const journal = current.current.journal;
-    const recovery = resume.current ?? (journal && !restored.current.has(journal) ? journal.restored : undefined);
+    const ownedJournal = scope.journal;
+    const matching = (candidate: WriterHandoff | null | undefined) => candidate && sameWriterScope(candidate.scope, scope)
+      && candidate.checkpoint.source.sourceSha256 === source.sourceSha256 ? candidate.checkpoint : undefined;
+    const recovery = matching(resume.current) ?? matching(carried) ?? (ownedJournal && !restored.current.has(ownedJournal) ? ownedJournal.restored : undefined);
     resume.current = null;
-    if (journal) restored.current.add(journal);
+    if (ownedJournal) restored.current.add(ownedJournal);
+    writerScope.current = scope;
     writer.current = new WorkbookWriter(source, initial, async (intent, checkpoint) => {
       let attempt = attempts.get(intent.id);
       if (!attempt) { attempt = { save: { ...newWorkbookSaveAttempt(projectId, fileName, intent.plan), operationId: intent.id, preparationId: intent.preparationId, renderId: intent.renderId }, previewId: intent.previewId }; attempts.set(intent.id, attempt); }
@@ -65,9 +88,9 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     }, next => {
       stateRef.current = next; setState(next); current.current.onDirtyChange?.(next.dirty);
       if (!next.dirty && acknowledged) { const saved = acknowledged; acknowledged = null; current.current.onAcknowledged(saved); }
-    }, source => { acknowledged = source; }, journal ? { save: journal.save, restored: recovery } : undefined);
+    }, source => { acknowledged = source; }, ownedJournal ? { save: ownedJournal.save, restored: recovery } : undefined);
     const next = writer.current.state(); stateRef.current = next; setState(next); current.current.onDirtyChange?.(next.dirty);
-  }, [projectId, fileName, closeWriter]);
+  }, [projectId, fileName, sourceIdentity, journal, closeWriter]);
   useEffect(() => {
     if (source) return;
     void closeWriter();
@@ -94,7 +117,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
       const belongs = () => generation.current === owner && sameScope();
       const cancel = () => cancelled ??= Promise.resolve().then(async () => {
         if (!belongs()) return;
-        resume.current = checkpoint; await ready(checkpoint.desired); suspended.current = null;
+        resume.current = { scope: { projectId, fileName, journal }, checkpoint }; await ready(checkpoint.desired); suspended.current = null;
         if (sameScope()) setDiscarding(false);
       });
       try {
