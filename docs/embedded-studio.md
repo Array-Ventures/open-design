@@ -37,6 +37,28 @@ contrast, and the canvas covered the error/download overlay. The adapter and
 chrome fixes are now in source and must be checked in the next clean package.
 Download inspection, actual crash and revoked-access scenarios remain open.
 
+The next clean package,
+`a1532bc3ca09bfeeb3ece700cb58653c598a847b88be40c58f980fc454edc6a2`,
+passes manual scalar editing/save with Normal-style inheritance; a value of
+13,579 produces the expected saved formula result of 7,579. Intentional bold
+formatting still blocks saving instead of being silently discarded. The fixed
+overlay accepts a real download click, and the downloaded recovery JSON passes
+the draft decoder. Dark recovery-card download and visible zoom icons were
+also checked. A deliberate renderer crash (`chrome://crash`, followed by the
+browser controller reporting a wedged target) retained an unsaved value of
+24,680; a new tab restored it after the crashed renderer released its lock.
+This proves renderer-crash recovery, not whole-browser/profile-loss recovery.
+
+Saving the restored value exposed a remount failure: the pinned worksheet
+`getRange(IRange)` overload leaves missing or stale scope identities unchanged,
+so `setActiveRange` rejects the saved selection. The new adapter binds valid
+geometry using the numeric overload and skips out-of-bounds old selections.
+Three actual pinned-API regressions pass; all workbook-area tests now pass 106
+cases across eighteen files. The saved XLSX was independently reopened: the
+latest value 26,000, `B2-C2` formula/result 20,000 and width 20 were retained even
+when the old UI failed to remount. The new remount fix still needs packaged
+browser acceptance. Native model/access state was not reset for these checks.
+
 The Evebot integration uses Open Design’s actual visual file workspace while Evebot owns bots, chat, approvals, workspace access, providers, exports and publication. Studio has no separate agent conversation or runner in this mode.
 
 ## Runtime boundary

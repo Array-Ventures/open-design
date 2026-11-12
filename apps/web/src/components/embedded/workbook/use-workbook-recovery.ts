@@ -74,6 +74,7 @@ export function useWorkbookRecovery(scope: Scope, enabled: boolean, drain: () =>
     if (!signal || signal.aborted || busy.current === signal || owned.current) return;
     busy.current = signal; setState(current => ({ ...current, busy: true, error: null }));
     let lease: WorkbookDraftLease | null = null;
+    let openCurrent = false;
     const target = { ...scope, draftId };
     try {
       await awaitRetiredWorkbookDrafts(scope);
@@ -87,10 +88,15 @@ export function useWorkbookRecovery(scope: Scope, enabled: boolean, drain: () =>
       await saveWorkbookDraft(target, null);
       const drafts = await listWorkbookDrafts(scope);
       if (!signal.aborted) setState(current => ({ ...current, drafts, busy: false }));
+      openCurrent = drafts.length === 0;
     } catch (error) {
       if (!signal.aborted) setState(current => ({ ...current, busy: false, error: error instanceof Error ? error.message : 'The draft could not be discarded.' }));
-    } finally { if (lease) await releaseTemporary(target, lease, signal); if (busy.current === signal) busy.current = null; }
-  }, [scopeKey, releaseTemporary]);
+    } finally {
+      if (lease) await releaseTemporary(target, lease, signal);
+      if (busy.current === signal) busy.current = null;
+      if (openCurrent && !signal.aborted) void start();
+    }
+  }, [scopeKey, releaseTemporary, start]);
   const download = useCallback(async (draftId: string) => {
     const signal = lifetime.current?.signal;
     if (!signal || signal.aborted || busy.current === signal || owned.current) return;

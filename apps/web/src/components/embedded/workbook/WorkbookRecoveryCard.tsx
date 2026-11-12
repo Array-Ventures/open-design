@@ -2,6 +2,7 @@ import { useId } from 'react';
 import { RiDeleteBinLine, RiDownloadLine } from '@remixicon/react';
 import { Button } from '../boardui/button';
 import { ARTIFACT_ICON_BUTTON } from '../artifact-controls';
+import { cx } from '../boardui/cx';
 
 export interface WorkbookRecoveryCardProps {
   drafts: { draftId: string; updatedAt: number }[];
@@ -38,7 +39,7 @@ export function WorkbookRecoveryCard({ drafts, busy, error, onRestore, onDiscard
         return <li key={draftId} className="flex min-w-0 items-center gap-2 rounded-lg bg-background-secondary-default px-2 py-2">
           <time dateTime={time.iso} className="min-w-0 flex-1 truncate text-caption-1-regular text-text-secondary" title={time.label}>{time.label}</time>
           <div className="flex shrink-0 items-center gap-1">
-            <Button type="button" variant="ghost" size="xs" className={ARTIFACT_ICON_BUTTON} disabled={busy} aria-label={`Restore ${name}`} onClick={() => onRestore(draftId)}>Restore</Button>
+            <Button type="button" variant="ghost" size="xs" className={cx(ARTIFACT_ICON_BUTTON, 'text-text-secondary')} disabled={busy} aria-label={`Restore ${name}`} onClick={() => onRestore(draftId)}>Restore</Button>
             {onDownload ? <Button type="button" variant="ghost" size="small" className={ARTIFACT_ICON_BUTTON} iconOnly leadingIcon={RiDownloadLine} disabled={busy}
               aria-label={`Download ${name}`} title="Download recovery copy (JSON)" onClick={() => onDownload(draftId)} /> : null}
             <Button type="button" variant="ghost" size="small" className={ARTIFACT_ICON_BUTTON} iconOnly leadingIcon={RiDeleteBinLine} disabled={busy}

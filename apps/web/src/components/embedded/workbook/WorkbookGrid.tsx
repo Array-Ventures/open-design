@@ -9,6 +9,7 @@ import { gridWorkbook, type WorkbookDisplayGap } from './grid-model';
 import { workbookGridTheme } from './grid-theme';
 import styles from './WorkbookGrid.module.css';
 import { cx } from '../boardui/cx';
+import { restoreWorkbookSelection } from './grid-selection';
 
 export interface WorkbookGridProps {
   id: string; title: string; model: WorkbookDocument;
@@ -60,7 +61,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       const workbook = univerAPI.createWorkbook(seed ? structuredClone(seed) : prepared.data);
       workbook.setActiveSheet(previous && prepared.data.sheets?.[previous.sheetId] ? previous.sheetId : seed?.sheetOrder[0] ?? prepared.activeSheetId); workbook.setEditable(false);
       const selected = workbook.getActiveSheet();
-      if (previous?.range && previous.range.endRow < selected.getMaxRows() && previous.range.endColumn < selected.getMaxColumns()) selected.setActiveRange(selected.getRange(previous.range));
+      restoreWorkbookSelection(selected, previous?.range);
       // No mutations are accepted while the controller drains a previous
       // writer. An unmounted/revoked surface must never become editable later.
       await callbacks.current.onReady?.(workbook.save());
