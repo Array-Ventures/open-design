@@ -12,6 +12,7 @@ import { useEmbeddedViewer } from '../host-viewer';
 import { confirmHostFeedbackDiscard } from '../host-context';
 import { Button } from '../boardui/button';
 import { TextareaBase } from '../boardui/textarea';
+import { ScrollFade, useScrollFade } from '../boardui/scroll-fade';
 import { CommentMentions } from '../CommentMentions';
 import { CommentAuthor, SavedCommentThread } from '../SavedCommentThread';
 import { CommentReviewFilter, useCommentReview } from '../CommentReview';
@@ -30,6 +31,8 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
   const [draft, setDraft] = useState(''), [editing, setEditing] = useState(false), [busy, setBusy] = useState(false), [replyDirty, setReplyDirty] = useState(false), [handoffPending, setHandoffPending] = useState(false), [notice, setNotice] = useState<string | null>(null);
   const [width, setWidth] = useState(320), [replyRevision, setReplyRevision] = useState(0);
   const [revision, update] = useState(0);
+  const cardScroll = useScrollFade();
+  useEffect(() => { cardScroll.reset(); }, [open, list, selected?.id, cardScroll.reset]);
   const anchor = useRef<DocumentCommentAnchor | null>(null), life = useRef(true), pending = useRef(false);
   const returnFocus = useRef<() => void>(() => {});
   const current = feedback.previewComments?.find(comment => comment.id === selected?.id) ?? null;
@@ -130,7 +133,7 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
   return <>
     <ArtifactAnnotationControls projectId={projectId} commenting={open && !list} marking={false} markupAvailable={false} dirty={dirty} disabled={!viewer}
       onComment={() => { void (open && !list ? close() : begin()); }} onMark={() => {}} onComments={focus => { returnFocus.current = focus; void allowed().then(ok => { if (ok && life.current) { setOpen(true); setList(true); } }); }} onDiscard={() => { if (!pending.current) { reset(); setOpen(false); } }} />
-    {open ? <aside role="dialog" aria-label="Document comments" onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); void close(); } }} className="absolute end-0 inset-y-0 z-30 flex min-h-0 max-w-[calc(100%_-_16px)] flex-col border-s border-separator-border bg-background-primary-default shadow-lg" style={{ width }}>
+    {open ? <aside role="dialog" aria-label="Document comments" onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); void close(); } }} className="absolute end-3 top-3 z-30 flex min-h-0 max-h-[calc(100%_-_24px)] max-w-[calc(100%_-_24px)] flex-col rounded-2xl border border-separator-border bg-background-primary-default shadow-lg" style={{ width }}>
       <div role="separator" aria-label="Resize document comments" aria-orientation="vertical" aria-valuemin={240} aria-valuemax={480} aria-valuenow={width} tabIndex={0}
         className="absolute inset-y-0 -start-1 w-2 cursor-col-resize focus-visible:ring-2 focus-visible:ring-border-focus-ring"
         onKeyDown={event => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { event.preventDefault(); const grows = event.key === (getComputedStyle(event.currentTarget).direction === 'rtl' ? 'ArrowRight' : 'ArrowLeft'); setWidth(value => event.key === 'Home' ? 240 : event.key === 'End' ? 480 : Math.max(240, Math.min(480, value + (grows ? 16 : -16)))); } }}
@@ -142,7 +145,9 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
         <CommentReviewFilter />
         <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiCloseLine} aria-label="Close comments" onClick={() => { void close(); }} />
       </header>
-      {list ? <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+      <div className="relative flex min-h-0 flex-col">
+      <div onScroll={cardScroll.onScroll} className="min-h-0 overflow-y-auto">
+      {list ? <div className="flex min-h-0 flex-col gap-2 p-3">
         {feedback.previewCommentsState === 'error' ? <Button variant="ghost" size="small" onClick={feedback.onRetryPreviewComments}>Retry comments</Button> : null}
         {persisted.filter(comment => review?.showResolved || comment.status !== 'resolved').map(comment => <Button key={comment.id} variant="ghost" className="h-auto min-h-0 justify-start rounded-lg p-2 text-start" onClick={() => { void show(comment); }}><span className="flex min-w-0 flex-col gap-1"><CommentAuthor name={comment.authorDisplayName} createdAt={comment.createdAt} /><span className="line-clamp-2 text-body-2-regular text-text-primary">{comment.note}</span><span className="line-clamp-2 whitespace-pre-wrap break-words text-caption-1-regular text-text-tertiary">{documentCommentQuote(comment)}</span></span></Button>)}
         {!persisted.filter(comment => review?.showResolved || comment.status !== 'resolved').length ? <span className="text-body-2-regular text-text-tertiary">{persisted.length ? 'No open comments.' : 'No comments yet. Select text to add one.'}</span> : null}
@@ -160,6 +165,9 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
           onEditRoot={() => { setEditing(true); setDraft((current ?? selected).note); }} onDeleteRoot={remove} canEditRoot={canEditComment(current ?? selected, authority)} canDeleteRoot={canDeleteComment(current ?? selected, authority)} existingImages={(current ?? selected).attachments?.map(image => ({ ...image, url: projectRawUrl(projectId, image.path) })) ?? []} />
         {canSendCommentToAgent(current ?? selected, authority) ? <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiChatNewLine} aria-label="Add comment to chat" disabled={replyDirty || busy} onClick={() => { void send(); }} /> : null}
       </div> : null}
+      </div>
+      <ScrollFade progress={cardScroll.progress} />
+      </div>
     </aside> : null}
   </>;
 }
