@@ -138,6 +138,6 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
     {feedback ? <DocumentComments onOpenChange={setCommentsOpen} onDirtyChange={onCommentDirtyChange} projectId={projectId} fileName={fileName} feedback={feedback} /> : null}
     <ScrollFade progress={fade.progress} surfaceClassName="from-background-primary-default" />
     </div>
-    {editing && !commentsOpen ? <DocumentToolbar font={font} headingFont={headingFont} onImageStatus={setImageStatus} /> : null}
+    {editing ? <DocumentToolbar hidden={commentsOpen} font={font} headingFont={headingFont} onImageStatus={setImageStatus} /> : null}
   </>;
 }

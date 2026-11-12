@@ -17,8 +17,10 @@ import { documentFont, documentHeadingFont } from './document-identity';
 
 type SelectionState = { x: number; y: number; bold: boolean; italic: boolean; underline: boolean; strikethrough: boolean; code: boolean };
 /** Separate insertion and selected-text controls, following the observed document surfaces. */
-export function DocumentToolbar({ font, headingFont, onImageStatus }: { font: 'sans' | 'serif'; headingFont: 'sans' | 'serif'; onImageStatus?(message: string | null): void }) {
+export function DocumentToolbar({ font, headingFont, onImageStatus, hidden = false }: { hidden?: boolean; font: 'sans' | 'serif'; headingFont: 'sans' | 'serif'; onImageStatus?(message: string | null): void }) {
   const [editor] = useLexicalComposerContext();
+  const [menu, setMenu] = useState<string | null>(null);
+  useEffect(() => { if (hidden) setMenu(null); }, [hidden]);
   const [selected, setSelected] = useState<SelectionState | null>(null);
   useEffect(() => {
     let frame = 0;
@@ -42,9 +44,9 @@ export function DocumentToolbar({ font, headingFont, onImageStatus }: { font: 's
     if ($isRangeSelection(selection)) $setBlocksType(selection, () => tag === 'p' ? $createParagraphNode() : $createHeadingNode(tag));
   });
   return <>
-    <div className="flex shrink-0 justify-center px-3 pb-3 pt-2">
+    <div hidden={hidden} className={cx(hidden ? 'hidden' : 'flex', 'shrink-0 justify-center px-3 pb-3 pt-2')}>
       <div className="flex max-w-full items-center gap-1 rounded-2xl border border-border-button-default bg-background-secondary-default p-1 shadow-sm" role="toolbar" aria-label="Document insertion">
-        <Dropdown>
+        <Dropdown isOpen={!hidden && menu === 'font'} onOpenChange={open => setMenu(open ? 'font' : null)}>
           <DropdownTrigger aria-label="Font" className="box-border flex size-8 shrink-0 items-center justify-center rounded-lg border-0 p-0 text-foreground-icon-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiFontSize className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
           <DropdownPopover aria-label="Font" placement="top start" className="w-40">
             {([{ label: 'Headings', state: documentHeadingFont, value: headingFont }, { label: 'Text', state: documentFont, value: font }] as const).map((group, index) => <div key={group.label} role="group" aria-label={group.label}>
@@ -60,7 +62,7 @@ export function DocumentToolbar({ font, headingFont, onImageStatus }: { font: 's
         <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiTableLine} aria-label="Insert table" title="Insert 3 × 3 table" onMouseDown={event => event.preventDefault()} onClick={() => editor.dispatchCommand(INSERT_TABLE_COMMAND, { columns: '3', rows: '3', includeHeaders: true })} />
         <DocumentImageInsertion onStatus={onImageStatus} />
         <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiCheckboxLine} aria-label="Checklist" title="Checklist" onMouseDown={event => event.preventDefault()} onClick={() => editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined)} />
-        <Dropdown>
+        <Dropdown isOpen={!hidden && menu === 'more'} onOpenChange={open => setMenu(open ? 'more' : null)}>
           <DropdownTrigger aria-label="More document actions" className="box-border flex size-8 shrink-0 items-center justify-center rounded-lg border-0 p-0 text-foreground-icon-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiMoreLine className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
           <DropdownPopover aria-label="Document actions" placement="top end">
             <DropdownItem onSelect={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}><RiListUnordered className="size-4 shrink-0" aria-hidden />Bulleted list</DropdownItem>
@@ -75,8 +77,8 @@ export function DocumentToolbar({ font, headingFont, onImageStatus }: { font: 's
         </Dropdown>
       </div>
     </div>
-    {selected ? createPortal(<div role="toolbar" aria-label="Selected text formatting" style={{ position: 'fixed', left: selected.x, top: selected.y }} className="z-30 flex max-w-[calc(100vw-24px)] items-center gap-1 rounded-xl border border-border-button-default bg-background-secondary-default p-1 shadow-lg">
-      <Dropdown>
+    {!hidden && selected ? createPortal(<div role="toolbar" aria-label="Selected text formatting" style={{ position: 'fixed', left: selected.x, top: selected.y }} className="z-30 flex max-w-[calc(100vw-24px)] items-center gap-1 rounded-xl border border-border-button-default bg-background-secondary-default p-1 shadow-lg">
+      <Dropdown isOpen={!hidden && menu === 'text'} onOpenChange={open => setMenu(open ? 'text' : null)}>
         <DropdownTrigger aria-label="Text style" className="box-border flex h-8 shrink-0 items-center gap-1 rounded-lg border-0 px-2 py-0 text-body-2-medium text-text-secondary hover:bg-background-secondary-hover">Text<RiArrowDownSLine className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
         <DropdownPopover aria-label="Text style" placement="bottom start">
           {(['p', 'h1', 'h2', 'h3'] as const).map((tag, index) => <DropdownItem key={tag} onSelect={() => heading(tag)}>{index ? `Heading ${index}` : 'Normal text'}</DropdownItem>)}

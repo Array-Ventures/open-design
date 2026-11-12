@@ -14,6 +14,8 @@ vi.mock('../../../src/components/embedded/host-viewer', () => ({ useEmbeddedView
 vi.mock('../../../src/components/embedded/host-context', () => ({ confirmHostFeedbackDiscard: api.confirm }));
 vi.mock('../../../src/components/embedded/document/document-file', () => ({ saveDocumentFile: api.documentSave, readDocumentFile: api.read }));
 vi.mock('../../../src/components/embedded/comment-reply-api', async original => ({ ...await original<object>(), fetchCommentReplies: api.replies, createCommentReply: api.createReply, editCommentReply: api.editReply, deleteCommentReply: api.deleteReply }));
+const imageUpload = vi.hoisted(() => vi.fn());
+vi.mock('../../../src/components/embedded/document/document-image-upload', () => ({ uploadDocumentImage: imageUpload }));
 const originalParent = Object.getOwnPropertyDescriptor(window, 'parent');
 const host = { postMessage: vi.fn() };
 const observed = { html: documentHtml('Report', '<p data-od-id="body">Ready for review</p>'), sha256: 'original' };
@@ -210,4 +212,24 @@ it('withdraws document formatting while reviewing comments and restores it after
   fireEvent.click(screen.getByRole('button', { name: 'Close comments' }));
   await waitFor(() => expect(screen.getByRole('toolbar', { name: 'Document insertion' })).toBeTruthy());
   expect(api.documentSave).not.toHaveBeenCalled();
+});
+
+it('keeps a pending image upload and its receipt through comment visibility changes', async () => {
+  let finish!: (value: { name: string; alt: string; width: number; height: number }) => void;
+  imageUpload.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  render(<Harness />);
+  fireEvent.click(screen.getByRole('button', { name: 'Image' }));
+  fireEvent.change(screen.getByLabelText('Choose document image'), { target: { files: [new File(['fixture'], 'figure.png', { type: 'image/png' })] } });
+  const signal = imageUpload.mock.calls.at(-1)![2] as AbortSignal;
+  // A newer edit makes automatic insertion inappropriate: retain its receipt.
+  act(() => editor().update(() => { const text = $getRoot().getFirstDescendant()!; if ($isTextNode(text)) text.setTextContent('Ready for review updated'); }, { discrete: true }));
+  await selectAndOpen();
+  expect(signal.aborted).toBe(false);
+  await act(async () => finish({ name: '_studio-document-assets/figure.png', alt: 'Retained upload', width: 400, height: 200 }));
+  expect(screen.getByText('Image uploaded. Choose a location, then select Image to insert.')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Close comments' }));
+  const insert = await screen.findByRole('button', { name: 'Insert uploaded image' });
+  fireEvent.click(insert);
+  expect(await screen.findByRole('img', { name: 'Retained upload' })).toBeTruthy();
+  expect(imageUpload).toHaveBeenCalledTimes(1);
 });
