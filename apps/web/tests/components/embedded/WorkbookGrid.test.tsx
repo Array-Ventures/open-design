@@ -6,7 +6,7 @@ import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookGrid } from '../../../src/components/embedded/workbook/WorkbookGrid';
 
 const runtime = vi.hoisted(() => ({ created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), theme: vi.fn(), dark: vi.fn(),
-  createWorkbook: vi.fn(), editable: vi.fn(), activeSheet: vi.fn(), saved: vi.fn(), listener: null as null | ((event: { type: number; id: string }) => void) }));
+  getRange: vi.fn(), select: vi.fn(), createWorkbook: vi.fn(), editable: vi.fn(), activeSheet: vi.fn(), saved: vi.fn(), listener: null as null | ((event: { type: number; id: string }) => void) }));
 vi.mock('@univerjs/presets', async original => ({ ...await original<typeof import('@univerjs/presets')>(),
   Univer: class { constructor() { runtime.created(); } registerPlugin = runtime.register; dispose = runtime.dispose; },
   FUniver: { newAPI: () => ({ createWorkbook: runtime.createWorkbook, Event: { CommandExecuted: 'CommandExecuted' },
@@ -16,7 +16,7 @@ vi.mock('@univerjs/preset-sheets-core', () => ({ ...Object.fromEntries(['UniverR
 const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 'inputs', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
   sheets: [{ id: 'inputs', name: 'Inputs', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
 beforeEach(() => {
-  runtime.createWorkbook.mockReturnValue({ setActiveSheet: runtime.activeSheet, setEditable: runtime.editable, save: runtime.saved });
+  runtime.createWorkbook.mockReturnValue({ setActiveSheet: runtime.activeSheet, setEditable: runtime.editable, save: runtime.saved, getActiveSheet: () => ({ getSheetId: () => 'inputs', getMaxRows: () => 100, getMaxColumns: () => 26, getSelection: () => ({ getActiveRange: () => ({ getRange: () => ({ startRow: 5, endRow: 5, startColumn: 2, endColumn: 2 }) }) }), getRange: runtime.getRange, setActiveRange: runtime.select }) });
   runtime.saved.mockReturnValue({ id: 'current-grid-state' });
 });
 afterEach(() => { cleanup(); vi.resetAllMocks(); runtime.listener = null; delete document.documentElement.dataset.theme; });
@@ -43,4 +43,14 @@ it('cleans up failed setup once and can reopen after the source changes', async 
   await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
   expect(runtime.created).toHaveBeenCalledTimes(2); expect(runtime.editable).toHaveBeenCalledWith(false);
   view.unmount(); expect(runtime.dispose).toHaveBeenCalledTimes(2);
+});
+
+it('restores the active range and saved viewport on an acknowledged model replacement', async () => {
+  const ready = vi.fn(); runtime.saved.mockReturnValue({ id: 'grid', sheets: { inputs: { scrollTop: 500, scrollLeft: 70, zoomRatio: 1.2 } } });
+  const view = render(<WorkbookGrid id="grid" title="Revenue" model={model} onReady={ready} />);
+  await waitFor(() => expect(ready).toHaveBeenCalledTimes(1));
+  view.rerender(<WorkbookGrid id="grid" title="Revenue" model={{ ...model }} onReady={ready} />);
+  await waitFor(() => expect(ready).toHaveBeenCalledTimes(2));
+  expect(runtime.createWorkbook.mock.calls[1]![0].sheets.inputs).toMatchObject({ scrollTop: 500, scrollLeft: 70, zoomRatio: 1.2 });
+  expect(runtime.getRange).toHaveBeenCalledWith({ startRow: 5, endRow: 5, startColumn: 2, endColumn: 2 }); expect(runtime.select).toHaveBeenCalledTimes(1);
 });

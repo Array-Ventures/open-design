@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { CommandType, FUniver, LocaleType, Univer, type IWorkbookData } from '@univerjs/presets';
+import { CommandType, FUniver, LocaleType, Univer, type IRange, type IWorkbookData } from '@univerjs/presets';
 import English from '@univerjs/preset-sheets-core/locales/en-US';
 import '@univerjs/preset-sheets-core/lib/index.css';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
@@ -11,15 +11,17 @@ import { workbookGridTheme } from './grid-theme';
 export interface WorkbookGridProps {
   id: string; title: string; model: WorkbookDocument;
   onSnapshot?(snapshot: IWorkbookData): void;
+  onReady?(snapshot: IWorkbookData): void;
   onDisplayGaps?(gaps: WorkbookDisplayGap[]): void;
 }
 
 /** A disposable spreadsheet UI, never an XLSX serializer. A surface must supply
  * its durable edit controller before edits are enabled. Refresh/theme changes
  * do not recreate the grid unless the acknowledged source model changes. */
-export function WorkbookGrid({ id, title, model, onSnapshot, onDisplayGaps }: WorkbookGridProps) {
-  const container = useRef<HTMLDivElement>(null), callbacks = useRef({ title, onSnapshot, onDisplayGaps });
-  callbacks.current = { title, onSnapshot, onDisplayGaps };
+export function WorkbookGrid({ id, title, model, onSnapshot, onReady, onDisplayGaps }: WorkbookGridProps) {
+  const container = useRef<HTMLDivElement>(null), callbacks = useRef({ title, onSnapshot, onReady, onDisplayGaps });
+  callbacks.current = { title, onSnapshot, onReady, onDisplayGaps };
+  const view = useRef<{ id: string; sheetId: string; snapshot: IWorkbookData; range?: IRange } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const editable = Boolean(onSnapshot);
   useEffect(() => {
@@ -45,8 +47,16 @@ export function WorkbookGrid({ id, title, model, onSnapshot, onDisplayGaps }: Wo
       univer.registerPlugin(UniverSheetsFormulaPlugin, { initialFormulaComputing: CalculationMode.NO_CALCULATION });
       univer.registerPlugin(UniverSheetsFormulaUIPlugin); univer.registerPlugin(UniverSheetsNumfmtPlugin); univer.registerPlugin(UniverSheetsNumfmtUIPlugin);
       const univerAPI = FUniver.newAPI(univer);
+      const previous = view.current?.id === id ? view.current : null;
+      if (previous) for (const [sheetId, sheet] of Object.entries(prepared.data.sheets ?? {})) {
+        const old = previous.snapshot.sheets[sheetId];
+        if (old) Object.assign(sheet, { scrollTop: old.scrollTop, scrollLeft: old.scrollLeft, zoomRatio: old.zoomRatio });
+      }
       const workbook = univerAPI.createWorkbook(prepared.data);
-      workbook.setActiveSheet(prepared.activeSheetId); workbook.setEditable(editable);
+      workbook.setActiveSheet(previous && prepared.data.sheets?.[previous.sheetId] ? previous.sheetId : prepared.activeSheetId); workbook.setEditable(editable);
+      const selected = workbook.getActiveSheet();
+      if (previous?.range && previous.range.endRow < selected.getMaxRows() && previous.range.endColumn < selected.getMaxColumns()) selected.setActiveRange(selected.getRange(previous.range));
+      callbacks.current.onReady?.(workbook.save());
       const changed = univerAPI.addEvent(univerAPI.Event.CommandExecuted, event => {
         if (event.type === CommandType.MUTATION && event.id.startsWith('sheet.')) callbacks.current.onSnapshot?.(workbook.save());
       });
@@ -57,7 +67,12 @@ export function WorkbookGrid({ id, title, model, onSnapshot, onDisplayGaps }: Wo
         themeIdentity = next; univerAPI.setTheme(theme); univerAPI.toggleDarkMode(dark);
       });
       themes.observe(root, { attributes: true, attributeFilter: ['style', 'data-theme'] });
-      dispose = () => { themes.disconnect(); changed.dispose(); univer.dispose(); };
+      dispose = () => {
+        try {
+          const sheet = workbook.getActiveSheet();
+          view.current = { id, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() };
+        } finally { themes.disconnect(); changed.dispose(); univer.dispose(); }
+      };
       callbacks.current.onDisplayGaps?.(prepared.gaps); setError(null);
     } catch { close(); if (active) setError('The workbook grid could not be opened.'); }
     };

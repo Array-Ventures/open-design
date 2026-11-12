@@ -16,9 +16,9 @@ function open(files: ProjectFile[], dashboards: EmbeddedDashboardSummary[], file
   render(<ArtifactSurface project={project} files={files} dashboards={dashboards} fileName={fileName} generation={1} onRefresh={async () => {}} feedback={{}} />);
 }
 describe('default artifact experience', () => {
-  it('uses the workbook surface rather than supporting HTML or a dashboard', () => {
+  it('uses the workbook surface rather than supporting HTML or a dashboard', async () => {
     render(<ArtifactSurface project={{ ...project, metadata: { kind: 'other', embeddedArtifactKind: 'workbook' } }} files={[file('index.html'), file('book.xlsx')]} dashboards={[dashboard('index.html')]} fileName={null} generation={1} onRefresh={async () => {}} feedback={{}} />);
-    expect(screen.getByTestId('workbook-preview')).toHaveTextContent('book.xlsx'); expect(screen.queryByTestId('dashboard-preview')).toBeNull();
+    expect(await screen.findByTestId('workbook-preview')).toHaveTextContent('book.xlsx'); expect(screen.queryByTestId('dashboard-preview')).toBeNull();
   });
   it('opens a separate working app instead of its older dashboard snapshot', () => {
     open([file('index.html'), file('dashboard.html')], [dashboard('dashboard.html')]);

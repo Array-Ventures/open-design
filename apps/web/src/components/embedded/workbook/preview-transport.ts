@@ -37,11 +37,11 @@ export async function prepareWorkbookJob(projectId: string, fileName: string, fo
 }
 export async function loadWorkbookPreview(projectId: string, fileName: string, operationId: string, signal?: AbortSignal) {
   const job = await prepareWorkbookJob(projectId, fileName, 'workbook', operationId, signal);
-  try {
-    const raw = await workbookHostRequest(projectId, { action: 'read-preview', renderId: job.id }, signal);
-    const parsed = workbookPreviewSchema.safeParse(raw);
-    if (!parsed.success) throw new WorkbookHostError('The workbook preview could not be validated.', 422);
-    return parsed.data;
-  }
-  finally { void workbookHostRequest(projectId, { action: 'remove-render', renderId: job.id }).catch(() => {}); }
+  const raw = await workbookHostRequest(projectId, { action: 'read-preview', renderId: job.id }, signal);
+  const parsed = workbookPreviewSchema.safeParse(raw);
+  if (!parsed.success) throw new WorkbookHostError('The workbook preview could not be validated.', 422);
+  // Retain a ready preview after a failed/uncertain read so the same intent
+  // can recover it. Only a validated result is consumed; expiry is bounded.
+  void workbookHostRequest(projectId, { action: 'remove-render', renderId: job.id }).catch(() => {});
+  return parsed.data;
 }
