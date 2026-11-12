@@ -4,6 +4,7 @@ import { listWorkbookDrafts, readWorkbookDraft, saveWorkbookDraft, type Workbook
 import { acquireWorkbookDraftLease, type WorkbookDraftLease } from './draft-lease';
 import type { WorkbookJournal } from './workbook-writer';
 import { downloadWorkbookDraft } from './download-draft';
+import { awaitRetiredWorkbookDrafts, retireWorkbookDraft } from './draft-retirement';
 
 type Scope = Omit<WorkbookDraftScope, 'draftId'>;
 interface Session { scope: WorkbookDraftScope; lease: WorkbookDraftLease; journal: WorkbookJournal }
@@ -18,35 +19,45 @@ export function useWorkbookRecovery(scope: Scope, enabled: boolean, drain: () =>
   const drainRef = useRef(drain); drainRef.current = drain;
   const scopeKey = JSON.stringify(scope);
   const busy = useRef<AbortSignal | null>(null);
+  const releaseTemporary = useCallback(async (target: WorkbookDraftScope, lease: WorkbookDraftLease, signal: AbortSignal) => {
+    try { await lease.release(async () => {}); }
+    catch {
+      retireWorkbookDraft(target, lease, Promise.resolve());
+      if (!signal.aborted) setState(current => ({ ...current, busy: false, error: 'This draft could not be released safely. Reopen the workbook, or reload this tab before trying again.' }));
+    }
+  }, []);
   const start = useCallback(async (draftId?: string) => {
     const signal = lifetime.current?.signal;
     if (!signal || signal.aborted || busy.current === signal || owned.current) return;
     busy.current = signal; setState(current => ({ ...current, busy: true, error: null }));
     let lease: WorkbookDraftLease | null = null;
+    const target = { ...scope, draftId: draftId ?? crypto.randomUUID() };
     try {
-      const target = { ...scope, draftId: draftId ?? crypto.randomUUID() };
+      await awaitRetiredWorkbookDrafts(scope);
+      if (signal.aborted) return;
       lease = await acquireWorkbookDraftLease(target, signal);
       if (!lease) throw Error('This draft is open in another tab, or this browser cannot protect it.');
       if (signal.aborted) return;
       const restored = draftId ? await readWorkbookDraft(target) : null;
       if (draftId && !restored) throw Error('This draft is no longer available. Reopen the workbook to refresh the list.');
-      if (signal.aborted) { await lease.release(async () => {}); return; }
+      if (signal.aborted) return;
       const session: Session = { scope: target, lease, journal: { save: checkpoint => saveWorkbookDraft(target, checkpoint), ...(restored ? { restored } : {}) } };
       owned.current = session; lease = null;
       setState(current => ({ ...current, busy: false, error: null, session }));
     } catch (error) {
       if (!signal.aborted) setState(current => ({ ...current, busy: false, error: error instanceof Error ? error.message : 'Workbook recovery is unavailable.' }));
-    } finally { if (lease) await lease.release(async () => {}); if (busy.current === signal) busy.current = null; }
-  }, [scopeKey]);
+    } finally { if (lease) await releaseTemporary(target, lease, signal); if (busy.current === signal) busy.current = null; }
+  }, [scopeKey, releaseTemporary]);
   useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController(); lifetime.current = controller;
     setState(initial);
-    void listWorkbookDrafts(scope).then(drafts => {
+    void awaitRetiredWorkbookDrafts(scope).then(() => controller.signal.aborted ? null : listWorkbookDrafts(scope)).then(drafts => {
       if (controller.signal.aborted) return;
+      if (!drafts) return;
       setState({ drafts, busy: false, error: null, session: null });
       if (!drafts.length) void start();
-    }).catch(() => { if (!controller.signal.aborted) setState({ drafts: [], busy: false, error: 'Workbook recovery storage is unavailable. Try reopening the workbook.', session: null }); });
+    }).catch(error => { if (!controller.signal.aborted) setState({ drafts: [], busy: false, error: error instanceof Error ? error.message : 'Workbook recovery storage is unavailable. Try reopening the workbook.', session: null }); });
     return () => {
       controller.abort();
       const session = owned.current; owned.current = null;
@@ -54,7 +65,7 @@ export function useWorkbookRecovery(scope: Scope, enabled: boolean, drain: () =>
         // Detach the current writer synchronously, before a later mount can
         // replace the caller's ref while Web Locks schedules its release.
         const drained = drainRef.current();
-        void session.lease.release(() => drained).catch(() => {});
+        retireWorkbookDraft(session.scope, session.lease, drained);
       }
     };
   }, [scopeKey, enabled, start]);
@@ -63,24 +74,33 @@ export function useWorkbookRecovery(scope: Scope, enabled: boolean, drain: () =>
     if (!signal || signal.aborted || busy.current === signal || owned.current) return;
     busy.current = signal; setState(current => ({ ...current, busy: true, error: null }));
     let lease: WorkbookDraftLease | null = null;
+    const target = { ...scope, draftId };
     try {
-      const target = { ...scope, draftId }; lease = await acquireWorkbookDraftLease(target, signal);
+      await awaitRetiredWorkbookDrafts(scope);
+      if (signal.aborted) return;
+      lease = await acquireWorkbookDraftLease(target, signal);
       if (!lease) throw Error('Close the tab editing this draft before discarding it.');
       if (signal.aborted) return;
+      const checkpoint = await readWorkbookDraft(target);
+      if (signal.aborted) return;
+      if (checkpoint?.pending) throw Error('Restore this draft and check its save status before discarding it.');
       await saveWorkbookDraft(target, null);
       const drafts = await listWorkbookDrafts(scope);
       if (!signal.aborted) setState(current => ({ ...current, drafts, busy: false }));
     } catch (error) {
       if (!signal.aborted) setState(current => ({ ...current, busy: false, error: error instanceof Error ? error.message : 'The draft could not be discarded.' }));
-    } finally { if (lease) await lease.release(async () => {}); if (busy.current === signal) busy.current = null; }
-  }, [scopeKey]);
+    } finally { if (lease) await releaseTemporary(target, lease, signal); if (busy.current === signal) busy.current = null; }
+  }, [scopeKey, releaseTemporary]);
   const download = useCallback(async (draftId: string) => {
     const signal = lifetime.current?.signal;
     if (!signal || signal.aborted || busy.current === signal || owned.current) return;
     busy.current = signal; setState(current => ({ ...current, busy: true, error: null }));
     let lease: WorkbookDraftLease | null = null;
+    const target = { ...scope, draftId };
     try {
-      const target = { ...scope, draftId }; lease = await acquireWorkbookDraftLease(target, signal);
+      await awaitRetiredWorkbookDrafts(scope);
+      if (signal.aborted) return;
+      lease = await acquireWorkbookDraftLease(target, signal);
       if (!lease) throw Error('Close the tab editing this draft before downloading its recovery copy.');
       if (signal.aborted) return;
       const checkpoint = await readWorkbookDraft(target);
@@ -89,7 +109,7 @@ export function useWorkbookRecovery(scope: Scope, enabled: boolean, drain: () =>
       if (!signal.aborted) setState(current => ({ ...current, busy: false }));
     } catch (error) {
       if (!signal.aborted) setState(current => ({ ...current, busy: false, error: error instanceof Error ? error.message : 'The recovery copy could not be downloaded.' }));
-    } finally { if (lease) await lease.release(async () => {}); if (busy.current === signal) busy.current = null; }
-  }, [scopeKey]);
+    } finally { if (lease) await releaseTemporary(target, lease, signal); if (busy.current === signal) busy.current = null; }
+  }, [scopeKey, releaseTemporary]);
   return { ...state, session: enabled && owned.current === state.session ? state.session : null, restore: start, continueCurrent: () => start(), discard, download };
 }

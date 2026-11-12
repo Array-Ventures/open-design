@@ -12,7 +12,7 @@ export interface WorkbookGridProps {
   id: string; title: string; model: WorkbookDocument;
   initialSnapshot?: IWorkbookData;
   onSnapshot?(snapshot: IWorkbookData): void;
-  onReady?(snapshot: IWorkbookData): void;
+  onReady?(snapshot: IWorkbookData): void | Promise<void>;
   onDisplayGaps?(gaps: WorkbookDisplayGap[]): void;
 }
 
@@ -56,10 +56,14 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       }
       const seed = restored.current; restored.current = undefined;
       const workbook = univerAPI.createWorkbook(seed ? structuredClone(seed) : prepared.data);
-      workbook.setActiveSheet(previous && prepared.data.sheets?.[previous.sheetId] ? previous.sheetId : seed?.sheetOrder[0] ?? prepared.activeSheetId); workbook.setEditable(editable);
+      workbook.setActiveSheet(previous && prepared.data.sheets?.[previous.sheetId] ? previous.sheetId : seed?.sheetOrder[0] ?? prepared.activeSheetId); workbook.setEditable(false);
       const selected = workbook.getActiveSheet();
       if (previous?.range && previous.range.endRow < selected.getMaxRows() && previous.range.endColumn < selected.getMaxColumns()) selected.setActiveRange(selected.getRange(previous.range));
-      callbacks.current.onReady?.(workbook.save());
+      // No mutations are accepted while the controller drains a previous
+      // writer. An unmounted/revoked surface must never become editable later.
+      await callbacks.current.onReady?.(workbook.save());
+      if (!active) return;
+      workbook.setEditable(editable);
       // This pinned version uses disableAutoFocus for all editor focus, not
       // just startup. Enable it only after a person enters this grid so opening
       // an artifact cannot steal the chat composer's keyboard focus.

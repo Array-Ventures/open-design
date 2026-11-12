@@ -1,16 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import type { IWorkbookData } from '@univerjs/presets';
-import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
-import { gridWorkbook } from '../../src/components/embedded/workbook/grid-model';
 import { downloadWorkbookDraft } from '../../src/components/embedded/workbook/download-draft';
-import type { WorkbookCheckpoint } from '../../src/components/embedded/workbook/workbook-writer';
+import { workbookRecoveryFixture } from '../helpers/workbook-recovery-fixture';
 const scope = { viewerId: 'evebot:person', projectId: '66a28381-a8cf-40cd-91d2-b1f9cd696ac0', fileName: 'Reports/Forecast.xlsx', draftId: '66a28381-a8cf-40cd-91d2-b1f9cd696ac1' };
-function checkpoint(): WorkbookCheckpoint {
-  const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 's', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 's', name: 'Sheet', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
-  const data = gridWorkbook(model, `${scope.projectId}:${scope.fileName}`, 'Forecast').data as IWorkbookData;
-  return { version: 1, source: { sourceSha256: 'a'.repeat(64), model }, acknowledged: data, desired: structuredClone(data), pending: null };
-}
+const checkpoint = () => workbookRecoveryFixture(scope.projectId, scope.fileName);
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 it('downloads validated recovery JSON with a safe explicit filename and releases its object URL', async () => {
   vi.useFakeTimers(); const create = vi.fn((_blob: Blob) => 'blob:recovery'), revoke = vi.fn();

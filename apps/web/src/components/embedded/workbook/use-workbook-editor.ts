@@ -20,9 +20,22 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
   const writer = useRef<WorkbookWriter | null>(null), running = useRef<AbortController | null>(null);
   const stateRef = useRef(state); stateRef.current = state;
   const controllerId = useRef(crypto.randomUUID()).current;
-  const ready = useCallback((initial: IWorkbookData) => {
+  const retired = useRef(Promise.resolve());
+  const generation = useRef(0);
+  const closeWriter = useCallback(() => {
+    generation.current += 1;
+    running.current?.abort();
+    const owned = writer.current; writer.current = null;
+    // Preserve drains even when a source-loss effect or another cleanup has
+    // already detached the writer before the lease owner calls close().
+    retired.current = Promise.all([retired.current, owned?.close()]).then(() => {});
+    return retired.current;
+  }, []);
+  const ready = useCallback(async (initial: IWorkbookData) => {
     const source = current.current.source; if (!source) return;
-    writer.current?.dispose(); running.current?.abort();
+    const closing = closeWriter(), owner = generation.current;
+    await closing;
+    if (generation.current !== owner || current.current.source?.sourceSha256 !== source.sourceSha256) return;
     const controller = new AbortController(); running.current = controller;
     const attempts = new Map<string, { save: ReturnType<typeof newWorkbookSaveAttempt>; previewId: string }>();
     let acknowledged: Preview | null = null;
@@ -50,20 +63,18 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
       if (!next.dirty && acknowledged) { const saved = acknowledged; acknowledged = null; current.current.onAcknowledged(saved); }
     }, source => { acknowledged = source; }, journal ? { save: journal.save, restored: recovery } : undefined);
     const next = writer.current.state(); stateRef.current = next; setState(next); current.current.onDirtyChange?.(next.dirty);
-  }, [projectId, fileName]);
+  }, [projectId, fileName, closeWriter]);
   useEffect(() => {
     if (source) return;
-    writer.current?.dispose(); writer.current = null; running.current?.abort();
+    void closeWriter();
     const empty = { dirty: false, saving: false, error: null };
     stateRef.current = empty; setState(empty); current.current.onDirtyChange?.(false);
-  }, [source]);
-  const snapshot = useCallback((value: IWorkbookData) => { if (!discardTask.current) writer.current?.update(value); }, []);
-  const closeWriter = useCallback(async () => {
-    running.current?.abort();
-    const owned = writer.current; writer.current = null;
-    await owned?.close();
+  }, [source, closeWriter]);
+  const snapshot = useCallback((value: IWorkbookData) => {
+    if (discardTask.current) return;
+    writer.current?.update(value);
   }, []);
-  const close = useCallback(async () => { await discardTask.current; await closeWriter(); }, [closeWriter]);
+  const close = useCallback(() => discardTask.current ? discardTask.current.then(() => closeWriter()) : closeWriter(), [closeWriter]);
   const discard = useCallback(() => {
     if (discardTask.current) return discardTask.current;
     const task = Promise.resolve().then(async () => {
@@ -82,7 +93,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
         stateRef.current = next; setState(next); current.current.onDirtyChange?.(false); current.current.onDiscarded?.();
         return true;
       } catch {
-        resume.current = checkpoint; ready(checkpoint.desired);
+        resume.current = checkpoint; await ready(checkpoint.desired);
         const next = { ...(writer.current?.state() ?? { dirty: true, saving: false }), error: 'The draft could not be discarded. Your edits have been kept; try again.' };
         stateRef.current = next; setState(next); return false;
       } finally { setDiscarding(false); }
@@ -107,9 +118,9 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     return () => { window.removeEventListener('message', receive); window.removeEventListener('beforeunload', unload); };
   }, [projectId, controllerId, state, discard]);
   useEffect(() => () => {
-    writer.current?.dispose(); running.current?.abort();
+    void closeWriter();
     window.parent.postMessage({ type: 'studio:workbook-unavailable', projectId, controllerId }, window.location.origin);
-  }, [projectId, controllerId]);
+  }, [projectId, controllerId, closeWriter]);
   const checkpoint = useCallback(() => writer.current?.checkpoint() ?? null, []);
   return { state, stateRef, ready, snapshot, close, checkpoint, discarding };
 }
