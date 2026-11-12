@@ -157,3 +157,11 @@ formula, retains every cached result, the calculation chain, workbook metadata a
 existing coordinate/used-range hints, and changes only the selected string XML.
 Text-changing or mixed input transactions still use the normal calculation
 admission, including existing external-workbook refusals.
+
+Native in-cell rich editing captures the matching public editor document before
+this SDK lifts a uniform run into the whole-cell style. It retains literal text,
+source cell style ownership and typed runs through undo; ordinary scalar entry
+keeps native number/formula conversion. Only verified internal cell-editor layout
+is removed. Other document layout stays in the draft and refuses Save. The
+interceptor belongs to its workbook kernel and is removed once on retirement or
+failure; CSV continues to use its separate literal-input adapter.

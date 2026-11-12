@@ -1,6 +1,7 @@
 'use client';
 
 import { workbookExportBridge, type WorkbookExportScope } from './grid-export';
+import { attachWorkbookRichInput } from './rich-cell-input';
 import { attachCsvLiteralInput } from './csv-literal-input';
 
 import { useEffect, useRef, useState } from 'react';
@@ -188,8 +189,9 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
       element.addEventListener('pointerdown', activate, true); element.addEventListener('focusin', activate);
       window.addEventListener('blur', release);
       const literal = model.sourceFormat === 'csv' ? attachCsvLiteralInput(univer, univerAPI, kernel, element, model, message => { if (current()) reportInputError(message || null); }) : null;
+      const richInput = model.sourceFormat !== 'csv' ? attachWorkbookRichInput(univer, univerAPI, kernel) : null;
       const beforeLiteral = dispose;
-      if (literal) dispose = () => { try { literal.dispose(); } finally { beforeLiteral(); } };
+      if (literal || richInput) dispose = () => { try { literal?.dispose(); richInput?.dispose(); } finally { beforeLiteral(); } };
       const formatting = workbookFormattingBridge(univerAPI, () => {
         const scope = format.current;
         return editable && model.sourceFormat !== 'csv' && scope ? { ...scope, blocked: scope.blocked || !readyForInput } : undefined;
@@ -213,7 +215,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
         try {
           const sheet = workbook.getActiveSheet();
           view.current = { id, sourceFormat: model.sourceFormat, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() };
-        } finally { element.removeEventListener('pointerdown', activate, true); element.removeEventListener('focusin', activate); window.removeEventListener('blur', release); themes.disconnect(); literal?.dispose(); exporter.dispose(); exportBridge.current = null; formatting.dispose(); formattingRef.current = null; changed.dispose(); calculation.dispose(); workbook.setEditable(false); stopCalculation(); layer.retire(); }
+        } finally { element.removeEventListener('pointerdown', activate, true); element.removeEventListener('focusin', activate); window.removeEventListener('blur', release); themes.disconnect(); literal?.dispose(); richInput?.dispose(); exporter.dispose(); exportBridge.current = null; formatting.dispose(); formattingRef.current = null; changed.dispose(); calculation.dispose(); workbook.setEditable(false); stopCalculation(); layer.retire(); }
       };
       await univer.__getInjector().get(LifecycleService).onStage(LifecycleStages.Rendered);
       // The pinned UI releases its initial workbench skeleton two frames after
