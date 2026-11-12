@@ -15,6 +15,7 @@ import { workbookFormattingBridge, type WorkbookFormatScope } from './grid-forma
 import type { WorkbookCalculationState } from './calculation-state';
 import { ownWorkbookCalculationWorker } from './calculation-worker-owner';
 import { attachWorkbookCalculation, workbookLiveCalculationEligible } from './grid-calculation';
+import { restoreCsvViewDimensions } from './csv-view-dimensions';
 import { restoreWorkbookSelection } from './grid-selection';
 
 export interface WorkbookGridProps {
@@ -32,7 +33,7 @@ export interface WorkbookGridProps {
 export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, onReady, onDisplayGaps, formatScope }: WorkbookGridProps) {
   const container = useRef<HTMLDivElement>(null), callbacks = useRef({ id, model, title, onSnapshot, onReady, onDisplayGaps });
   callbacks.current = { id, model, title, onSnapshot, onReady, onDisplayGaps };
-  const view = useRef<{ id: string; sheetId: string; snapshot: IWorkbookData; range?: IRange } | null>(null);
+  const view = useRef<{ id: string; sourceFormat: WorkbookDocument['sourceFormat']; sheetId: string; snapshot: IWorkbookData; range?: IRange } | null>(null);
   const restored = useRef(initialSnapshot);
   const format = useRef(formatScope); format.current = formatScope;
   const formattingRef = useRef<{ publish(): void } | null>(null);
@@ -123,7 +124,10 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       const previous = view.current?.id === id ? view.current : null;
       if (previous) for (const [sheetId, sheet] of Object.entries(prepared.data.sheets ?? {})) {
         const old = previous.snapshot.sheets[sheetId];
-        if (old) Object.assign(sheet, { scrollTop: old.scrollTop, scrollLeft: old.scrollLeft, zoomRatio: old.zoomRatio });
+        if (old) {
+          Object.assign(sheet, { scrollTop: old.scrollTop, scrollLeft: old.scrollLeft, zoomRatio: old.zoomRatio });
+          if (model.sourceFormat === 'csv' && previous.sourceFormat === 'csv') restoreCsvViewDimensions(sheet, old);
+        }
       }
       const seed = recovered ?? restored.current; restored.current = undefined; carried.current = null;
       const workbook = univerAPI.createWorkbook(seed ? structuredClone(seed) : prepared.data);
@@ -131,7 +135,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       readSnapshot = () => workbook.save();
       const calculation = attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, value => { if (current()) { calculationState.current = value; publish.current(); } });
       dispose = () => {
-        try { const sheet = workbook.getActiveSheet(); view.current = { id, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() }; }
+        try { const sheet = workbook.getActiveSheet(); view.current = { id, sourceFormat: model.sourceFormat, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() }; }
         finally { calculation.dispose(); calculationOwner?.dispose(); univer.dispose(); }
       };
       const selected = workbook.getActiveSheet();
@@ -166,7 +170,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       dispose = () => {
         try {
           const sheet = workbook.getActiveSheet();
-          view.current = { id, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() };
+          view.current = { id, sourceFormat: model.sourceFormat, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() };
         } finally { element.removeEventListener('pointerdown', activate, true); element.removeEventListener('focusin', activate); window.removeEventListener('blur', release); themes.disconnect(); literal?.dispose(); formatting.dispose(); formattingRef.current = null; changed.dispose(); calculation.dispose(); calculationOwner?.dispose(); univer.dispose(); }
       };
       callbacks.current.onDisplayGaps?.(prepared.gaps); setError(null);

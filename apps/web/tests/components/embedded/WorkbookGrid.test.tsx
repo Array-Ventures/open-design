@@ -147,3 +147,33 @@ it('ignores a retired CSV input callback after controller replacement and unmoun
   expect(post).toHaveBeenLastCalledWith({ type: 'studio:workbook-input-state', projectId, controllerId: replacement, error: 'Current refusal' }, window.location.origin);
   view.unmount(); post.mockClear(); act(() => current('Late refusal')); expect(post).not.toHaveBeenCalled();
 });
+
+it('carries CSV view sizing across acknowledged source replacement without copying stale cells or styles', async () => {
+  const ready = vi.fn(), csv = { ...model, sourceFormat: 'csv' as const };
+  runtime.saved.mockReturnValue({ id: 'grid', sheets: { inputs: { columnData: { 1: { w: 148, s: 'old' } }, rowData: { 2: { h: 42 } }, cellData: { 0: { 0: { v: 'stale' } } } } } });
+  const view = render(<WorkbookGrid id="project:file.csv" title="CSV" model={csv} onReady={ready} />);
+  await waitFor(() => expect(ready).toHaveBeenCalledTimes(1));
+  const next = structuredClone(csv); next.sheets[0]!.cells = [{ row: 0, column: 0, kind: 'string', value: 'new-source' }];
+  view.rerender(<WorkbookGrid id="project:file.csv" title="CSV" model={next} onReady={ready} />);
+  await waitFor(() => expect(ready).toHaveBeenCalledTimes(2));
+  const sheet = runtime.createWorkbook.mock.calls[1]![0].sheets.inputs;
+  expect(sheet.columnData).toEqual({ 1: { w: 148 } }); expect(sheet.rowData).toEqual({ 2: { h: 42 } });
+  expect(sheet.cellData[0][0].v).toBe('new-source');
+  view.rerender(<WorkbookGrid id="another-project:file.csv" title="CSV" model={next} onReady={ready} />);
+  await waitFor(() => expect(ready).toHaveBeenCalledTimes(3));
+  expect(runtime.createWorkbook.mock.calls[2]![0].sheets.inputs.columnData).toEqual({});
+});
+
+it('does not retain CSV sizing after its scoped surface is unmounted or the format changes', async () => {
+  const ready = vi.fn(), csv = { ...model, sourceFormat: 'csv' as const };
+  runtime.saved.mockReturnValue({ id: 'grid', sheets: { inputs: { columnData: { 1: { w: 148 } } } } });
+  const first = render(<WorkbookGrid id="project:file" title="CSV" model={csv} onReady={ready} />);
+  await waitFor(() => expect(ready).toHaveBeenCalledTimes(1));
+  first.rerender(<WorkbookGrid id="project:file" title="XLSX" model={model} onReady={ready} />);
+  await waitFor(() => expect(ready).toHaveBeenCalledTimes(2));
+  expect(runtime.createWorkbook.mock.calls[1]![0].sheets.inputs.columnData).toEqual({});
+  first.unmount();
+  render(<WorkbookGrid id="project:file" title="CSV" model={csv} onReady={ready} />);
+  await waitFor(() => expect(ready).toHaveBeenCalledTimes(3));
+  expect(runtime.createWorkbook.mock.calls[2]![0].sheets.inputs.columnData).toEqual({});
+});

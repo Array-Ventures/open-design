@@ -68,3 +68,10 @@ Chromium canvas without starting application services. It verifies Swiss/Roman/
 Modern fallback metrics and a locally loaded bundled face winning over its generic
 fallback. The reader/writer font tests independently reopen XLSX output; pinned
 editor inheritance tests ensure display font lists do not create authored changes.
+
+CSV row heights and column widths are open-view preferences. Acknowledged saves
+and fresh source reads retain those sizes within the mounted, viewer-scoped
+project/file grid. Only finite positive sizes within the new source grid bounds
+carry forward; cells, styles, formulas and hidden state remain source-owned.
+These preferences never enter CSV save plans or exported bytes and are not
+persisted across closing/reopening the surface or a full page reload.
