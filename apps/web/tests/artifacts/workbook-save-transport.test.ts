@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { WorkbookHostError, workbookHostRequest } from '../../src/components/embedded/workbook/host-request';
-import { prepareWorkbookJob } from '../../src/components/embedded/workbook/preview-transport';
+import { prepareWorkbookJob, WorkbookPreparationGoneError } from '../../src/components/embedded/workbook/preview-transport';
 import { newWorkbookSaveAttempt, saveWorkbook } from '../../src/components/embedded/workbook/save-transport';
 vi.mock('../../src/components/embedded/workbook/host-request', async importOriginal => ({ ...await importOriginal<object>(), workbookHostRequest: vi.fn() }));
 vi.mock('../../src/components/embedded/workbook/preview-transport', async importOriginal => ({ ...await importOriginal<object>(), prepareWorkbookJob: vi.fn(), workbookPollDelay: vi.fn(async () => {}) }));
@@ -128,4 +128,25 @@ it('keeps a live candidate and refuses uncertain post-tombstone status instead o
     await expect(saveWorkbook(intent, undefined, vi.fn())).rejects.toThrow('Uncertain receipt');
     expect(intent.preparationId).toBe(preparation); expect(intent.renderId).toBe(renderId);
   }
+});
+it('recovers an expired preparation when its original render response was lost', async () => {
+  const intent = attempt(), originalPreparation = intent.preparationId, operation = intent.operationId;
+  const replacement = '18a8301a-b6e1-4001-8000-c967b1eab225';
+  request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockResolvedValueOnce(candidate()).mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockResolvedValueOnce({ ...receipt(operation), renderId: replacement });
+  prepare.mockRejectedValueOnce(new WorkbookPreparationGoneError(candidate())).mockResolvedValueOnce(candidate(replacement, 'ready'));
+  const checkpoint = vi.fn(async () => {});
+  await expect(saveWorkbook(intent, undefined, checkpoint)).resolves.toMatchObject({ state: 'applied' });
+  expect(intent.operationId).toBe(operation); expect(intent.preparationId).not.toBe(originalPreparation);
+  expect(prepare.mock.calls[0]?.[3]).toBe(originalPreparation); expect(prepare.mock.calls[1]?.[3]).toBe(intent.preparationId);
+  expect(checkpoint).toHaveBeenCalledTimes(2);
+  expect(request.mock.calls.map(call => call[1].action)).toEqual(['read-save', 'read-save', 'read-render', 'read-save', 'save']);
+});
+it('does not rotate on generic preparation errors or loop through immediately expired replacements', async () => {
+  const intent = attempt(), originalPreparation = intent.preparationId;
+  request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)); prepare.mockRejectedValueOnce(new WorkbookHostError('Gone without proof', 410));
+  await expect(saveWorkbook(intent, undefined, vi.fn())).rejects.toThrow('Gone without proof'); expect(intent.preparationId).toBe(originalPreparation);
+  request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockResolvedValueOnce(candidate()).mockRejectedValueOnce(new WorkbookHostError('Missing', 404));
+  prepare.mockRejectedValueOnce(new WorkbookPreparationGoneError(candidate())).mockRejectedValueOnce(new WorkbookPreparationGoneError(candidate()));
+  await expect(saveWorkbook(intent, undefined, vi.fn(async () => {}))).rejects.toBeInstanceOf(WorkbookPreparationGoneError);
+  expect(prepare).toHaveBeenCalledTimes(3); expect(request.mock.calls.filter(call => call[1].action === 'save')).toHaveLength(0);
 });

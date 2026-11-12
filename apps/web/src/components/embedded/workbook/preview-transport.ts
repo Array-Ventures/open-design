@@ -9,6 +9,13 @@ export function checkedWorkbookJob(raw: unknown, projectId: string, fileName: st
   if (job.projectId !== projectId || job.input.fileName !== fileName || job.input.format !== format) throw new WorkbookHostError('The workbook preparation identity does not match this preview.');
   return job;
 }
+/** Carries the exact validated durable tombstone returned by preparation replay.
+ * A generic 410 is deliberately insufficient evidence for rotating an intent. */
+export class WorkbookPreparationGoneError extends WorkbookHostError {
+  constructor(readonly job: ReturnType<typeof checkedWorkbookJob>) {
+    super('This workbook preparation has expired.', 410);
+  }
+}
 export function workbookPollDelay(signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(new DOMException('Aborted', 'AbortError')); return; }
@@ -26,6 +33,7 @@ export async function prepareWorkbookJob(projectId: string, fileName: string, fo
     job = checkedWorkbookJob(await workbookHostRequest(projectId, { action: 'read-render', renderId: id }, signal), projectId, fileName, format);
     if (job.id !== id) throw new WorkbookHostError('The workbook preparation identity changed.');
   }
+  if (job.state === 'deleted') throw new WorkbookPreparationGoneError(job);
   if (job.state !== 'ready') throw new WorkbookHostError(job.error || 'The workbook could not be prepared.', job.state === 'deleted' ? 410 : 422);
   return job;
   } catch (error) {

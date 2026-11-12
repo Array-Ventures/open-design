@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { workbookEditPlanSchema } from '@open-design/contracts/runtime/workbook';
 import { workbookHostRequest, WorkbookHostError } from './host-request';
-import { prepareWorkbookJob, workbookPollDelay, checkedWorkbookJob } from './preview-transport';
+import { prepareWorkbookJob, workbookPollDelay, checkedWorkbookJob, WorkbookPreparationGoneError } from './preview-transport';
 
 const digest = z.string().regex(/^[0-9a-f]{64}$/);
 const Save = z.object({ id: z.string().uuid(), projectId: z.string().uuid(), renderId: z.string().uuid(), fileName: z.string(),
@@ -25,7 +25,10 @@ function checkedSave(raw: unknown, attempt: WorkbookSaveAttempt) {
 }
 /** The caller retains this attempt across timeouts and retries. Probe durable
  * status first; a lost acknowledgement must never create a second write. */
-export async function saveWorkbook(attempt: WorkbookSaveAttempt, signal?: AbortSignal, beforeAdmission?: () => Promise<void>) {
+export function saveWorkbook(attempt: WorkbookSaveAttempt, signal?: AbortSignal, beforeAdmission?: () => Promise<void>) {
+  return settleWorkbookSave(attempt, signal, beforeAdmission, true);
+}
+async function settleWorkbookSave(attempt: WorkbookSaveAttempt, signal: AbortSignal | undefined, beforeAdmission: (() => Promise<void>) | undefined, mayRecoverPreparation: boolean): Promise<z.infer<typeof Save>> {
   let save: z.infer<typeof Save> | undefined;
   try { save = checkedSave(await workbookHostRequest(attempt.projectId, { action: 'read-save', saveId: attempt.operationId }, signal), attempt); }
   catch (error) { if (!(error instanceof WorkbookHostError) || error.status !== 404) throw error; }
@@ -40,6 +43,8 @@ export async function saveWorkbook(attempt: WorkbookSaveAttempt, signal?: AbortS
       catch (error) { if (!(error instanceof WorkbookHostError) || error.status !== 404) throw error; }
       if (!save) {
         if (!beforeAdmission) throw new WorkbookHostError('Recovery storage is required before replacing this expired workbook preparation.');
+        if (!mayRecoverPreparation) throw new WorkbookHostError('The replacement workbook preparation expired. Retry the same save.');
+        mayRecoverPreparation = false;
         const renderId = attempt.renderId, preparationId = attempt.preparationId;
         attempt.preparationId = crypto.randomUUID();
         delete attempt.renderId;
@@ -50,8 +55,19 @@ export async function saveWorkbook(attempt: WorkbookSaveAttempt, signal?: AbortS
   }
   if (!save) {
     if (!attempt.renderId) {
-      const job = await prepareWorkbookJob(attempt.projectId, attempt.fileName, 'xlsx', attempt.preparationId, signal, JSON.stringify(attempt.plan));
-      attempt.renderId = job.id;
+      try {
+        const job = await prepareWorkbookJob(attempt.projectId, attempt.fileName, 'xlsx', attempt.preparationId, signal, JSON.stringify(attempt.plan));
+        attempt.renderId = job.id;
+      } catch (error) {
+        if (!(error instanceof WorkbookPreparationGoneError) || !mayRecoverPreparation) throw error;
+        // A lost prepare reply may leave only preparationId in the journal.
+        // Its replay supplies an exact immutable job identity; the normal
+        // tombstone/status fence still runs before any replacement is made.
+        const previous = checkedWorkbookJob(error.job, attempt.projectId, attempt.fileName, 'xlsx');
+        if (previous.state !== 'deleted') throw error;
+        attempt.renderId = previous.id;
+        return settleWorkbookSave(attempt, signal, beforeAdmission, true);
+      }
     }
     await beforeAdmission?.();
     save = checkedSave(await workbookHostRequest(attempt.projectId, { action: 'save', body: { operationId: attempt.operationId, renderId: attempt.renderId } }, signal), attempt);
