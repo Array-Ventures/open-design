@@ -138,3 +138,73 @@ it('hides previously authorized restore metadata on revocation while retaining i
   expect(view.result.current.canOpen).toBe(false); expect(view.result.current.intent).toBeNull(); expect(view.result.current.versions).toEqual([]);
   expect(record()).toEqual(pending); expect(mocks.store.mock.calls.every(([, change]) => change === undefined)).toBe(true);
 });
+
+function retainedIntent() {
+  return { version: 1, ...scope, operationId: '18a8301a-b6e1-4001-8000-c967b1eab227', preparationId: '18a8301a-b6e1-4001-8000-c967b1eab226', sourceSha256: sha, versionSha256: target, versionId: revision.id };
+}
+it('reconciles a lost applied acknowledgement after file deletion without previewing or recreating it', async () => {
+  const { options, record } = fixture(); const pending = retainedIntent(), unreadable = vi.fn();
+  await mocks.store(scope, { expected: null, value: pending }); mocks.store.mockClear();
+  mocks.list.mockResolvedValue({ versions: [revision], nextCursor: null, currentSha256: null });
+  const view = renderHook(() => useWorkbookHistory({ ...options, source: null, ready: false, unreadable }));
+  await waitFor(() => expect(view.result.current.intent).toEqual(pending));
+  await act(async () => view.result.current.restore());
+  expect(mocks.restore).toHaveBeenCalledExactlyOnceWith(pending, expect.any(Function), expect.any(AbortSignal), { allowPrepare: false });
+  expect(record()).toBeNull(); expect(view.result.current.intent).toBeNull(); expect(view.result.current.canOpen).toBe(true); expect(view.result.current.missing).toBe(true);
+  expect(view.result.current.error).toContain('now missing'); expect(mocks.preview).not.toHaveBeenCalled(); expect(options.pause).not.toHaveBeenCalled();
+  expect(unreadable).toHaveBeenCalledWith(expect.stringContaining('not recreated'), false);
+});
+it('accepts an exact terminal receipt before checking a changed source and then clears only that operation', async () => {
+  const { WorkbookRestoreFinishedError } = await import('../../../src/components/embedded/workbook/restore-transport');
+  const { options, record } = fixture(); const pending = retainedIntent();
+  await mocks.store(scope, { expected: null, value: pending }); mocks.store.mockClear();
+  mocks.list.mockResolvedValue({ versions: [revision], nextCursor: null, currentSha256: 'c'.repeat(64) });
+  mocks.restore.mockRejectedValueOnce(new WorkbookRestoreFinishedError('conflict', 'The current workbook changed. Nothing was overwritten.'));
+  const view = renderHook(() => useWorkbookHistory({ ...options, source: null, ready: false }));
+  await waitFor(() => expect(view.result.current.intent).toEqual(pending)); await act(async () => view.result.current.restore());
+  expect(mocks.restore.mock.invocationCallOrder[0]).toBeLessThan(mocks.list.mock.invocationCallOrder[1]!);
+  expect(record()).toBeNull(); expect(view.result.current.sha).toBe('c'.repeat(64)); expect(options.pause).not.toHaveBeenCalled();
+});
+it.each([null, 'c'.repeat(64)])('keeps a receipt-404 intent protected when current SHA is %s and submits no preparation', async currentSha256 => {
+  const { WorkbookRestoreReceiptUnavailableError } = await import('../../../src/components/embedded/workbook/restore-transport');
+  const { options, record } = fixture(); const pending = retainedIntent();
+  await mocks.store(scope, { expected: null, value: pending }); mocks.store.mockClear();
+  mocks.list.mockResolvedValue({ versions: [revision], nextCursor: null, currentSha256 }); mocks.restore.mockRejectedValueOnce(new WorkbookRestoreReceiptUnavailableError());
+  const view = renderHook(() => useWorkbookHistory({ ...options, source: null, ready: false }));
+  await waitFor(() => expect(view.result.current.intent).toEqual(pending)); await act(async () => view.result.current.restore());
+  expect(mocks.restore).toHaveBeenCalledExactlyOnceWith(pending, expect.any(Function), expect.any(AbortSignal), { allowPrepare: false });
+  expect(record()).toEqual(pending); expect(view.result.current.intent).toEqual(pending); expect(options.pause).not.toHaveBeenCalled(); expect(mocks.preview).not.toHaveBeenCalled();
+  expect(mocks.store.mock.calls.some(([, change]) => change && change.value === null)).toBe(false);
+});
+it('withdraws metadata after receipt reconciliation loses project access while retaining its protected identity', async () => {
+  const { WorkbookHostError } = await import('../../../src/components/embedded/workbook/host-request');
+  const { options, record } = fixture(); const pending = retainedIntent();
+  await mocks.store(scope, { expected: null, value: pending }); mocks.store.mockClear();
+  mocks.list.mockResolvedValueOnce({ versions: [revision], nextCursor: null, currentSha256: null }).mockRejectedValueOnce(new WorkbookHostError('Access revoked', 403));
+  const view = renderHook(() => useWorkbookHistory({ ...options, source: null, ready: false }));
+  await waitFor(() => expect(view.result.current.intent).toEqual(pending)); await act(async () => view.result.current.restore());
+  expect(record()).toEqual(pending); expect(view.result.current.canOpen).toBe(false); expect(view.result.current.intent).toBeNull(); expect(view.result.current.versions).toEqual([]);
+});
+it('reconciles a terminal operation without replacing an already dirty local draft', async () => {
+  const { options, record } = fixture(true); const pending = retainedIntent();
+  await mocks.store(scope, { expected: null, value: pending }); mocks.store.mockClear();
+  mocks.list.mockResolvedValue({ versions: [revision], nextCursor: null, currentSha256: target });
+  const view = renderHook(() => useWorkbookHistory(options));
+  await waitFor(() => expect(view.result.current.intent).toEqual(pending)); await act(async () => view.result.current.restore());
+  expect(record()).toBeNull(); expect(options.accepted).not.toHaveBeenCalled(); expect(options.pause).not.toHaveBeenCalled(); expect(mocks.preview).not.toHaveBeenCalled();
+  expect(view.result.current.error).toContain('local draft was kept');
+});
+it.each([false, true])('classifies preview 404 through fresh history (project denied: %s)', async denied => {
+  const { WorkbookHostError } = await import('../../../src/components/embedded/workbook/host-request');
+  const { options, record } = fixture(); const pending = retainedIntent(), unreadable = vi.fn();
+  await mocks.store(scope, { expected: null, value: pending }); mocks.store.mockClear();
+  mocks.list.mockResolvedValueOnce({ versions: [revision], nextCursor: null, currentSha256: target }).mockResolvedValueOnce({ versions: [revision], nextCursor: null, currentSha256: target });
+  if (denied) mocks.list.mockRejectedValueOnce(new WorkbookHostError('Project unavailable', 403));
+  else mocks.list.mockResolvedValueOnce({ versions: [revision], nextCursor: null, currentSha256: null });
+  mocks.preview.mockRejectedValueOnce(new WorkbookHostError('File unavailable', 404));
+  const view = renderHook(() => useWorkbookHistory({ ...options, source: null, ready: false, unreadable }));
+  await waitFor(() => expect(view.result.current.intent).toEqual(pending)); await act(async () => view.result.current.restore());
+  expect(view.result.current.canOpen).toBe(!denied);
+  if (denied) { expect(record()).toEqual(pending); expect(view.result.current.versions).toEqual([]); expect(unreadable).not.toHaveBeenCalled(); }
+  else { expect(record()).toBeNull(); expect(view.result.current.missing).toBe(true); expect(unreadable).toHaveBeenCalledWith(expect.stringContaining('not recreated'), false); }
+});

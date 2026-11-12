@@ -35,3 +35,9 @@ it('allows raw-SHA recovery without a preview, refuses missing-file resurrection
   view.rerender(<WorkbookHistory history={{ ...history, canOpen: false }} dirty={false} reload={vi.fn()} />);
   expect(screen.queryByRole('dialog')).toBeNull();
 });
+it('keeps a retained receipt status check enabled when the current file is missing or a local draft is dirty', () => {
+  const history = { ...fixture(), available: true, canOpen: true, sha: null, intent: {} as never };
+  render(<WorkbookHistory history={history} dirty={true} reload={vi.fn()} />);
+  expect(screen.getByRole('button', { name: 'Check status' }).hasAttribute('disabled')).toBe(false);
+  expect(screen.getByText('The current file is missing. Check status only; it will not be recreated.')).toBeTruthy();
+});

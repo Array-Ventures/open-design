@@ -38,14 +38,17 @@ export function checkedWorkbookRestoreReceipt(raw: unknown, intent: WorkbookRest
 }
 
 /** Exact binary restore uses the same durable save receipt, never an edit-plan
- * reprepare. Retain both IDs until that receipt is authoritative. */
-export async function restoreWorkbookVersion(intent: WorkbookRestoreIntent, protect: () => Promise<void>, signal?: AbortSignal) {
+ * reprepare. Retain both IDs until that receipt is authoritative. Setting
+ * allowPrepare:false permits only receipt reads/polling, never preparation or
+ * admission, including when the working file changed or disappeared. */
+export async function restoreWorkbookVersion(intent: WorkbookRestoreIntent, protect: () => Promise<void>, signal?: AbortSignal, options: { allowPrepare?: boolean } = {}) {
   const check = (raw: unknown) => checkedWorkbookRestoreReceipt(raw, intent);
   const read = async () => {
     try { return check(await workbookHostRequest(intent.projectId, { action: 'read-save', saveId: intent.operationId }, signal)); }
     catch (error) { if (error instanceof WorkbookHostError && error.status === 404) return null; throw error; }
   };
   let save = await read();
+  if (!save && options.allowPrepare === false) throw new WorkbookRestoreReceiptUnavailableError();
   if (!save) {
     try {
       const job = await prepareWorkbookRestore(intent.projectId, { operationId: intent.preparationId, fileName: intent.fileName,
@@ -75,4 +78,9 @@ export async function restoreWorkbookVersion(intent: WorkbookRestoreIntent, prot
 }
 export class WorkbookRestoreFinishedError extends WorkbookHostError {
   constructor(readonly outcome: 'conflict' | 'cancelled' | 'unadmitted', message: string) { super(message); }
+}
+
+/** Absence is not proof of cancellation: an earlier admission may still land. */
+export class WorkbookRestoreReceiptUnavailableError extends WorkbookHostError {
+  constructor(message = 'The exact restore receipt is unavailable. Keep this operation protected and check its status again. No new save was submitted.') { super(message); }
 }

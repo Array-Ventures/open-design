@@ -29,18 +29,19 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
 
-it('uses real history/restore transports and protected storage to recover corrupt bytes while retaining an existing editable draft', async () => {
+it.each([false, true])('recovers through real transports while retaining drafts (lost acknowledgement then deleted file: %s)', async lostThenDeleted => {
   const initial = gridWorkbook(model, `${projectId}:${fileName}`, 'Forecast').data as IWorkbookData;
   const writer = new WorkbookWriter({ sourceSha256: 'c'.repeat(64), model }, initial, vi.fn(), vi.fn());
   const edited = structuredClone(initial); edited.sheets.s!.cellData![0]![0]!.v = 98765; writer.update(edited);
   const checkpoint = writer.checkpoint(); await drafts.saveWorkbookDraft(scope, checkpoint);
-  let currentSha = corruptSha;
+  let currentSha: string | null = corruptSha;
   let receipt: object | null = null;
   const prepared = new Map<string, { id: string; projectId: string; input: { fileName: string; format: string }; state: string; error: string | null; output?: object }>();
   host.request.mockImplementation(async (_project, request) => {
     if (request.action === 'list-history') return { projectId, fileName, currentSha256: currentSha, versions: [{ id: 'immutable-v1', fileName, version: 1, label: 'Known good', createdAt: 1, source: 'manual', size: 100, current: currentSha === restoredSha, contentDigest: restoredSha }], nextCursor: null };
     if (request.action === 'read-save') { if (receipt) return receipt; throw new WorkbookHostError('No receipt', 404); }
     if (request.action === 'prepare') {
+      if (currentSha === null) throw new WorkbookHostError('The working file is missing.', 404);
       const job = { id: request.body.operationId, projectId, input: { fileName, format: request.body.format }, state: currentSha === corruptSha ? 'failed' : 'ready', error: currentSha === corruptSha ? 'The current XLSX is corrupt.' : null };
       prepared.set(job.id, job); return job;
     }
@@ -55,8 +56,10 @@ it('uses real history/restore transports and protected storage to recover corrup
     if (request.action === 'save') {
       const protectedIntent = await drafts.accessWorkbookRestore(scope);
       expect(protectedIntent).toMatchObject({ operationId: request.body.operationId, renderId: request.body.renderId });
-      currentSha = restoredSha;
-      receipt = { id: request.body.operationId, projectId, fileName, renderId: request.body.renderId, state: 'applied', sourceSha256: corruptSha, targetSha256: restoredSha, actualSha256: restoredSha, versionId: 'new-v2', restoreFromVersionId: 'immutable-v1' }; return receipt;
+      currentSha = lostThenDeleted ? null : restoredSha;
+      receipt = { id: request.body.operationId, projectId, fileName, renderId: request.body.renderId, state: 'applied', sourceSha256: corruptSha, targetSha256: restoredSha, actualSha256: restoredSha, versionId: 'new-v2', restoreFromVersionId: 'immutable-v1' };
+      if (lostThenDeleted) throw new WorkbookHostError('Lost restore acknowledgement.');
+      return receipt;
     }
     if (request.action === 'read-preview') return { sourceSha256: currentSha, model };
     if (request.action === 'remove-render') return { ...prepared.get(request.renderId), state: 'deleted' };
@@ -72,7 +75,19 @@ it('uses real history/restore transports and protected storage to recover corrup
   fireEvent.click(await screen.findByRole('button', { name: 'Version 1' }));
   expect(screen.getByText('Restore a saved version to recover this file. Local drafts are kept.')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: /^Restore$/ }));
-  await screen.findByRole('heading', { name: 'Unsaved drafts' });
+  if (lostThenDeleted) {
+    await screen.findByText('Lost restore acknowledgement.');
+    const protectedIntent = await drafts.accessWorkbookRestore(scope); expect(protectedIntent).not.toBeNull();
+    cleanup();
+    render(<WorkbookSurface projectId={projectId} fileName={fileName} title="Forecast" sourceStamp="file-deleted-after-commit" />);
+    const check = await screen.findByRole('button', { name: 'Check status' });
+    expect(check.hasAttribute('disabled')).toBe(false);
+    const callsBeforeCheck = host.request.mock.calls.length;
+    fireEvent.click(check);
+    await screen.findAllByText('The restore completed, but the current file is now missing. It was not recreated.');
+    expect(host.request.mock.calls.slice(callsBeforeCheck).every(([, request]) => ['read-save', 'list-history'].includes(request.action))).toBe(true);
+    expect(drafts.listWorkbookDrafts).not.toHaveBeenCalled(); expect(drafts.readWorkbookDraft).not.toHaveBeenCalled();
+  } else await screen.findByRole('heading', { name: 'Unsaved drafts' });
   expect(host.request.mock.calls.filter(([, request]) => request.action === 'save')).toHaveLength(1);
   expect(await drafts.accessWorkbookRestore(scope)).toBeNull();
   expect(await drafts.readWorkbookDraft(scope)).toEqual(checkpoint);

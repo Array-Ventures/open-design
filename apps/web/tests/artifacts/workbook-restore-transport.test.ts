@@ -63,3 +63,31 @@ it('rejects missing or different restore lineage in every receipt state even whe
     expect(checkedWorkbookRestoreReceipt({ ...receipt, restoreFromVersionId: input.versionId }, intent).restoreFromVersionId).toBe(input.versionId);
   }
 });
+
+it('keeps a status-only missing receipt unresolved without preparing, admitting, or treating 404 as terminal', async () => {
+  const { restoreWorkbookVersion, WorkbookRestoreReceiptUnavailableError, WorkbookRestoreFinishedError } = await import('../../src/components/embedded/workbook/restore-transport');
+  const { WorkbookHostError } = await import('../../src/components/embedded/workbook/host-request');
+  const intent = { version: 1 as const, viewerId: 'human', projectId, fileName: input.fileName, operationId: input.operationId, preparationId: '18a8301a-b6e1-4001-8000-c967b1eab225', sourceSha256: input.sourceSha256, versionId: input.versionId, versionSha256: input.versionSha256 };
+  vi.mocked(workbookHostRequest).mockRejectedValueOnce(new WorkbookHostError('Missing', 404));
+  const protect = vi.fn(); let failure: unknown;
+  try { await restoreWorkbookVersion(intent, protect, undefined, { allowPrepare: false }); } catch (error) { failure = error; }
+  expect(failure).toBeInstanceOf(WorkbookRestoreReceiptUnavailableError); expect(failure).not.toBeInstanceOf(WorkbookRestoreFinishedError);
+  expect(protect).not.toHaveBeenCalled();
+  expect(workbookHostRequest).toHaveBeenCalledExactlyOnceWith(projectId, { action: 'read-save', saveId: intent.operationId }, undefined);
+});
+it('returns a known applied receipt in status-only mode without touching the working file', async () => {
+  const { restoreWorkbookVersion } = await import('../../src/components/embedded/workbook/restore-transport');
+  const intent = { version: 1 as const, viewerId: 'human', projectId, fileName: input.fileName, operationId: input.operationId, preparationId: '18a8301a-b6e1-4001-8000-c967b1eab225', sourceSha256: input.sourceSha256, versionId: input.versionId, versionSha256: input.versionSha256 };
+  const receipt = { id: intent.operationId, projectId, fileName: input.fileName, renderId: id, state: 'applied', sourceSha256: input.sourceSha256, targetSha256: input.versionSha256, actualSha256: input.versionSha256, versionId: 'restored-v2', restoreFromVersionId: intent.versionId };
+  vi.mocked(workbookHostRequest).mockResolvedValueOnce(receipt);
+  expect(await restoreWorkbookVersion(intent, vi.fn(), undefined, { allowPrepare: false })).toEqual(receipt);
+  expect(workbookHostRequest).toHaveBeenCalledExactlyOnceWith(projectId, { action: 'read-save', saveId: intent.operationId }, undefined);
+});
+it('polls an existing pending receipt to completion in status-only mode without preparing or saving', async () => {
+  const { restoreWorkbookVersion } = await import('../../src/components/embedded/workbook/restore-transport');
+  const intent = { version: 1 as const, viewerId: 'human', projectId, fileName: input.fileName, operationId: input.operationId, preparationId: '18a8301a-b6e1-4001-8000-c967b1eab225', sourceSha256: input.sourceSha256, versionId: input.versionId, versionSha256: input.versionSha256 };
+  const receipt = { id: intent.operationId, projectId, fileName: input.fileName, renderId: id, state: 'applied', sourceSha256: input.sourceSha256, targetSha256: input.versionSha256, actualSha256: input.versionSha256, versionId: 'restored-v2', restoreFromVersionId: intent.versionId };
+  vi.mocked(workbookHostRequest).mockResolvedValueOnce({ ...receipt, state: 'pending', actualSha256: null, versionId: null }).mockResolvedValueOnce(receipt);
+  const protect = vi.fn(); expect(await restoreWorkbookVersion(intent, protect, undefined, { allowPrepare: false })).toEqual(receipt);
+  expect(protect).not.toHaveBeenCalled(); expect(vi.mocked(workbookHostRequest).mock.calls.map(([, request]) => request.action)).toEqual(['read-save', 'read-save']);
+});

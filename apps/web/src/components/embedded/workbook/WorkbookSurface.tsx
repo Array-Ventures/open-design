@@ -35,7 +35,7 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
     pause: async () => editorRef.current?.pause() ?? false,
     resume: async accepted => { await editorRef.current?.resumeClean(accepted); },
     accepted: source => { setLoaded(source); setError(null); onSaved?.(); },
-    unreadable: () => { setLoaded(null); setError('The saved version was restored but cannot be previewed. Choose another version in History.'); onSaved?.(); },
+    unreadable: (message, refresh = true) => { setLoaded(null); setError(message ?? 'The saved version was restored but cannot be previewed. Choose another version in History.'); if (refresh) onSaved?.(); },
     onAccessLost: () => { void editorRef.current?.close(); setLoaded(null); setError('This workbook is unavailable. Reopen it after checking access.'); },
     focusOnClose: () => window.parent.postMessage({ type: 'studio:workbook-history-focus', projectId, controllerId: editorRef.current?.controllerId }, window.location.origin),
   });
@@ -61,7 +61,8 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
     }).catch(cause => {
       if (controller.signal.aborted || generation !== historyRef.current.generation()) return;
       if (cause instanceof WorkbookHostError && [410, 422].includes(cause.status)) operation.current = null;
-      if (cause instanceof WorkbookHostError && [401, 403, 404].includes(cause.status)) { historyRef.current.denyAccess(); return; }
+      if (cause instanceof WorkbookHostError && [401, 403].includes(cause.status)) { historyRef.current.denyAccess(); return; }
+      if (cause instanceof WorkbookHostError && cause.status === 404) { setLoaded(null); void historyRef.current.refresh(); }
       setError(cause instanceof Error ? cause.message : 'The workbook could not be loaded.');
     });
     return () => controller.abort();
