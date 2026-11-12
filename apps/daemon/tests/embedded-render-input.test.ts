@@ -33,3 +33,9 @@ it('accepts document outputs without treating decks or media as documents', () =
   expect(RenderInput.safeParse({ fileName: 'deck.html', format: 'docx', deck: true }).success).toBe(false);
   expect(RenderInput.safeParse({ fileName: 'report.md', format: 'docx', dataFile: 'data.json' }).success).toBe(false);
 });
+
+it('binds XLSX CSV exports to one exact sheet and digest, refusing edit/restore/capture/path fields', () => {
+  const input = { fileName: 'book.xlsx', format: 'csv', sheetId: '2', workbookSourceSha256: 'a'.repeat(64) };
+  expect(RenderInput.parse(input).sheetId).toBe('2');
+  for (const change of [{ sheetId: undefined }, { workbookSourceSha256: undefined }, { sheetId: '../sheet.xml' }, { sheetId: '__proto__' }, { dataFile: 'edits.json' }, { deck: true }, { format: 'xlsx' }, { fileName: 'table.csv' }]) expect(RenderInput.safeParse({ ...input, ...change }).success).toBe(false);
+});

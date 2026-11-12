@@ -1,3 +1,4 @@
+import { selectedWorksheetCsv } from '../artifacts/workbook/selected-sheet-csv.js';
 import { renderCsv } from './csv.js';
 import { createHash } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
@@ -10,9 +11,9 @@ import { WorkbookFormatError } from '../artifacts/workbook/package.js';
 /** Called only by the existing networkless, memory-limited render container.
  * Input is the host's immutable source snapshot; workspace files are not mounted
  * writable and this worker never persists a live edit. */
-export async function renderWorkbook(output: string, input: { fileName: string; format: 'workbook' | 'xlsx' | 'csv'; dataFile?: string; restore?: { fileName: string; sourceSha256: string; targetSha256: string } }, asset: (name: string) => Promise<Buffer>): Promise<{ file: string; mime: string }> {
+export async function renderWorkbook(output: string, input: { fileName: string; format: 'workbook' | 'xlsx' | 'csv'; dataFile?: string; sheetId?: string; workbookSourceSha256?: string; restore?: { fileName: string; sourceSha256: string; targetSha256: string } }, asset: (name: string) => Promise<Buffer>): Promise<{ file: string; mime: string }> {
   if (/\.csv$/i.test(input.fileName)) return renderCsv(output, input, asset);
-  if (input.format === 'csv') throw new WorkbookFormatError('CSV output requires a CSV source.');
+  if (input.format === 'csv' && (!input.sheetId || !input.workbookSourceSha256 || input.dataFile || input.restore)) throw new WorkbookFormatError('XLSX CSV output requires a selected worksheet and acknowledged source digest without edits or restore.');
   const bytes = await asset(input.fileName), sourceSha256 = createHash('sha256').update(bytes).digest('hex');
   if (input.restore) {
     if (input.format !== 'xlsx' || input.dataFile || input.restore.sourceSha256 !== sourceSha256) throw new WorkbookFormatError('The workbook changed after this restore was selected.');
@@ -25,6 +26,12 @@ export async function renderWorkbook(output: string, input: { fileName: string; 
     return { file: 'artifact.xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
   }
   const source = await readXlsxWorkbook(bytes);
+  if (input.format === 'csv') {
+    if (!input.sheetId || input.workbookSourceSha256 !== sourceSha256 || input.dataFile || input.restore) throw new WorkbookFormatError('Choose the worksheet again after saving or refreshing this workbook.');
+    const csv = selectedWorksheetCsv(source.model, input.sheetId);
+    await writeFile(path.join(output, 'artifact.csv'), csv, { flag: 'wx', mode: 0o600 });
+    return { file: 'artifact.csv', mime: 'text/csv' };
+  }
   let prepared: Awaited<ReturnType<typeof calculateWorkbookCellEdits>> | undefined;
   if (input.dataFile) {
     const plan = await asset(input.dataFile);

@@ -202,3 +202,22 @@ Document metadata/font choices and standalone styling now live in the pure share
 The full contained export matrix passed against the development worker before the final PDF/Word typography adjustment, including genuine DOCX structure, local images, exact Markdown bytes, active/remote input refusal and existing media/deck/dashboard exports. Native UI exposure and dirty-document protection are being paired separately in the host. This checkpoint is not release provenance or completion of the full artifact goal; the source is still under development, and the owned preview has not yet loaded these export changes.
 
 The final development worker matrix passes after the print changes, including all new document cases and the existing media/deck/dashboard cases. Its PDF was rendered to a page image and viewed next to the downloaded reference: Letter dimensions, inset writing area, title header and page footer are now present. Font files differ: the reference embeds its own print fonts; this renderer uses its existing free system fonts, so this is not proof of identical glyph metrics. The latest focused source suites pass 51 web and 13 admission/style/header-safety cases. Packaged host export/download acceptance remains pending.
+
+### Explicit worksheet CSV export
+
+XLSX CSV export requires `sheetId` and `workbookSourceSha256` from the active
+acknowledged grid. Both are frozen in the host's ordinary render job. Only CSV
+exports from XLSX accept these fields; edit plans, restore and capture options
+cannot be combined with this export. The worker validates the digest and visible
+worksheet membership inside the snapshot, without interpreting sheet identity as
+a filename. Source files remain read-only.
+
+Output is UTF-8 (no BOM), comma-separated, CRLF terminated and RFC4180 quoted.
+It exports raw stored values through the last nonblank cell, including hidden
+rows/columns. Booleans use TRUE/FALSE; date numbers remain Excel serial values;
+rich strings use their full text. Formula caches are exported exactly as saved,
+without recalculation; a formula without a cache refuses output. An empty sheet
+produces empty bytes. The limits are one million output fields and 50 MiB.
+The export dialog names the selected sheet and states the saved-cache policy.
+CSV-from-CSV retains its existing exact-source/edit-plan behavior. Browser and
+paired-package acceptance are still required; these are source-qualified changes.

@@ -1,5 +1,6 @@
 'use client';
 
+import { workbookExportBridge, type WorkbookExportScope } from './grid-export';
 import { attachCsvLiteralInput } from './csv-literal-input';
 
 import { useEffect, useRef, useState } from 'react';
@@ -24,6 +25,7 @@ export interface WorkbookGridProps {
   id: string; title: string; model: WorkbookDocument;
   initialSnapshot?: IWorkbookData;
   formatScope?: WorkbookFormatScope;
+  exportScope?: WorkbookExportScope;
   onSnapshot?(snapshot: IWorkbookData): void;
   onReady?(snapshot: IWorkbookData): void | Promise<void>;
   onDisplayGaps?(gaps: WorkbookDisplayGap[]): void;
@@ -32,7 +34,7 @@ export interface WorkbookGridProps {
 /** A disposable spreadsheet UI, never an XLSX serializer. A surface must supply
  * its durable edit controller before edits are enabled. Refresh/theme changes
  * do not recreate the grid unless the acknowledged source model changes. */
-export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, onReady, onDisplayGaps, formatScope }: WorkbookGridProps) {
+export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, onReady, onDisplayGaps, formatScope, exportScope }: WorkbookGridProps) {
   const container = useRef<HTMLDivElement>(null), callbacks = useRef({ id, model, title, onSnapshot, onReady, onDisplayGaps });
   const views = useRef<WorkbookViewLayers | null>(null);
   const viewScope = useRef(id);
@@ -40,6 +42,9 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
   const view = useRef<{ id: string; sourceFormat: WorkbookDocument['sourceFormat']; sheetId: string; snapshot: IWorkbookData; range?: IRange } | null>(null);
   const restored = useRef(initialSnapshot);
   const format = useRef(formatScope); format.current = formatScope;
+  const exportCurrent = useRef(exportScope); exportCurrent.current = exportScope;
+  const exportBridge = useRef<{ publish(): void } | null>(null);
+  useEffect(() => { exportBridge.current?.publish(); }, [exportScope?.blocked, exportScope?.sourceSha256]);
   const formattingRef = useRef<{ publish(): void } | null>(null);
   useEffect(() => { formattingRef.current?.publish(); }, [formatScope?.blocked]);
   const [error, setError] = useState<string | null>(null);
@@ -169,6 +174,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       const beforeLiteral = dispose;
       if (literal) dispose = () => { try { literal.dispose(); } finally { beforeLiteral(); } };
       const formatting = workbookFormattingBridge(univerAPI, () => editable && model.sourceFormat !== 'csv' ? format.current : undefined); formattingRef.current = formatting;
+      const exporter = workbookExportBridge(univerAPI, () => exportCurrent.current); exportBridge.current = exporter;
       const changed = univerAPI.addEvent(univerAPI.Event.CommandExecuted, event => {
         if (current() && event.type === CommandType.MUTATION && event.id.startsWith('sheet.')) { callbacks.current.onSnapshot?.(workbook.save()); formatting.publish(); }
       });
@@ -183,7 +189,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
         try {
           const sheet = workbook.getActiveSheet();
           view.current = { id, sourceFormat: model.sourceFormat, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() };
-        } finally { element.removeEventListener('pointerdown', activate, true); element.removeEventListener('focusin', activate); window.removeEventListener('blur', release); themes.disconnect(); literal?.dispose(); formatting.dispose(); formattingRef.current = null; changed.dispose(); calculation.dispose(); workbook.setEditable(false); stopCalculation(); layer.retire(); }
+        } finally { element.removeEventListener('pointerdown', activate, true); element.removeEventListener('focusin', activate); window.removeEventListener('blur', release); themes.disconnect(); literal?.dispose(); exporter.dispose(); exportBridge.current = null; formatting.dispose(); formattingRef.current = null; changed.dispose(); calculation.dispose(); workbook.setEditable(false); stopCalculation(); layer.retire(); }
       };
       await univer.__getInjector().get(LifecycleService).onStage(LifecycleStages.Rendered);
       // The pinned UI releases its initial workbench skeleton two frames after

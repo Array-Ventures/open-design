@@ -39,6 +39,6 @@ it('rejects stale, malformed, unsupported and conversion candidates without emit
   }
   await expect(renderWorkbook(directory, { fileName: 'data.csv', format: 'csv' }, async () => Buffer.from('"bad'))).rejects.toThrow();
   await expect(renderWorkbook(directory, { fileName: 'data.csv', format: 'xlsx' }, async () => original)).rejects.toThrow(/remain CSV/);
-  await expect(renderWorkbook(directory, { fileName: 'data.xlsx', format: 'csv' }, async () => original)).rejects.toThrow(/CSV source/);
+  await expect(renderWorkbook(directory, { fileName: 'data.xlsx', format: 'csv' }, async () => original)).rejects.toThrow(/selected worksheet/);
   expect(await readdir(directory)).toEqual([]);
 });
