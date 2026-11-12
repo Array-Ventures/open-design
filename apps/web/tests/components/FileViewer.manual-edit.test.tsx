@@ -731,6 +731,37 @@ describe('FileViewer manual edit regressions', () => {
     });
   });
 
+  it('retains an embedded saved text document on exit, adopts watcher echoes, and releases for external edits', async () => {
+    const original = '<!doctype html><html><body><main data-od-id="hero">Hero</main></body></html>';
+    let disk = original, exit: (() => Promise<boolean>) | null = null;
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes('/api/projects/project-1/files') && init?.method === 'POST') {
+        disk = JSON.parse(String(init.body)).content;
+        return new Response(JSON.stringify({ file: htmlPreviewFile() }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(disk, { status: 200, headers: { 'Content-Type': 'text/html' } });
+    }));
+    const props = { projectId: 'project-1', projectKind: 'prototype' as const, embedded: true, inlineAnnotations: true, file: htmlPreviewFile(), onManualEditExitHandlerChange: (_file: string, handler: (() => Promise<boolean>) | null) => { exit = handler; } };
+    const { rerender } = render(<FileViewer {...props} liveHtml={original} filesRefreshKey={1} />);
+    await enterManualEditMode(); await selectManualEditTarget();
+    const frame = await previewFrame(), before = frame.srcdoc;
+    const postMessage = vi.spyOn(frame.contentWindow!, 'postMessage');
+    fireEvent.change(document.querySelector('.manual-edit-right textarea')!, { target: { value: 'Painted saved text' } });
+    await act(async () => { expect(await exit!()).toBe(true); });
+    expect(disk).toContain('Painted saved text');
+    expect(postMessage).toHaveBeenCalledWith({ type: 'od-edit-preview-text', id: 'hero', value: 'Painted saved text' }, '*');
+    expect(await previewFrame()).toBe(frame); expect(frame.srcdoc).toBe(before);
+    rerender(<FileViewer {...props} liveHtml={disk} filesRefreshKey={7} file={{ ...props.file, mtime: props.file.mtime + 1 }} />);
+    expect(frame.srcdoc).toBe(before);
+    const external = disk.replace('Painted saved text', 'External writer');
+    rerender(<FileViewer {...props} liveHtml={external} filesRefreshKey={8} file={{ ...props.file, mtime: props.file.mtime + 2 }} />);
+    await waitFor(() => expect(frame.srcdoc).toContain('External writer'));
+    const externalDocument = frame.srcdoc;
+    rerender(<FileViewer {...props} liveHtml={disk} filesRefreshKey={9} file={{ ...props.file, mtime: props.file.mtime + 3 }} />);
+    await waitFor(() => expect(frame.srcdoc).toContain('Painted saved text'));
+    expect(frame.srcdoc).not.toBe(externalDocument); expect(frame.srcdoc).not.toBe(before);
+  });
+
   it('holds a dropped drag as a pending style and only persists it on save', async () => {
     const source = '<!doctype html><html><body><main data-od-id="hero">Hero</main></body></html>';
     const savedBodies: string[] = [];

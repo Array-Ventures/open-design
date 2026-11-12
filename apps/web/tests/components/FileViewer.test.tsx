@@ -3967,16 +3967,19 @@ describe('FileViewer SVG artifacts', () => {
       isLayoutContainer: false,
       outerHtml: '<div data-od-id="card-title">Pricing that scales</div>',
     };
+    const failedSave = vi.fn();
     vi.stubGlobal('fetch', vi.fn(async (url: unknown, opts?: { method?: string }) => {
       const u = String(url);
       if (u.includes('/files') && opts?.method === 'POST') {
+        failedSave();
         return new Response(JSON.stringify({ error: { message: 'disk full' } }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      // The pre-save history check re-fetches the source; treat it as absent so
-      // the commit proceeds to the (failing) save.
+      // The conditional writer must verify its existing source before it can
+      // reach the injected disk failure. A 404 tests a failed preflight instead.
+      if (u.includes('/raw/page.html')) return new Response('<html><body><div data-od-id="card-title">Pricing that scales</div></body></html>', { status: 200 });
       return new Response('', { status: 404 });
     }));
     render(
@@ -4031,6 +4034,7 @@ describe('FileViewer SVG artifacts', () => {
 
     // The save error is surfaced and edit mode stays open instead of tearing down.
     expect(await screen.findByText(/Could not save the edited file/)).toBeTruthy();
+    expect(failedSave).toHaveBeenCalledTimes(1);
     expect(toggle.getAttribute('aria-pressed')).toBe('true');
     expect(analyticsTrackMock).toHaveBeenCalledWith(
       'artifact_edit_result',
@@ -4905,15 +4909,18 @@ describe('FileViewer SVG artifacts', () => {
     };
     let releaseSave!: () => void;
     const savePending = new Promise<void>((resolve) => { releaseSave = resolve; });
+    const failedSave = vi.fn();
     vi.stubGlobal('fetch', vi.fn(async (url: unknown, opts?: { method?: string }) => {
       const u = String(url);
       if (u.includes('/files') && opts?.method === 'POST') {
+        failedSave();
         await savePending; // hold the save in flight until the test releases it
         return new Response(JSON.stringify({ error: { message: 'disk full' } }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' },
         });
       }
+      if (u.includes('/raw/page.html')) return new Response('<html><body><div data-od-id="card-title">Pricing that scales</div></body></html>', { status: 200 });
       return new Response('', { status: 404 });
     }));
     render(
@@ -4971,6 +4978,7 @@ describe('FileViewer SVG artifacts', () => {
     releaseSave();
 
     expect(await screen.findByText(/Could not save the edited file/)).toBeTruthy();
+    expect(failedSave).toHaveBeenCalledTimes(1);
     expect(toggle.getAttribute('aria-pressed')).toBe('true');
   });
 

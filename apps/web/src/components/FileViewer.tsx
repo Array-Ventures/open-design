@@ -13798,7 +13798,14 @@ function HtmlViewer({
         < manualEditUrlStandbyRequestedRef.current,
     );
     setManualEditSrcDocActive(false);
-    manualEditPersistedDocumentRef.current = null;
+    // The embedded annotated surface remains on srcDoc after Edit. Its live
+    // bridge already shows the acknowledged saved bytes: retain that one
+    // document instead of navigating it again just to remove edit mode.
+    // URL previews still hand off to their canonical warmed document. The
+    // fingerprint latch above retires on an actual external source change.
+    if (!embedded || urlLoadPreviewSupportedWithoutManualEdit) {
+      manualEditPersistedDocumentRef.current = null;
+    }
     setManualEditMode(false);
     return true;
   }
