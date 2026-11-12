@@ -1,3 +1,4 @@
+import { mediaArtifactFormats } from '@open-design/contracts';
 import { useEffect } from 'react';
 import type { ArtifactEntry } from './artifact-entry';
 
@@ -13,7 +14,7 @@ export function useArtifactHostState(projectId: string, entry: ArtifactEntry | n
     const send = () => {
       window.parent.postMessage({ type: 'studio:artifact-availability', projectId, available: Boolean(entry || snapshot) }, window.location.origin);
       window.parent.postMessage({ type: 'studio:artifact-state', projectId,
-      entry: !snapshot && fileName ? { fileName, kind, title, formats: kind === 'workbook' ? (/\.csv$/i.test(fileName) ? ['csv'] : ['xlsx', 'csv']) : document ? ['docx', 'pdf', 'markdown'] : html ? kind === 'deck' ? ['html', 'pdf', 'image', 'pptx'] : ['html', 'pdf', 'image'] : [] } : null,
+      entry: !snapshot && fileName ? { fileName, kind, title, formats: kind === 'workbook' ? (/\.csv$/i.test(fileName) ? ['csv'] : ['xlsx', 'csv']) : document ? ['docx', 'pdf', 'markdown'] : html ? kind === 'deck' ? ['html', 'pdf', 'image', 'pptx'] : ['html', 'pdf', 'image'] : mediaArtifactFormats(fileName, kind) } : null,
       }, window.location.origin);
     };
     const receive = (event: MessageEvent) => {

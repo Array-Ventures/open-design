@@ -126,3 +126,5 @@ export * from './runtime/comment-write-json.js';
 export * from './api/commentPreparation.js';
 
 export * from "./runtime/document-comment-anchor.js";
+
+export * from "./runtime/media-export.js";

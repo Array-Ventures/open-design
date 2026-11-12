@@ -1,10 +1,10 @@
+import { mediaInputDemuxer } from '@open-design/contracts';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 
 const exec = promisify(execFile);
-const demuxers: Record<string, string> = { '.mp4': 'mov', '.m4a': 'mov', '.mov': 'mov', '.webm': 'matroska', '.mkv': 'matroska', '.mp3': 'mp3', '.wav': 'wav', '.ogg': 'ogg', '.flac': 'flac', '.aac': 'aac' };
 const formats: Record<string, { mime: string; args: string[]; video: boolean }> = {
   mp4: { mime: 'video/mp4', video: true, args: ['-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-movflags', '+faststart'] },
   webm: { mime: 'video/webm', video: true, args: ['-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '5', '-c:a', 'libopus'] },
@@ -16,7 +16,7 @@ export const isMediaExport = (format: string) => Object.hasOwn(formats, format);
 /** No shell, URLs, playlists, provider keys or host paths enter this worker.
  * Explicit input demuxers prevent media files from acting as indirect manifests. */
 export async function renderMedia(source: string, output: string, fileName: string, format: string) {
-  const target = formats[format]; const demuxer = demuxers[path.extname(fileName).toLowerCase()];
+  const target = formats[format]; const demuxer = mediaInputDemuxer(fileName);
   if (!target || !demuxer) throw new Error('Media exports require a supported local audio/video input file, not HTML or a playlist.');
   const root = await realpath(source); const input = await realpath(path.join(root, fileName));
   if (!input.startsWith(root + path.sep)) throw new Error('Media input is outside the snapshot.');

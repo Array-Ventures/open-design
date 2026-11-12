@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { mediaArtifactKind } from '@open-design/contracts';
 // Project files registry. Each project is a folder under
 // <projectRoot>/.od/projects/<projectId>/. The frontend's project list
 // (localStorage) carries metadata; this module is the single owner of the
@@ -1773,9 +1774,13 @@ const EXT_MIME = {
   '.mp4': 'video/mp4',
   '.mov': 'video/quicktime',
   '.webm': 'video/webm',
+  '.mkv': 'video/x-matroska',
   '.mp3': 'audio/mpeg',
   '.wav': 'audio/wav',
   '.m4a': 'audio/mp4',
+  '.ogg': 'audio/ogg',
+  '.flac': 'audio/flac',
+  '.aac': 'audio/aac',
 };
 
 export function mimeFor(name) {
@@ -1887,8 +1892,8 @@ export function kindFor(name) {
     if (name.startsWith('sketch-')) return 'sketch';
     return 'image';
   }
-  if (['.mp4', '.mov', '.webm'].includes(ext)) return 'video';
-  if (['.mp3', '.wav', '.m4a'].includes(ext)) return 'audio';
+  const mediaKind = mediaArtifactKind(name);
+  if (mediaKind) return mediaKind;
   if (['.md', '.txt'].includes(ext)) return 'text';
   if (['.js', '.mjs', '.cjs', '.ts', '.tsx', '.json', '.css', '.py'].includes(ext)) {
     return 'code';

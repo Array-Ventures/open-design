@@ -24,5 +24,16 @@ it('keeps real file export metadata while reporting availability separately', ()
   renderHook(() => useArtifactHostState('project-a', { file: { name: 'book.xlsx' }, kind: 'workbook', title: 'Forecast' } as ArtifactEntry, false));
   expect(post).toHaveBeenCalledWith({ type: 'studio:artifact-availability', projectId: 'project-a', available: true }, window.location.origin);
   const state = post.mock.calls.map(([value]) => value).find(value => value.type === 'studio:artifact-state');
-  expect(state.entry.formats).toEqual(['xlsx']); expect(state).not.toHaveProperty('available');
+  expect(state.entry.formats).toEqual(['xlsx', 'csv']); expect(state).not.toHaveProperty('available');
+});
+
+it.each([
+  ['clip.mp4', 'video', ['mp4', 'webm']], ['clip.mkv', 'video', ['mp4', 'webm']], ['voice.flac', 'audio', ['mp3', 'wav']], ['voice.aac', 'audio', ['mp3', 'wav']], ['logo.png', 'image', []], ['logo.svg', 'image', []], ['index.html', 'app', ['html', 'pdf', 'image']],
+])('advertises only real export candidates for %s', (fileName, kind, formats) => {
+  const iframe = document.createElement('iframe'); document.body.append(iframe);
+  const parent = iframe.contentWindow!, original = Object.getOwnPropertyDescriptor(window, 'parent')!;
+  Object.defineProperty(window, 'parent', { configurable: true, value: parent }); restoreParent = () => { Object.defineProperty(window, 'parent', original); iframe.remove(); };
+  const post = vi.spyOn(parent, 'postMessage');
+  renderHook(() => useArtifactHostState('project-a', { file: { name: fileName }, kind, title: 'Media' } as ArtifactEntry, false));
+  const state = post.mock.calls.map(([value]) => value).find(value => value.type === 'studio:artifact-state'); expect(state.entry.formats).toEqual(formats);
 });
