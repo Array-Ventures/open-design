@@ -9,7 +9,7 @@ import { CommandType } from '@univerjs/presets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookGrid } from '../../../src/components/embedded/workbook/WorkbookGrid';
 
-const runtime = vi.hoisted(() => ({ events: [] as string[], workers: [] as { dispose: ReturnType<typeof vi.fn> }[], inputs: [] as { dispose: ReturnType<typeof vi.fn> }[], rendered: Promise.resolve(), context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
+const runtime = vi.hoisted(() => ({ events: [] as string[], richInputs: [] as { dispose: ReturnType<typeof vi.fn> }[], workers: [] as { dispose: ReturnType<typeof vi.fn> }[], inputs: [] as { dispose: ReturnType<typeof vi.fn> }[], rendered: Promise.resolve(), context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
   calculation: null as null | ((state: { phase: string; stored: number; unavailable: number; paused: boolean }) => void),
   input: null as null | ((message: string) => void), live: false, fail: null as null | (() => void), calculationDisposed: vi.fn(),
   getRange: vi.fn(), select: vi.fn(), createWorkbook: vi.fn(), editable: vi.fn(), activeSheet: vi.fn(), saved: vi.fn(), listener: null as null | ((event: { type: number; id: string }) => void) }));
@@ -30,6 +30,12 @@ vi.mock('../../../src/components/embedded/workbook/array-input-normalization', (
 vi.mock('../../../src/components/embedded/workbook/grid-array-calculation', () => ({ attachWorkbookArrayCalculation: (...args: unknown[]) => {
   const input = args[10] as { dispose(): void }; return { dispose() { input.dispose(); } };
 } }));
+// This fixture supplies a synthetic kernel, as for CSV/array input above.
+// Native editor interception is exercised against the real SDK separately.
+vi.mock('../../../src/components/embedded/workbook/rich-cell-input', () => ({ attachWorkbookRichInput: () => {
+  const id = runtime.richInputs.length + 1, owned = { dispose: vi.fn(() => runtime.events.push(`rich:${id}`)) };
+  runtime.richInputs.push(owned); return owned;
+} }));
 vi.mock('../../../src/components/embedded/workbook/csv-literal-input', () => ({ attachCsvLiteralInput: (_univer: unknown, _api: unknown, _kernel: unknown, _element: unknown, _model: unknown, report: (message: string) => void) => { runtime.input = report; return { dispose() { runtime.input = null; } }; } }));
 // The array display adapter imports the real sheets/formula modules. Preserve
 // their RPC dependency exports while replacing only the owned plugin token.
@@ -37,7 +43,7 @@ vi.mock('@univerjs/rpc', async original => ({ ...await original<typeof import('@
 const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 'inputs', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
   sheets: [{ id: 'inputs', name: 'Inputs', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
 beforeEach(() => {
-  runtime.events = []; runtime.workers = []; runtime.inputs = [];
+  runtime.events = []; runtime.workers = []; runtime.inputs = []; runtime.richInputs = [];
   runtime.live = false; runtime.fail = null; runtime.rendered = Promise.resolve();
   runtime.createWorkbook.mockReturnValue({ onSelectionChange: () => ({ dispose: runtime.selectionOff }), getWorkbookPermission: () => ({ canEdit: () => true }), setActiveSheet: runtime.activeSheet, setEditable: runtime.editable, save: runtime.saved, getActiveSheet: () => ({ getSheetId: () => 'inputs', getMaxRows: () => 100, getMaxColumns: () => 26, getSelection: () => ({ getActiveRange: () => ({ getRange: () => ({ startRow: 5, endRow: 5, startColumn: 2, endColumn: 2 }) }) }), getRange: runtime.getRange, setActiveRange: runtime.select }) });
   runtime.getRange.mockReturnValue({ boundWorksheet: 'inputs' });
@@ -304,9 +310,12 @@ it('disposes every array kernel owner exactly once through retained-view replace
  expect(runtime.inputs[0]!.dispose).toHaveBeenCalledOnce();expect(runtime.workers[0]!.dispose).toHaveBeenCalledOnce();
  const replacement=runtime.events.slice(runtime.events.indexOf('replace')+1);
  expect(replacement.indexOf('save')).toBeLessThan(replacement.indexOf('input:1'));
+ expect(runtime.richInputs).toHaveLength(2);
+ expect(replacement.indexOf('save')).toBeLessThan(replacement.indexOf('rich:1'));
+ expect(replacement.indexOf('rich:1')).toBeLessThan(replacement.indexOf('univer:1'));
  expect(replacement.indexOf('input:1')).toBeLessThan(replacement.indexOf('univer:1'));
  view.unmount();
- for(const owned of [...runtime.inputs,...runtime.workers]) expect(owned.dispose).toHaveBeenCalledOnce();
+ for(const owned of [...runtime.inputs,...runtime.workers,...runtime.richInputs]) expect(owned.dispose).toHaveBeenCalledOnce();
  expect(runtime.dispose).toHaveBeenCalledTimes(2);
 });
 
