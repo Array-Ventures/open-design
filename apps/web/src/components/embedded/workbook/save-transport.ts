@@ -101,3 +101,6 @@ async function settleWorkbookSave(attempt: WorkbookSaveAttempt, signal: AbortSig
   if (save.state === 'conflict' || save.state === 'cancelled') throw new WorkbookSaveTerminalError(save.id, save.renderId, save.state);
   return save;
 }
+
+/** Shared strict identity check for explicit cancellation/reconciliation. */
+export { checkedSave as checkedWorkbookSave };
