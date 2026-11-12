@@ -15,6 +15,12 @@ export class WorkbookSaveTerminalError extends WorkbookHostError {
  * identity was proven absent. Unlike an HTTP error, this fences late admission. */
 export class WorkbookSaveUnadmittedError extends WorkbookHostError {
   constructor(readonly operationId: string, readonly renderId: string, readonly preparationState: 'failed' | 'cancelled', reason: string) {
-    super(`${reason.slice(0, 1000)} This save was not admitted. Your edits are still here; you can retry or discard them.`, 422);
+    super(`${reason.slice(0, 1000)} Your changes were not saved. They are still here to retry or discard.`, 422);
   }
+}
+
+/** Match only a verified no-future-write result for this exact local intent. */
+export function isWorkbookSaveRejection(error: unknown, intent: { id: string; renderId?: string }): error is WorkbookSaveTerminalError | WorkbookSaveUnadmittedError {
+  return (error instanceof WorkbookSaveTerminalError || error instanceof WorkbookSaveUnadmittedError)
+    && error.operationId === intent.id && (!intent.renderId || intent.renderId === error.renderId);
 }

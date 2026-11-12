@@ -99,7 +99,7 @@ export async function calculateWorkbook(input: WorkbookDocument): Promise<Workbo
     const formula = api.getFormula();
     formula.executeCalculation();
     await formula.onCalculationResultApplied(5000);
-    if (unsupportedArray) throw new WorkbookFormatError('Spill calculation needs its workbook adapter.', 'WORKBOOK_UNSUPPORTED');
+    if (unsupportedArray) throw new WorkbookFormatError('Array formulas cannot be saved here yet. Your file has not changed.', 'WORKBOOK_UNSUPPORTED');
     for (const sheet of model.sheets) sheet.cells = sheet.cells.map(cell => cell.formula ? resultCell(cell, results.get(`${sheet.id}:${cell.row}:${cell.column}`)) : cell);
     return workbookDocumentSchema.parse(model);
   } finally { univer.dispose(); }

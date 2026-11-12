@@ -13,7 +13,8 @@ explicitly named `.recovery.json`, not presented as an Excel export.
 Native navigation must pair with the new `studio:discard-workbook` /
 `studio:workbook-discarded` handshake. Deletion acknowledges only after storage
 commits; failures retain the dirty editor. An uncertain save blocks discard;
-only a checked durable terminal receipt can clear that pending fence. Expired
+only a checked durable terminal receipt or a verified permanent candidate-removal
+fence can clear that pending intent. Generic transport failures retain it. Expired
 preparations rotate only after durable candidate removal and a second absent
 save receipt, preserving the operation identity and frozen plan.
 
@@ -56,8 +57,21 @@ geometry using the numeric overload and skips out-of-bounds old selections.
 Three actual pinned-API regressions pass; all workbook-area tests now pass 106
 cases across eighteen files. The saved XLSX was independently reopened: the
 latest value 26,000, `B2-C2` formula/result 20,000 and width 20 were retained even
-when the old UI failed to remount. The new remount fix still needs packaged
-browser acceptance. Native model/access state was not reset for these checks.
+when the old UI failed to remount. Package `fd4f780ad97c9477bf4a72414134a21e69a5742e5803e93ace406ad7d5bd2964`
+then passed restore/save/remount in the real browser: 28,000 remained visible,
+the independently reopened file retained `B2-C2` with result 22,000, and the
+selection survived. Narrow 390px recovery cards were inspected in both themes.
+Deleting the final draft reopened the current workbook without an extra empty
+recovery screen. Native model/access state was not reset for these checks.
+
+That package also exposed a failed-preparation dead end: entering `SEQUENCE(3)`
+in G2 failed calculation without changing the working file, but retained an
+uncertain pending intent that refused Discard. The writer now accepts the
+transport's identity-bound, permanently removed preparation proof, clears only
+that pending intent, journals the remaining edits and permits explicit retry or
+discard. A mismatched candidate or ordinary network error still retains the
+fence. This follow-up needs packaged browser acceptance; general cancellation
+of a genuinely uncertain pending save remains separate unfinished work.
 
 The Evebot integration uses Open Design’s actual visual file workspace while Evebot owns bots, chat, approvals, workspace access, providers, exports and publication. Studio has no separate agent conversation or runner in this mode.
 

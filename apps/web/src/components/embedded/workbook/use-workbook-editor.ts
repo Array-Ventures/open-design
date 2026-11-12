@@ -6,6 +6,7 @@ import { newWorkbookSaveAttempt, saveWorkbook } from './save-transport';
 import { loadWorkbookPreview } from './preview-transport';
 import { WorkbookHostError } from './host-request';
 import { z } from 'zod';
+import { isWorkbookSaveRejection } from './save-terminal';
 
 type Preview = { sourceSha256: string; model: WorkbookDocument };
 const DiscardRequest = z.object({ type: z.literal('studio:discard-workbook'), projectId: z.string().uuid(), controllerId: z.string().uuid(), requestId: z.string().uuid() }).strict();
@@ -51,7 +52,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
         const previous = { renderId: intent.renderId, preparationId: intent.preparationId };
         intent.renderId = currentAttempt.save.renderId; intent.preparationId = currentAttempt.save.preparationId;
         try { await checkpoint(); } catch (error) { Object.assign(intent, previous); throw error; }
-      });
+      }).catch(error => { if (isWorkbookSaveRejection(error, intent)) attempts.delete(intent.id); throw error; });
       let refreshed: Preview;
       try { refreshed = await loadWorkbookPreview(projectId, fileName, attempt.previewId, controller.signal); }
       catch (error) { if (error instanceof WorkbookHostError && [410, 422].includes(error.status)) intent.previewId = attempt.previewId = crypto.randomUUID(); await checkpoint(); throw error; }

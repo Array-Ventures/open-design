@@ -3,7 +3,7 @@ import { CellValueType, type IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookWriter, type WorkbookWriteIntent, type WorkbookCheckpoint } from '../../src/components/embedded/workbook/workbook-writer';
 import { gridWorkbook } from '../../src/components/embedded/workbook/grid-model';
-import { WorkbookSaveTerminalError } from '../../src/components/embedded/workbook/save-terminal';
+import { WorkbookSaveTerminalError, WorkbookSaveUnadmittedError } from '../../src/components/embedded/workbook/save-terminal';
 function fixture() {
   const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 's', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 's', name: 'Sheet', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [{ row: 0, column: 0, kind: 'number', value: 1 }], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
   const initial = gridWorkbook(model, 'grid', 'Forecast').data as IWorkbookData;
@@ -109,5 +109,25 @@ it('journals a verified terminal rejection without losing edits or retrying a co
 it('does not clear a pending intent for a terminal receipt belonging to another operation', async () => {
   const { source, initial, snapshot } = fixture();
   const writer = new WorkbookWriter(source, initial, async () => { throw new WorkbookSaveTerminalError(crypto.randomUUID(), crypto.randomUUID(), 'cancelled'); }, () => {});
+  writer.update(snapshot(2)); await writer.flush(); expect(writer.checkpoint().pending).not.toBeNull(); expect(writer.state().dirty).toBe(true);
+});
+it('keeps edits and permits a fresh explicit retry after a failed preparation is proven unable to write', async () => {
+  const { source, initial, snapshot } = fixture(), intents: string[] = [], stored: (WorkbookCheckpoint | null)[] = [];
+  const writer = new WorkbookWriter(source, initial, async intent => {
+    intents.push(intent.id);
+    if (intents.length === 1) throw new WorkbookSaveUnadmittedError(intent.id, crypto.randomUUID(), 'failed', 'The calculation failed.');
+    return { ...source, sourceSha256: 'b'.repeat(64) };
+  }, () => {}, undefined, { save: async checkpoint => { stored.push(checkpoint); } });
+  writer.update(snapshot(2)); await writer.flush();
+  expect(writer.checkpoint().pending).toBeNull(); expect(stored.at(-1)?.pending).toBeNull(); expect(writer.state().dirty).toBe(true);
+  expect(writer.recoveredSnapshot()).toEqual(snapshot(2)); await writer.flush();
+  expect(intents).toHaveLength(2); expect(intents[0]).not.toBe(intents[1]); expect(writer.state().dirty).toBe(false);
+});
+it('retains the fence when a rejection identifies a different candidate', async () => {
+  const { source, initial, snapshot } = fixture();
+  const writer = new WorkbookWriter(source, initial, async intent => {
+    intent.renderId = '66a28381-a8cf-40cd-91d2-b1f9cd696ac0';
+    throw new WorkbookSaveUnadmittedError(intent.id, '66a28381-a8cf-40cd-91d2-b1f9cd696ac1', 'failed', 'Failed');
+  }, () => {});
   writer.update(snapshot(2)); await writer.flush(); expect(writer.checkpoint().pending).not.toBeNull(); expect(writer.state().dirty).toBe(true);
 });
