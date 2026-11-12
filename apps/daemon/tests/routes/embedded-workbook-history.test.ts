@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -10,6 +11,8 @@ import { withProjectFileVersionBytesLock, listProjectFileVersions } from '../../
 import { installEmbeddedStudioBoundary, registerEmbeddedStudioRoutes } from '../../src/routes/embedded-studio.js';
 import { registerEmbeddedWorkbookRoutes } from '../../src/routes/embedded-workbooks.js';
 import { registerEmbeddedWorkbookHistoryRoutes } from '../../src/routes/embedded-workbook-history.js';
+const versionResponse = z.object({ id: z.string(), label: z.string(), current: z.boolean() }).passthrough();
+const pageResponse = z.object({ versions: z.array(versionResponse), nextCursor: z.string().nullable(), currentSha256: z.string().nullable() }).passthrough();
 const id = '18a8301a-b6e1-4001-8000-c967b1eab222', token = 'history-fixture-service-credential';
 let root: string, projects: string, workspace: string, origin: string, server: Server, db: ReturnType<typeof openDatabase>;
 beforeEach(async () => {
@@ -32,19 +35,19 @@ it('serves passive scoped metadata and exact binary revisions without changing t
   const before = await listProjectFileVersions(projects, id, 'nested/book.xlsx', metadata);
   const response = await fetch(endpoint(), { headers }); expect(response.status).toBe(200); expect(response.headers.get('cache-control')).toBe('no-store');
   const body = await response.json(); expect(body).toMatchObject({ projectId: id, fileName: 'nested/book.xlsx', currentSha256: createHash('sha256').update(Buffer.from([0, 1, 2])).digest('hex'), versions: expect.arrayContaining([expect.objectContaining({ id: first.id, contentDigest: createHash('sha256').update(bytes).digest('hex'), current: false })]) });
-  const exact = await fetch(endpoint(first.id + '/metadata'), { headers }); expect(exact.status).toBe(200); const exactVersion = (await exact.json()).version; expect(exactVersion).toMatchObject({ id: first.id, contentDigest: createHash('sha256').update(bytes).digest('hex'), labelTruncated: true }); expect(exactVersion.label).toHaveLength(4000); expect(exactVersion.label.endsWith('…')).toBe(true);
-  const page = await (await fetch(endpoint('', 'fileName=nested%2Fbook.xlsx&limit=1'), { headers })).json(); expect(page.versions).toHaveLength(1); expect(page.nextCursor).toEqual(expect.any(String));
-  const next = await (await fetch(endpoint('', 'fileName=nested%2Fbook.xlsx&limit=1&cursor=' + page.nextCursor), { headers })).json(); expect(next.versions.map((item: { id: string }) => item.id)).toEqual([first.id]); expect(next.nextCursor).toBeNull();
+  const exact = await fetch(endpoint(first.id + '/metadata'), { headers }); expect(exact.status).toBe(200); const exactVersion = z.object({ version: versionResponse }).parse(await exact.json()).version; expect(exactVersion).toMatchObject({ id: first.id, contentDigest: createHash('sha256').update(bytes).digest('hex'), labelTruncated: true }); expect(exactVersion.label).toHaveLength(4000); expect(exactVersion.label.endsWith('…')).toBe(true);
+  const page = pageResponse.parse(await (await fetch(endpoint('', 'fileName=nested%2Fbook.xlsx&limit=1'), { headers })).json()); expect(page.versions).toHaveLength(1); expect(page.nextCursor).toEqual(expect.any(String));
+  const next = pageResponse.parse(await (await fetch(endpoint('', 'fileName=nested%2Fbook.xlsx&limit=1&cursor=' + page.nextCursor), { headers })).json()); expect(next.versions.map((item: { id: string }) => item.id)).toEqual([first.id]); expect(next.nextCursor).toBeNull();
   const content = await fetch(endpoint(first.id), { headers }); expect(content.status).toBe(200); expect(Buffer.from(await content.arrayBuffer())).toEqual(bytes);
   await writeFile(path.join(workspace, 'team/projects', id, 'nested/book.xlsx'), Buffer.from('outside-versioning'));
   expect((await fetch(endpoint('', 'fileName=nested%2Fbook.xlsx&limit=1&cursor=' + page.nextCursor), { headers })).status).toBe(409);
-  const changed = await (await fetch(endpoint(), { headers })).json(); expect(changed.versions.every((item: { current: boolean }) => !item.current)).toBe(true); expect(changed.currentSha256).toBe(createHash('sha256').update('outside-versioning').digest('hex'));
+  const changed = pageResponse.parse(await (await fetch(endpoint(), { headers })).json()); expect(changed.versions.every((item: { current: boolean }) => !item.current)).toBe(true); expect(changed.currentSha256).toBe(createHash('sha256').update('outside-versioning').digest('hex'));
   expect(await listProjectFileVersions(projects, id, 'nested/book.xlsx', metadata)).toEqual(before); expect(before.find(item => item.current)?.id).toBe(second.id);
 });
 it('requires service auth, denies mutations and unsafe queries, and never bootstraps history', async () => {
   expect((await fetch(endpoint())).status).toBe(401); expect((await fetch(endpoint(), { method: 'POST', headers })).status).toBe(403);
   for (const query of ['fileName=..%2Fbook.xlsx', 'fileName=book.html', 'fileName=book.xlsx&baseDir=%2Ftmp', 'fileName=book.xlsx&fileName=other.xlsx']) expect((await fetch(endpoint('', query), { headers })).status).toBe(400);
-  const response = await fetch(endpoint(), { headers }); expect(response.status).toBe(200); expect((await response.json()).versions).toEqual([]);
+  const response = await fetch(endpoint(), { headers }); expect(response.status).toBe(200); expect(pageResponse.parse(await response.json()).versions).toEqual([]);
   expect((await fetch(endpoint('missing'), { headers })).status).toBe(404);
 });
 
@@ -57,7 +60,7 @@ it('restores only through the source-bound host protocol and refuses manual or c
   const requestHeaders = { ...headers, 'content-type': 'application/octet-stream', 'x-od-workbook-source': sha(current), 'x-od-workbook-target': sha(original), 'x-od-workbook-actor': 'human:fixture', 'x-od-workbook-mode': 'commit', 'x-od-workbook-restore-version': target.id };
   const url = `${origin}/api/embedded/projects/${id}/workbook-restores/${operation}?fileName=book.xlsx`;
   const restored = await fetch(url, { method: 'POST', headers: requestHeaders, body: original }); expect(restored.status).toBe(200);
-  expect((await restored.json()).receipt).toMatchObject({ state: 'applied', restoreFromVersionId: target.id }); expect(await readFile(path.join(workspace, 'team/projects', id, 'book.xlsx'))).toEqual(original);
+  expect(z.object({ receipt: z.unknown() }).parse(await restored.json()).receipt).toMatchObject({ state: 'applied', restoreFromVersionId: target.id }); expect(await readFile(path.join(workspace, 'team/projects', id, 'book.xlsx'))).toEqual(original);
   expect((await fetch(url, { method: 'POST', headers: requestHeaders, body: original })).status).toBe(200);
   expect((await fetch(url, { method: 'POST', headers: { ...requestHeaders, 'x-od-workbook-restore-version': 'different' }, body: original })).status).toBe(409);
   const legacyHeaders = { ...requestHeaders }; delete (legacyHeaders as Partial<typeof legacyHeaders>)['x-od-workbook-restore-version'];

@@ -5,7 +5,7 @@ it('returns bounded explicit pages and stable cursors without admitting newer re
   const all = Array.from({ length: 201 }, (_, index) => ({ id: 'v' + (index + 1), version: index + 1, label: 'x'.repeat(4000) }));
   const seen: string[] = []; let cursor: string | null = null;
   do {
-    const page = workbookHistoryPage(all, { ...scope, ...(cursor ? { cursor } : {}) });
+    const page: ReturnType<typeof workbookHistoryPage<(typeof all)[number]>> = workbookHistoryPage(all, { ...scope, ...(cursor ? { cursor } : {}) });
     expect(page.versions.length).toBeLessThanOrEqual(50); seen.push(...page.versions.map(item => item.id)); cursor = page.nextCursor;
     if (seen.length === 50) all.push({ id: 'new', version: 202, label: 'new' });
   } while (cursor);
