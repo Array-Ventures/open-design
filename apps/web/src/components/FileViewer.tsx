@@ -8765,11 +8765,13 @@ function HtmlViewer({
   const manualEditUrlStandbySourceFingerprintRef = useRef<string | null>(null);
   // A successful Manual Edit save mutates the active iframe through the edit
   // bridge before/while the same result is persisted. Remember that exact
-  // source revision while the session is open so watcher echoes do not replace
-  // the live editing DOM. The latch is always retired when Edit closes.
+  // source revision so watcher echoes do not replace the live editing DOM.
+  // Embedded srcDoc may retain confirmed paint after exit; a different source
+  // revision or explicit reload retires the latch.
   const manualEditPersistedDocumentRef = useRef<{
     sourceFingerprint: string;
     reloadKey: number;
+    transportGeneration: string;
   } | null>(null);
   // Source snapshot frozen while a non-edit annotation pass (Mark/Draw,
   // Comment, Inspect) is open. The file-watcher live-reload (chokidar →
@@ -11523,7 +11525,11 @@ function HtmlViewer({
   const persistedManualEditCandidate = manualEditPersistedDocumentRef.current;
   const candidateRepresentsPersistedManualEditDocument =
     persistedManualEditCandidate?.reloadKey === reloadKey
-    && persistedManualEditCandidate.sourceFingerprint === candidateSrcDocTransport.sourceFingerprint;
+    && (persistedManualEditCandidate.sourceFingerprint === candidateSrcDocTransport.sourceFingerprint
+      // Style saves intentionally keep the edit source frozen. While their
+      // paint proof is pending, retain the exact challenged transport rather
+      // than replacing it with that older frozen candidate.
+      || (embedded && manualEditMode && persistedManualEditCandidate.transportGeneration === committedSrcDocTransportRef.current.generation));
   if (!candidateRepresentsPersistedManualEditDocument) {
     committedSrcDocTransportRef.current = candidateSrcDocTransport;
   }
@@ -14038,7 +14044,7 @@ function HtmlViewer({
       manualEditPersistedDocumentRef.current = null;
       return;
     }
-    const retained = { sourceFingerprint: previewSourceFingerprint(savedSource), reloadKey };
+    const retained = { sourceFingerprint: previewSourceFingerprint(savedSource), reloadKey, transportGeneration: expectedSrcDocTransportGenerationRef.current };
     // Hold the still-active document while the asynchronous paint challenge is
     // pending. Exit awaits this function, so this provisional latch cannot
     // authorize leaving Edit. A failed challenge releases it for source reload.

@@ -745,10 +745,12 @@ describe('FileViewer manual edit regressions', () => {
     const { rerender } = render(<FileViewer {...props} liveHtml={original} filesRefreshKey={1} />);
     await enterManualEditMode(); await selectManualEditTarget();
     const frame = await previewFrame(), before = frame.srcdoc;
+    let holdPaint = false, releasePaint: (() => void) | null = null;
     const postMessage = vi.spyOn(frame.contentWindow!, 'postMessage').mockImplementation((message) => {
-      if (message?.type === 'od-edit-verify-saved-preview') queueMicrotask(() => {
-        window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: { type: 'od-edit-saved-preview-result', requestId: message.requestId, ok: paintConfirmed } }));
-      });
+      if (message?.type === 'od-edit-verify-saved-preview') {
+        const reply = () => window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: { type: 'od-edit-saved-preview-result', requestId: message.requestId, ok: paintConfirmed } }));
+        if (holdPaint) releasePaint = reply; else queueMicrotask(reply);
+      }
     });
     fireEvent.change(document.querySelector('.manual-edit-right textarea')!, { target: { value: 'Painted saved text' } });
     await act(async () => { expect(await exit!()).toBe(true); });
@@ -760,6 +762,16 @@ describe('FileViewer manual edit regressions', () => {
       expect(frame.srcdoc).not.toBe(before);
       return;
     }
+    expect(frame.srcdoc).toBe(before);
+    await enterManualEditMode(); await selectManualEditTarget();
+    holdPaint = true;
+    fireEvent.change(await findStyleInput(FONT_SIZE_ROW), { target: { value: '36px' } });
+    let finishing!: Promise<boolean>;
+    act(() => { finishing = exit!(); });
+    await waitFor(() => expect(releasePaint).not.toBeNull());
+    expect(frame.srcdoc).toBe(before);
+    await act(async () => { releasePaint!(); expect(await finishing).toBe(true); });
+    expect(disk).toContain('font-size: 36px');
     expect(frame.srcdoc).toBe(before);
     rerender(<FileViewer {...props} liveHtml={disk} filesRefreshKey={7} file={{ ...props.file, mtime: props.file.mtime + 1 }} />);
     expect(frame.srcdoc).toBe(before);
