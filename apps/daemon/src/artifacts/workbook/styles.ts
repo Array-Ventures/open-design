@@ -19,8 +19,8 @@ export function font(value?: Partial<ExcelJS.Font>): WorkbookFont | undefined {
     ...(value.name === undefined ? {} : { name: value.name }), ...(value.family === undefined ? {} : { family: value.family }), ...(value.size === undefined ? {} : { size: value.size }),
     ...(value.bold === undefined ? {} : { bold: value.bold }), ...(value.italic === undefined ? {} : { italic: value.italic }),
     ...(value.strike === undefined ? {} : { strike: value.strike }),
-    ...(value.underline && value.underline !== 'none' ? { underline: value.underline === true ? 'single' : value.underline } : {}),
-    ...(value.vertAlign === 'superscript' || value.vertAlign === 'subscript' ? { vertical: value.vertAlign } : {}), ...(color(value.color) ? { color: color(value.color)! } : {}),
+    ...(value.underline !== undefined ? { underline: value.underline === false ? 'none' : value.underline === true ? 'single' : value.underline } : {}),
+    ...(['baseline', 'superscript', 'subscript'].includes(value.vertAlign as string) ? { vertical: value.vertAlign as NonNullable<WorkbookFont['vertical']> } : {}), ...(color(value.color) ? { color: color(value.color)! } : {}),
   };
 }
 export function style(value: Partial<ExcelJS.Style>): WorkbookStyle {

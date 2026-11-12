@@ -19,8 +19,8 @@ export type WorkbookColor = z.infer<typeof workbookColorSchema>;
 export const workbookFontSchema = z.object({
   name: z.string().max(256).refine(value=>!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\uFFFE\uFFFF\p{Cs}]/u.test(value),'Invalid font name.').optional(), family: z.number().int().min(-2147483648).max(2147483647).optional(), size: z.number().positive().max(512).optional(),
   bold: z.boolean().optional(), italic: z.boolean().optional(), strike: z.boolean().optional(),
-  underline: z.enum(['single', 'double', 'singleAccounting', 'doubleAccounting']).optional(),
-  vertical: z.enum(['superscript', 'subscript']).optional(), color: workbookColorSchema.optional(),
+  underline: z.enum(['none', 'single', 'double', 'singleAccounting', 'doubleAccounting']).optional(),
+  vertical: z.enum(['baseline', 'superscript', 'subscript']).optional(), color: workbookColorSchema.optional(),
 }).strict();
 export type WorkbookFont = z.infer<typeof workbookFontSchema>;
 const border = z.object({ style: z.enum(['thin', 'dotted', 'hair', 'medium', 'double', 'thick', 'dashDot', 'dashDotDot', 'slantDashDot', 'mediumDashed', 'mediumDashDotDot', 'mediumDashDot', 'dashed']), color: workbookColorSchema.optional() }).strict();

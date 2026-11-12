@@ -15,16 +15,16 @@ function color(input: WorkbookColor | undefined, model: WorkbookDocument, gaps: 
   if (!argb) return undefined;
   return { rgb: `#${argb.slice(2)}${argb.slice(0, 2) === 'FF' ? '' : argb.slice(0, 2)}` };
 }
-function font(input: WorkbookFont | undefined, model: WorkbookDocument, gaps: Set<WorkbookDisplayGap>): IStyleBase {
+export function workbookGridRunFont(input: WorkbookFont | undefined, model: WorkbookDocument, gaps: Set<WorkbookDisplayGap>): IStyleBase {
   if (!input) return {};
   const family = workbookFontFamily(input); if (family.limited) gaps.add('font-families');
-  const decoration = input.underline && ({ single: TextDecoration.SINGLE, double: TextDecoration.DOUBLE, singleAccounting: TextDecoration.SINGLE_ACCOUNTING, doubleAccounting: TextDecoration.DOUBLE_ACCOUNTING } as const)[input.underline];
+  const decoration = input.underline && ({ none: TextDecoration.NONE, single: TextDecoration.SINGLE, double: TextDecoration.DOUBLE, singleAccounting: TextDecoration.SINGLE_ACCOUNTING, doubleAccounting: TextDecoration.DOUBLE_ACCOUNTING } as const)[input.underline];
   return { ...(family.value === undefined ? {} : { ff: family.value }), ...(input.size === undefined ? {} : { fs: input.size }),
     ...(input.bold === undefined ? {} : { bl: input.bold ? BooleanNumber.TRUE : BooleanNumber.FALSE }),
     ...(input.italic === undefined ? {} : { it: input.italic ? BooleanNumber.TRUE : BooleanNumber.FALSE }),
     ...(input.strike === undefined ? {} : { st: { s: input.strike ? BooleanNumber.TRUE : BooleanNumber.FALSE } }),
-    ...(decoration === undefined ? {} : { ul: { s: BooleanNumber.TRUE, t: decoration } }),
-    ...(input.vertical === undefined ? {} : { va: input.vertical === 'superscript' ? BaselineOffset.SUPERSCRIPT : BaselineOffset.SUBSCRIPT }), cl: color(input.color, model, gaps) };
+    ...(decoration === undefined ? {} : { ul: { s: input.underline === 'none' ? BooleanNumber.FALSE : BooleanNumber.TRUE, t: decoration } }),
+    ...(input.vertical === undefined ? {} : { va: input.vertical === 'baseline' ? BaselineOffset.NORMAL : input.vertical === 'superscript' ? BaselineOffset.SUPERSCRIPT : BaselineOffset.SUBSCRIPT }), cl: color(input.color, model, gaps) };
 }
 const borders: Record<NonNullable<NonNullable<WorkbookStyle['borders']>['top']>['style'], BorderStyleTypes> = {
   thin: BorderStyleTypes.THIN, dotted: BorderStyleTypes.DOTTED, hair: BorderStyleTypes.HAIR, medium: BorderStyleTypes.MEDIUM, double: BorderStyleTypes.DOUBLE, thick: BorderStyleTypes.THICK,
@@ -32,7 +32,7 @@ const borders: Record<NonNullable<NonNullable<WorkbookStyle['borders']>['top']>[
   mediumDashDotDot: BorderStyleTypes.MEDIUM_DASH_DOT_DOT, mediumDashDot: BorderStyleTypes.MEDIUM_DASH_DOT, dashed: BorderStyleTypes.DASHED,
 };
 function style(input: WorkbookStyle, model: WorkbookDocument, gaps: Set<WorkbookDisplayGap>, normal = false): IStyleData {
-  const value: IStyleData = { ...font(input.font, model, gaps), ...(input.numberFormat === undefined ? {} : { n: { pattern: input.numberFormat } }) };
+  const value: IStyleData = { ...workbookGridRunFont(input.font, model, gaps), ...(input.numberFormat === undefined ? {} : { n: { pattern: input.numberFormat } }) };
   if (!normal && input.font?.color?.kind === 'auto') value.cl = { rgb: 'rgb(0, 0, 0)' };
   if (input.fill) {
     if ('gradient' in input.fill) gaps.add('gradient-fills');
@@ -70,7 +70,7 @@ function cellValue(cell: WorkbookCell, model: WorkbookDocument, gaps: Set<Workbo
   if (cell.kind === 'string' && cell.runs) {
     let offset = 0;
     value.p = { id: `${scope}:${cell.row}:${cell.column}`, documentStyle: {}, body: { dataStream: `${cell.value}\r\n`, paragraphs: [{ startIndex: cell.value.length, paragraphId: 'p0' }],
-      textRuns: cell.runs.map(run => { const st = offset; offset += run.text.length; return { st, ed: offset, ts: font(run.font, model, gaps) }; }) } };
+      textRuns: cell.runs.map(run => { const st = offset; offset += run.text.length; return { st, ed: offset, ts: workbookGridRunFont(run.font, model, gaps) }; }) } };
   }
   return value;
 }

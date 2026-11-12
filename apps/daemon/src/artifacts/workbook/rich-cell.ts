@@ -46,11 +46,11 @@ export function sourceRichFont(run: Element): WorkbookFont | undefined {
   const underline = child(properties, 'u');
   if (underline) {
     const kind = underline.getAttribute('val') ?? 'single';
-    if (['single', 'double', 'singleAccounting', 'doubleAccounting'].includes(kind))
+    if (['none', 'single', 'double', 'singleAccounting', 'doubleAccounting'].includes(kind))
       font.underline = kind as WorkbookFont['underline'];
   }
   const vertical = value('vertAlign');
-  if (vertical === 'superscript' || vertical === 'subscript') font.vertical = vertical;
+  if (vertical === 'baseline' || vertical === 'superscript' || vertical === 'subscript') font.vertical = vertical;
   const color = child(properties, 'color');
   if (color) {
     const rgb = color.getAttribute('rgb'),
@@ -91,10 +91,11 @@ function represented(properties: Element): boolean {
     if (
       name === 'u' &&
       item.hasAttribute('val') &&
-      !['single', 'double', 'singleAccounting', 'doubleAccounting'].includes(item.getAttribute('val')!)
+      !['none', 'single', 'double', 'singleAccounting', 'doubleAccounting'].includes(item.getAttribute('val')!)
     )
       return false;
-    if (name === 'vertAlign' && !['superscript', 'subscript'].includes(item.getAttribute('val') ?? '')) return false;
+    if (name === 'vertAlign' && !['baseline', 'superscript', 'subscript'].includes(item.getAttribute('val') ?? ''))
+      return false;
     if (
       name === 'color' &&
       (['rgb', 'theme', 'indexed', 'auto'].filter((key) => item.hasAttribute(key)).length !== 1 ||
@@ -150,7 +151,9 @@ export function writeRichCell(
   if (
     sourceText &&
     Array.from(sourceText.childNodes).some(
-      (node) => node.nodeType === 1 && (!['r', 't'].includes((node as Element).localName ?? '') || node.namespaceURI !== sourceText.namespaceURI),
+      (node) =>
+        node.nodeType === 1 &&
+        (!['r', 't'].includes((node as Element).localName ?? '') || node.namespaceURI !== sourceText.namespaceURI),
     )
   )
     throw new WorkbookFormatError(

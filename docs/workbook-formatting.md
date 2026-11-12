@@ -8,9 +8,11 @@ popover applies bounded real Univer range commands, including normal undo; it
 never exports the grid snapshot as XLSX. Automatic text color and No fill
 commands use distinct valid renderer representations of black/transparent paint,
 which the sparse plan maps to OOXML automatic color / patternType=none. This
-also distinguishes no fill from an authored white fill. Rich-text selections, alignment, number
-formats, borders, font family/size, row/column styles and structural formatting
-remain unsupported edits and block saving rather than partially dropping them.
+also distinguishes no fill from an authored white fill. The header still excludes
+rich-text selections; rich run edits use the separate contract below. Whole-cell
+alignment, number formats, borders, font family/size, row/column styles and
+structural formatting remain unsupported edits and block saving rather than
+partially dropping them.
 
 The writer clones the effective source cell XF (explicit cell, custom row,
 column, then Normal) and just the changed font/fill components. All other XF
@@ -123,7 +125,8 @@ cell. Shared-string entries, aliases, style indices and unrelated package parts
 are immutable. Each text node preserves whitespace; literal OOXML escape-shaped
 strings and carriage returns are encoded separately from XML escaping. The run
 writer supports font name/family, size, explicit bold/italic/strike booleans,
-underline type, superscript/subscript, and RGB/alpha, theme, indexed, tinted or
+underline type (including explicit none), superscript/subscript or baseline,
+and RGB/alpha, theme, indexed, tinted or
 automatic colors. Direct source run-property recovery compensates for the pin's
 rich-font reader losing indexed tints and misreading explicit false booleans.
 The preview's additive `richTextMetadata: verified` identifies that source
@@ -137,3 +140,8 @@ Normal fonts and inherited cell styles remain separate owners; this does not
 promise font installation or rendering fidelity beyond the documented grid gaps.
 Source digest checking, protected-sheet/signature restrictions, conditional
 binary history and operation receipts remain the existing save boundary.
+
+Explicit underline `none` and vertical `baseline` are distinct from omitted run
+properties. They reset inherited cell font styling; omission continues to inherit.
+The reader, run writer and grid all retain those distinctions, while the original
+cell XF and fonts table remain unchanged.

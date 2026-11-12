@@ -132,3 +132,34 @@ it.each([{ runs: [] }, { runs: [{ text: '', font: { bold: true } }] }])(
     expect(saved.model.sheets[0]!.cells[0]).toEqual(cell);
   },
 );
+it('writes explicit rich underline and baseline resets over inherited underlined superscript cell fonts', async () => {
+  const book = new ExcelJS.Workbook(),
+    sheet = book.addWorksheet('Reset');
+  sheet.getCell('A1').value = { richText: [{ text: 'reset' }] };
+  sheet.getCell('A1').font = { underline: 'double', vertAlign: 'superscript' };
+  const source = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer())),
+    style = source.model.sheets[0]!.cells[0]!.style,
+    runs = [{ text: 'reset', font: { underline: 'none' as const, vertical: 'baseline' as const } }],
+    saved = await readXlsxWorkbook(
+      await patchWorkbookCells(source, [
+        { sheetId: '1', cell: { row: 0, column: 0, kind: 'string', value: 'reset', runs, style } },
+      ]),
+    );
+  expect(saved.model.sheets[0]!.cells[0]).toMatchObject({ runs });
+  expect(saved.model.styles[style ?? 0]!.font).toMatchObject({ underline: 'double', vertical: 'superscript' });
+  const xml = saved.parts.get('xl/worksheets/sheet1.xml')!.toString();
+  expect(xml).toContain('<u val="none"/>');
+  expect(xml).toContain('<vertAlign val="baseline"/>');
+  expect(saved.parts.get('xl/styles.xml')).toEqual(source.parts.get('xl/styles.xml'));
+  const reopened = new ExcelJS.Workbook();
+  await reopened.xlsx.load(
+    Uint8Array.from(
+      await patchWorkbookCells(source, [
+        { sheetId: '1', cell: { row: 0, column: 0, kind: 'string', value: 'reset', runs, style } },
+      ]),
+    ).buffer,
+  );
+  const value = reopened.worksheets[0]!.getCell('A1').value as ExcelJS.CellRichTextValue;
+  expect(value.richText[0]!.font?.underline).toBe('none');
+  expect(value.richText[0]!.font?.vertAlign).toBe('baseline');
+});
