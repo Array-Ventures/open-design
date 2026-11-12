@@ -109,3 +109,31 @@ layers become inert. The app regression types through the actual canvas after
 Save, then Undo verifies that only the first acknowledged edit changed source.
 Its broken-package baseline reaches the replacement and fails on that second
 keyboard mutation; packaged green qualification is still required.
+
+## Rich cell runs
+
+The sparse cell contract can carry `kind: string`, exact `value`, and ordered
+`runs` with their own fonts. Rich text is not reduced to an unformatted string.
+The shared schema checks joined text, XML-valid Unicode in each run/font name,
+UTF-16 text limits, run count and aggregate edit text. Formula caches cannot own
+submitted rich runs.
+
+Edited rich strings are written inline as `r/rPr/t` in their original worksheet
+cell. Shared-string entries, aliases, style indices and unrelated package parts
+are immutable. Each text node preserves whitespace; literal OOXML escape-shaped
+strings and carriage returns are encoded separately from XML escaping. The run
+writer supports font name/family, size, explicit bold/italic/strike booleans,
+underline type, superscript/subscript, and RGB/alpha, theme, indexed, tinted or
+automatic colors. Direct source run-property recovery compensates for the pin's
+rich-font reader losing indexed tints and misreading explicit false booleans.
+The preview's additive `richTextMetadata: verified` identifies that source
+normalization; older cached previews/journals cannot authorize existing-rich-cell
+edits merely because their old font projection looks plausible.
+
+Exact-font same-run text changes retain complete source run XML, including opaque
+font extensions. Changed runs with unrepresented or ambiguous source properties,
+phonetic annotations and other unsupported rich structures refuse the whole edit.
+Normal fonts and inherited cell styles remain separate owners; this does not
+promise font installation or rendering fidelity beyond the documented grid gaps.
+Source digest checking, protected-sheet/signature restrictions, conditional
+binary history and operation receipts remain the existing save boundary.

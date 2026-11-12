@@ -9,6 +9,7 @@ import { readWorkbookTheme } from './theme.js';
 import { preflightWorksheet, type WorkbookImportBudget } from './preflight.js';
 import { readWorkbookMetadata } from './metadata.js';
 import { verifiedDynamicArrayOwners } from './dynamic-array-metadata.js';
+import { decodeSpreadsheetText, sourceRichFont } from './rich-cell.js';
 import { formulaCellKey } from './formula-cache-policy.js';
 import { readArrayFormulaMetadata } from './array-metadata.js';
 
@@ -79,7 +80,8 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
   const date1904 = bool(child(main, 'workbookPr')?.getAttribute('date1904') ?? null);
   const shared = [...links.values()].find(link => link.type.endsWith('/sharedStrings'));
   const sharedRoot = shared && !shared.external ? xmlPart(parts, shared.target).documentElement : null;
-  const sharedCount = sharedRoot ? children(sharedRoot, 'si').length : 0;
+  const sharedItems = sharedRoot ? children(sharedRoot, 'si') : [];
+  const sharedCount = sharedItems.length;
   // Preflight every XML part the importer might parse, not only the visible sheet.
   const budget: WorkbookImportBudget = { rows: 0, cells: 0, mergedCells: 0 };
   for (const [name] of parts) if (/\.(?:xml|rels|vml)$/i.test(name)) {
@@ -152,7 +154,17 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
         if (array) { arrayFormulas.push(array); rowCount = Math.max(rowCount, array.range.endRow + 1); columnCount = Math.max(columnCount, array.range.endColumn + 1); }
         const formula = formulaNode ? imported.formula : undefined;
         if (formulaNode && !formula && array?.kind !== 'dataTable') throw new WorkbookFormatError('Workbook formula could not be resolved.');
-        cells.push({ ...position, ...cellValue(cell.getAttribute('t'), child(cell, 'v')?.textContent ?? undefined, imported, sharedCount, date1904), ...(styleId ? { style: styleId } : {}), ...(formula ? { formula: `=${formula}` } : {}) });
+        const textContainer = cell.getAttribute('t') === 's' ? sharedItems[integer(child(cell,'v')?.textContent ?? null)] : child(cell,'is');
+        const xmlRuns = textContainer ? children(textContainer,'r') : [];
+        if (xmlRuns.length) {
+          if (formulaNode) throw new WorkbookFormatError('A formula cannot own rich string content.', 'WORKBOOK_UNSUPPORTED');
+          const runs = xmlRuns.map((run) => { const font = sourceRichFont(run);return { text: decodeSpreadsheetText(children(run,'t').map(t=>t.textContent ?? '').join('')), ...(font ? { font } : {}) }; });
+          cells.push({ ...position, kind:'string', value:runs.map(run=>run.text).join(''), runs, ...(styleId ? { style:styleId } : {}) });
+          continue;
+        }
+        if (textContainer && !Array.from(textContainer.childNodes).some(node=>node.nodeType===1)) {cells.push({...position,kind:'string',value:'',runs:[],...(styleId?{style:styleId}:{})});continue;}
+        const value = cellValue(cell.getAttribute('t'), child(cell, 'v')?.textContent ?? undefined, imported, sharedCount, date1904);
+        cells.push({ ...position, ...value, ...(styleId ? { style: styleId } : {}), ...(formula ? { formula: `=${formula}` } : {}) });
       }
     }
     for (const item of child(root, 'cols') ? children(child(root, 'cols')!, 'col') : []) {
@@ -176,7 +188,7 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
   const view = child(main, 'bookViews'), active = view ? integer(child(view, 'workbookView')?.getAttribute('activeTab') ?? null, 0) : 0;
   const names = [...parts.keys()];
   const metadata = readWorkbookMetadata(parts, main, sheets, sheetParts);
-  const model = workbookDocumentSchema.parse({ version: 1, date1904, activeSheetId: sheets[active]?.visibility === 'visible' ? sheets[active]!.id : sheets.find(sheet => sheet.visibility === 'visible')?.id,
+  const model = workbookDocumentSchema.parse({ version: 1, richTextMetadata: 'verified', date1904, activeSheetId: sheets[active]?.visibility === 'visible' ? sheets[active]!.id : sheets.find(sheet => sheet.visibility === 'visible')?.id,
     styles, sheets, ...metadata, ...(themeColors ? { themeColors } : {}), features: { charts: names.filter(name => /\/charts\/[^/]+\.xml$/i.test(name)).length, drawings: names.filter(name => /\/drawings\/[^/]+\.xml$/i.test(name)).length,
       externalLinks: names.filter(name => /\/externalLinks\/[^/]+\.xml$/i.test(name)).length, macros: names.some(name => /(?:^|\/)vbaProject\.bin$/i.test(name)), signed: names.some(name => name.startsWith('_xmlsignatures/')) } });
   const result = { model, parts, sheetParts };

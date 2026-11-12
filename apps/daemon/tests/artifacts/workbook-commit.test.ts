@@ -10,6 +10,8 @@ import { PinnedProject, readPinnedFile, writePinnedFile } from '../../src/embedd
 import { commitWorkbook, WorkbookSourceChangedError, type WorkbookCommitFiles, type WorkbookCommitInput } from '../../src/artifacts/workbook/commit.js';
 import { commitEmbeddedWorkbook } from '../../src/artifacts/workbook/contained-commit.js';
 import { listProjectFileVersions } from '../../src/project-file-versions.js';
+import { readXlsxWorkbook } from '../../src/artifacts/workbook/reader.js';
+import { calculateWorkbookCellEdits } from '../../src/artifacts/workbook/calculated-patch.js';
 import { readWorkbookWrite } from '../../src/storage/workbook-writes.js';
 
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
@@ -53,6 +55,18 @@ describe('workbook save receipt coordination', () => {
     expect(history.find(version => version.id === saved.versionId)?.parentVersionId).toBe(saved.sourceVersionId);
     const book = new ExcelJS.Workbook(); await book.xlsx.load(Uint8Array.from((await pinned.read('book.xlsx')).buffer).buffer);
     expect(book.getWorksheet('Inputs')!.getCell('A1').value).toBe(8);
+  });
+  it('commits an actual rich-run candidate and preserves an intervening source revision on the next rich save', async () => {
+    const source = await readXlsxWorkbook(original), runs = [{ text: 'rich ', font: { bold: true } }, { text: '😀', font: { italic: true } }];
+    candidate = (await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 0, column: 0, kind: 'string', value: 'rich 😀', runs } }])).bytes;
+    input = { ...input, bytes: candidate };
+    expect((await commit()).state).toBe('applied');
+    const reopened = new ExcelJS.Workbook(); await reopened.xlsx.load(Uint8Array.from((await pinned.read('book.xlsx')).buffer).buffer);
+    expect(reopened.worksheets[0]!.getCell('A1').value).toEqual({ richText: runs });
+    const next = await calculateWorkbookCellEdits(await readXlsxWorkbook(candidate), [{ sheetId: '1', cell: { row: 0, column: 0, kind: 'string', value: 'later', runs: [{ text: 'later', font: { bold: true } }] } }]);
+    input = { ...input, operationId: randomUUID(), sourceSha256: digest(candidate), bytes: next.bytes };
+    await pinned.write('book.xlsx', later); expect((await commit()).state).toBe('conflict');
+    expect((await pinned.read('book.xlsx')).buffer).toEqual(later); expect(receipt()?.state).toBe('conflict');
   });
   it('replays a committed receipt without file I/O or changing a newer revision', async () => {
     const first = await commit();

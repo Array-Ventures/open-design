@@ -17,7 +17,7 @@ export const workbookColorSchema = z.discriminatedUnion('kind', [
 ]);
 export type WorkbookColor = z.infer<typeof workbookColorSchema>;
 export const workbookFontSchema = z.object({
-  name: z.string().max(256).optional(), family: z.number().int().min(-2147483648).max(2147483647).optional(), size: z.number().positive().max(512).optional(),
+  name: z.string().max(256).refine(value=>!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\uFFFE\uFFFF\p{Cs}]/u.test(value),'Invalid font name.').optional(), family: z.number().int().min(-2147483648).max(2147483647).optional(), size: z.number().positive().max(512).optional(),
   bold: z.boolean().optional(), italic: z.boolean().optional(), strike: z.boolean().optional(),
   underline: z.enum(['single', 'double', 'singleAccounting', 'doubleAccounting']).optional(),
   vertical: z.enum(['superscript', 'subscript']).optional(), color: workbookColorSchema.optional(),
@@ -40,14 +40,20 @@ export const workbookStyleSchema = z.object({
 }).strict();
 export type WorkbookStyle = z.infer<typeof workbookStyleSchema>;
 const position = { row, column, style: z.number().int().min(0).max(WORKBOOK_MODEL_LIMITS.styles - 1).optional(), formula: z.string().min(2).max(8192).startsWith('=').optional() };
-const richRun = z.object({ text: z.string().max(32767), font: workbookFontSchema.optional() }).strict();
+const richRun = z.object({ text: z.string().max(32767).refine(value=>!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\uFFFE\uFFFF\p{Cs}]/u.test(value),'Invalid rich run text.'), font: workbookFontSchema.optional() }).strict();
 export const workbookCellSchema = z.discriminatedUnion('kind', [
   z.object({ ...position, kind: z.literal('blank'), value: z.null() }).strict(),
   z.object({ ...position, kind: z.literal('number'), value: z.number().finite() }).strict(),
   z.object({ ...position, kind: z.literal('boolean'), value: z.boolean() }).strict(),
   z.object({ ...position, kind: z.literal('string'), value: z.string().max(32767), runs: z.array(richRun).max(1024).optional() }).strict(),
   z.object({ ...position, kind: z.literal('error'), value: z.string().min(1).max(100) }).strict(),
-]);
+]).superRefine((cell, context) => {
+  if (cell.kind !== 'string' || !cell.runs) return;
+  if (cell.runs.map(run => run.text).join('') !== cell.value) context.addIssue({ code: 'custom', message: 'Rich text does not match its cell value.' });
+  if (cell.formula) context.addIssue({ code: 'custom', message: 'Formula caches cannot own rich text edits.' });
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\uFFFE\uFFFF\p{Cs}]/u.test(cell.value)) context.addIssue({ code: 'custom', message: 'Rich text contains invalid XML characters.' });
+});
+
 export type WorkbookCell = z.infer<typeof workbookCellSchema>;
 export const workbookCellEditSchema = z.object({ sheetId: id, cell: workbookCellSchema }).strict();
 export type WorkbookCellEdit = z.infer<typeof workbookCellEditSchema>;
@@ -63,7 +69,10 @@ export const workbookStyleEditSchema = z.object({ sheetId: id, row, column,
   fillColor: z.string().regex(/^[A-Fa-f0-9]{8}$/).nullable().optional(),
 }).strict().refine(edit => edit.bold !== undefined || edit.italic !== undefined || edit.fontColor !== undefined || edit.fillColor !== undefined, 'Empty style edit.');
 export type WorkbookStyleEdit = z.infer<typeof workbookStyleEditSchema>;
-export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), styles: z.array(workbookStyleEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional() }).strict();
+export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), styles: z.array(workbookStyleEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional() }).strict().superRefine((plan,context)=>{
+  let text=0;for(const {cell}of plan.edits){text+=(typeof cell.value==='string'?cell.value.length:0)+(cell.formula?.length??0);if(cell.kind==='string'&&cell.runs)for(const run of cell.runs)text+=run.text.length+(run.font?.name?.length??0);}
+  if(text>WORKBOOK_MODEL_LIMITS.text)context.addIssue({code:'custom',message:'Workbook edit text exceeds its limit.'});
+});
 /** Source ownership from OOXML f/@t and f/@ref, never inferred from cached
  * numeric cells or a formula's function name. Dynamic/legacy array identity is
  * never inferred from functions. Optional calculation identity is qualified by
@@ -88,7 +97,7 @@ export const workbookTableSchema = z.object({ name: formulaName, sheetId: id, ra
 export type WorkbookDefinedName = z.infer<typeof workbookDefinedNameSchema>;
 export type WorkbookTable = z.infer<typeof workbookTableSchema>;
 export const workbookDocumentSchema = z.object({
-  version: z.literal(1), calculationMetadata: z.enum(['verified', 'unsupported']).optional(), sourceFormat: z.literal('csv').optional(), date1904: z.boolean(), activeSheetId: id,
+  version: z.literal(1), richTextMetadata: z.literal('verified').optional(), calculationMetadata: z.enum(['verified', 'unsupported']).optional(), sourceFormat: z.literal('csv').optional(), date1904: z.boolean(), activeSheetId: id,
   themeColors: z.array(z.string().regex(/^[A-Fa-f0-9]{8}$/)).length(12).optional(),
   styles: z.array(workbookStyleSchema).min(1).max(WORKBOOK_MODEL_LIMITS.styles),
   sheets: z.array(workbookSheetSchema).min(1).max(WORKBOOK_MODEL_LIMITS.sheets),

@@ -1,8 +1,9 @@
 import type { Document, Element } from '@xmldom/xmldom';
 import { workbookCellSchema, type WorkbookCell, type WorkbookCellEdit, type WorkbookRange } from '@open-design/contracts/runtime/workbook';
 import { WorkbookFormatError, writeWorkbookPackage } from './package.js';
-import { appendWorkbookRowCell, orderWorkbookRowCells, address, child, children, range, relationshipTarget, xmlPart } from './parts.js';
+import { appendWorkbookRowCell, orderWorkbookRowCells, address, child, children, range, relationships, relationshipTarget, xmlPart } from './parts.js';
 import type { ReadWorkbook } from './reader.js';
+import { writeRichCell } from './rich-cell.js';
 import { writeWorkbookXml } from './xml.js';
 
 export type { WorkbookCellEdit } from '@open-design/contracts/runtime/workbook';
@@ -21,14 +22,15 @@ function text(document: Document, parent: Element, name: string, value: string):
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\uFFFE\uFFFF\p{Cs}]/u.test(value)) throw new WorkbookFormatError('Cell text contains invalid XML characters.');
   const item = element(document, parent, name); item.appendChild(document.createTextNode(value)); parent.insertBefore(item, child(parent, 'extLst') ?? null); return item;
 }
-function writeValue(document: Document, target: Element, value: WorkbookCell): void {
+function writeValue(document: Document, target: Element, value: WorkbookCell, previous: WorkbookCell | undefined, sourceText?: Element): void {
+  const rich = value.kind === 'string' && value.runs ? writeRichCell(document,target,value,previous,sourceText) : undefined;
   remove(target, 'f', 'v', 'is'); target.removeAttribute('t');
   if (value.formula) text(document, target, 'f', value.formula.slice(1));
   // Formula caches are invalidated across the package below. A caller-provided
   // cached value is never treated as evidence of actual calculation.
   if (value.formula || value.kind === 'blank') return;
   if (value.kind === 'string') {
-    if (value.runs) throw new WorkbookFormatError('Rich text edits need the formatting patch adapter.', 'WORKBOOK_UNSUPPORTED');
+    if (rich) { target.setAttribute('t','inlineStr');target.insertBefore(rich,child(target,'extLst') ?? null);return; }
     target.setAttribute('t', 'inlineStr');
     const inline = element(document, target, 'is'); target.insertBefore(inline, child(target, 'extLst') ?? null);
     text(document, inline, 't', value.value).setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
@@ -91,6 +93,12 @@ export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly W
   const indexes = new Map<string, SheetIndex>();
   const restrictions = new Map<string, EditRestrictions>();
   const sourceCells = new Map(source.model.sheets.map(sheet => [sheet.id, new Map(sheet.cells.map(cell => [`${cell.row}:${cell.column}`, cell]))]));
+  let sharedItems: Element[] | undefined;
+  const sourceText = (target: Element): Element | undefined => {
+    if (target.getAttribute('t') !== 's') return child(target,'is');
+    if (!sharedItems) { const link = [...relationships(source.parts,'xl/workbook.xml').values()].find(link=>link.type.endsWith('/sharedStrings'));if (!link || link.external) throw new WorkbookFormatError('Shared string source is unavailable.');sharedItems = children(xmlPart(source.parts,link.target).documentElement!,'si'); }
+    const index = child(target,'v')?.textContent ?? '';if (!/^[0-9]+$/.test(index) || !sharedItems[Number(index)]) throw new WorkbookFormatError('Invalid shared string reference.');return sharedItems[Number(index)];
+  };
   const positions = new Set<string>();
   for (const edit of edits) {
     const value = workbookCellSchema.parse(edit.cell);
@@ -152,7 +160,7 @@ export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly W
     rejectProtectedEdit(restrictions.get(part)!, value);
     // Same-formula values are untrusted browser caches, not authored edits.
     // Retain the source cell/cache exactly; supported results are computed later.
-    if (!options.retainFormulaCaches || !value.formula || value.formula !== previous?.formula) writeValue(document, ensureCell(document, root, value, indexes.get(part)!), value);
+    if (!options.retainFormulaCaches || !value.formula || value.formula !== previous?.formula) { const target = ensureCell(document,root,value,indexes.get(part)!);writeValue(document,target,value,previous,value.kind === 'string' && value.runs ? sourceText(target) : undefined); }
     // Optional used-range hints must not prevent an application finding a new
     // cell. Recompute on open instead of retaining a stale dimension hint.
     remove(root, 'dimension');
