@@ -75,3 +75,9 @@ project/file grid. Only finite positive sizes within the new source grid bounds
 carry forward; cells, styles, formulas and hidden state remain source-owned.
 These preferences never enter CSV save plans or exported bytes and are not
 persisted across closing/reopening the surface or a full page reload.
+
+CSV deliberately stores numeric-looking entries as literal text. Its pinned
+number-format plugin disables the optional text-number warning triangle and
+conversion prompt through `disableTextFormatMark`/`disableTextFormatAlert`.
+XLSX keeps the plugin defaults; actual CSV input refusals still use the scoped
+header notice rather than changing or converting valid literal values.

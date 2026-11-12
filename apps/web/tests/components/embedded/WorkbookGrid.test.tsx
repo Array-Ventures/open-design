@@ -177,3 +177,15 @@ it('does not retain CSV sizing after its scoped surface is unmounted or the form
   await waitFor(() => expect(ready).toHaveBeenCalledTimes(3));
   expect(runtime.createWorkbook.mock.calls[2]![0].sheets.inputs.columnData).toEqual({});
 });
+
+it('disables text-number warnings only for literal CSV while retaining XLSX defaults and host input errors', async () => {
+  const ready = vi.fn();
+  const view = render(<WorkbookGrid id="csv" title="CSV" model={{ ...model, sourceFormat: 'csv' }} onReady={ready} />);
+  await waitFor(() => expect(ready).toHaveBeenCalledTimes(1));
+  expect(runtime.register).toHaveBeenCalledWith('UniverSheetsNumfmtPlugin', { disableTextFormatAlert: true, disableTextFormatMark: true });
+  const input = runtime.input; expect(input).not.toBeNull();
+  view.rerender(<WorkbookGrid id="xlsx" title="XLSX" model={model} onReady={ready} />);
+  await waitFor(() => expect(ready).toHaveBeenCalledTimes(2));
+  expect(runtime.register).toHaveBeenLastCalledWith('UniverSheetsNumfmtUIPlugin');
+  expect(runtime.register.mock.calls.filter(call => call[0] === 'UniverSheetsNumfmtPlugin').at(-1)).toEqual(['UniverSheetsNumfmtPlugin', undefined]);
+});

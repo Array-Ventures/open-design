@@ -119,7 +119,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       // In this pin the sheets flag routes function registration through RPC.
       // The engine flag above keeps stored mode inert without an RPC service.
       univer.registerPlugin(UniverSheetsFormulaPlugin, { notExecuteFormula: Boolean(calculationOwner), initialFormulaComputing: CalculationMode.NO_CALCULATION });
-      univer.registerPlugin(UniverSheetsFormulaUIPlugin); univer.registerPlugin(UniverSheetsNumfmtPlugin); univer.registerPlugin(UniverSheetsNumfmtUIPlugin);
+      univer.registerPlugin(UniverSheetsFormulaUIPlugin); univer.registerPlugin(UniverSheetsNumfmtPlugin, model.sourceFormat === 'csv' ? { disableTextFormatAlert: true, disableTextFormatMark: true } : undefined); univer.registerPlugin(UniverSheetsNumfmtUIPlugin);
       const univerAPI = FUniver.newAPI(univer);
       const previous = view.current?.id === id ? view.current : null;
       if (previous) for (const [sheetId, sheet] of Object.entries(prepared.data.sheets ?? {})) {
