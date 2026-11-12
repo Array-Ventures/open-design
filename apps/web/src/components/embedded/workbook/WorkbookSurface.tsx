@@ -60,7 +60,7 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
   let content;
   if (!loaded) content = <div role={error ? 'alert' : 'status'} className="flex h-full items-center justify-center gap-2 p-4 text-body-2-regular text-text-tertiary">{error ?? 'Loading workbook…'}</div>;
   else if (recovery.session) content = <Suspense fallback={<div role="status" className="p-4 text-body-2-regular text-text-tertiary">Loading workbook…</div>}>
-    <WorkbookGrid id={`${projectId}:${fileName}`} title={title} model={loaded.model} initialSnapshot={recovery.session.journal.restored?.desired} onReady={editor.ready} onSnapshot={editor.snapshot} />
+    <WorkbookGrid id={`${projectId}:${fileName}`} title={title} model={loaded.model} initialSnapshot={recovery.session.journal.restored?.desired} onReady={editor.ready} onSnapshot={editor.snapshot} formatScope={{ projectId, controllerId: editor.controllerId, blocked: editor.discarding }} />
   </Suspense>;
   else content = <div className="flex h-full items-center justify-center overflow-auto p-4">
     {recovery.busy && !recovery.drafts.length && !recovery.error ? <div role="status" className="text-body-2-regular text-text-tertiary">Checking workbook recovery…</div> :

@@ -153,5 +153,5 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     window.parent.postMessage({ type: 'studio:workbook-unavailable', projectId, controllerId }, window.location.origin);
   }, [projectId, controllerId, closeWriter]);
   const checkpoint = useCallback(() => writer.current?.checkpoint() ?? suspended.current, []);
-  return { state, stateRef, ready, snapshot, close, checkpoint, discarding };
+  return { controllerId, state, stateRef, ready, snapshot, close, checkpoint, discarding };
 }

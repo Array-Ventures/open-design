@@ -9,11 +9,13 @@ import { gridWorkbook, type WorkbookDisplayGap } from './grid-model';
 import { workbookGridTheme } from './grid-theme';
 import styles from './WorkbookGrid.module.css';
 import { cx } from '../boardui/cx';
+import { workbookFormattingBridge, type WorkbookFormatScope } from './grid-format';
 import { restoreWorkbookSelection } from './grid-selection';
 
 export interface WorkbookGridProps {
   id: string; title: string; model: WorkbookDocument;
   initialSnapshot?: IWorkbookData;
+  formatScope?: WorkbookFormatScope;
   onSnapshot?(snapshot: IWorkbookData): void;
   onReady?(snapshot: IWorkbookData): void | Promise<void>;
   onDisplayGaps?(gaps: WorkbookDisplayGap[]): void;
@@ -22,11 +24,14 @@ export interface WorkbookGridProps {
 /** A disposable spreadsheet UI, never an XLSX serializer. A surface must supply
  * its durable edit controller before edits are enabled. Refresh/theme changes
  * do not recreate the grid unless the acknowledged source model changes. */
-export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, onReady, onDisplayGaps }: WorkbookGridProps) {
+export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, onReady, onDisplayGaps, formatScope }: WorkbookGridProps) {
   const container = useRef<HTMLDivElement>(null), callbacks = useRef({ title, onSnapshot, onReady, onDisplayGaps });
   callbacks.current = { title, onSnapshot, onReady, onDisplayGaps };
   const view = useRef<{ id: string; sheetId: string; snapshot: IWorkbookData; range?: IRange } | null>(null);
   const restored = useRef(initialSnapshot);
+  const format = useRef(formatScope); format.current = formatScope;
+  const formattingRef = useRef<{ publish(): void } | null>(null);
+  useEffect(() => { formattingRef.current?.publish(); }, [formatScope?.blocked]);
   const [error, setError] = useState<string | null>(null);
   const editable = Boolean(onSnapshot);
   useEffect(() => {
@@ -75,8 +80,9 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       const release = () => context.setContextValue(DISABLE_AUTO_FOCUS_KEY, true);
       element.addEventListener('pointerdown', activate, true); element.addEventListener('focusin', activate);
       window.addEventListener('blur', release);
+      const formatting = workbookFormattingBridge(univerAPI, () => editable ? format.current : undefined); formattingRef.current = formatting;
       const changed = univerAPI.addEvent(univerAPI.Event.CommandExecuted, event => {
-        if (event.type === CommandType.MUTATION && event.id.startsWith('sheet.')) callbacks.current.onSnapshot?.(workbook.save());
+        if (event.type === CommandType.MUTATION && event.id.startsWith('sheet.')) { callbacks.current.onSnapshot?.(workbook.save()); formatting.publish(); }
       });
       let themeIdentity = JSON.stringify({ theme, dark: root.dataset.theme === 'dark' });
       const themes = new MutationObserver(() => {
@@ -89,7 +95,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
         try {
           const sheet = workbook.getActiveSheet();
           view.current = { id, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() };
-        } finally { element.removeEventListener('pointerdown', activate, true); element.removeEventListener('focusin', activate); window.removeEventListener('blur', release); themes.disconnect(); changed.dispose(); univer.dispose(); }
+        } finally { element.removeEventListener('pointerdown', activate, true); element.removeEventListener('focusin', activate); window.removeEventListener('blur', release); themes.disconnect(); formatting.dispose(); formattingRef.current = null; changed.dispose(); univer.dispose(); }
       };
       callbacks.current.onDisplayGaps?.(prepared.gaps); setError(null);
     } catch { close(); if (active) setError('The workbook grid could not be opened.'); }
