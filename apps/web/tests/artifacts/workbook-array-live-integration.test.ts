@@ -13,14 +13,14 @@ import { workbookGridEdits } from '../../src/components/embedded/workbook/grid-e
 const sha='a'.repeat(64);
 const source: WorkbookDocument={version:1,calculationMetadata:'verified',date1904:false,activeSheetId:'s',styles:[{}],features:{charts:0,drawings:0,externalLinks:0,macros:false,signed:false},sheets:[{id:'s',name:'Inputs',visibility:'visible',rowCount:100,columnCount:20,frozenRows:0,frozenColumns:0,rowDimensions:[],columnDimensions:[],merges:[],arrayFormulas:[{kind:'array',calculation:'dynamic',row:2,column:3,range:{startRow:2,endRow:4,startColumn:3,endColumn:3}}],cells:[{row:0,column:0,kind:'number',value:3},{row:2,column:3,kind:'number',value:10,formula:'=SEQUENCE(A1,1,10)'},{row:3,column:3,kind:'number',value:11},{row:4,column:3,kind:'number',value:12},{row:0,column:5,kind:'number',value:111,formula:'=D4+100'}]}]};
 let cleanup=()=>{};afterEach(()=>cleanup());
-function setup(model: WorkbookDocument = source) {
+function setup(model: WorkbookDocument = source, render = { ready: Promise.resolve(), available: () => true }) {
  const kernel=qualifiedArrayKernel(model,'unit',sha),univer=new Univer({locale:LocaleType.EN_US,locales:{[LocaleType.EN_US]:English}});univer.registerPlugin(UniverFormulaEnginePlugin,{notExecuteFormula:true});univer.registerPlugin(UniverSheetsPlugin,{notExecuteFormula:true});
  const core=univer.createUnit<IWorkbookData,Workbook>(UniverInstanceType.UNIVER_SHEET,structuredClone(kernel.initial)),commands=univer.__getInjector().get(ICommandService),listeners=new Set<(result:QualifiedArrayProjection)=>void>();
  univer.__getInjector().get(IUniverInstanceService).setCurrentUnitForType(core.getUnitId());univer.__getInjector().get(IUniverInstanceService).focusUnit(core.getUnitId());
  const baseline=structuredClone(core.getSnapshot()),snapshot=()=>structuredClone(core.getSnapshot()),repaint=vi.fn(),states:unknown[]=[];let generation=0,pending=Promise.resolve(),active=true;
  const owner={calculate(input:IWorkbookData){const ticket=++generation;pending=kernel.calculate(input,ticket).then(result=>{if(active)for(const listener of listeners)listener(result);});return ticket;},onResult(listener:(result:QualifiedArrayProjection)=>void){listeners.add(listener);return()=>listeners.delete(listener);},fail:vi.fn()} as unknown as ReturnType<typeof ownArrayProjectionWorker>;
  const api={getActiveWorkbook:()=>({getSheets:()=>[{refreshCanvas:repaint}]})} as unknown as FUniver;
- const calculation=attachWorkbookArrayCalculation(univer,api,model,kernel.original,snapshot(),sha,snapshot,owner,state=>states.push(state));
+ const calculation=attachWorkbookArrayCalculation(univer,api,model,kernel.original,snapshot(),sha,snapshot,owner,state=>states.push(state),render);
  cleanup=()=>{active=false;calculation.dispose();univer.dispose();};
  return {core,commands,snapshot,baseline,kernel,calculation,repaint,states,flush:()=>pending,owner};
 }
@@ -81,4 +81,13 @@ it('rebinds an acknowledged new source owner without accepting a projection from
  const acknowledged=structuredClone(source),nextSha='b'.repeat(64),next=qualifiedArrayKernel(acknowledged,'unit',nextSha);
  const display=new (await import('../../src/components/embedded/workbook/array-projection-display')).ArrayProjectionDisplay(acknowledged,next.original,next.initial,nextSha);
  expect(display.accept(old)).toBe(false);expect(display.accept(await next.calculate(next.initial,1))).toBe(true);expect(display.display('s',3,3,{}).v).toBe(11);expect(next.initial.sheets.s!.cellData?.[3]?.[3]?.v).toBeUndefined();display.dispose();
+});
+
+it('coalesces actual projection updates until Rendered and never paints after disposal or without a render unit', async()=>{
+ let rendered!:()=>void;const ready=new Promise<void>(resolve=>{rendered=resolve;}),available=vi.fn(()=>true),live=setup(source,{ready,available});
+ expect(live.repaint).not.toHaveBeenCalled();await live.flush();expect(live.repaint).not.toHaveBeenCalled();
+ live.commands.syncExecuteCommand(SetRangeValuesMutation.id,{unitId:'unit',subUnitId:'s',cellValue:{0:{0:{v:1,t:2}}}});await live.flush();expect(live.repaint).not.toHaveBeenCalled();expect(available).not.toHaveBeenCalled();
+ rendered();await ready;await Promise.resolve();expect(live.repaint).toHaveBeenCalledTimes(1);expect(live.core.getSheetBySheetId('s')!.getCell(3,3)?.v).toBeUndefined();
+ cleanup();let late!:()=>void;const later=new Promise<void>(resolve=>{late=resolve;}),closed=setup(source,{ready:later,available:()=>true});await closed.flush();closed.calculation.dispose();late();await later;await Promise.resolve();expect(closed.repaint).not.toHaveBeenCalled();
+ cleanup();const headless=setup(source,{ready:Promise.resolve(),available:()=>false});await headless.flush();expect(headless.repaint).not.toHaveBeenCalled();
 });

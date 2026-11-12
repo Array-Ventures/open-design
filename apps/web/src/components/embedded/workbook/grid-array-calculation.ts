@@ -26,11 +26,20 @@ export function assertArrayFollowerMutation(display: ArrayProjectionDisplay, par
 }
 
 export function attachWorkbookArrayCalculation(univer: Univer, api: FUniver, model: WorkbookDocument, original: IWorkbookData, initial: IWorkbookData, sourceSha256: string,
-  snapshot: () => IWorkbookData, owner: ReturnType<typeof ownArrayProjectionWorker> | null, changed: (state: WorkbookCalculationState) => void) {
+  snapshot: () => IWorkbookData, owner: ReturnType<typeof ownArrayProjectionWorker> | null, changed: (state: WorkbookCalculationState) => void, render: { ready: Promise<void>; available(): boolean }) {
   const injector = univer.__getInjector(), commands = injector.get(ICommandService), display = new ArrayProjectionDisplay(model, original, initial, sourceSha256);
-  let active = true, calculating = false;
+  let active = true, calculating = false, rendered = false, paintPending = false;
   const publish = () => changed(workbookCalculationState(display.summary()));
-  const repaint = () => { for (const sheet of api.getActiveWorkbook()?.getSheets() ?? []) sheet.refreshCanvas(); };
+  const repaint = () => {
+    if (!active) return;
+    paintPending = true;
+    if (!rendered || !render.available()) return;
+    paintPending = false;
+    for (const sheet of api.getActiveWorkbook()?.getSheets() ?? []) sheet.refreshCanvas();
+  };
+  // The pinned facade requires a RenderUnit, which does not exist during
+  // workbook creation. Coalesce all early projections into one latest paint.
+  void render.ready.then(() => { if (!active) return; rendered = true; if (paintPending) repaint(); }, () => { paintPending = false; });
   const update = (calculate: boolean) => {
     if (!active) return;
     const current = snapshot();
@@ -56,6 +65,6 @@ export function attachWorkbookArrayCalculation(univer: Univer, api: FUniver, mod
   update(Boolean(owner));
   return {
     status(sheetId: string, row: number, column: number) { const formula = snapshot().sheets[sheetId]?.cellData?.[row]?.[column]?.f; const result = display.status(sheetId, row, column); return formula && result ? { sheetId, row, column, formula, result, reason: result === 'calculated' ? 'qualified-array-projection' : result === 'stored' ? 'source-cache' : result } : undefined; },
-    dispose() { active = false; before.dispose(); after.dispose(); result?.(); intercept.dispose(); display.dispose(); },
+    dispose() { active = false; paintPending = false; before.dispose(); after.dispose(); result?.(); intercept.dispose(); display.dispose(); },
   };
 }
