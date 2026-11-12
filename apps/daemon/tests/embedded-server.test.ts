@@ -73,6 +73,8 @@ async function boot(kind = "prototype") {
 }
 it('commits host-prepared workbooks through the actual authenticated embedded runtime', async () => {
   const base = await boot('workbook');
+  const detail = await (await fetch(`${base}/api/projects/${id}`, { headers })).json();
+  expect(detail).toMatchObject({ project: { metadata: { kind: 'other', embeddedArtifactKind: 'workbook' } } });
   async function workbook(value: number) { const book = new ExcelJS.Workbook(); book.addWorksheet('Inputs').getCell('A1').value = value; return Buffer.from(await book.xlsx.writeBuffer()); }
   const original = await workbook(2), candidate = await workbook(8), later = await workbook(16);
   const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');

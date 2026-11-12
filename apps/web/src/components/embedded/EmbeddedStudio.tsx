@@ -156,7 +156,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
         filesGeneration={generation}
         onRefreshFiles={refresh}
         onManualFileWritten={() => { void refresh(); }}
-        isDeck={project.metadata?.kind === 'deck'}
+        isDeck={(project.metadata?.embeddedArtifactKind ?? project.metadata?.kind) === 'deck'}
         tabsState={tabs}
         onTabsStateChange={setTabs}
         routeFileName={fileName}

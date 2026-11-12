@@ -11,7 +11,7 @@ export function useArtifactHostState(projectId: string, entry: ArtifactEntry | n
   useEffect(() => {
     if (window.parent === window) return;
     const send = () => window.parent.postMessage({ type: 'studio:artifact-state', projectId,
-      entry: !snapshot && fileName ? { fileName, kind, title, formats: document ? ['docx', 'pdf', 'markdown'] : html ? kind === 'deck' ? ['html', 'pdf', 'image', 'pptx'] : ['html', 'pdf', 'image'] : [] } : null,
+      entry: !snapshot && fileName ? { fileName, kind, title, formats: kind === 'workbook' ? ['xlsx'] : document ? ['docx', 'pdf', 'markdown'] : html ? kind === 'deck' ? ['html', 'pdf', 'image', 'pptx'] : ['html', 'pdf', 'image'] : [] } : null,
     }, window.location.origin);
     const receive = (event: MessageEvent) => {
       if (event.source === window.parent && event.origin === window.location.origin && event.data?.type === 'studio:artifact-request' && event.data.projectId === projectId) send();

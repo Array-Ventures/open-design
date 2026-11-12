@@ -116,7 +116,8 @@ export function registerEmbeddedStudioRoutes(app: Express, db: Database): void {
       }
       const now = Date.now();
       db.transaction(() => {
-        insertProject(db, { id, name: name.trim(), metadata: { kind, baseDir: canonical, importedFrom: 'folder', embeddedHost: 'evebot' }, createdAt: now, updatedAt: now });
+        const standaloneKind = ['prototype', 'deck', 'image', 'video', 'audio'].includes(kind) ? kind : 'other';
+        insertProject(db, { id, name: name.trim(), metadata: { kind: standaloneKind, embeddedArtifactKind: kind, baseDir: canonical, importedFrom: 'folder', embeddedHost: 'evebot' }, createdAt: now, updatedAt: now });
         // The upstream comment store uses a conversation container. No messages or agent runs are created.
         insertConversation(db, { id, projectId: id, title: null, createdAt: now, updatedAt: now });
       })();

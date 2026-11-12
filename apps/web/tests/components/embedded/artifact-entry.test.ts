@@ -5,6 +5,11 @@ import { artifactEntry, artifactDashboard } from '../../../src/components/embedd
 const file = (name: string, primary?: boolean): ProjectFile => ({ name, kind: name.endsWith('.md') ? 'text' : 'html', size: 1, mtime: 1, mime: 'text/html', ...(primary === undefined ? {} : { artifactManifest: { version: 1, kind: 'markdown-document', title: 'Report', entry: name, renderer: 'markdown', exports: ['md'], primary } }) });
 const dashboard = (hostTemplatePath: string) => ({ id: 'snapshot', hostTemplatePath, status: 'active' }) as EmbeddedDashboardSummary;
 describe('artifact entry intent', () => {
+  it('opens a typed workbook before supporting HTML and preserves a selected XLSX type', () => {
+    const files = [file('index.html'), { ...file('reports/book.xlsx'), kind: 'spreadsheet' as const }];
+    expect(artifactEntry(files, null, 'workbook')).toMatchObject({ kind: 'workbook', file: { name: 'reports/book.xlsx' } });
+    expect(artifactEntry(files, 'reports/book.xlsx', 'deck')?.kind).toBe('workbook');
+  });
   it('uses a declared primary document ahead of a supporting HTML app', () => {
     const files = [file('index.html'), file('report.md', true)];
     expect(artifactEntry(files, null)).toMatchObject({ file: { name: 'report.md' }, kind: 'document', title: 'Report' });

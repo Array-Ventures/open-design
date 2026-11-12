@@ -193,6 +193,8 @@ export interface DesignSystemReviewEntry {
 }
 
 export interface ProjectMetadata {
+  /** Embedded host artifact semantics, independent of standalone creation modes. */
+  embeddedArtifactKind?: 'prototype' | 'deck' | 'document' | 'workbook' | 'image' | 'video' | 'audio' | 'hyperframes' | 'dashboard' | 'other';
   /** Reserved admitted facts; installed only with the matching local content receipt. */
   _commentFiles?: import('./comments.js').CommentFileState;
   kind: ProjectKind;

@@ -5,6 +5,7 @@ import type { Project, ProjectFile } from '../../../src/types';
 import type { EmbeddedDashboardSummary } from '../../../src/components/embedded/dashboards';
 vi.mock('../../../src/components/FileViewer', () => ({ FileViewer: ({ file }: { file: ProjectFile }) => <div data-testid="app-preview">{file.name}</div>, LiveArtifactViewer: () => <div data-testid="dashboard-preview">Rendered snapshot</div> }));
 vi.mock('../../../src/components/embedded/useMotionTransport', () => ({ useMotionTransport: () => {} }));
+vi.mock('../../../src/components/embedded/workbook/WorkbookSurface', () => ({ WorkbookSurface: ({ fileName }: { fileName: string }) => <div data-testid="workbook-preview">{fileName}</div> }));
 vi.mock('../../../src/components/embedded/document/DocumentSurface', () => ({ DocumentSurface: ({ fileName, onDirtyChange }: { fileName: string; onDirtyChange(dirty: boolean): void }) => <div data-testid="document-preview">{fileName}<button onClick={() => onDirtyChange(true)}>Unsaved document edit</button><button onClick={() => onDirtyChange(false)}>Saved document edit</button></div> }));
 import { ArtifactSurface } from '../../../src/components/embedded/ArtifactSurface';
 afterEach(cleanup);
@@ -15,6 +16,10 @@ function open(files: ProjectFile[], dashboards: EmbeddedDashboardSummary[], file
   render(<ArtifactSurface project={project} files={files} dashboards={dashboards} fileName={fileName} generation={1} onRefresh={async () => {}} feedback={{}} />);
 }
 describe('default artifact experience', () => {
+  it('uses the workbook surface rather than supporting HTML or a dashboard', () => {
+    render(<ArtifactSurface project={{ ...project, metadata: { kind: 'other', embeddedArtifactKind: 'workbook' } }} files={[file('index.html'), file('book.xlsx')]} dashboards={[dashboard('index.html')]} fileName={null} generation={1} onRefresh={async () => {}} feedback={{}} />);
+    expect(screen.getByTestId('workbook-preview')).toHaveTextContent('book.xlsx'); expect(screen.queryByTestId('dashboard-preview')).toBeNull();
+  });
   it('opens a separate working app instead of its older dashboard snapshot', () => {
     open([file('index.html'), file('dashboard.html')], [dashboard('dashboard.html')]);
     expect(screen.getByTestId('app-preview')).toHaveTextContent('index.html');
