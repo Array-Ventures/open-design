@@ -80,6 +80,25 @@ export function ensureDocumentBlockIds(owners = new Map<string, string>()) {
   }
 }
 
+/** Missing identities on an unchanged imported source must survive comment-only
+ * reopen without rewriting that source. Existing stored IDs always win; later
+ * inserted/pasted blocks still use the normal ownership transform above. */
+export function initializeDocumentBlockIds(owners: Map<string, string>, sourceIdentity: string) {
+  const nodes = documentBlockNodes();
+  for (const node of nodes) {
+    const id = $getState(node, documentBlockId);
+    if (id && !owners.has(id)) owners.set(id, node.getKey());
+  }
+  const source = sourceIdentity.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) || 'source';
+  for (const [index, node] of nodes.entries()) {
+    const id = $getState(node, documentBlockId);
+    if (id && owners.get(id) === node.getKey()) continue;
+    let generated = `doc-${source}-${index}`, suffix = 0;
+    while (owners.has(generated)) generated = `doc-${source}-${index}-${++suffix}`;
+    $setState(node, documentBlockId, generated); owners.set(generated, node.getKey());
+  }
+}
+
 export const documentFont = createState('eveDocumentFont', { parse: value => value === 'serif' ? 'serif' as const : 'sans' as const });
 
 export const documentHeadingFont = createState('eveDocumentHeadingFont', { parse: value => value === 'serif' ? 'serif' as const : 'sans' as const });

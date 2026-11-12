@@ -1,3 +1,4 @@
+import type { ArtifactFeedbackProps } from '../LiveArtifactFeedbackPreview';
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -18,7 +19,7 @@ function supportedDocument(html: string, fileName: string): boolean {
 }
 
 type DocumentSurfaceProps = {
-  projectId: string; fileName: string; title: string; generation?: number; fallback: ReactNode; onSaved(): void; onDirtyChange?(dirty: boolean): void;
+  feedback?: ArtifactFeedbackProps; projectId: string; fileName: string; title: string; generation?: number; fallback: ReactNode; onSaved(): void; onDirtyChange?(dirty: boolean): void;
 };
 /** Account changes invalidate editor state and outstanding reads, even for the same project URL. */
 export function DocumentSurface(props: DocumentSurfaceProps) {
@@ -27,7 +28,7 @@ export function DocumentSurface(props: DocumentSurfaceProps) {
   return <ScopedDocumentSurface key={`${viewer?.memberId ?? 'pending'}:${props.projectId}:${props.fileName}`} {...props} />;
 }
 /** Keep an active draft mounted across external file reads and refresh failures. */
-function ScopedDocumentSurface({ projectId, fileName, title, generation = 0, fallback, onSaved, onDirtyChange }: DocumentSurfaceProps) {
+function ScopedDocumentSurface({ feedback, projectId, fileName, title, generation = 0, fallback, onSaved, onDirtyChange }: DocumentSurfaceProps) {
   const [loaded, setLoaded] = useState<DocumentFile | null>(null);
   const [pending, setPending] = useState<{ file: DocumentFile; base: string | null } | null>(null);
   const [writeError, setWriteError] = useState<string | null>(null);
@@ -44,7 +45,7 @@ function ScopedDocumentSurface({ projectId, fileName, title, generation = 0, fal
     setError(cause instanceof Error ? cause.message : 'The document could not be loaded.');
   };
   const acknowledged = useRef<string | null>(null);
-  const dirtyCurrent = useRef(false);
+  const dirtyCurrent = useRef(false), documentDirty = useRef(false), commentDirty = useRef(false);
   const savingCurrent = useRef(false);
   const revision = useRef(0);
   const reload = useRef<AbortController | null>(null);
@@ -91,8 +92,8 @@ function ScopedDocumentSurface({ projectId, fileName, title, generation = 0, fal
   if (!supportedDocument(loaded.html, fileName)) return <>{fallback}</>;
   return <div className="flex min-h-0 flex-1 flex-col">
     {pending || error || writeError ? <div role={writeError ? "alert" : "status"} className="flex items-center gap-2 px-3 py-2 text-caption-1-regular text-text-tertiary">{error ?? writeError ?? 'Document changed elsewhere.'}<Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiRefreshLine} aria-label="Load latest document" title="Load latest" disabled={saving || reloading} onClick={() => { void loadLatest(); }} /></div> : null}
-    <DocumentEditor key={`${loaded.sha256}:${reloadEpoch}`} projectId={projectId} fileName={fileName} title={title} observed={loaded}
-      onDirtyChange={(value, activeSave) => { revision.current++; dirtyCurrent.current = value; savingCurrent.current = activeSave; setDirty(value); setSaving(activeSave); onDirtyChange?.(value); }}
+    <DocumentEditor onCommentDirtyChange={value => { revision.current++; commentDirty.current = value; dirtyCurrent.current = value || documentDirty.current; setDirty(dirtyCurrent.current); onDirtyChange?.(dirtyCurrent.current); }} feedback={feedback} key={`${loaded.sha256}:${reloadEpoch}`} projectId={projectId} fileName={fileName} title={title} observed={loaded}
+      onDirtyChange={(value, activeSave) => { revision.current++; documentDirty.current = value; dirtyCurrent.current = value || commentDirty.current; savingCurrent.current = activeSave; setDirty(dirtyCurrent.current); setSaving(activeSave); onDirtyChange?.(dirtyCurrent.current); }}
       onWriteError={setWriteError}
       onSaved={value => { revision.current++; acknowledged.current = value.sha256; onSaved(); }} />
   </div>;

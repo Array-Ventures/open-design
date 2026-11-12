@@ -1,3 +1,5 @@
+import { DocumentComments } from './DocumentComments';
+import type { ArtifactFeedbackProps } from '../LiveArtifactFeedbackPreview';
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
@@ -20,7 +22,7 @@ import { LinkNode } from '@lexical/link';
 import { $getRoot, $getState, $setState, $insertNodes, $setSelection, RootNode } from 'lexical';
 import { serializeMarkdownDocument } from './markdown-serialization';
 import { documentHtml, documentImport, documentFontFamily } from './document-html';
-import { documentHtmlConfig, ensureDocumentBlockIds, documentFont, documentHeadingFont, restoreDocumentIdentityGroups } from './document-identity';
+import { documentHtmlConfig, initializeDocumentBlockIds, ensureDocumentBlockIds, documentFont, documentHeadingFont, restoreDocumentIdentityGroups } from './document-identity';
 import { saveDocumentFile, type DocumentFile } from './document-file';
 import { DocumentWriter, type DocumentWriteState } from './document-writer';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
@@ -34,8 +36,8 @@ import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem } from '../boa
 
 export const documentNodes = [HeadingNode, QuoteNode, ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, LinkNode, CodeNode, CodeHighlightNode, DocumentImageNode];
 
-export function DocumentEditor({ projectId, fileName, title, observed, onSaved, onDirtyChange, onWriteError }: {
-  projectId: string; fileName: string; title: string; observed: DocumentFile; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void; onWriteError?(error: string | null): void;
+export function DocumentEditor({ feedback, onCommentDirtyChange, projectId, fileName, title, observed, onSaved, onDirtyChange, onWriteError }: {
+  onCommentDirtyChange?(dirty: boolean): void; feedback?: ArtifactFeedbackProps; projectId: string; fileName: string; title: string; observed: DocumentFile; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void; onWriteError?(error: string | null): void;
 }) {
   const imageScope = useMemo(() => ({ projectId, fileName }), [projectId, fileName]);
   const owners = useMemo(() => new Map<string, string>(), []);
@@ -49,20 +51,20 @@ export function DocumentEditor({ projectId, fileName, title, observed, onSaved, 
       const font = attributes.getAttribute('data-eve-document-font');
       const headingFont = attributes.getAttribute('data-eve-document-heading-font') ?? font;
       $setState(root, documentFont, font === 'serif' ? 'serif' : 'sans');
-      $setState(root, documentHeadingFont, headingFont === 'serif' ? 'serif' : 'sans'); restoreDocumentIdentityGroups(observed.identities); ensureDocumentBlockIds(owners);
+      $setState(root, documentHeadingFont, headingFont === 'serif' ? 'serif' : 'sans'); restoreDocumentIdentityGroups(observed.identities); initializeDocumentBlockIds(owners, observed.sha256);
     },
   }), [projectId, fileName, observed.html, owners]);
   return <div className={styles.editor} data-testid="document-editor">
     {failure ? <div role="alert" className="p-3 text-body-2-regular text-text-error-primary">{failure}</div> : null}
     <DocumentImageScope.Provider value={imageScope}><LexicalComposer initialConfig={initialConfig}>
-      <DocumentBody projectId={projectId} fileName={fileName} title={title} observed={observed} owners={owners} onSaved={onSaved} onDirtyChange={onDirtyChange} onWriteError={onWriteError} />
+      <DocumentBody onCommentDirtyChange={onCommentDirtyChange} feedback={feedback} projectId={projectId} fileName={fileName} title={title} observed={observed} owners={owners} onSaved={onSaved} onDirtyChange={onDirtyChange} onWriteError={onWriteError} />
       <HistoryPlugin /><ListPlugin /><CheckListPlugin /><TablePlugin hasHorizontalScroll /><LinkPlugin />
     </LexicalComposer></DocumentImageScope.Provider>
   </div>;
 }
 
-function DocumentBody({ projectId, fileName, title, observed, owners, onSaved, onDirtyChange, onWriteError }: {
-  projectId: string; fileName: string; title: string; observed: DocumentFile; owners: Map<string, string>; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void; onWriteError?(error: string | null): void;
+function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, title, observed, owners, onSaved, onDirtyChange, onWriteError }: {
+  onCommentDirtyChange?(dirty: boolean): void; feedback?: ArtifactFeedbackProps; projectId: string; fileName: string; title: string; observed: DocumentFile; owners: Map<string, string>; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void; onWriteError?(error: string | null): void;
 }) {
   const [editor] = useLexicalComposerContext();
   const fade = useScrollFade();
@@ -131,6 +133,7 @@ function DocumentBody({ projectId, fileName, title, observed, owners, onSaved, o
           placeholder={<div className={styles.placeholder}>Start writing…</div>} ErrorBoundary={LexicalErrorBoundary} />
       </div>
     </div>
+    {feedback ? <DocumentComments onDirtyChange={onCommentDirtyChange} projectId={projectId} fileName={fileName} feedback={feedback} /> : null}
     <ScrollFade progress={fade.progress} surfaceClassName="from-background-primary-default" />
     </div>
     {editing ? <DocumentToolbar font={font} headingFont={headingFont} onImageStatus={setImageStatus} /> : null}

@@ -34,9 +34,9 @@ export function CommentAuthor({ name, createdAt }: { name?: string; createdAt: n
 }
 
 /** The component stays mounted while the same card shows its all-comments page. */
-export function SavedCommentThread({ projectId, comment, hidden, deleted = false, onDirty, onClose, onViewAll, onEditRoot, onDeleteRoot, canEditRoot, canDeleteRoot, existingImages }: {
+export function SavedCommentThread({ projectId, comment, hidden, deleted = false, hideClose = false, onDirty, onClose, onViewAll, onEditRoot, onDeleteRoot, canEditRoot, canDeleteRoot, existingImages }: {
   projectId: string; comment: PreviewComment; hidden: boolean; onDirty(value: boolean): void;
-  deleted?: boolean;
+  deleted?: boolean; hideClose?: boolean;
   onClose(): void; onViewAll?(): void; onEditRoot(): void; onDeleteRoot?(): unknown | Promise<unknown>;
   canEditRoot: boolean; canDeleteRoot: boolean; existingImages: { url: string; name: string }[];
 }) {
@@ -165,7 +165,7 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
         try { await onDeleteRoot?.(); }
         finally { if (!controller.signal.aborted) { pending.current = false; setBusy(false); setDeletingRoot(false); } }
       }} onReopen={comment.status === 'resolved' && canDeleteRoot && review ? () => review.changeStatus(comment.id, 'open') : undefined} />
-      <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiCloseLine} aria-label="Close" title="Close" onClick={onClose} />
+      {!hideClose ? <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiCloseLine} aria-label="Close" title="Close" onClick={onClose} /> : null}
     </header>
     <div className="relative flex min-h-0 flex-1 flex-col">
     <div role="region" aria-label="Thread history" tabIndex={0} onScroll={historyFade.onScroll} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring">
