@@ -1298,6 +1298,10 @@
   box-shadow: var(--shadow-lg);
 }
 .manual-edit-scroll {
+  min-inline-size: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
   flex: 1 1 auto;
   min-height: 0;
   overflow-x: hidden;

@@ -1,4 +1,4 @@
-import { Button, ValueSelect } from '@open-design/components';
+import { Button, Input, Textarea, ValueSelect } from '@open-design/components';
 import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import type { ProjectDesignTokenSuggestion, ProjectDesignTokenSuggestionProp } from '../providers/registry';
 import { useT } from '../i18n';
@@ -49,6 +49,7 @@ export function ManualEditPanel({
   onApplyTokenSuggestion,
   onInspectValueSelect,
   pageStylesEnabled = true,
+  sourceControls = true,
   floatingStyle,
   floatingClassName,
   onFloatingPositionChange,
@@ -65,6 +66,8 @@ export function ManualEditPanel({
   busy?: boolean;
   resetAvailable?: boolean;
   pageStylesEnabled?: boolean;
+  /** Embedded artifacts expose visual properties, never raw source editing. */
+  sourceControls?: boolean;
   onSelectTarget: (target: ManualEditTarget) => void;
   onDraftChange: (draft: ManualEditDraft) => void;
   onStyleChange?: (id: string, styles: Partial<ManualEditStyles>, label: string) => void;
@@ -227,10 +230,11 @@ export function ManualEditPanel({
             </button>
           ) : null}
         </div>
-        <div className="manual-edit-scroll">
+        <fieldset className="manual-edit-scroll" disabled={busy || uploadingImage} aria-busy={Boolean(busy || uploadingImage)}>
           {targetForInspector ? (
             <>
               <ContentInspector
+                sourceControls={sourceControls}
                 target={targetForInspector}
                 draft={draft}
                 onDraftChange={onDraftChange}
@@ -303,7 +307,7 @@ export function ManualEditPanel({
               </div>
             </div>
           ) : null}
-        </div>
+        </fieldset>
 
         <div className="manual-edit-footer">
           <div className="manual-edit-footer-actions">
@@ -384,10 +388,12 @@ export function ManualEditPanel({
 }
 
 function ContentInspector({
+  sourceControls,
   target,
   draft,
   onDraftChange,
 }: {
+  sourceControls: boolean;
   target: ManualEditTarget;
   draft: ManualEditDraft;
   onDraftChange: (draft: ManualEditDraft) => void;
@@ -400,11 +406,11 @@ function ContentInspector({
         <Section title={t('manualEdit.sectionContent')}>
           <label className="manual-edit-field compact">
             <span>{t('manualEdit.imageUrl')}</span>
-            <input value={draft.src} onChange={(event) => update({ src: event.currentTarget.value })} />
+            <Input value={draft.src} onChange={(event) => update({ src: event.currentTarget.value })} />
           </label>
           <label className="manual-edit-field compact">
             <span>{t('manualEdit.altText')}</span>
-            <input value={draft.alt} onChange={(event) => update({ alt: event.currentTarget.value })} />
+            <Input value={draft.alt} onChange={(event) => update({ alt: event.currentTarget.value })} />
           </label>
         </Section>
       </div>
@@ -416,11 +422,11 @@ function ContentInspector({
         <Section title={t('manualEdit.sectionContent')}>
           <label className="manual-edit-field">
             <span>{t('manualEdit.text')}</span>
-            <textarea value={draft.text} rows={3} onChange={(event) => update({ text: event.currentTarget.value })} />
+            <Textarea unstyled value={draft.text} rows={3} onChange={(event) => update({ text: event.currentTarget.value })} />
           </label>
           <label className="manual-edit-field compact">
             <span>{t('manualEdit.href')}</span>
-            <input value={draft.href} onChange={(event) => update({ href: event.currentTarget.value })} />
+            <Input value={draft.href} onChange={(event) => update({ href: event.currentTarget.value })} />
           </label>
         </Section>
       </div>
@@ -432,18 +438,19 @@ function ContentInspector({
         <Section title={t('manualEdit.sectionContent')}>
           <label className="manual-edit-field">
             <span>{t('manualEdit.text')}</span>
-            <textarea value={draft.text} rows={4} onChange={(event) => update({ text: event.currentTarget.value })} />
+            <Textarea unstyled value={draft.text} rows={4} onChange={(event) => update({ text: event.currentTarget.value })} />
           </label>
         </Section>
       </div>
     );
   }
+  if (!sourceControls) return null;
   return (
     <div className="cc-inspector manual-edit-content-inspector">
       <Section title={t('manualEdit.sectionContent')}>
         <label className="manual-edit-field">
           <span>{t('manualEdit.selectedHtml')}</span>
-          <textarea
+          <Textarea unstyled
             className="manual-edit-code"
             value={draft.outerHtml}
             onChange={(event) => update({ outerHtml: event.currentTarget.value })}

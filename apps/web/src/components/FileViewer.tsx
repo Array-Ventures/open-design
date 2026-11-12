@@ -10,6 +10,7 @@ import { commentsInReviewScope } from './embedded/comment-page-scope';
 import { CommentListPopover, CommentReviewPage, ResolveCommentButton, useCommentReview } from './embedded/CommentReview';
 import { CommentThreadMenu } from './embedded/CommentThreadMenu';
 import { ArtifactAnnotationControls } from './embedded/ArtifactAnnotationControls';
+import { ArtifactEditControls } from './embedded/ArtifactEditControls';
 import { SpeakerNotesDrawer } from './embedded/SpeakerNotesDrawer';
 import { DashboardControls } from './embedded/DashboardControls';
 import type { EmbeddedDashboard } from './embedded/dashboards';
@@ -15682,12 +15683,12 @@ function HtmlViewer({
     clearBoardComposer();
   }
 
-  function activateManualEditTool() {
-    if (viewerOnly || (!manualEditMode && !manualEditEntryAllowed)) return;
+  async function activateManualEditTool(): Promise<boolean> {
+    if (viewerOnly || (!manualEditMode && !manualEditEntryAllowed)) return false;
     fireArtifactToolbarClick('edit');
     void capturePreviewScrollPosition();
     if (!manualEditMode) {
-      if (manualEditActivationPendingRef.current) return;
+      if (manualEditActivationPendingRef.current) return false;
       const enterManualEditMode = () => {
         const srcDocFrame = srcDocPreviewIframeRef.current;
         const srcDocGeneration = expectedSrcDocTransportGenerationRef.current;
@@ -15721,26 +15722,25 @@ function HtmlViewer({
         previewRuntimeStateRef.current = null;
         previewRuntimeStateRestoreIdRef.current = null;
         enterManualEditMode();
-        return;
+        return true;
       }
       const activationFileIdentity = previewFileIdentityRef.current;
       manualEditActivationPendingRef.current = true;
-      void capturePreviewRuntimeState(urlPreviewIframeRef.current)
-        .then((state) => {
-          if (previewFileIdentityRef.current !== activationFileIdentity) return;
-          if (state) {
-            previewRuntimeStateRef.current = state;
-            previewRuntimeStateRestoreIdRef.current = null;
-          }
-          enterManualEditMode();
-        })
-        .finally(() => {
-          manualEditActivationPendingRef.current = false;
-        });
-      return;
+      try {
+        const state = await capturePreviewRuntimeState(urlPreviewIframeRef.current);
+        if (previewFileIdentityRef.current !== activationFileIdentity) return false;
+        if (state) {
+          previewRuntimeStateRef.current = state;
+          previewRuntimeStateRestoreIdRef.current = null;
+        }
+        enterManualEditMode();
+        return true;
+      } finally {
+        manualEditActivationPendingRef.current = false;
+      }
     }
     closeArtifactToolMenus();
-    void exitManualEditModeAfterFlush();
+    return requestManualEditSafeExitRef.current();
   }
 
   function queueCurrentDraft() {
@@ -17024,6 +17024,7 @@ function HtmlViewer({
   const manualEditResetAvailable = selectedManualEditTarget ? manualEditDraftDirty : false;
   const manualEditPanel = manualEditPanelActive ? (
     <ManualEditPanel
+      sourceControls={!embedded}
       targets={manualEditTargets}
       selectedTarget={selectedManualEditTarget}
       draft={manualEditDraft}
@@ -17911,8 +17912,10 @@ function HtmlViewer({
             : null
       ))(<>
           {showPresent && embedded && effectiveDeck ? <DeckPresentationMenu projectId={projectId} hosted={inlineAnnotations} onPresent={withNotes => {
-            if (withNotes) presentInThisTab(true);
-            else presentFullscreen(false);
+            const present = () => { if (withNotes) presentInThisTab(true); else presentFullscreen(false); };
+            if (manualEditMode) {
+              void requestManualEditSafeExitRef.current().then(saved => { if (saved) present(); });
+            } else present();
           }} /> : showPresent ? (
             <div className="present-wrap chrome-present-wrap">
               <button
@@ -18286,6 +18289,13 @@ function HtmlViewer({
             </div>
       </>)}
       <div className="viewer-body" ref={previewBodyRef}>
+        {embedded && !viewerOnly && manualEditEntryAllowed && /\.html?$/i.test(file.name) ? <ArtifactEditControls key={file.name} projectId={projectId} active={manualEditMode} busy={manualEditSaving}
+          onEnter={async () => {
+            if (composerHoldsUnsentWorkRef.current && !(await confirmHostFeedbackDiscard(projectId, 'comment'))) return false;
+            if (markupDraftDirty && !(await confirmHostFeedbackDiscard(projectId, 'markup'))) return false;
+            return activateManualEditTool();
+          }}
+          onExit={() => requestManualEditSafeExitRef.current()} /> : null}
         {inlineAnnotations ? <ArtifactAnnotationControls projectId={projectId} commenting={boardMode} marking={drawOverlayOpen} dirty={composerHoldsUnsentWork || markupDraftDirty} disabled={sendingBoardBatch}
           onDiscard={() => { clearBoardComposer(); setMarkupDiscardRevision(value => value + 1); setDrawOverlayOpen(false); }}
           onComment={() => {

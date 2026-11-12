@@ -63,6 +63,27 @@ describe('ManualEditPanel', () => {
     Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT');
   });
 
+  it('keeps raw source out of embedded properties while retaining visual controls', () => {
+    renderPanel({ sourceControls: false, selectedTarget: { ...target, kind: 'container' } });
+    expect(host.querySelector('.manual-edit-code')).toBeNull();
+    expect(host.querySelector('textarea')).toBeNull();
+    expect(sectionByTitle(PARAMETERS).textContent).toContain('Font size');
+    renderPanel({ sourceControls: true, selectedTarget: { ...target, kind: 'container' } });
+    expect(host.querySelector('.manual-edit-code')).not.toBeNull();
+  });
+
+  it('disables properties and content controls during a source write', () => {
+    renderPanel({ busy: true });
+    const text = host.querySelector('textarea')!;
+    const number = host.querySelector('input')!;
+    expect(text.matches(':disabled')).toBe(true);
+    expect(number.matches(':disabled')).toBe(true);
+    expect((host.querySelector('button[aria-label="Undo"]') as HTMLButtonElement).disabled).toBe(true);
+    renderPanel({ busy: false });
+    expect(host.querySelector('textarea')!.matches(':disabled')).toBe(false);
+    expect(host.querySelector('input')!.matches(':disabled')).toBe(false);
+  });
+
   it('renders the style inspector without the advanced editor entry', () => {
     renderPanel();
 
@@ -868,6 +889,8 @@ describe('ManualEditPanel', () => {
     styles = emptyManualEditStyles(),
     resetAvailable = false,
     pageStylesEnabled = true,
+    sourceControls = true,
+    busy = false,
     floatingStyle,
     onFloatingPositionChange,
     tokenSuggestions,
@@ -893,6 +916,8 @@ describe('ManualEditPanel', () => {
     styles?: ReturnType<typeof emptyManualEditStyles>;
     resetAvailable?: boolean;
     pageStylesEnabled?: boolean;
+    sourceControls?: boolean;
+    busy?: boolean;
     floatingStyle?: CSSProperties;
     onFloatingPositionChange?: (position: { left: number; top: number }) => void;
     tokenSuggestions?: ProjectDesignTokenSuggestion[];
@@ -919,6 +944,8 @@ describe('ManualEditPanel', () => {
           canRedo={canRedo}
           resetAvailable={resetAvailable}
           pageStylesEnabled={pageStylesEnabled}
+          sourceControls={sourceControls}
+          busy={busy}
           onSelectTarget={vi.fn<(target: ManualEditTarget) => void>()}
           onDraftChange={onDraftChange}
           onStyleChange={onStyleChange}
