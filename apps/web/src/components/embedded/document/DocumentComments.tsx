@@ -89,6 +89,8 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
     setTarget(documentCommentTarget(fileName, captured)); setEditing(true);
   };
   const show = async (comment: PreviewComment) => {
+    // Returning to the retained thread is navigation, not a target change.
+    if (selected?.id === comment.id) { setOpen(true); setList(false); return; }
     if (!await allowed() || !life.current) return;
     reset(); setSelected(comment); setTarget(comment); setOpen(true); setList(false);
     const savedAnchor = readDocumentCommentAnchor(comment);

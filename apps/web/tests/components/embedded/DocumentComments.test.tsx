@@ -248,3 +248,22 @@ it('keeps unsent selected-text feedback and the same editor while navigating a d
   expect(input).toHaveValue('Unsent section feedback'); expect(quote).toHaveTextContent(before!);
   expect(api.save).not.toHaveBeenCalled(); expect(api.documentSave).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
 });
+
+it('returns from All comments to the same thread without discarding its unsent reply', async () => {
+  render(<Harness />);
+  const input = await selectAndOpen();
+  fireEvent.change(input, { target: { value: 'Retained thread' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+  const reply = await screen.findByRole('textbox', { name: 'Reply' });
+  fireEvent.change(reply, { target: { value: 'Keep this unsent reply' } });
+  const thread = screen.getByTestId('saved-comment-thread');
+  fireEvent.click(screen.getByRole('button', { name: 'All comments', exact: true }));
+  fireEvent.click(await screen.findByRole('button', { name: /Retained thread/ }));
+  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Reply' })).toBeVisible());
+  expect(screen.getByRole('textbox', { name: 'Reply' })).toBe(reply);
+  expect(screen.getByTestId('saved-comment-thread')).toBe(thread);
+  expect(reply).toHaveValue('Keep this unsent reply');
+  expect(api.confirm).not.toHaveBeenCalled();
+  expect(api.createReply).not.toHaveBeenCalled();
+  expect(api.documentSave).not.toHaveBeenCalled();
+});
