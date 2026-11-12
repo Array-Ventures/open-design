@@ -145,7 +145,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
   }, [id, model, editable, kernel]);
   return <div className="relative h-full min-h-0 w-full">
     <div ref={container} className={cx(styles.grid, 'h-full min-h-0 w-full')} role="region" aria-label="Workbook grid" tabIndex={0} />
-    {calculation && !error ? <div role="status" className="pointer-events-none absolute right-3 top-1 rounded bg-background-primary-default px-2 py-1 text-caption-1-regular text-text-secondary">{calculation}</div> : null}
+    {calculation && !error ? <div role="status" className="pointer-events-none absolute end-3 top-1 rounded bg-background-primary-default px-2 py-1 text-caption-1-regular text-text-secondary">{calculation}</div> : null}
     {error ? <div role="alert" className="absolute inset-0 bg-background-primary-default p-4 text-body-2-regular text-text-error-primary">{error}</div> : null}
   </div>;
 }

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Worker as NodeWorker } from 'node:worker_threads';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ownWorkbookCalculationWorker } from '../../src/components/embedded/workbook/calculation-worker-owner';
+import { workbookGridEdits } from '../../src/components/embedded/workbook/grid-edits';
 import { attachWorkbookCalculation } from '../../src/components/embedded/workbook/grid-calculation';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { workbookCalculationInputSha256, workbookCalculationTagSchema } from '../../src/components/embedded/workbook/formula-input-provenance';
@@ -52,9 +53,11 @@ it.each([false, true, 'production'] as const)('runs genuine scalar RPC calculati
   const api = FUniver.newAPI(univer);
   const book = api.createWorkbook({ id: 'bounded-rpc', name: 'Bounded RPC', sheetOrder: ['s'], styles: {}, sheets: { s: { id: 's', name: 'Inputs', rowCount: 100, columnCount: 20, cellData: { 0: { 0: { v: 2, t: 2 }, 1: { f: '=A1+3', v: 999, t: 2 }, 5: { f: '=UNKNOWN(A1)', v: 55, t: 2 }, 6: { f: '=F1+1', v: 56, t: 2 }, 7: { f: '=1/(A1-A1)', v: 777, t: 2 }, 8: { f: '=SUM(A1:B1)', v: 888, t: 2 }, 9: { f: '=IF(A1>6,SUM(A1:B1),0)', v: 889, t: 2 } } } } } });
   let calculation: ReturnType<typeof attachWorkbookCalculation> | undefined;
+  let source: { model: WorkbookDocument; original: core.IWorkbookData } | undefined;
   if (execution === 'production') {
     const original = book.save();
     const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 's', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 's', name: 'Inputs', rowCount: 100, columnCount: 20, visibility: 'visible', frozenRows: 0, frozenColumns: 0, merges: [], rowDimensions: [], columnDimensions: [], arrayFormulas: [], cells: Object.entries(original.sheets.s!.cellData![0]!).map(([column, cell]) => ({ row: 0, column: Number(column), kind: 'number' as const, value: (cell as { v: number }).v, ...((cell as { f?: string }).f ? { formula: (cell as { f: string }).f } : {}) })) }] };
+    source = { model, original };
     calculation = attachWorkbookCalculation(univer, api, model, original, original, () => book.save(), owner, () => {});
     closers.push(() => calculation!.dispose());
   }
@@ -80,6 +83,7 @@ it.each([false, true, 'production'] as const)('runs genuine scalar RPC calculati
     expect(book.getActiveSheet().getSheet().getCell(0, 7)!.v).toBe('#DIV/0!');
     expect(book.getActiveSheet().getSheet().getCell(0, 8)!.v).toBe(17);
     expect(book.getActiveSheet().getSheet().getCell(0, 9)!.v).toBe(17);
+    expect(workbookGridEdits(source!.model, 'a'.repeat(64), source!.original, book.save())).toEqual({ sourceSha256: 'a'.repeat(64), edits: [{ sheetId: 's', cell: { row: 0, column: 0, kind: 'number', value: 7 } }] });
   }
   await calculate(() => book.getActiveSheet().getRange('C1').setValue({ f: '=SEQUENCE(10000000)' }));
   expect(book.save().sheets.s!.cellData![0]![2]!).toMatchObject({ f: '=SEQUENCE(10000000)', v: execution ? '#N/A' : '#REF!' });
