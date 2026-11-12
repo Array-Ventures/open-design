@@ -207,7 +207,7 @@ function normalizePrompt(value: unknown): string | null {
 }
 
 function normalizeContentPath(value: unknown, id: string): string {
-  if (typeof value === 'string' && /^[A-Za-z0-9._-]+\.(?:html|md|markdown|xlsx)$/u.test(value) && !value.includes('..')) {
+  if (typeof value === 'string' && /^[A-Za-z0-9._-]+\.(?:html|md|markdown|xlsx|csv)$/u.test(value) && !value.includes('..')) {
     return value;
   }
   return `${id}.html`;
@@ -559,7 +559,7 @@ async function createProjectFileVersionUnlocked(
   const now = Date.now();
   const version = entries.reduce((max, entry) => Math.max(max, Number(entry.version) || 0), 0) + 1;
   const id = randomUUID();
-  const extension = isWorkbookHistoryFile(safeName) ? 'xlsx' : /\.(md|markdown)$/i.test(safeName) ? 'md' : 'html';
+  const extension = isWorkbookHistoryFile(safeName) ? /\.csv$/i.test(safeName) ? 'csv' : 'xlsx' : /\.(md|markdown)$/i.test(safeName) ? 'md' : 'html';
   const contentPath = `${String(version).padStart(4, '0')}-${id}.${extension}`;
   const text = Buffer.isBuffer(content) ? content : Buffer.from(String(content ?? ''), 'utf8');
   const source = inferVersionSource(options.source, options.promptSource, options.restoreFromVersionId);

@@ -35,7 +35,7 @@ export async function renderSnapshot(source: string, output: string, value: unkn
     if (!info.isFile() || info.size > 50 * 1024 * 1024) throw new Error('Asset size limit');
     return readFile(file);
   }
-  if (input.format === 'workbook' || input.format === 'xlsx') return renderWorkbook(output, { fileName: input.fileName, format: input.format, ...(input.dataFile ? { dataFile: input.dataFile } : {}), ...(input.restore ? { restore: input.restore } : {}) }, asset);
+  if (input.format === 'workbook' || input.format === 'xlsx' || input.format === 'csv') return renderWorkbook(output, { fileName: input.fileName, format: input.format, ...(input.dataFile ? { dataFile: input.dataFile } : {}), ...(input.restore ? { restore: input.restore } : {}) }, asset);
   const original = (await asset(input.fileName)).toString('utf8');
   let html = original;
   const document = !input.deck && !input.dataFile ? await prepareDocument(html, input.fileName, input.title) : null;

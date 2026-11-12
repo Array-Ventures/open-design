@@ -6,7 +6,7 @@ function edit(source: ReturnType<typeof read>, value: string, row = 0, column = 
   return { sourceSha256: source.sourceSha256, edits: [{ sheetId: 'csv', cell: { row, column, kind: 'string', value } }] };
 }
 describe('literal CSV preservation adapter', () => {
-  it.each(['', '\ufeff', 'a,b,', 'a,b,\r\n', '\ufeff"001",2026-11-12,=1+2,+4,-2,@x,TRUE,1e9,\r\n', '"a\r\nb","a""b",雪😀\n', '\n\n', 'a,b\nc\n'])('retains every original byte without edits: %j', text => {
+  it.each(['', '\ufeff', 'a,b,', 'a,b,\r\n', '\ufeff"001",2026-11-12,=1+2,+4,-2,@x,TRUE,1e9,\r\n', '"a\r\nb","a""b",雪😀\n', '\n\n', 'a,b\nc\n', 'a,b\r\nc,d\n'])('retains every original byte without edits: %j', text => {
     const source = read(text), result = patchCsvDocument(source, { sourceSha256: source.sourceSha256, edits: [] });
     expect(result.bytes.equals(Buffer.from(text))).toBe(true);
     expect(source.model.sheets[0]!.cells.every(cell => cell.kind === 'string' && !cell.formula)).toBe(true);
@@ -32,7 +32,7 @@ describe('literal CSV preservation adapter', () => {
     const last = edit(source, 'z', 0, 2).edits[0]!;
     expect(patchCsvDocument(source, { ...first, edits: [last, ...edit(source, 'y').edits] }).bytes.toString()).toBe('"y",b,z\n');
   });
-  it.each(['"unterminated', 'a"b,c', '"a" x,b', '"a""', 'a\rb', 'a\r\nb\nc', 'a\u0000b'])('refuses malformed or ambiguous inputs without a candidate: %j', text => { expect(() => read(text)).toThrow(); });
+  it.each(['"unterminated', 'a"b,c', '"a" x,b', '"a""', 'a\rb', 'a\u0000b'])('refuses malformed or ambiguous inputs without a candidate: %j', text => { expect(() => read(text)).toThrow(); });
   it('refuses invalid UTF-8, UTF-16 and import amplification before building a grid', () => {
     for (const bytes of [Buffer.from([0xc0, 0xaf]), Buffer.from([0xff, 0xfe, 65, 0])]) expect(() => readCsvDocument(bytes)).toThrow(/UTF-8/);
     expect(() => read('x'.repeat(CSV_LIMITS.cellText + 1))).toThrow(/text limit/);

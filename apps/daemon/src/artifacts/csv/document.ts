@@ -21,7 +21,7 @@ export function readCsvDocument(bytes: Uint8Array): CsvDocument {
   let source: string;
   try { source = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
   catch { return invalid('CSV must contain valid UTF-8 text. UTF-16 and legacy encodings are not supported.'); }
-  let at = source.startsWith('\ufeff') ? 1 : 0, count = 0, text = 0, separator: string | null = null;
+  let at = source.startsWith('\ufeff') ? 1 : 0, count = 0, text = 0;
   const rows: Field[][] = []; let row: Field[] = [];
   while (true) {
     const start = at, quoted = source[at] === '"'; let value: string;
@@ -50,12 +50,11 @@ export function readCsvDocument(bytes: Uint8Array): CsvDocument {
     if (at === source.length) break;
     const newline = source[at] === '\r' ? source.slice(at, at + 2) : '\n';
     if (newline !== '\n' && newline !== '\r\n') return invalid('CSV uses a bare carriage return as a record separator.');
-    if (separator && separator !== newline) return invalid('CSV uses mixed record separators. Normalize them explicitly before editing.');
-    separator = newline; at += newline.length;
+    at += newline.length;
     if (at === source.length) break;
   }
   const columnCount = rows.reduce((maximum, row) => Math.max(maximum, row.length), 1);
-  const model = workbookDocumentSchema.parse({ version: 1, date1904: false, activeSheetId: CSV_SHEET_ID,
+  const model = workbookDocumentSchema.parse({ version: 1, sourceFormat: 'csv', date1904: false, activeSheetId: CSV_SHEET_ID,
     styles: [{ numberFormat: '@' }], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
     sheets: [{ id: CSV_SHEET_ID, name: 'Data', visibility: 'visible', rowCount: rows.length, columnCount,
       cells: rows.flatMap((row, rowIndex) => row.map((field, column) => ({ row: rowIndex, column, style: 0, kind: 'string', value: field.value }))),

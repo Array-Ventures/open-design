@@ -3,12 +3,12 @@ import { mkdir, open } from 'node:fs/promises';
 import { z } from 'zod';
 import { readPinnedFile, writePinnedFile } from '../../embedded-files/pinned-project.js';
 
-export const isWorkbookHistoryFile = (name: string): boolean => /\.xlsx$/i.test(name);
+export const isWorkbookHistoryFile = (name: string): boolean => /\.(xlsx|csv)$/i.test(name);
 export const WORKBOOK_HISTORY_BYTES = 25 * 1024 * 1024;
 export const WORKBOOK_HISTORY_MANIFEST_BYTES = 16 * 1024 * 1024;
 const identity = z.string().regex(/^[A-Za-z0-9_-]+$/);
 const entry = z.object({ id: identity, version: z.number().int().positive(), size: z.number().int().min(0).max(WORKBOOK_HISTORY_BYTES),
-  contentPath: z.string().regex(/^[A-Za-z0-9_-]+\.xlsx$/), contentDigest: z.string().regex(/^[0-9a-f]{64}$/) }).passthrough();
+  contentPath: z.string().regex(/^[A-Za-z0-9_-]+\.(xlsx|csv)$/), contentDigest: z.string().regex(/^[0-9a-f]{64}$/) }).passthrough();
 const manifest = z.object({ schemaVersion: z.literal(2), entries: z.array(entry).max(10_000), currentVersionId: identity.nullable(), deletedAt: z.number().positive().optional() }).passthrough()
   .superRefine((value, context) => {
     if (new Set(value.entries.map(item => item.id)).size !== value.entries.length || new Set(value.entries.map(item => item.contentPath)).size !== value.entries.length

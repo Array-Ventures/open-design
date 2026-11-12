@@ -87,7 +87,7 @@ export const workbookTableSchema = z.object({ name: formulaName, sheetId: id, ra
 export type WorkbookDefinedName = z.infer<typeof workbookDefinedNameSchema>;
 export type WorkbookTable = z.infer<typeof workbookTableSchema>;
 export const workbookDocumentSchema = z.object({
-  version: z.literal(1), date1904: z.boolean(), activeSheetId: id,
+  version: z.literal(1), sourceFormat: z.literal('csv').optional(), date1904: z.boolean(), activeSheetId: id,
   themeColors: z.array(z.string().regex(/^[A-Fa-f0-9]{8}$/)).length(12).optional(),
   styles: z.array(workbookStyleSchema).min(1).max(WORKBOOK_MODEL_LIMITS.styles),
   sheets: z.array(workbookSheetSchema).min(1).max(WORKBOOK_MODEL_LIMITS.sheets),
@@ -165,7 +165,7 @@ export const workbookRestoreSelectionSchema = z.object({ versionId: workbookVers
 export type WorkbookRestoreSelection = z.infer<typeof workbookRestoreSelectionSchema>;
 /** Host-service metadata; workbook bytes use a bounded octet-stream body. */
 export const workbookCommitRequestSchema = workbookWriteIdentitySchema.extend({
-  fileName: z.string().min(1).max(500).refine(value => /\.xlsx$/i.test(value) && value.split('/').every(part => part && part !== '.' && part !== '..' && !/[\\\u0000]/.test(part))),
+  fileName: z.string().min(1).max(500).refine(value => /\.(xlsx|csv)$/i.test(value) && value.split('/').every(part => part && part !== '.' && part !== '..' && !/[\\\u0000]/.test(part))),
   targetSha256: z.string().regex(/^[0-9a-f]{64}$/),
   actor: z.string().regex(/^[A-Za-z0-9:_-]{1,200}$/),
   mode: z.enum(['commit', 'reconcile']),

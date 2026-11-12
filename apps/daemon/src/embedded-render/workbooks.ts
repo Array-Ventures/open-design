@@ -1,3 +1,4 @@
+import { renderCsv } from './csv.js';
 import { createHash } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -9,7 +10,9 @@ import { WorkbookFormatError } from '../artifacts/workbook/package.js';
 /** Called only by the existing networkless, memory-limited render container.
  * Input is the host's immutable source snapshot; workspace files are not mounted
  * writable and this worker never persists a live edit. */
-export async function renderWorkbook(output: string, input: { fileName: string; format: 'workbook' | 'xlsx'; dataFile?: string; restore?: { fileName: string; sourceSha256: string; targetSha256: string } }, asset: (name: string) => Promise<Buffer>): Promise<{ file: string; mime: string }> {
+export async function renderWorkbook(output: string, input: { fileName: string; format: 'workbook' | 'xlsx' | 'csv'; dataFile?: string; restore?: { fileName: string; sourceSha256: string; targetSha256: string } }, asset: (name: string) => Promise<Buffer>): Promise<{ file: string; mime: string }> {
+  if (/\.csv$/i.test(input.fileName)) return renderCsv(output, input, asset);
+  if (input.format === 'csv') throw new WorkbookFormatError('CSV output requires a CSV source.');
   const bytes = await asset(input.fileName), sourceSha256 = createHash('sha256').update(bytes).digest('hex');
   if (input.restore) {
     if (input.format !== 'xlsx' || input.dataFile || input.restore.sourceSha256 !== sourceSha256) throw new WorkbookFormatError('The workbook changed after this restore was selected.');
