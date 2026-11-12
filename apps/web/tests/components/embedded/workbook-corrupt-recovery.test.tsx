@@ -68,15 +68,18 @@ it.each([false, true])('recovers through real transports while retaining drafts 
   const post = vi.spyOn(window, 'postMessage');
   render(<WorkbookSurface projectId={projectId} fileName={fileName} title="Forecast" sourceStamp="corrupt-current" />);
   await screen.findByText('The current XLSX is corrupt.');
+  expect(screen.getByRole('button', { name: 'Retry loading workbook' })).toBeTruthy();
   await waitFor(() => expect(post.mock.calls.some(([message]) => message.type === 'studio:workbook-state' && !message.restoring)).toBe(true));
   expect(drafts.listWorkbookDrafts).not.toHaveBeenCalled(); expect(drafts.readWorkbookDraft).not.toHaveBeenCalled();
   const message = post.mock.calls.map(([value]) => value).filter(value => value.type === 'studio:workbook-state').at(-1)!;
   act(() => window.dispatchEvent(new MessageEvent('message', { source: window, origin: window.location.origin, data: { type: 'studio:workbook-control', projectId, controllerId: message.controllerId, action: 'history' } })));
   fireEvent.click(await screen.findByRole('button', { name: 'Version 1' }));
+  expect(screen.queryByRole('button', { name: 'Retry loading workbook' })).toBeNull();
   expect(screen.getByText('Restore a saved version to recover this file. Local drafts are kept.')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: /^Restore$/ }));
   if (lostThenDeleted) {
     await screen.findByText('Lost restore acknowledgement.');
+    expect(screen.queryByRole('button', { name: 'Retry loading workbook' })).toBeNull();
     const protectedIntent = await drafts.accessWorkbookRestore(scope); expect(protectedIntent).not.toBeNull();
     cleanup();
     render(<WorkbookSurface projectId={projectId} fileName={fileName} title="Forecast" sourceStamp="file-deleted-after-commit" />);

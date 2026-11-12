@@ -92,6 +92,6 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
       <span className="min-w-0 flex-1">{downloadError ?? editor.state.error}</span>
       <Button variant="ghost" size="small" iconOnly leadingIcon={RiDownloadLine} className={cx(ARTIFACT_ICON_BUTTON, 'shrink-0')} aria-label="Download recovery copy (JSON)" title="Download recovery copy (JSON)" onClick={downloadCurrent} />
     </div> : null}
-    {error ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry loading workbook" title={error} className={cx(ARTIFACT_ICON_BUTTON, 'absolute end-3 top-3 z-30')} onClick={() => { setRetry(value => value + 1); void history.refresh(); }} /> : null}
+    {error && !history.open && !history.blocked ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry loading workbook" title={error} className={cx(ARTIFACT_ICON_BUTTON, 'absolute end-3 top-3 z-30')} onClick={() => { setRetry(value => value + 1); void history.refresh(); }} /> : null}
   </div>;
 }
