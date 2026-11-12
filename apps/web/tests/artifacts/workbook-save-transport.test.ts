@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { WorkbookSaveTerminalError } from '../../src/components/embedded/workbook/save-terminal';
+import { WorkbookSaveTerminalError, WorkbookSaveUnadmittedError } from '../../src/components/embedded/workbook/save-terminal';
 import { WorkbookHostError, workbookHostRequest } from '../../src/components/embedded/workbook/host-request';
-import { prepareWorkbookJob, WorkbookPreparationGoneError } from '../../src/components/embedded/workbook/preview-transport';
+import { prepareWorkbookJob, WorkbookPreparationGoneError, WorkbookPreparationTerminalError } from '../../src/components/embedded/workbook/preview-transport';
 import { newWorkbookSaveAttempt, saveWorkbook } from '../../src/components/embedded/workbook/save-transport';
 vi.mock('../../src/components/embedded/workbook/host-request', async importOriginal => ({ ...await importOriginal<object>(), workbookHostRequest: vi.fn() }));
 vi.mock('../../src/components/embedded/workbook/preview-transport', async importOriginal => ({ ...await importOriginal<object>(), prepareWorkbookJob: vi.fn(), workbookPollDelay: vi.fn(async () => {}) }));
@@ -173,4 +173,39 @@ it('does not brand HTTP errors, preparation expiry or malformed and mismatched t
   request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)); prepare.mockRejectedValueOnce(new WorkbookPreparationGoneError(candidate()));
   request.mockRejectedValueOnce(new WorkbookHostError('Access lost', 403));
   const failure = await saveWorkbook(attempt()).catch(error => error); expect(failure).not.toBeInstanceOf(WorkbookSaveTerminalError);
+});
+
+it('fences failed preparation before exposing its original error as safely unadmitted', async () => {
+  const intent = attempt(), operation = intent.operationId, preparation = intent.preparationId;
+  request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockResolvedValueOnce(candidate()).mockRejectedValueOnce(new WorkbookHostError('Missing', 404));
+  prepare.mockRejectedValueOnce(new WorkbookPreparationTerminalError({ ...candidate(), state: 'failed', error: 'Data tables cannot be edited yet.' }));
+  const failure = await saveWorkbook(intent).catch(error => error);
+  expect(failure).toBeInstanceOf(WorkbookSaveUnadmittedError); expect(failure).toMatchObject({ operationId: operation, renderId, preparationState: 'failed' }); expect(failure.message).toContain('Data tables');
+  expect(intent.preparationId).toBe(preparation); expect(request.mock.calls.map(call => call[1].action)).toEqual(['read-save', 'remove-render', 'read-save']);
+  expect(prepare).toHaveBeenCalledTimes(1); expect(request.mock.calls.some(call => call[1].action === 'save')).toBe(false);
+});
+it('requires a checked subsequent tombstone read when removal returns no body', async () => {
+  const intent = attempt(); intent.renderId = renderId;
+  request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockResolvedValueOnce({ ...candidate(), state: 'cancelled' }).mockResolvedValueOnce(undefined).mockResolvedValueOnce(candidate()).mockRejectedValueOnce(new WorkbookHostError('Missing', 404));
+  await expect(saveWorkbook(intent)).rejects.toMatchObject({ operationId: intent.operationId, preparationState: 'cancelled' });
+  expect(request.mock.calls.map(call => call[1].action)).toEqual(['read-save', 'read-render', 'remove-render', 'read-render', 'read-save']);
+});
+it('recovers a late durable receipt after terminal preparation removal without another admission', async () => {
+  const intent = attempt(); intent.renderId = renderId;
+  request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockResolvedValueOnce({ ...candidate(), state: 'failed' }).mockResolvedValueOnce(candidate()).mockResolvedValueOnce(receipt(intent.operationId));
+  await expect(saveWorkbook(intent)).resolves.toMatchObject({ state: 'applied' });
+  expect(prepare).not.toHaveBeenCalled(); expect(request.mock.calls.some(call => call[1].action === 'save')).toBe(false);
+});
+it('never labels pending output pins, missing tombstone proof or uncertain post-removal status safe to discard', async () => {
+  for (const evidence of [new WorkbookHostError('Pending output pin', 409), new WorkbookHostError('No access', 403), { ...candidate(), id: projectId }, candidate(renderId, 'ready')]) {
+    request.mockReset(); const intent = attempt(); intent.renderId = renderId;
+    request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockResolvedValueOnce({ ...candidate(), state: 'failed' });
+    if (evidence instanceof Error) request.mockRejectedValueOnce(evidence); else request.mockResolvedValueOnce(evidence);
+    const error = await saveWorkbook(intent).catch(error => error); expect(error).toBeInstanceOf(Error); expect(error).not.toBeInstanceOf(WorkbookSaveUnadmittedError);
+  }
+  for (const status of [0, 403, 409, 500]) {
+    request.mockReset(); const intent = attempt(); intent.renderId = renderId;
+    request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockResolvedValueOnce({ ...candidate(), state: 'failed' }).mockResolvedValueOnce(candidate()).mockRejectedValueOnce(new WorkbookHostError('Uncertain', status));
+    const error = await saveWorkbook(intent).catch(error => error); expect(error).not.toBeInstanceOf(WorkbookSaveUnadmittedError);
+  }
 });

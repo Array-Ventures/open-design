@@ -10,3 +10,11 @@ export class WorkbookSaveTerminalError extends WorkbookHostError {
       : 'This save was cancelled. Your edits are still here.', state === 'conflict' ? 409 : 410);
   }
 }
+
+/** The exact failed/cancelled candidate was durably removed, then its save
+ * identity was proven absent. Unlike an HTTP error, this fences late admission. */
+export class WorkbookSaveUnadmittedError extends WorkbookHostError {
+  constructor(readonly operationId: string, readonly renderId: string, readonly preparationState: 'failed' | 'cancelled', reason: string) {
+    super(`${reason.slice(0, 1000)} This save was not admitted. Your edits are still here; you can retry or discard them.`, 422);
+  }
+}

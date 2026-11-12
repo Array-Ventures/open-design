@@ -9,11 +9,19 @@ export function checkedWorkbookJob(raw: unknown, projectId: string, fileName: st
   if (job.projectId !== projectId || job.input.fileName !== fileName || job.input.format !== format) throw new WorkbookHostError('The workbook preparation identity does not match this preview.');
   return job;
 }
-/** Carries the exact validated durable tombstone returned by preparation replay.
- * A generic 410 is deliberately insufficient evidence for rotating an intent. */
-export class WorkbookPreparationGoneError extends WorkbookHostError {
+/** A checked terminal job is evidence to reconcile, not proof that no save
+ * was admitted. Only the save transport's tombstone/status fence proves that. */
+export class WorkbookPreparationTerminalError extends WorkbookHostError {
   constructor(readonly job: ReturnType<typeof checkedWorkbookJob>) {
-    super('This workbook preparation has expired.', 410);
+    super(job.error || (job.state === 'deleted' ? 'This workbook preparation has expired.' : 'The workbook could not be prepared.'), job.state === 'deleted' ? 410 : 422);
+    if (!['failed', 'cancelled', 'deleted'].includes(job.state)) throw new WorkbookHostError('The preparation is not terminal.');
+  }
+}
+/** Exact deleted-job identity returned by idempotent preparation replay. */
+export class WorkbookPreparationGoneError extends WorkbookPreparationTerminalError {
+  constructor(job: ReturnType<typeof checkedWorkbookJob>) {
+    super(job);
+    if (job.state !== 'deleted') throw new WorkbookHostError('The preparation has not expired.');
   }
 }
 export function workbookPollDelay(signal?: AbortSignal): Promise<void> {
@@ -34,7 +42,7 @@ export async function prepareWorkbookJob(projectId: string, fileName: string, fo
     if (job.id !== id) throw new WorkbookHostError('The workbook preparation identity changed.');
   }
   if (job.state === 'deleted') throw new WorkbookPreparationGoneError(job);
-  if (job.state !== 'ready') throw new WorkbookHostError(job.error || 'The workbook could not be prepared.', 422);
+  if (job.state !== 'ready') throw new WorkbookPreparationTerminalError(job);
   return job;
   } catch (error) {
     if (signal?.aborted && format === 'workbook') {
