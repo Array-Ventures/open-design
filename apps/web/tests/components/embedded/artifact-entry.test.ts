@@ -57,3 +57,9 @@ it('keeps supporting document images out of primary selection and prefers a type
   expect(artifactEntry([{ ...file('images/photo.png'), kind: 'image' }, file('report.md'), file('index.html')], null, 'document')?.file.name).toBe('report.md');
   expect(artifactEntry([{ ...file('report.markdown'), kind: 'text' }], null)?.kind).toBe('document');
 });
+
+it('opens CSV as the existing Sheets artifact without pretending it is HTML or converting its source', () => {
+  const csv = { ...file('reports/literal.csv'), kind: 'spreadsheet' as const, mime: 'text/csv' };
+  expect(artifactEntry([file('index.html'), csv], null, 'workbook')).toMatchObject({ kind: 'workbook', file: { name: 'reports/literal.csv' } });
+  expect(artifactEntry([csv], csv.name, 'document')).toMatchObject({ kind: 'workbook', file: { mime: 'text/csv' } });
+});

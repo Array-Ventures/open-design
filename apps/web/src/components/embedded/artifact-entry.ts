@@ -14,15 +14,15 @@ export function artifactEntry(files: ProjectFile[], selected: string | null, pro
     ?? candidates.find(item => item.artifactManifest?.primary === true || item.artifactManifest?.primary === item.name)
     ?? candidates.find(item => ['image', 'video', 'audio'].includes(projectKind ?? '') && item.kind === projectKind)
     ?? candidates.find(item => projectKind === 'document' && /\.(md|markdown)$/i.test(item.name))
-    ?? candidates.find(item => projectKind === 'workbook' && /\.xlsx$/i.test(item.name))
+    ?? candidates.find(item => projectKind === 'workbook' && /\.(xlsx|csv)$/i.test(item.name))
     ?? candidates.find(item => item.name === 'index.html')
     ?? candidates.find(item => item.kind === 'html')
     ?? candidates.find(item => ['image', 'video', 'audio', 'pdf', 'sketch'].includes(item.kind))
-    ?? candidates.find(item => /\.xlsx$/i.test(item.name))
+    ?? candidates.find(item => /\.(xlsx|csv)$/i.test(item.name))
     ?? candidates.find(item => /\.(md|markdown|txt)$/i.test(item.name));
   if (!file) return null;
   const declared = file.artifactManifest?.kind;
-  const kind = /\.xlsx$/i.test(file.name) ? 'workbook' : declared === 'deck' || projectKind === 'deck' ? 'deck'
+  const kind = /\.(xlsx|csv)$/i.test(file.name) ? 'workbook' : declared === 'deck' || projectKind === 'deck' ? 'deck'
     : declared === 'markdown-document' || projectKind === 'document' || /\.(md|markdown|txt)$/i.test(file.name) ? 'document'
     : file.kind === 'image' || file.kind === 'sketch' ? 'image'
     : file.kind === 'video' || file.kind === 'audio' ? file.kind

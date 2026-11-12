@@ -1,3 +1,4 @@
+import { csvGridEdits } from './csv-grid-edits';
 import type { IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument, workbookEditPlanSchema } from '@open-design/contracts/runtime/workbook';
 import type { z } from 'zod';
@@ -40,7 +41,7 @@ export class WorkbookWriter {
       }
     }
   }
-  private plan() { return workbookGridEdits(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired); }
+  private plan() { return (this.source.model.sourceFormat === 'csv' ? csvGridEdits : workbookGridEdits)(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired); }
   state(): WorkbookWriteState {
     let dirty = Boolean(this.pending || this.running);
     try { const plan = this.plan(); dirty ||= plan.edits.length > 0 || Boolean(plan.dimensions?.length || plan.styles?.length); } catch { dirty = true; }

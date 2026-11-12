@@ -26,19 +26,21 @@ vi.mock('../../../src/components/embedded/workbook/draft-store', async original 
 // bytes and the guarded transition into draft recovery are the relevant seam.
 vi.mock('../../../src/components/embedded/workbook/WorkbookGrid', () => ({ WorkbookGrid: () => <div>Recovered grid</div> }));
 const projectId = '18a8301a-b6e1-4001-8000-c967b1eab222', fileName = 'book.xlsx';
-const scope = { viewerId: 'person', projectId, fileName, draftId: '18a8301a-b6e1-4001-8000-c967b1eab229' };
+const baseScope = { viewerId: 'person', projectId, fileName, draftId: '18a8301a-b6e1-4001-8000-c967b1eab229' };
 const corruptSha = 'a'.repeat(64), restoredSha = 'b'.repeat(64);
-const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 's', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 's', name: 'Sheet', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [{ row: 0, column: 0, kind: 'number', value: 1 }], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
+const baseModel: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 's', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 's', name: 'Sheet', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [{ row: 0, column: 0, kind: 'number', value: 1 }], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
 beforeEach(() => {
   vi.stubGlobal('indexedDB', new IDBFactory()); vi.stubGlobal('IDBKeyRange', IDBKeyRange);
   vi.stubGlobal('navigator', { locks: { request: vi.fn((_name, _options, callback) => Promise.resolve(callback({ name: 'owned-fixture-lock' }))) } });
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
 
-it.each([false, true, 'transient'])('recovers through real transports while retaining drafts (lost acknowledgement then deleted file: %s)', async lostThenDeleted => {
+it.each(['xlsx', 'csv'].flatMap(extension => [false, true, 'transient'].map(lostThenDeleted => ({ extension, lostThenDeleted }))))('recovers $extension through real transports while retaining drafts (lost acknowledgement then deleted file: $lostThenDeleted)', async ({ extension, lostThenDeleted }) => {
+  const fileName = `book.${extension}`, scope = { ...baseScope, fileName }, model = structuredClone(baseModel);
+  if (extension === 'csv') { model.sourceFormat = 'csv'; model.styles = [{ numberFormat: '@' }]; model.sheets[0]!.id = model.activeSheetId = 'csv'; model.sheets[0]!.cells = [{ row: 0, column: 0, kind: 'string', value: '001', style: 0 }]; }
   const initial = gridWorkbook(model, `${projectId}:${fileName}`, 'Forecast').data as IWorkbookData;
   const writer = new WorkbookWriter({ sourceSha256: 'c'.repeat(64), model }, initial, vi.fn(), vi.fn());
-  const edited = structuredClone(initial); edited.sheets.s!.cellData![0]![0]!.v = 98765; writer.update(edited);
+  const edited = structuredClone(initial); edited.sheets[model.activeSheetId]!.cellData![0]![0]!.v = extension === 'csv' ? '98765' : 98765; writer.update(edited);
   const checkpoint = writer.checkpoint(); await drafts.saveWorkbookDraft(scope, checkpoint);
   let currentSha: string | null = corruptSha;
   let receipt: object | null = null, failRecoveryOnce = false;
@@ -56,8 +58,8 @@ it.each([false, true, 'transient'])('recovers through real transports while reta
       expect(request.body).toMatchObject({ fileName, sourceSha256: corruptSha, versionId: 'immutable-v1', versionSha256: restoredSha });
       const protectedIntent = await drafts.accessWorkbookRestore(scope);
       expect(protectedIntent).toMatchObject({ preparationId: request.body.operationId, sourceSha256: corruptSha, versionId: 'immutable-v1', versionSha256: restoredSha });
-      const job = { id: request.body.operationId, projectId, input: { fileName, format: 'xlsx' }, state: 'ready', error: null,
-        output: { file: 'artifact.xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', bytes: 100, sha256: restoredSha } };
+      const job = { id: request.body.operationId, projectId, input: { fileName, format: extension }, state: 'ready', error: null,
+        output: { file: `artifact.${extension}`, mime: extension === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', bytes: 100, sha256: restoredSha } };
       prepared.set(job.id, job); return job;
     }
     if (request.action === 'save') {
@@ -93,11 +95,11 @@ it.each([false, true, 'transient'])('recovers through real transports while reta
     render(<ArtifactSurface project={{ id: projectId, name: 'Forecast', metadata: { embeddedArtifactKind: 'workbook' } } as Project} files={[]} dashboards={[]} fileName={null} generation={2} onRefresh={async () => {}} feedback={{}} />);
     if (lostThenDeleted === 'transient') {
       const retry = await screen.findByRole('button', { name: 'Retry workbook recovery' });
-      expect(screen.queryByRole('button', { name: 'Open restore status for book.xlsx' })).toBeNull();
+      expect(screen.queryByRole('button', { name: `Open restore status for ${fileName}` })).toBeNull();
       expect(await drafts.accessWorkbookRestore(scope)).toEqual(protectedIntent);
       fireEvent.click(retry);
     }
-    fireEvent.click(await screen.findByRole('button', { name: 'Open restore status for book.xlsx' }));
+    fireEvent.click(await screen.findByRole('button', { name: `Open restore status for ${fileName}` }));
     expect(screen.queryByText('Agent is cooking')).toBeNull();
     const check = await screen.findByRole('button', { name: 'Check status' });
     expect(check.hasAttribute('disabled')).toBe(false);
