@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { BooleanNumber, ICommandService, IConfigService, CellValueType, DateSystem, LocaleType, Univer, type ICellData, type IObjectMatrixPrimitiveType, type IWorkbookData } from '@univerjs/core';
+import { BooleanNumber, ICommandService, IConfigService, CellValueType, DateSystem, LocaleType, Univer, type ICellData, type IObjectMatrixPrimitiveType, type IWorkbookData, type IUnitRange } from '@univerjs/core';
 import { FUniver } from '@univerjs/core/facade';
-import { BaseFunction, BooleanValue, ERROR_TYPE_SET, type ErrorType, ENGINE_FORMULA_RETURN_DEPENDENCY_TREE, IDefinedNamesService, IFunctionService, ISuperTableService, SetFormulaDependencyCalculationResultMutation, SetArrayFormulaDataMutation, type ISetArrayFormulaDataMutationParams, deserializeRangeWithSheet, quoteSheetName, sequenceNodeType, splitTableStructuredRef, type ISetFormulaDependencyCalculationResultMutation, SetDefinedNameMutation, SetSuperTableMutation, UniverFormulaEnginePlugin, type ArrayValueObject, type BaseValueObject } from '@univerjs/engine-formula';
+import { BaseFunction, BooleanValue, DependencyManagerService, IDependencyManagerService, ERROR_TYPE_SET, type ErrorType, ENGINE_FORMULA_RETURN_DEPENDENCY_TREE, IDefinedNamesService, IFunctionService, ISuperTableService, SetFormulaDependencyCalculationResultMutation, SetArrayFormulaDataMutation, type ISetArrayFormulaDataMutationParams, deserializeRangeWithSheet, quoteSheetName, sequenceNodeType, splitTableStructuredRef, type ISetFormulaDependencyCalculationResultMutation, SetDefinedNameMutation, SetSuperTableMutation, UniverFormulaEnginePlugin, type ArrayValueObject, type BaseValueObject } from '@univerjs/engine-formula';
 import { UniverSheetsPlugin } from '@univerjs/sheets';
 import { CalculationMode, UniverSheetsFormulaPlugin } from '@univerjs/sheets-formula';
 import SheetsEnUS from '@univerjs/sheets/locale/en-US';
@@ -122,9 +122,27 @@ export async function calculateWorkbookResults(input: WorkbookDocument, original
   }
   let arrayData: ISetArrayFormulaDataMutationParams | undefined;
   let subscription: { dispose(): void } | undefined;
+  // The pinned generator queries dependents at an owner's anchor. Its public
+  // dependency service can expand that query to explicit source ownership before
+  // execution, making follower consumers participate in genuine engine order.
+  class SourceArrayDependencyManager extends DependencyManagerService {
+    override searchDependency(search: IUnitRange[], exceptTreeIds?: Set<number>): Set<number> {
+      return super.searchDependency(search.map(item => {
+        if (item.unitId !== 'evebot-workbook-calculation' || item.range.startRow !== item.range.endRow || item.range.startColumn !== item.range.endColumn) return item;
+        const owner = owners.get(formulaCellKey(item.sheetId, item.range.startRow, item.range.startColumn));
+        return owner ? { ...item, range: { ...owner.range } } : item;
+      }), exceptTreeIds);
+    }
+  }
+  class SourceArrayFormulaEnginePlugin extends UniverFormulaEnginePlugin {
+    protected override _initializeWithOverride(): void {
+      super._initializeWithOverride();
+      if (owners.size) this._injector.replace([IDependencyManagerService, { useClass: SourceArrayDependencyManager }]);
+    }
+  }
   const univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: SheetsEnUS } });
   try {
-    univer.registerPlugin(UniverFormulaEnginePlugin, { function: [[CaptureResult, capture]] });
+    univer.registerPlugin(SourceArrayFormulaEnginePlugin, { function: [[CaptureResult, capture]] });
     univer.registerPlugin(UniverSheetsPlugin);
     univer.registerPlugin(UniverSheetsFormulaPlugin, { initialFormulaComputing: CalculationMode.NO_CALCULATION });
     univer.__getInjector().get(IConfigService).setConfig(ENGINE_FORMULA_RETURN_DEPENDENCY_TREE, true);

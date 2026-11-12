@@ -53,7 +53,7 @@ async function writeCalculatedCaches(source: ReadWorkbook, model: WorkbookDocume
       if (calculated.formula) throw new WorkbookFormatError('Calculated owner is missing from its package.');
       let row = rows.get(calculated.row);
       if (!row) { row = document.createElementNS(data.namespaceURI, data.prefix ? `${data.prefix}:row` : 'row'); row.setAttribute('r', String(calculated.row + 1)); data.appendChild(row); rows.set(calculated.row, row); }
-      const cell = document.createElementNS(data.namespaceURI, data.prefix ? `${data.prefix}:c` : 'c'); cell.setAttribute('r', cellAddress(calculated.row, calculated.column)); row.appendChild(cell);
+      const cell = document.createElementNS(data.namespaceURI, data.prefix ? `${data.prefix}:c` : 'c'); cell.setAttribute('r', cellAddress(calculated.row, calculated.column)); row.appendChild(cell); row.removeAttribute('spans');
     }
     for (const row of children(data, 'row')) for (const cell of children(row, 'c')) {
       const position = address(cell.getAttribute('r')!), calculated = formulas.get(`${position.row}:${position.column}`);
