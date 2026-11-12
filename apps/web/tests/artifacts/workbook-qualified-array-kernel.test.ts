@@ -1,4 +1,7 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
+import { ICommandService, Univer } from '@univerjs/core';
+import { FUniver } from '@univerjs/core/facade';
+import { SetFormulaCalculationStartMutation } from '@univerjs/engine-formula';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { qualifiedArrayKernel } from '../../src/components/embedded/workbook/qualified-array-kernel';
 import { workbookGridEdits } from '../../src/components/embedded/workbook/grid-edits';
@@ -67,4 +70,29 @@ it('keeps typed error-looking strings distinct from genuine errors and booleans'
  current.sheets.s!.cellData![2]![3]!.f='=IF(SEQUENCE(2)=1,"#SPILL!",NA())';
  const result=await kernel.calculate(current,1);expect(result.cells.s?.[2]?.[3]).toEqual({kind:'string',value:'#SPILL!'});expect(result.cells.s?.[3]?.[3]).toEqual({kind:'error',value:'#N/A'});
  current.sheets.s!.cellData![2]![3]!.f='=SEQUENCE(2)>1';const booleans=await kernel.calculate(current,2);expect(booleans.cells.s?.[2]?.[3]).toEqual({kind:'boolean',value:false});expect(booleans.cells.s?.[3]?.[3]).toEqual({kind:'boolean',value:true});
+});
+
+it('requires dependency evidence when the worker has no UI controller to request it', async () => {
+ const newAPI = FUniver.newAPI;
+ const missingUi = vi.spyOn(FUniver, 'newAPI').mockImplementation(univer => {
+  const injector = univer instanceof Univer ? univer.__getInjector() : univer;
+  const api = newAPI.call(FUniver, univer), create = api.createWorkbook.bind(api);
+  vi.spyOn(api, 'createWorkbook').mockImplementation((...args) => {
+   const book = create(...args);
+   // Model the actual worker boundary after workbook/UI startup: no UI
+   // controller copied the dependency flag into the calculation request.
+   injector.get(ICommandService).beforeCommandExecuted(command => {
+    if (command.id === SetFormulaCalculationStartMutation.id) Object.assign(command.params ?? {}, { isCalculateTreeModel: false });
+   });
+   return book;
+  });
+  return api;
+ });
+ try {
+  const kernel = qualifiedArrayKernel(model(), 'array-worker-boundary', sha);
+  const result = await kernel.calculate(kernel.initial, 1);
+  expect(result.cells.s?.[3]?.[3]).toEqual({ kind: 'number', value: 11 });
+  expect(result.cells.s?.[0]?.[5]).toEqual({ kind: 'number', value: 111 });
+  expect(result.unavailable).toEqual([]);
+ } finally { missingUi.mockRestore(); }
 });

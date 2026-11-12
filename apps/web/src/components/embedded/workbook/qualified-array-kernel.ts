@@ -133,7 +133,12 @@ export function qualifiedArrayKernel(model: WorkbookDocument, unitId: string, so
       for (const [id, owner] of owners) if (!(sourceOwners.get(id)?.calculation === 'dynamic' && owner.range.endRow === owner.row && owner.range.endColumn === owner.column)) (((seed.arrayFormulaRange[unitId]![owner.sheetId] ??= {})[owner.row] ??= {})[owner.column] = { ...owner.range });
       api.syncExecuteCommand(engine.SetArrayFormulaDataMutation.id, seed, { onlyLocal: true });
       let trees: FormulaDependencyNode[] | undefined;
-      const subscription = univer.__getInjector().get(ICommandService).beforeCommandExecuted(command => { if (command.id === engine.SetFormulaDependencyCalculationResultMutation.id) trees = (command.params as { result: FormulaDependencyNode[] }).result; });
+      const subscription = univer.__getInjector().get(ICommandService).beforeCommandExecuted(command => {
+        // Workers omit the UI controller that copies this configuration into
+        // each start request. Request evidence here; never relax its admission.
+        if (command.id === engine.SetFormulaCalculationStartMutation.id) Object.assign(command.params ?? {}, { isCalculateTreeModel: true });
+        if (command.id === engine.SetFormulaDependencyCalculationResultMutation.id) trees = (command.params as { result: FormulaDependencyNode[] }).result;
+      });
       univer.__getInjector().get(IConfigService).setConfig(engine.ENGINE_FORMULA_RETURN_DEPENDENCY_TREE, true);
       try { formulas.executeCalculation(); await formulas.onCalculationResultApplied(5_000); } finally { subscription.dispose(); }
       if (failed) fail(failure);
