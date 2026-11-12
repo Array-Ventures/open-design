@@ -2,7 +2,7 @@ import { RiRefreshLine } from '@remixicon/react';
 import { Button as HostButton } from './boardui/button';
 import { useEmbeddedMarkup } from './useEmbeddedMarkup';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, ButtonRendererProvider, InputRendererProvider, TextareaRendererProvider, ValueSelectRendererProvider } from '@open-design/components';
+import { ButtonRendererProvider, InputRendererProvider, TextareaRendererProvider, ValueSelectRendererProvider } from '@open-design/components';
 import { renderEmbeddedButton, renderEmbeddedInput, renderEmbeddedTextarea, renderEmbeddedValueSelect } from './boardui/controls';
 import { projectKindFromMetadataToTrackingOrLegacyDefault } from '@open-design/contracts/analytics';
 import { fetchProjectFiles, invalidateProjectFilesCache } from '../../providers/registry';
@@ -57,6 +57,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
   const [dashboardError, setDashboardError] = useState(false);
   const [generation, setGeneration] = useState(0);
   const [error, setError] = useState(false);
+  const [accessLost, setAccessLost] = useState(false);
   const [attempt, setAttempt] = useState(0);
   // Tabs are host-frame state for now, not a shared project's global selection.
   const [tabs, setTabs] = useState<OpenTabsState>({ tabs: [], active: null });
@@ -66,6 +67,10 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
     mounted.current = true;
     return () => { mounted.current = false; request.current += 1; };
   }, []);
+
+  useEffect(() => {
+    if (accessLost) window.parent.postMessage({ type: 'studio:project-unavailable', projectId }, window.location.origin);
+  }, [accessLost, projectId]);
 
   const refresh = useCallback(async () => {
     const version = ++request.current;
@@ -83,7 +88,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
         setError(true);
         const status = typeof cause === 'object' && cause !== null && 'status' in cause ? Number(cause.status) : 0;
         // Transport failure retains loaded drafts; explicit access loss withdraws the writable surface.
-        if ([401, 403, 404].includes(status)) setProject(null);
+        if ([401, 403, 404].includes(status)) { setProject(null); setAccessLost(true); }
       }
     }
   }, [projectId, pool]);
@@ -92,7 +97,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
     let cancelled = false;
     void getProject(projectId).then((next) => {
       if (cancelled) return;
-      if (!next) { setError(true); return; }
+      if (!next) { setError(true); setAccessLost(true); return; }
       setProject(next);
       void refresh();
     });
@@ -124,7 +129,7 @@ function EmbeddedProject({ projectId, fileName }: { projectId: string; fileName:
 
   if (!project || generation === 0) {
     return <div role={error ? 'alert' : 'status'} className={styles.status}>
-      {error ? <div>Project unavailable <Button onClick={() => { setError(false); setAttempt((n) => n + 1); }}>Retry</Button></div> : 'Loading project…'}
+      {error ? <div className="flex items-center gap-2">Project unavailable <HostButton variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry loading artifact" onClick={() => { setError(false); setAccessLost(false); setAttempt((n) => n + 1); }} /></div> : 'Loading project…'}
     </div>;
   }
   return (

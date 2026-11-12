@@ -45,7 +45,7 @@ beforeEach(() => {
   state.getProject.mockResolvedValue(project);
   state.files.mockResolvedValue([file('index.html')]);
 });
-afterEach(() => { cleanup(); vi.resetAllMocks(); state.event = null; state.ready = null; });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.resetAllMocks(); state.event = null; state.ready = null; });
 
 describe('host-owned embedded Studio', () => {
   it('lets the workspace retain a managed preview frame across file-list reconciliation', async () => {
@@ -108,6 +108,7 @@ describe('host-owned embedded Studio', () => {
   });
 
   it('retains the mounted preview and its state when a refresh has a transport failure', async () => {
+    const host = vi.spyOn(window.parent, 'postMessage');
     state.identityFrame = true;
     render(<EmbeddedStudio />);
     await screen.findByText('Host-owned agent');
@@ -116,6 +117,7 @@ describe('host-owned embedded Studio', () => {
     act(() => { screen.getByText('Saved in Studio').click(); });
     await waitFor(() => expect(screen.getByText('Couldn’t refresh.')).toBeInTheDocument());
     expect(screen.getByTestId('identity-preview')).toBe(frame);
+    expect(host.mock.calls.some(([message]) => message?.type === 'studio:project-unavailable')).toBe(false);
     state.files.mockResolvedValueOnce([file('index.html')]);
     act(() => { screen.getByRole('button', { name: 'Retry refresh' }).click(); });
     await waitFor(() => expect(screen.queryByText('Couldn’t refresh.')).toBeNull());
@@ -123,12 +125,14 @@ describe('host-owned embedded Studio', () => {
   });
 
   it('withdraws the writable workspace when a saved-edit refresh explicitly denies access', async () => {
+    const host = vi.spyOn(window.parent, 'postMessage');
     render(<EmbeddedStudio />);
     await screen.findByText('index.html');
     state.files.mockRejectedValueOnce(Object.assign(new Error('Forbidden'), { status: 403 }));
     act(() => { screen.getByText('Saved in Studio').click(); });
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Project unavailable'));
     expect(screen.queryByTestId('embedded-studio')).not.toBeInTheDocument();
+    expect(host).toHaveBeenCalledWith({ type: 'studio:project-unavailable', projectId: 'project-a' }, window.location.origin);
   });
 });
 
