@@ -25,3 +25,10 @@ navigation, a retained reply across filters and external slide changes, and root
 text/image receipt retention. The two FileViewer regressions fail with the
 preceding FileViewer source. No browser, packaged build, service, or model was
 started for this slice. Final light/dark/narrow/chat visual acceptance is pending.
+
+The discard guard now binds each pending consent to its current project/file/
+authority and composer lifetime, its exact draft revision and one pending
+attempt. Unmount, replacement, newer typing or another accepted retarget makes
+the old consent inert. Tests include delayed affirmative responses after each
+boundary and the unchanged normal confirmed retarget. These are local UI
+lifecycle fences, not a change to server authorization.

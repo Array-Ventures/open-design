@@ -9568,7 +9568,7 @@ function HtmlViewer({
   useEffect(() => cancelHoverCardDismiss, [cancelHoverCardDismiss]);
   const [activePreviewCommentId, setActivePreviewCommentId] = useState<string | null>(null);
   const activeCommentLifetime = useRef({ key: '', revision: 0 });
-  const activeCommentKey = JSON.stringify([projectId, file.name, activePreviewCommentId]);
+  const activeCommentKey = JSON.stringify([projectId, file.name, sourceAuthorizationScopeKey, activePreviewCommentId]);
   if (activeCommentLifetime.current.key !== activeCommentKey) activeCommentLifetime.current = { key: activeCommentKey, revision: activeCommentLifetime.current.revision + 1 };
   const [rootEditIntent, setRootEditIntent] = useState(0);
   const [rootSelectionIntent, setRootSelectionIntent] = useState(0);
@@ -9579,9 +9579,18 @@ function HtmlViewer({
   const [liveCommentTargets, setLiveCommentTargets] = useState<Map<string, PreviewCommentSnapshot>>(() => new Map());
   const [commentTargetsReadyKey, setCommentTargetsReadyKey] = useState<string | null>(null);
   const liveCommentTargetsRef = useRef(liveCommentTargets);
+  const composerDraftRevision = useRef(0);
+  const composerRetarget = useRef({ active: false, attempt: null as object | null });
+  useLayoutEffect(() => {
+    const life = composerRetarget.current; life.active = true;
+    return () => { life.active = false; life.attempt = null; };
+  }, [projectId, file.name, sourceAuthorizationScopeKey]);
   const [commentDraft, setCommentDraftState] = useState('');
   const commentDraftRef = useRef('');
-  const setCommentDraft = useCallback((value: string) => { commentDraftRef.current = value; setCommentDraftState(value); }, []);
+  const setCommentDraft = useCallback((value: string) => {
+    if (value !== commentDraftRef.current) composerDraftRevision.current++;
+    commentDraftRef.current = value; setCommentDraftState(value);
+  }, []);
   // Inspect mode shares the iframe selection bridge with comment mode but
   // routes the picked element to a side panel that mutates per-element CSS
   // overrides via postMessage. The host owns the authoritative override map:
@@ -9612,6 +9621,7 @@ function HtmlViewer({
   const boardImagesRef = useRef<File[]>([]);
   const setBoardImages = useCallback((update: File[] | ((current: File[]) => File[])) => {
     const next = typeof update === 'function' ? update(boardImagesRef.current) : update;
+    if (next !== boardImagesRef.current) composerDraftRevision.current++;
     boardImagesRef.current = next; setBoardImagesState(next);
   }, []);
   const rootSaveLock = useRef(false);
@@ -9632,6 +9642,13 @@ function HtmlViewer({
   // Read through refs inside the preview message listener, so a keystroke in
   // the draft does not re-subscribe it.
   const [threadDraftDirty, setThreadDraftDirty] = useState(false);
+  // SavedCommentThread reports each text/image edit, even while already dirty.
+  const reportThreadDraft = useCallback((dirty: boolean) => { composerDraftRevision.current++; setThreadDraftDirty(dirty); }, []);
+  const draftParts = [activeCommentTarget, queuedBoardNotes, activeCommentExistingAttachments];
+  const previousDraftParts = useRef(draftParts);
+  if (draftParts.some((part, index) => part !== previousDraftParts.current[index])) {
+    composerDraftRevision.current++; previousDraftParts.current = draftParts;
+  }
   const composerHoldsUnsentWork = Boolean(activeCommentTarget) && (threadDraftDirty || composerHasUnsentWork({
     draft: commentDraft,
     queuedNoteCount: queuedBoardNotes.length,
@@ -9654,9 +9671,19 @@ function HtmlViewer({
    * Editing the draft disarms. Every pick path retargets through here.
    */
   const requestComposerRetarget = useCallback((applyRetarget: () => void, editRoot = false) => {
-    const apply = () => { onDiscardPreviewCommentWrite?.(); activeCommentLifetime.current = { key: activeCommentLifetime.current.key, revision: activeCommentLifetime.current.revision + 1 }; setRootSelectionIntent(intent => intent + 1); if (!editRoot) setRootEditIntent(0); applyRetarget(); };
+    const life = composerRetarget.current, attempt = {}; life.attempt = attempt;
+    const lifetime = activeCommentLifetime.current, revision = composerDraftRevision.current;
+    const current = () => life.active && life.attempt === attempt && activeCommentLifetime.current === lifetime && composerDraftRevision.current === revision;
+    const apply = () => {
+      if (!current()) return;
+      life.attempt = null; onDiscardPreviewCommentWrite?.();
+      activeCommentLifetime.current = { key: activeCommentLifetime.current.key, revision: activeCommentLifetime.current.revision + 1 };
+      setRootSelectionIntent(intent => intent + 1);
+      if (!editRoot) setRootEditIntent(0);
+      applyRetarget();
+    };
     if (inlineAnnotations && window.parent !== window && composerHoldsUnsentWorkRef.current) {
-      void confirmHostFeedbackDiscard(projectId, 'comment').then(discard => { if (discard) { disarmComposerDiscard(); apply(); } });
+      void confirmHostFeedbackDiscard(projectId, 'comment').then(discard => { if (discard && current()) { disarmComposerDiscard(); apply(); } });
       return;
     }
     if (composerHoldsUnsentWorkRef.current && !composerDiscardArmedRef.current) {
@@ -17284,7 +17311,7 @@ function HtmlViewer({
       canDeleteComment={canDeleteActiveComment}
       canSendToAgent={canSendActiveComment}
       draft={commentDraft}
-      onThreadDirty={setThreadDraftDirty}
+      onThreadDirty={reportThreadDraft}
       rootEditIntent={rootEditIntent}
       rootSelectionIntent={rootSelectionIntent}
       notes={queuedBoardNotes}
