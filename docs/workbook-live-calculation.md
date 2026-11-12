@@ -271,3 +271,28 @@ that worker while the main workbook remains responsive. The deadline is terminal
 and generation-bound; it never silently restarts against a different draft.
 Matching result provenance, immutable cache/display authority and writer/archive
 integration remain required before production Grid enablement.
+
+## Production-entry and input-provenance proof (Grid still disabled)
+
+The worker-safe `workbook-formula.worker.ts` now uses the pinned core worker
+preset directly. Its Node RPC qualification imports that actual entry, not a
+parallel implementation. The owner handles readiness, error, deadline and unmount;
+a supplied Worker remains caller-owned because the RPC plugin does not terminate
+it. Late readiness cannot revive departed or failed ownership.
+
+`formula-input-provenance.ts` hashes authored literals, their types, exact formula
+strings and registered sheet identity/geometry. It excludes formula caches and
+display styles. At the pinned execution-lock stage1 callback, the worker captures
+that immutable digest and a mutation revision; it tags array, dependency and
+scalar result mutations before the pinned RPC forwards them. Any intervening
+input change invalidates the result, even an away-and-back edit. Main-thread
+application must also compare the tag with its current input digest. This uses
+standard synchronous SHA-256 from the already pinned noble library, not a weak
+ad-hoc hash or a source-formula rewrite.
+
+Actual-entry tests preserve imported cache999 before an input edit, recalculate
+it to10 after A1 becomes7, and converge to12 after rapid edits to8 then9. Matching
+production result tags carry a valid digest of the current main inputs. Unit
+coverage distinguishes literal types/formula spelling from derived cache/style
+changes and rejects an away-and-back mutation revision. None of this promotes
+calculated or recovery snapshots into genuine loaded-cache authority.

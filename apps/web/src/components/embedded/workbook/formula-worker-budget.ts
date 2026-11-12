@@ -19,10 +19,10 @@ export function assertWorkbookCalculationBudget(books: readonly IWorkbookData[],
       if (!inspectCells) continue;
       for (const [rowText, entries] of Object.entries(sheet.cellData ?? {})) for (const [columnText, cell] of Object.entries(entries ?? {})) {
         const row = Number(rowText), column = Number(columnText);
-        if (!Number.isSafeInteger(row) || !Number.isSafeInteger(column) || row < 0 || column < 0 || row >= rows || column >= columns || ++cells > WORKBOOK_MODEL_LIMITS.cells) throw new WorkbookCalculationBudgetError('Workbook calculation contains out-of-bounds cells.');
+        if (!/^(0|[1-9][0-9]*)$/.test(rowText) || !/^(0|[1-9][0-9]*)$/.test(columnText) || !Number.isSafeInteger(row) || !Number.isSafeInteger(column) || row < 0 || column < 0 || row >= rows || column >= columns || ++cells > WORKBOOK_MODEL_LIMITS.cells) throw new WorkbookCalculationBudgetError('Workbook calculation contains out-of-bounds cells.');
         if (cell != null) {
           if (typeof cell !== 'object' || Array.isArray(cell)) throw new WorkbookCalculationBudgetError('Workbook calculation cells are malformed.');
-          const data = cell as ICellData; text += typeof data.v === 'string' ? data.v.length : 0; text += typeof data.f === 'string' ? data.f.length : 0;
+          const data = cell as ICellData; text += typeof data.v === 'string' ? data.v.length : 0; text += typeof data.f === 'string' ? data.f.length : 0; text += data.p ? JSON.stringify(data.p).length : 0;
         }
         if (text > WORKBOOK_MODEL_LIMITS.text) throw new WorkbookCalculationBudgetError('Workbook calculation text exceeds its limit.');
       }
@@ -48,10 +48,10 @@ export function assertWorkbookCalculationMutation(command: WorkbookCalculationMu
   let count = 0;
   for (const [rowText, entries] of Object.entries(params.cellValue)) {
     const row = Number(rowText);
-    if (!Number.isSafeInteger(row) || row < 0 || row >= (sheet.rowCount ?? 0) || !entries || typeof entries !== 'object' || Array.isArray(entries)) throw new WorkbookCalculationBudgetError('Workbook calculation mutation exceeds its registered bounds.');
+    if (!/^(0|[1-9][0-9]*)$/.test(rowText) || !Number.isSafeInteger(row) || row < 0 || row >= (sheet.rowCount ?? 0) || !entries || typeof entries !== 'object' || Array.isArray(entries)) throw new WorkbookCalculationBudgetError('Workbook calculation mutation exceeds its registered bounds.');
     for (const columnText of Object.keys(entries)) {
       const column = Number(columnText);
-      if (!Number.isSafeInteger(column) || column < 0 || column >= (sheet.columnCount ?? 0) || ++count > WORKBOOK_MODEL_LIMITS.cells) throw new WorkbookCalculationBudgetError('Workbook calculation mutation exceeds its registered bounds.');
+      if (!/^(0|[1-9][0-9]*)$/.test(columnText) || !Number.isSafeInteger(column) || column < 0 || column >= (sheet.columnCount ?? 0) || ++count > WORKBOOK_MODEL_LIMITS.cells) throw new WorkbookCalculationBudgetError('Workbook calculation mutation exceeds its registered bounds.');
     }
   }
 }

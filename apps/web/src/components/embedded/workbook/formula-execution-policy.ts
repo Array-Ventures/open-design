@@ -1,5 +1,5 @@
 import type { ICellData, IWorkbookData } from '@univerjs/presets';
-import type { BaseFunction, IFunctionNames } from '@univerjs/preset-sheets-core';
+import type { BaseFunction, IFunctionNames, ErrorType } from '@univerjs/preset-sheets-core';
 import { WorkbookCalculationBudgetError } from './formula-worker-budget';
 /** Reviewed scalar/reduction kernels only. This is an execution capability
  * allowlist, not a claim that all functions recognized by Univer are safe. */
@@ -47,11 +47,11 @@ export function assertWorkbookFormulaExecution(books: readonly IWorkbookData[], 
 /** Unqualified functions remain recognizable for editing, but never execute
  * their allocation/network-capable kernels. No source f/ref/value is rewritten.
  * The display policy must classify these names as unavailable/stored, not live. */
-export function qualifiedWorkbookFunctionOverrides(runtime: { ALL_IMPLEMENTED_FUNCTIONS: readonly [new (name: IFunctionNames) => BaseFunction, IFunctionNames][]; BaseFunction: typeof BaseFunction; ErrorValueObject: { create(value: '#N/A'): ReturnType<BaseFunction['calculate']> } }): [new (name: IFunctionNames) => BaseFunction, IFunctionNames][] {
+export function qualifiedWorkbookFunctionOverrides(runtime: { ALL_IMPLEMENTED_FUNCTIONS: readonly [new (name: IFunctionNames) => BaseFunction, IFunctionNames][]; BaseFunction: typeof BaseFunction; ErrorType: { NA: ErrorType }; ErrorValueObject: { create(value: ErrorType): ReturnType<BaseFunction['calculate']> } }): [new (name: IFunctionNames) => BaseFunction, IFunctionNames][] {
   class Unavailable extends runtime.BaseFunction {
     minParams = 0;
     maxParams = 255;
-    calculate() { return runtime.ErrorValueObject.create('#N/A'); }
+    calculate() { return runtime.ErrorValueObject.create(runtime.ErrorType.NA); }
   }
   return runtime.ALL_IMPLEMENTED_FUNCTIONS.filter(([, name]) => !QUALIFIED_WORKBOOK_FUNCTIONS.has(String(name).toUpperCase())).map(([, name]) => [Unavailable, name]);
 }

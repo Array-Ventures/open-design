@@ -387,6 +387,9 @@ importers:
       '@lexical/utils':
         specifier: 0.36.2
         version: 0.36.2
+      '@noble/hashes':
+        specifier: 1.8.0
+        version: 1.8.0
       '@open-design/components':
         specifier: workspace:*
         version: link:../../packages/components
@@ -408,10 +411,25 @@ importers:
       '@remixicon/react':
         specifier: 4.9.0
         version: 4.9.0(react@18.3.1)
+      '@univerjs/core':
+        specifier: 1.4.0
+        version: 1.4.0(react@18.3.1)(rxjs@7.8.2)
+      '@univerjs/engine-formula':
+        specifier: 1.4.0
+        version: 1.4.0(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/preset-sheets-core':
         specifier: 1.4.0
         version: 1.4.0(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/presets':
+        specifier: 1.4.0
+        version: 1.4.0(react@18.3.1)(rxjs@7.8.2)
+      '@univerjs/rpc':
+        specifier: 1.4.0
+        version: 1.4.0(react@18.3.1)(rxjs@7.8.2)
+      '@univerjs/sheets':
+        specifier: 1.4.0
+        version: 1.4.0(react@18.3.1)(rxjs@7.8.2)
+      '@univerjs/sheets-formula':
         specifier: 1.4.0
         version: 1.4.0(react@18.3.1)(rxjs@7.8.2)
       '@xterm/addon-fit':

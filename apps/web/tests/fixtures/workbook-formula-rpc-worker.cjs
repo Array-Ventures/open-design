@@ -8,6 +8,7 @@ globalThis.addEventListener = (type, listener) => { if (type !== 'message') retu
 globalThis.removeEventListener = (type, listener) => { const handler = listeners.get(listener); if (handler) parentPort.off('message', handler); listeners.delete(listener); };
 globalThis.postMessage = data => parentPort.postMessage(data);
 globalThis.fetch = () => { throw Error('Fixture formulas must not fetch network data.'); };
+if (workerData.productionEntry) { globalThis.self = globalThis; require(workerData.productionEntry); return; }
 const core = pinned('@univerjs/core'), engine = pinned('@univerjs/engine-formula'), sheets = pinned('@univerjs/sheets');
 const execution = workerData.executionModule ? require(workerData.executionModule) : null;
 class Stall extends engine.BaseFunction {
