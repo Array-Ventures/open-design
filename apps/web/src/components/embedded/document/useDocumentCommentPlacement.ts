@@ -36,5 +36,12 @@ export function useDocumentCommentPlacement(editor: LexicalEditor, anchor: Docum
     document.addEventListener('scroll', schedule, true); window.addEventListener('resize', schedule);
     return () => { cancelAnimationFrame(frame); observer.disconnect(); document.removeEventListener('scroll', schedule, true); window.removeEventListener('resize', schedule); };
   }, [editor, anchor, active, revision, width]);
-  return { card, style: position ? { ...position, right: 'auto' as const } : undefined };
+  // Embedded BoardUI utilities are important. Pass measurements through CSS
+  // variables consumed by those utilities, rather than inline properties that
+  // lose to the fallback top/max-height classes in the real stylesheet.
+  return { card, style: position ? {
+    '--document-comment-left': `${position.left}px`,
+    '--document-comment-top': `${position.top}px`,
+    '--document-comment-max-height': `${position.maxHeight}px`,
+  } : undefined };
 }
