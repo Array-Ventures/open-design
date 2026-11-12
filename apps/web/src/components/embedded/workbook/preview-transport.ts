@@ -4,7 +4,7 @@ import { workbookHostRequest, WorkbookHostError } from './host-request';
 
 const Job = z.object({ id: z.string().uuid(), projectId: z.string().uuid(), input: z.object({ fileName: z.string(), format: z.string() }).passthrough(),
   state: z.enum(['queued', 'running', 'ready', 'failed', 'cancelled', 'deleted']), error: z.string().nullable() }).passthrough();
-export function checkedWorkbookJob(raw: unknown, projectId: string, fileName: string, format: 'workbook' | 'xlsx') {
+export function checkedWorkbookJob(raw: unknown, projectId: string, fileName: string, format: 'workbook' | 'xlsx' | 'csv') {
   const job = Job.parse(raw);
   if (job.projectId !== projectId || job.input.fileName !== fileName || job.input.format !== format) throw new WorkbookHostError('The workbook preparation identity does not match this preview.');
   return job;
@@ -32,7 +32,7 @@ export function workbookPollDelay(signal?: AbortSignal): Promise<void> {
     signal?.addEventListener('abort', abort, { once: true });
   });
 }
-export async function prepareWorkbookJob(projectId: string, fileName: string, format: 'workbook' | 'xlsx', operationId: string, signal?: AbortSignal, workbookEditPlan?: string) {
+export async function prepareWorkbookJob(projectId: string, fileName: string, format: 'workbook' | 'xlsx' | 'csv', operationId: string, signal?: AbortSignal, workbookEditPlan?: string) {
   let job = checkedWorkbookJob(await workbookHostRequest(projectId, { action: 'prepare', body: { operationId, fileName, format, ...(workbookEditPlan === undefined ? {} : { workbookEditPlan }) } }, signal), projectId, fileName, format);
   const id = job.id;
   try {

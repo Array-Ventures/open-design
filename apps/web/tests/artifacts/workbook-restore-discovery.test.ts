@@ -17,3 +17,10 @@ it('discovers only scoped restore keys with bounded pagination and never reads a
   await expect(listWorkbookRestoreFileNames(foreign[0]!, { cursor: first.cursor! })).rejects.toThrow('Invalid');
   await expect(listWorkbookRestoreFileNames(scope, { limit: 51 })).rejects.toThrow('Invalid');
 });
+
+it('discovers a pending CSV restore by scoped key without reading its identity payload', async () => {
+  await accessWorkbookRestore({ ...scope, fileName: 'nested/literal.csv' }, { expected: null, value: intent('nested/literal.csv') });
+  const get = vi.spyOn(IDBObjectStore.prototype, 'get');
+  expect(await listWorkbookRestoreFileNames(scope)).toEqual({ fileNames: ['nested/literal.csv'], cursor: null });
+  expect(get).not.toHaveBeenCalled();
+});

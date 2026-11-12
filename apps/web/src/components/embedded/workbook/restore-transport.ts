@@ -1,24 +1,27 @@
+import { workbookSaveFormat } from './source-format';
 import { Save } from './save-identity';
 import type { WorkbookRestoreIntent } from './restore-intent';
 import { z } from 'zod';
 import { workbookHostRequest, WorkbookHostError } from './host-request';
 import { checkedWorkbookJob, workbookPollDelay, WorkbookPreparationGoneError, WorkbookPreparationTerminalError } from './preview-transport';
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
-const output = z.object({ file: z.literal('artifact.xlsx'), mime: z.literal('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'), bytes: z.number().int().positive().max(25 * 1024 * 1024), sha256: digest }).passthrough();
+const output = z.object({ file: z.string(), mime: z.string(), bytes: z.number().int().nonnegative().max(25 * 1024 * 1024), sha256: digest }).passthrough();
 export interface WorkbookRestorePreparation { operationId: string; fileName: string; versionId: string; versionSha256: string; sourceSha256: string }
 /** Retain this exact preparation identity across retries. This prepares a
  * checked candidate only; admission still uses the existing stable save ID. */
 export async function prepareWorkbookRestore(projectId: string, body: WorkbookRestorePreparation, signal?: AbortSignal) {
-  let job = checkedWorkbookJob(await workbookHostRequest(projectId, { action: 'prepare-restore', body }, signal), projectId, body.fileName, 'xlsx');
+  let job = checkedWorkbookJob(await workbookHostRequest(projectId, { action: 'prepare-restore', body }, signal), projectId, body.fileName, workbookSaveFormat(body.fileName));
   const renderId = job.id;
   while (job.state === 'queued' || job.state === 'running') {
     await workbookPollDelay(signal);
-    job = checkedWorkbookJob(await workbookHostRequest(projectId, { action: 'read-render', renderId }, signal), projectId, body.fileName, 'xlsx');
+    job = checkedWorkbookJob(await workbookHostRequest(projectId, { action: 'read-render', renderId }, signal), projectId, body.fileName, workbookSaveFormat(body.fileName));
     if (job.id !== renderId) throw new WorkbookHostError('The workbook restore preparation identity changed.');
   }
   if (job.state === 'deleted') throw new WorkbookPreparationGoneError(job);
   if (job.state !== 'ready') throw new WorkbookPreparationTerminalError(job);
   const prepared = output.parse(job.output);
+  const csv = workbookSaveFormat(body.fileName) === 'csv';
+  if (prepared.file !== (csv ? 'artifact.csv' : 'artifact.xlsx') || prepared.mime !== (csv ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') || !csv && prepared.bytes === 0) throw new WorkbookHostError('The prepared restore format does not match its source.');
   if (prepared.sha256 !== body.versionSha256) throw new WorkbookHostError('The prepared restore does not match the selected workbook revision.');
   return job;
 }
@@ -59,7 +62,7 @@ export async function restoreWorkbookVersion(intent: WorkbookRestoreIntent, prot
       if (!(error instanceof WorkbookPreparationGoneError || error instanceof WorkbookPreparationTerminalError)) throw error;
       const job = error.job;
       const raw = job.state === 'deleted' ? job : await workbookHostRequest(intent.projectId, { action: 'remove-render', renderId: job.id }, signal);
-      const removed = checkedWorkbookJob(raw ?? await workbookHostRequest(intent.projectId, { action: 'read-render', renderId: job.id }, signal), intent.projectId, intent.fileName, 'xlsx');
+      const removed = checkedWorkbookJob(raw ?? await workbookHostRequest(intent.projectId, { action: 'read-render', renderId: job.id }, signal), intent.projectId, intent.fileName, workbookSaveFormat(intent.fileName));
       if (removed.id !== job.id || removed.state !== 'deleted') throw new WorkbookHostError('The restore preparation could not be retired safely.');
       save = await read();
       if (!save) throw new WorkbookRestoreFinishedError('unadmitted', 'This revision could not be prepared. No restore was admitted; select it again to retry.');

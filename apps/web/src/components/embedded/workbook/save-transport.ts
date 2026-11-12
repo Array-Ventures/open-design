@@ -1,3 +1,4 @@
+import { workbookSaveFormat } from './source-format';
 import type { z } from 'zod';
 import { checkedWorkbookSave as checkedSave, Save } from './save-identity';
 import { cancelWorkbookSavePreparation } from './cancel-transport';
@@ -16,7 +17,7 @@ export function newWorkbookSaveAttempt(projectId: string, fileName: string, plan
 async function retireFailedPreparation(attempt: WorkbookSaveAttempt, job: ReturnType<typeof checkedWorkbookJob>, signal?: AbortSignal) {
   if (!['failed', 'cancelled'].includes(job.state)) throw new WorkbookHostError('The preparation is not terminal.');
   const raw = await workbookHostRequest(attempt.projectId, { action: 'remove-render', renderId: job.id }, signal);
-  const removed = checkedWorkbookJob(raw ?? await workbookHostRequest(attempt.projectId, { action: 'read-render', renderId: job.id }, signal), attempt.projectId, attempt.fileName, 'xlsx');
+  const removed = checkedWorkbookJob(raw ?? await workbookHostRequest(attempt.projectId, { action: 'read-render', renderId: job.id }, signal), attempt.projectId, attempt.fileName, workbookSaveFormat(attempt.fileName));
   if (removed.id !== job.id || removed.state !== 'deleted') throw new WorkbookHostError('The failed preparation could not be retired safely.');
   try { return checkedSave(await workbookHostRequest(attempt.projectId, { action: 'read-save', saveId: attempt.operationId }, signal), attempt); }
   catch (error) {
@@ -37,7 +38,7 @@ async function settleWorkbookSave(attempt: WorkbookSaveAttempt, signal: AbortSig
     // A 404 save lookup alone races an earlier admission. A durable render
     // tombstone shares admission's row lock, so no delayed old-candidate request
     // can be admitted after this proof. Probe the receipt again after it.
-    const previous = checkedWorkbookJob(await workbookHostRequest(attempt.projectId, { action: 'read-render', renderId: attempt.renderId }, signal), attempt.projectId, attempt.fileName, 'xlsx');
+    const previous = checkedWorkbookJob(await workbookHostRequest(attempt.projectId, { action: 'read-render', renderId: attempt.renderId }, signal), attempt.projectId, attempt.fileName, workbookSaveFormat(attempt.fileName));
     if (previous.id !== attempt.renderId) throw new WorkbookHostError('The workbook preparation identity changed.');
     if (previous.state === 'failed' || previous.state === 'cancelled') save = await retireFailedPreparation(attempt, previous, signal);
     else if (previous.state === 'deleted') {
@@ -58,7 +59,7 @@ async function settleWorkbookSave(attempt: WorkbookSaveAttempt, signal: AbortSig
   if (!save) {
     if (!attempt.renderId) {
       try {
-        const job = await prepareWorkbookJob(attempt.projectId, attempt.fileName, 'xlsx', attempt.preparationId, signal, JSON.stringify(attempt.plan));
+        const job = await prepareWorkbookJob(attempt.projectId, attempt.fileName, workbookSaveFormat(attempt.fileName), attempt.preparationId, signal, JSON.stringify(attempt.plan));
         attempt.renderId = job.id;
       } catch (error) {
         if (error instanceof WorkbookHostError && error.code === 'workbook_preparation_cancelled') {
@@ -66,7 +67,7 @@ async function settleWorkbookSave(attempt: WorkbookSaveAttempt, signal: AbortSig
           if (proof.state === 'unadmitted') throw new WorkbookSavePreparationCancelledError(attempt.operationId, attempt.preparationId, proof.renderId);
           save = proof.save;
         } else if (error instanceof WorkbookPreparationTerminalError && ['failed', 'cancelled'].includes(error.job.state)) {
-          const previous = checkedWorkbookJob(error.job, attempt.projectId, attempt.fileName, 'xlsx');
+          const previous = checkedWorkbookJob(error.job, attempt.projectId, attempt.fileName, workbookSaveFormat(attempt.fileName));
           attempt.renderId = previous.id;
           save = await retireFailedPreparation(attempt, previous, signal);
         } else {
@@ -74,7 +75,7 @@ async function settleWorkbookSave(attempt: WorkbookSaveAttempt, signal: AbortSig
           // A lost prepare reply may leave only preparationId in the journal.
           // Its replay supplies an exact immutable job identity; the normal
           // tombstone/status fence still runs before any replacement is made.
-          const previous = checkedWorkbookJob(error.job, attempt.projectId, attempt.fileName, 'xlsx');
+          const previous = checkedWorkbookJob(error.job, attempt.projectId, attempt.fileName, workbookSaveFormat(attempt.fileName));
           if (previous.state !== 'deleted') throw error;
           attempt.renderId = previous.id;
           return settleWorkbookSave(attempt, signal, beforeAdmission, true);

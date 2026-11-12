@@ -118,7 +118,7 @@ export async function listWorkbookRestoreFileNames(scope: { viewerId: string; pr
         try {
           const key: unknown = lastKey.length <= 4096 ? JSON.parse(lastKey.slice('restore:'.length)) : null;
           if (Array.isArray(key) && key.length === 3 && key[0] === checked.viewerId && key[1] === checked.projectId && typeof key[2] === 'string'
-            && key[2].length <= 500 && /\.xlsx$/i.test(key[2]) && key[2].split('/').every(part => part && !part.startsWith('.') && !/[\\\u0000]/.test(part))) fileNames.push(key[2]);
+            && key[2].length <= 500 && /\.(xlsx|csv)$/i.test(key[2]) && key[2].split('/').every(part => part && !part.startsWith('.') && !/[\\\u0000]/.test(part))) fileNames.push(key[2]);
         } catch { /* A malformed key is never authority to read its payload. */ }
         entry.continue();
       };
