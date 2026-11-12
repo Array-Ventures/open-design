@@ -344,3 +344,24 @@ Actual browser bundling, visible live math and binary Save/export acceptance
 remain integration gates. Unsupported-function cache fidelity on binary Save is
 not established by this display policy: the existing server calculation path
 owns that separate persistence boundary.
+
+## Calculation information in host chrome
+
+Calculation state is an additive `studio:workbook-calculation-state` message,
+separate from strict formatting/save protocols. It carries the current project
+and editor controller IDs plus a bounded phase/count summary. The Grid republishes
+it when the authorized host requests artifact state, and stops on departure.
+The host validates iframe identity, same origin, project and controller before
+showing a compact information indicator in its existing artifact header.
+
+Stored caches explicitly say they may be out of date; unavailable outputs remain
+distinct. There is no canvas overlay, added toolbar row or action that restarts
+calculation or saves a file. Older companions send no new message and preserve
+existing controls; older hosts ignore the additive message. Paired source/package
+browser acceptance must check the indicator in light/dark and narrow layouts.
+
+The pinned sheets formula plugin's `notExecuteFormula` option requests RPC
+function registration. Stored kernels therefore set it false while keeping the
+actual formula engine disabled; otherwise kernel recreation throws a missing
+`IRPCChannelService` dependency error. The actual pinned no-RPC test verifies
+stored cache999 remains999 after an input changes and emits no calculation result.

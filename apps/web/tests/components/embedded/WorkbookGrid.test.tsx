@@ -6,6 +6,7 @@ import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookGrid } from '../../../src/components/embedded/workbook/WorkbookGrid';
 
 const runtime = vi.hoisted(() => ({ context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
+  calculation: null as null | ((state: { phase: string; stored: number; unavailable: number; paused: boolean }) => void),
   live: false, fail: null as null | (() => void), calculationDisposed: vi.fn(),
   getRange: vi.fn(), select: vi.fn(), createWorkbook: vi.fn(), editable: vi.fn(), activeSheet: vi.fn(), saved: vi.fn(), listener: null as null | ((event: { type: number; id: string }) => void) }));
 vi.mock('@univerjs/presets', async original => ({ ...await original<typeof import('@univerjs/presets')>(),
@@ -14,7 +15,7 @@ vi.mock('@univerjs/presets', async original => ({ ...await original<typeof impor
     addEvent: (_event: string, callback: NonNullable<typeof runtime.listener>) => { runtime.listener = callback; return { dispose: runtime.off }; }, setTheme: runtime.theme, toggleDarkMode: runtime.dark }) },
 }));
 vi.mock('@univerjs/preset-sheets-core', () => ({ ...Object.fromEntries(['UniverRenderEnginePlugin', 'UniverFormulaEnginePlugin', 'UniverUIPlugin', 'UniverDocsPlugin', 'UniverDocsUIPlugin', 'UniverSheetsPlugin', 'UniverSheetsUIPlugin', 'UniverSheetsFormulaPlugin', 'UniverSheetsFormulaUIPlugin', 'UniverSheetsNumfmtPlugin', 'UniverSheetsNumfmtUIPlugin'].map(name => [name, name])), DISABLE_AUTO_FOCUS_KEY: 'disableAutoFocus', CalculationMode: { NO_CALCULATION: 2 } }));
-vi.mock('../../../src/components/embedded/workbook/grid-calculation', () => ({ workbookLiveCalculationEligible: () => runtime.live, attachWorkbookCalculation: () => ({ dispose() {} }) }));
+vi.mock('../../../src/components/embedded/workbook/grid-calculation', () => ({ workbookLiveCalculationEligible: () => runtime.live, attachWorkbookCalculation: (...args: unknown[]) => { runtime.calculation = args[7] as NonNullable<typeof runtime.calculation>; return { dispose() {} }; } }));
 vi.mock('../../../src/components/embedded/workbook/calculation-worker-owner', () => ({ ownWorkbookCalculationWorker: (fail: () => void) => { runtime.fail = fail; return { loaded: Promise.resolve(true), ready: true, worker: {}, dispose: runtime.calculationDisposed }; } }));
 vi.mock('@univerjs/rpc', () => ({ UniverRPCMainThreadPlugin: 'UniverRPCMainThreadPlugin' }));
 const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 'inputs', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
@@ -94,4 +95,23 @@ it('carries the exact dirty snapshot through terminal worker fallback and waits 
   await waitFor(() => expect(runtime.editable).toHaveBeenLastCalledWith(true));
   expect(runtime.calculationDisposed).toHaveBeenCalledTimes(1);
   view.unmount(); expect(runtime.dispose).toHaveBeenCalledTimes(2);
+});
+
+it('publishes scoped calculation information for existing host chrome without a canvas overlay', async () => {
+  const post = vi.spyOn(window.parent, 'postMessage');
+  const scope = { projectId: '18a8301a-b6e1-4001-8000-c967b1eab222', controllerId: '18a8301a-b6e1-4001-8000-c967b1eab223', blocked: false };
+  const view = render(<WorkbookGrid id="grid" title="Revenue" model={model} formatScope={scope} />);
+  await waitFor(() => expect(runtime.calculation).not.toBeNull());
+  const state = { phase: 'stored', stored: 2, unavailable: 0, paused: true };
+  act(() => runtime.calculation?.(state));
+  expect(post).toHaveBeenCalledWith({ type: 'studio:workbook-calculation-state', projectId: scope.projectId, controllerId: scope.controllerId, ...state }, window.location.origin);
+  expect(screen.queryByText('Stored results')).toBeNull();
+  post.mockClear();
+  act(() => window.dispatchEvent(new MessageEvent('message', { source: window.parent, origin: window.location.origin, data: { type: 'studio:artifact-request', projectId: scope.projectId } })));
+  expect(post.mock.calls.some(([data]) => data.type === 'studio:workbook-calculation-state')).toBe(true);
+  post.mockClear();
+  act(() => window.dispatchEvent(new MessageEvent('message', { source: window.parent, origin: 'http://elsewhere', data: { type: 'studio:artifact-request', projectId: scope.projectId } })));
+  expect(post).not.toHaveBeenCalled();
+  const late = runtime.calculation; view.unmount(); post.mockClear();
+  act(() => late?.(state)); expect(post).not.toHaveBeenCalled(); post.mockRestore();
 });

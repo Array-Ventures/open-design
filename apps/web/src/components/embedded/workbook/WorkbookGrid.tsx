@@ -10,6 +10,7 @@ import { workbookGridTheme } from './grid-theme';
 import styles from './WorkbookGrid.module.css';
 import { cx } from '../boardui/cx';
 import { workbookFormattingBridge, type WorkbookFormatScope } from './grid-format';
+import type { WorkbookCalculationState } from './calculation-state';
 import { ownWorkbookCalculationWorker } from './calculation-worker-owner';
 import { attachWorkbookCalculation, workbookLiveCalculationEligible } from './grid-calculation';
 import { restoreWorkbookSelection } from './grid-selection';
@@ -34,13 +35,27 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
   const format = useRef(formatScope); format.current = formatScope;
   const formattingRef = useRef<{ publish(): void } | null>(null);
   useEffect(() => { formattingRef.current?.publish(); }, [formatScope?.blocked]);
-  const [error, setError] = useState<string | null>(null), [calculation, setCalculation] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const calculationState = useRef<WorkbookCalculationState | null>(null);
+  const publishCalculation = () => {
+    const scope = format.current, state = calculationState.current;
+    if (scope && state) window.parent.postMessage({ type: 'studio:workbook-calculation-state', projectId: scope.projectId, controllerId: scope.controllerId, ...state }, window.location.origin);
+  };
+  const publish = useRef(publishCalculation); publish.current = publishCalculation;
+  useEffect(() => {
+    const receive = (event: MessageEvent) => {
+      if (event.source === window.parent && event.origin === window.location.origin && event.data?.type === 'studio:artifact-request' && event.data.projectId === format.current?.projectId) publish.current();
+    };
+    window.addEventListener('message', receive); publish.current();
+    return () => window.removeEventListener('message', receive);
+  }, [formatScope?.projectId, formatScope?.controllerId]);
   const [kernel, setKernel] = useState(0);
   const stored = useRef<WorkbookDocument | null>(null);
   const carried = useRef<{ id: string; model: WorkbookDocument; snapshot: IWorkbookData } | null>(null);
   const editable = Boolean(onSnapshot);
   useEffect(() => {
     if (!container.current) return;
+    calculationState.current = null;
     const root = document.documentElement;
     let dispose = () => {}, active = true;
     const current = () => active && callbacks.current.id === id && callbacks.current.model === model;
@@ -102,7 +117,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       const workbook = univerAPI.createWorkbook(seed ? structuredClone(seed) : prepared.data);
       workbook.setActiveSheet(previous && prepared.data.sheets?.[previous.sheetId] ? previous.sheetId : seed?.sheetOrder[0] ?? prepared.activeSheetId); workbook.setEditable(false);
       readSnapshot = () => workbook.save();
-      const calculation = attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, value => { if (current()) setCalculation(value); });
+      const calculation = attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, value => { if (current()) { calculationState.current = value; publish.current(); } });
       dispose = () => {
         try { const sheet = workbook.getActiveSheet(); view.current = { id, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() }; }
         finally { calculation.dispose(); calculationOwner?.dispose(); univer.dispose(); }
@@ -147,7 +162,6 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
   }, [id, model, editable, kernel]);
   return <div className="relative h-full min-h-0 w-full">
     <div ref={container} className={cx(styles.grid, 'h-full min-h-0 w-full')} role="region" aria-label="Workbook grid" tabIndex={0} />
-    {calculation && !error ? <div role="status" className="pointer-events-none absolute end-3 top-1 rounded bg-background-primary-default px-2 py-1 text-caption-1-regular text-text-secondary">{calculation}</div> : null}
     {error ? <div role="alert" className="absolute inset-0 bg-background-primary-default p-4 text-body-2-regular text-text-error-primary">{error}</div> : null}
   </div>;
 }

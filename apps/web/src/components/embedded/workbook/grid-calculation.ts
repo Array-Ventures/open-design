@@ -5,6 +5,7 @@ import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { ownWorkbookCalculationWorker } from './calculation-worker-owner';
 import { WorkbookFormulaDisplay } from './formula-display-policy';
 import { assertWorkbookCalculationBudget, assertWorkbookCalculationMutation } from './formula-worker-budget';
+import { workbookCalculationState, type WorkbookCalculationState } from './calculation-state';
 import { workbookCalculationChangesInputs } from './formula-input-provenance';
 import type { FUniver } from '@univerjs/core/facade';
 
@@ -15,15 +16,14 @@ export function workbookLiveCalculationEligible(model: WorkbookDocument, snapsho
   try { assertWorkbookCalculationBudget([snapshot], true); return true; } catch { return false; }
 }
 export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: WorkbookDocument, original: IWorkbookData, initial: IWorkbookData,
-  snapshot: () => IWorkbookData, owner: ReturnType<typeof ownWorkbookCalculationWorker> | null, changed: (status: string | null) => void) {
+  snapshot: () => IWorkbookData, owner: ReturnType<typeof ownWorkbookCalculationWorker> | null, changed: (status: WorkbookCalculationState) => void) {
   const injector = univer.__getInjector(), commands = injector.get(ICommandService), functions = injector.get(engine.IFunctionService);
   const display = new WorkbookFormulaDisplay(model, original, initial, { sequenceNodesBuilder: value => api.getFormula().sequenceNodesBuilder(value), hasExecutor: name => functions.hasExecutor(name), deserializeRangeWithSheet: engine.deserializeRangeWithSheet, sequenceNodeType: engine.sequenceNodeType });
   if (!owner) display.pause('Stored results');
   let generation: number | null = null;
   const formulas = (book: IWorkbookData) => Object.values(book.sheets).some(sheet => Object.values(sheet.cellData ?? {}).some(row => Object.values(row ?? {}).some(cell => Boolean((cell as ICellData | null | undefined)?.f))));
   const publish = () => {
-    const summary = display.summary();
-    changed(summary.pending ? 'Calculating…' : summary.paused && (summary.stored || summary.unavailable) ? 'Stored results' : summary.stored || summary.unavailable ? 'Some formulas use stored or unavailable results' : null);
+    changed(workbookCalculationState(display.summary()));
   };
   const before = commands.beforeCommandExecuted((command, options) => {
     if (owner && command.id.startsWith('sheet.mutation.') && !options?.fromFormula) {
