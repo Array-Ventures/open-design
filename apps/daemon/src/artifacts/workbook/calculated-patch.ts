@@ -1,7 +1,8 @@
 import type { Document, Element } from '@xmldom/xmldom';
-import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import type { WorkbookDimensionEdit, WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { patchWorkbookCells, type WorkbookCellEdit } from './cell-patch.js';
 import { calculateWorkbook } from './calculate.js';
+import { patchWorkbookDimensions } from './dimension-patch.js';
 import { readXlsxWorkbook, type ReadWorkbook } from './reader.js';
 import { WorkbookFormatError, writeWorkbookPackage } from './package.js';
 import { address, child, children, xmlPart } from './parts.js';
@@ -52,7 +53,14 @@ async function writeCalculatedCaches(source: ReadWorkbook, model: WorkbookDocume
 /** Internal transaction preparation. The caller must persist these bytes with
  * conditional binary history/receipts; this helper never writes workspace files.
  * Parser and calculation execution must be isolated before API exposure. */
-export async function calculateWorkbookCellEdits(source: ReadWorkbook, edits: readonly WorkbookCellEdit[]): Promise<{ bytes: Buffer; model: WorkbookDocument }> {
+export async function calculateWorkbookCellEdits(source: ReadWorkbook, edits: readonly WorkbookCellEdit[], dimensions: readonly WorkbookDimensionEdit[] = []): Promise<{ bytes: Buffer; model: WorkbookDocument }> {
+  if (dimensions.length) {
+    // Resizing does not invalidate formula caches. For a combined edit, first
+    // calculate the scalar changes and then patch only dimension attributes.
+    const content = edits.length ? await readXlsxWorkbook((await calculateWorkbookCellEdits(source, edits)).bytes) : source;
+    const bytes = await patchWorkbookDimensions(content, dimensions);
+    return { bytes, model: (await readXlsxWorkbook(bytes)).model };
+  }
   assertCalculationSupported(source);
   const patched = await readXlsxWorkbook(await patchWorkbookCells(source, edits));
   const model = await calculateWorkbook(patched.model);

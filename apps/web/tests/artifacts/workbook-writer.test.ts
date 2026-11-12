@@ -46,3 +46,11 @@ it('ignores late acknowledgements and publishes nothing after disposal', async (
   writer.update(snapshot(2)); const running = writer.flush(); await Promise.resolve(); writer.dispose(); changed.mockClear(); response.resolve(source); await running;
   expect(changed).not.toHaveBeenCalled(); expect(accepted).not.toHaveBeenCalled();
 });
+it('treats a resize-only workbook as dirty and sends its dimension intent', async () => {
+  const { source, initial } = fixture(), write = vi.fn(async (_intent: WorkbookWriteIntent) => ({ ...source, sourceSha256: 'b'.repeat(64) }));
+  const writer = new WorkbookWriter(source, initial, write, () => {}), resized = structuredClone(initial);
+  resized.sheets.s!.columnData![0] = { w: 180 }; writer.update(resized);
+  expect(writer.state().dirty).toBe(true); await writer.flush();
+  expect(write.mock.calls[0]![0].plan.dimensions).toEqual([{ sheetId: 's', axis: 'column', index: 0, size: 25 }]);
+  expect(writer.state().dirty).toBe(false);
+});

@@ -170,3 +170,8 @@ describe('workbook model boundary', () => {
     expect(workbookDocumentSchema.safeParse(input).success).toBe(false);
   });
 });
+it('bounds row and column resizing plans and refuses unknown dimension authority', () => {
+  const base = { sourceSha256: 'a'.repeat(64), edits: [] };
+  expect(workbookEditPlanSchema.safeParse({ ...base, dimensions: [{ sheetId: 'inputs', axis: 'row', index: 2, size: 36 }, { sheetId: 'inputs', axis: 'column', index: 1, size: 25 }] }).success).toBe(true);
+  for (const bad of [{ sheetId: 'inputs', axis: 'row', index: 0 }, { sheetId: 'inputs', axis: 'column', index: 16384, size: 12 }, { sheetId: 'inputs', axis: 'row', index: 0, size: -1 }, { sheetId: 'inputs', axis: 'column', index: 0, size: 12, path: '/host' }]) expect(workbookEditPlanSchema.safeParse({ ...base, dimensions: [bad] }).success).toBe(false);
+});

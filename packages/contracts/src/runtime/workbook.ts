@@ -51,7 +51,12 @@ export const workbookCellSchema = z.discriminatedUnion('kind', [
 export type WorkbookCell = z.infer<typeof workbookCellSchema>;
 export const workbookCellEditSchema = z.object({ sheetId: id, cell: workbookCellSchema }).strict();
 export type WorkbookCellEdit = z.infer<typeof workbookCellEditSchema>;
-export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells) }).strict();
+export const workbookDimensionEditSchema = z.discriminatedUnion('axis', [
+  z.object({ sheetId: id, axis: z.literal('row'), index: row, size: z.number().min(0).max(409).optional(), hidden: z.boolean().optional() }).strict(),
+  z.object({ sheetId: id, axis: z.literal('column'), index: column, size: z.number().min(0).max(255).optional(), hidden: z.boolean().optional() }).strict(),
+]).refine(edit => edit.size !== undefined || edit.hidden !== undefined, 'A dimension edit must change size or visibility.');
+export type WorkbookDimensionEdit = z.infer<typeof workbookDimensionEditSchema>;
+export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional() }).strict();
 export const workbookSheetSchema = z.object({
   id, name: z.string().min(1).max(31).refine(name => !/[\\/*?:[\]]/.test(name) && !name.startsWith("'") && !name.endsWith("'"), 'Invalid sheet name.'),
   visibility: z.enum(['visible', 'hidden', 'veryHidden']),

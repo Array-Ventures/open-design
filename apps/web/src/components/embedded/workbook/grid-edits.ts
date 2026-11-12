@@ -1,5 +1,7 @@
 import { CellValueType, type ICellData, type IWorkbookData } from '@univerjs/presets';
-import { workbookEditPlanSchema, type WorkbookCell, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import { workbookEditPlanSchema, type WorkbookCell, type WorkbookDimensionEdit, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+
+import { gridDimensionEdits } from './grid-dimensions';
 
 export class WorkbookEditError extends Error {}
 const fail = (message: string): never => { throw new WorkbookEditError(message); };
@@ -11,7 +13,7 @@ function canonical(value: unknown): string {
   return `{${Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
 }
 function same(a: unknown, b: unknown) { return canonical(a) === canonical(b); }
-const sheetContent = ['name', 'hidden', 'rowCount', 'columnCount', 'mergeData', 'freeze', 'rowData', 'columnData', 'defaultRowHeight', 'defaultColumnWidth'] as const;
+const sheetContent = ['name', 'hidden', 'rowCount', 'columnCount', 'mergeData', 'freeze', 'defaultRowHeight', 'defaultColumnWidth'] as const;
 function positions(matrix: IWorkbookData['sheets'][string]['cellData']) {
   const result = new Set<string>();
   for (const [row, cells] of Object.entries(matrix ?? {})) for (const column of Object.keys(cells ?? {})) result.add(`${row}:${column}`);
@@ -48,10 +50,12 @@ export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string,
   if (!same(initial.sheetOrder, current.sheetOrder) || !same(Object.keys(initial.sheets).sort(), Object.keys(current.sheets).sort())) fail('Sheet structure changed. Keep this workbook open; these changes cannot be saved yet.');
   if (!same(initial.styles, current.styles) || initial.dateSystem !== current.dateSystem) fail('Workbook formatting changed. Keep this workbook open; these changes cannot be saved yet.');
   const edits: { sheetId: string; cell: WorkbookCell }[] = [];
+  const dimensions: WorkbookDimensionEdit[] = [];
   for (const sheet of model.sheets) {
     const before = initial.sheets[sheet.id], after = current.sheets[sheet.id];
     if (!before || !after) return fail('Sheet structure changed. Keep this workbook open.');
     if (sheetContent.some(key => !same(before[key], after[key]))) fail('Sheet formatting or structure changed. Keep this workbook open; these changes cannot be saved yet.');
+    dimensions.push(...gridDimensionEdits(sheet, before, after));
     const originals = new Map(sheet.cells.map(cell => [`${cell.row}:${cell.column}`, cell]));
     const coordinates = new Set([...positions(before.cellData), ...positions(after.cellData)]);
     for (const coordinate of coordinates) {
@@ -73,5 +77,5 @@ export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string,
       edits.push({ sheetId: sheet.id, cell: scalar(b, originals.get(coordinate), row, column) });
     }
   }
-  return workbookEditPlanSchema.parse({ sourceSha256, edits });
+  return workbookEditPlanSchema.parse({ sourceSha256, edits, ...(dimensions.length ? { dimensions } : {}) });
 }

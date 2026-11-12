@@ -27,7 +27,7 @@ export class WorkbookWriter {
   private plan() { return workbookGridEdits(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired); }
   state(): WorkbookWriteState {
     let dirty = Boolean(this.pending || this.running);
-    try { dirty ||= this.plan().edits.length > 0; } catch { dirty = true; }
+    try { const plan = this.plan(); dirty ||= plan.edits.length > 0 || Boolean(plan.dimensions?.length); } catch { dirty = true; }
     return { dirty, saving: this.running !== null, error: this.error };
   }
   update(snapshot: IWorkbookData) {
@@ -48,7 +48,7 @@ export class WorkbookWriter {
     while (this.active) {
       try {
         if (!this.pending) {
-          const plan = this.plan(); if (!plan.edits.length) { this.error = null; return; }
+          const plan = this.plan(); if (!plan.edits.length && !plan.dimensions?.length) { this.error = null; return; }
           this.pending = { intent: { id: crypto.randomUUID(), plan }, snapshot: structuredClone(this.desired) };
         }
         const pending = this.pending, source = await this.write(pending.intent);

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { CommandType, FUniver, LocaleType, Univer, type IRange, type IWorkbookData } from '@univerjs/presets';
+import { CommandType, IContextService, FUniver, LocaleType, Univer, type IRange, type IWorkbookData } from '@univerjs/presets';
 import English from '@univerjs/preset-sheets-core/locales/en-US';
 import '@univerjs/preset-sheets-core/lib/index.css';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
@@ -33,7 +33,7 @@ export function WorkbookGrid({ id, title, model, onSnapshot, onReady, onDisplayG
     try {
       // UI plugins are browser-only and form a lazy chunk. In particular, do
       // not initialize a late module load after the viewer/session unmounts.
-      const { CalculationMode, UniverDocsPlugin, UniverDocsUIPlugin, UniverFormulaEnginePlugin, UniverRenderEnginePlugin, UniverSheetsPlugin, UniverSheetsUIPlugin, UniverSheetsFormulaPlugin, UniverSheetsFormulaUIPlugin, UniverSheetsNumfmtPlugin, UniverSheetsNumfmtUIPlugin, UniverUIPlugin } = await import('@univerjs/preset-sheets-core');
+      const { DISABLE_AUTO_FOCUS_KEY, CalculationMode, UniverDocsPlugin, UniverDocsUIPlugin, UniverFormulaEnginePlugin, UniverRenderEnginePlugin, UniverSheetsPlugin, UniverSheetsUIPlugin, UniverSheetsFormulaPlugin, UniverSheetsFormulaUIPlugin, UniverSheetsNumfmtPlugin, UniverSheetsNumfmtUIPlugin, UniverUIPlugin } = await import('@univerjs/preset-sheets-core');
       if (!active || !container.current) return;
       const theme = workbookGridTheme(root);
       const univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: English }, theme, darkMode: root.dataset.theme === 'dark' });
@@ -57,6 +57,14 @@ export function WorkbookGrid({ id, title, model, onSnapshot, onReady, onDisplayG
       const selected = workbook.getActiveSheet();
       if (previous?.range && previous.range.endRow < selected.getMaxRows() && previous.range.endColumn < selected.getMaxColumns()) selected.setActiveRange(selected.getRange(previous.range));
       callbacks.current.onReady?.(workbook.save());
+      // This pinned version uses disableAutoFocus for all editor focus, not
+      // just startup. Enable it only after a person enters this grid so opening
+      // an artifact cannot steal the chat composer's keyboard focus.
+      const context = univer.__getInjector().get(IContextService), element = container.current;
+      const activate = () => context.setContextValue(DISABLE_AUTO_FOCUS_KEY, !editable);
+      const release = () => context.setContextValue(DISABLE_AUTO_FOCUS_KEY, true);
+      element.addEventListener('pointerdown', activate, true); element.addEventListener('focusin', activate);
+      window.addEventListener('blur', release);
       const changed = univerAPI.addEvent(univerAPI.Event.CommandExecuted, event => {
         if (event.type === CommandType.MUTATION && event.id.startsWith('sheet.')) callbacks.current.onSnapshot?.(workbook.save());
       });
@@ -71,7 +79,7 @@ export function WorkbookGrid({ id, title, model, onSnapshot, onReady, onDisplayG
         try {
           const sheet = workbook.getActiveSheet();
           view.current = { id, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() };
-        } finally { themes.disconnect(); changed.dispose(); univer.dispose(); }
+        } finally { element.removeEventListener('pointerdown', activate, true); element.removeEventListener('focusin', activate); window.removeEventListener('blur', release); themes.disconnect(); changed.dispose(); univer.dispose(); }
       };
       callbacks.current.onDisplayGaps?.(prepared.gaps); setError(null);
     } catch { close(); if (active) setError('The workbook grid could not be opened.'); }
@@ -80,7 +88,7 @@ export function WorkbookGrid({ id, title, model, onSnapshot, onReady, onDisplayG
     return () => { active = false; close(); };
   }, [id, model, editable]);
   return <div className="relative h-full min-h-0 w-full">
-    <div ref={container} className="h-full min-h-0 w-full" role="region" aria-label="Workbook grid" />
+    <div ref={container} className="h-full min-h-0 w-full" role="region" aria-label="Workbook grid" tabIndex={0} />
     {error ? <div role="alert" className="absolute inset-0 bg-background-primary-default p-4 text-body-2-regular text-text-error-primary">{error}</div> : null}
   </div>;
 }

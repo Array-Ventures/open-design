@@ -62,3 +62,12 @@ it('allows view changes without inventing content edits', () => {
   const { model, initial, current } = fixture(); current.sheets.s1!.scrollTop = 40; current.sheets.s1!.zoomRatio = 1.2;
   expect(workbookGridEdits(model, hash, initial, current).edits).toEqual([]);
 });
+it('records row and column resizing as dimensions instead of rejecting or inventing cell edits', () => {
+  const { model, initial, current } = fixture();
+  current.sheets.s1!.rowData![10] = { h: 48, ia: 0, hd: 0, s: null };
+  current.sheets.s1!.columnData![2] = { w: 180, hd: 0 };
+  const plan = workbookGridEdits(model, hash, initial, current);
+  expect(plan.edits).toEqual([]); expect(plan.dimensions).toEqual([
+    { sheetId: 's1', axis: 'row', index: 10, size: 36 }, { sheetId: 's1', axis: 'column', index: 2, size: 25 },
+  ]);
+});
