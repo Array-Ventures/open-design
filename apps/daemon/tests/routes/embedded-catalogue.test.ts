@@ -5,12 +5,13 @@ import { createHash } from 'node:crypto';
 import type { Server } from 'node:http';
 import express from 'express';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { registerEmbeddedCatalogueRoutes } from '../../src/routes/embedded-catalogue.js';
+import { createEmbeddedSkillPayload, registerEmbeddedCatalogueRoutes } from '../../src/routes/embedded-catalogue.js';
 
+let roots: { skills: string; templates: string; designSystems: string; noticeRoot: string };
 let scratch: string; let server: Server; let origin: string; let bundle: string;
 beforeEach(async () => {
   scratch = await mkdtemp(path.join(tmpdir(), 'od-catalogue-'));
-  const roots = { skills: path.join(scratch, 'skills'), templates: path.join(scratch, 'templates'), designSystems: path.join(scratch, 'systems'), noticeRoot: path.join(scratch, 'repository') };
+  roots = { skills: path.join(scratch, 'skills'), templates: path.join(scratch, 'templates'), designSystems: path.join(scratch, 'systems'), noticeRoot: path.join(scratch, 'repository') };
   for (const root of Object.values(roots)) await mkdir(root);
   await writeFile(path.join(roots.noticeRoot, 'LICENSE'), 'Apache inherited repository fixture license');
   await writeFile(path.join(roots.noticeRoot, 'NOTICE'), 'Repository attribution fixture');
@@ -81,6 +82,21 @@ describe('embedded creative resource provenance', () => {
     const bytesQuery = new URLSearchParams({ bundleDigest: detail.bundleDigest });
     bytesQuery.append('path', 'large-one.bin'); bytesQuery.append('path', 'large-two.bin');
     expect((await fetch(origin + '/files?' + bytesQuery)).status).toBe(413);
+  });
+
+  it('compiles exact pinned bytes and omits references and restricted bundles from usable packages', async () => {
+    const reference = path.join(roots.skills, 'external-reference'); await mkdir(reference);
+    await writeFile(path.join(reference, 'SKILL.md'), '---\nname: external-reference\ndescription: External workflow stub\n---\nThis catalogue entry advertises the skill in OpenDesign.\n');
+    const payload = await createEmbeddedSkillPayload(roots);
+    expect(payload.catalogue).toHaveLength(2);
+    expect(payload.packages).toHaveLength(1);
+    expect(payload.packages[0]?.resource.body).toBe('Use the fixture asset.\n');
+    expect(Buffer.from(payload.packages[0]!.files['asset.svg']!, 'base64').toString()).toBe('<svg>fixture</svg>');
+    expect(Buffer.from(payload.packages[0]!.files['_repository-notices/LICENSE']!, 'base64').toString()).toContain('inherited repository');
+    await writeFile(path.join(bundle, 'LICENSE'), 'For non-commercial use only.');
+    const restricted = await createEmbeddedSkillPayload(roots);
+    expect(restricted.packages).toHaveLength(0);
+    expect(restricted.omitted).toEqual([{ kind: 'skill', id: 'fixture', reason: 'restricted-license' }]);
   });
 
   it('hashes supporting bytes and changes the bundle identity when an asset changes', async () => {

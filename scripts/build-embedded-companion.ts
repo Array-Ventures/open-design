@@ -91,6 +91,10 @@ try {
       await cp(path.join(root, entry.name), path.join(staging, entry.name));
     }
   }
+  const { createEmbeddedSkillPayload } = await import('../apps/daemon/dist/routes/embedded-catalogue.js');
+  const skillPayload = JSON.stringify(await createEmbeddedSkillPayload({ skills: path.join(staging, 'skills'), templates: path.join(staging, 'design-templates'), designSystems: path.join(staging, 'design-systems'), noticeRoot: staging }));
+  if (Buffer.byteLength(skillPayload) > 384 * 1024 * 1024) throw new Error('Compiled creative skill payload exceeds its byte limit.');
+  await writeFile(path.join(staging, 'skill-packages.json'), skillPayload);
   const files: Record<string, { kind: 'file' | 'link'; sha256: string; bytes: number; executable?: boolean; target?: string }> = {};
   async function inventory(directory: string, prefix = '') {
     for (const name of (await readdir(directory)).sort()) {

@@ -36,28 +36,36 @@ async function resourceBundle(entry: Entry, noticeRoot?: string) {
   return { files, licenses, restricted, bundleDigest };
 }
 
+async function resourceDetail(entry: Entry, bundle: Awaited<ReturnType<typeof resourceBundle>>) {
+  const { root: _root, body, ...summary } = entry;
+  const content = body || (bundle.files.some(file => file.path === 'DESIGN.md') ? (await readBundleFile(entry.root, 'DESIGN.md')).toString('utf8') : '');
+  return { ...summary, body: content, files: bundle.files, licenses: bundle.licenses, bundleDigest: bundle.bundleDigest, hostContract: entry.mode === 'deck' ? DECK_FRAMEWORK_DIRECTIVE : null };
+}
+
+async function catalogueEntries(roots: Roots): Promise<Entry[]> {
+  const [skills, templates, systems] = await Promise.all([listSkills(roots.skills), listSkills(roots.templates), listDesignSystems(roots.designSystems)]);
+  // listSkills adds paths for the standalone runner. Embedded consumers stage
+  // assets in their own sandbox, so retain the authored body, not that preamble.
+  const bodies = new Map<string, Promise<string>>();
+  const convert = (items: typeof skills, kind: Kind) => Promise.all(items.map(async (item) => {
+    let body = bodies.get(item.dir);
+    if (!body) {
+      body = readBundleFile(item.dir, 'SKILL.md').then((bytes) => parseFrontmatter(bytes.toString('utf8')).body);
+      bodies.set(item.dir, body);
+    }
+    const authored = await body;
+    return { id: item.id, name: item.name, description: item.description, mode: item.mode, root: item.dir, body: authored, kind, referenceOnly: authored.includes('This catalogue entry advertises the skill in OpenDesign') };
+  }));
+  const [skillEntries, templateEntries] = await Promise.all([convert(skills, 'skill'), convert(templates, 'template')]);
+  return [
+    ...skillEntries, ...templateEntries,
+    ...systems.map((item) => ({ id: item.id, name: item.title, description: item.summary, mode: 'design-system', root: path.join(roots.designSystems, item.id), body: '', kind: 'design-system' as const, referenceOnly: false })),
+  ];
+}
+
 export function registerEmbeddedCatalogueRoutes(app: Express, roots: Roots): void {
   if (process.env.OD_EMBEDDED_STUDIO !== '1') return;
-  async function entries(): Promise<Entry[]> {
-    const [skills, templates, systems] = await Promise.all([listSkills(roots.skills), listSkills(roots.templates), listDesignSystems(roots.designSystems)]);
-    // listSkills adds paths for the standalone runner. Embedded consumers stage
-    // assets in their own sandbox, so retain the authored body, not that preamble.
-    const bodies = new Map<string, Promise<string>>();
-    const convert = (items: typeof skills, kind: Kind) => Promise.all(items.map(async (item) => {
-      let body = bodies.get(item.dir);
-      if (!body) {
-        body = readBundleFile(item.dir, 'SKILL.md').then((bytes) => parseFrontmatter(bytes.toString('utf8')).body);
-        bodies.set(item.dir, body);
-      }
-      const authored = await body;
-      return { id: item.id, name: item.name, description: item.description, mode: item.mode, root: item.dir, body: authored, kind, referenceOnly: authored.includes('This catalogue entry advertises the skill in OpenDesign') };
-    }));
-    const [skillEntries, templateEntries] = await Promise.all([convert(skills, 'skill'), convert(templates, 'template')]);
-    return [
-      ...skillEntries, ...templateEntries,
-      ...systems.map((item) => ({ id: item.id, name: item.title, description: item.summary, mode: 'design-system', root: path.join(roots.designSystems, item.id), body: '', kind: 'design-system' as const, referenceOnly: false })),
-    ];
-  }
+  const entries = () => catalogueEntries(roots);
   async function resolve(kind: string, id: string) { return (await entries()).find((entry) => entry.kind === kind && entry.id === id); }
   app.get('/api/embedded/catalogue', async (_req, res) => {
     try { res.json((await entries()).map(({ root: _root, body: _body, ...entry }) => entry)); }
@@ -69,11 +77,9 @@ export function registerEmbeddedCatalogueRoutes(app: Express, roots: Roots): voi
       if (typeof kind !== 'string' || typeof req.params.id !== 'string') return res.status(404).end();
       const entry = await resolve(kind, req.params.id);
       if (!entry) return res.status(404).end();
-      const { files, licenses, restricted, bundleDigest } = await resourceBundle(entry, roots.noticeRoot);
-      if (restricted) return res.status(403).json({ error: { code: 'RESTRICTED_CONTENT', message: 'This content needs a separate license review' } });
-      const { root: _root, body, ...summary } = entry;
-      const content = body || (files.some((file) => file.path === 'DESIGN.md') ? (await readBundleFile(entry.root, 'DESIGN.md')).toString('utf8') : '');
-      return res.json({ ...summary, body: content, files, licenses, bundleDigest, hostContract: entry.mode === 'deck' ? DECK_FRAMEWORK_DIRECTIVE : null });
+      const bundle = await resourceBundle(entry, roots.noticeRoot);
+      if (bundle.restricted) return res.status(403).json({ error: { code: 'RESTRICTED_CONTENT', message: 'This content needs a separate license review' } });
+      return res.json(await resourceDetail(entry, bundle));
     } catch { return res.status(503).json({ error: { code: 'CATALOGUE_UNAVAILABLE', message: 'Resource unavailable' } }); }
   });
   // A bounded batch keeps skill installation from rescanning the complete
@@ -115,6 +121,34 @@ export function registerEmbeddedCatalogueRoutes(app: Express, roots: Roots): voi
       return res.type('application/octet-stream').send(body);
     } catch { return res.status(404).end(); }
   });
+}
+
+/** Compile immutable built-ins into the package inventory, not a mutable runtime cache. */
+export async function createEmbeddedSkillPayload(roots: Roots) {
+  const entries = await catalogueEntries(roots);
+  if (entries.length > 1024) throw new Error('Skill catalogue exceeds its entry limit');
+  const catalogue = entries.map(({ root: _root, body: _body, ...summary }) => summary);
+  const packages = [];
+  const omitted = [];
+  let totalBytes = 0;
+  let totalFiles = 0;
+  for (const entry of entries) {
+    if (entry.referenceOnly) continue;
+    const bundle = await resourceBundle(entry, roots.noticeRoot);
+    if (bundle.restricted) { omitted.push({ kind: entry.kind, id: entry.id, reason: 'restricted-license' }); continue; }
+    const detail = await resourceDetail(entry, bundle);
+    totalBytes += Buffer.byteLength(detail.body) + bundle.files.reduce((sum, file) => sum + file.size, 0);
+    totalFiles += bundle.files.length;
+    if (totalBytes > 256 * 1024 * 1024 || totalFiles > 10_000) throw new Error('Skill payload exceeds its materialization budget');
+    const files: Record<string, string> = Object.create(null);
+    for (const file of bundle.files) {
+      const bytes = await resourceFile(entry.root, file.path, roots.noticeRoot);
+      if (bytes.length !== file.size || sha256(bytes) !== file.sha256) throw new Error('Skill asset changed while packaging');
+      files[file.path] = bytes.toString('base64');
+    }
+    packages.push({ resource: detail, files });
+  }
+  return { schemaVersion: 1, catalogue, packages, omitted };
 }
 
 async function resourceFile(root: string, relative: string, noticeRoot?: string): Promise<Buffer> {
