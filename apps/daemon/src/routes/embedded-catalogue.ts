@@ -76,6 +76,29 @@ export function registerEmbeddedCatalogueRoutes(app: Express, roots: Roots): voi
       return res.json({ ...summary, body: content, files, licenses, bundleDigest, hostContract: entry.mode === 'deck' ? DECK_FRAMEWORK_DIRECTIVE : null });
     } catch { return res.status(503).json({ error: { code: 'CATALOGUE_UNAVAILABLE', message: 'Resource unavailable' } }); }
   });
+  // A bounded batch keeps skill installation from rescanning the complete
+  // catalogue and bundle for every individual supporting file.
+  app.get('/api/embedded/catalogue/:kind/:id/files', async (req, res) => {
+    const paths = typeof req.query.path === 'string' ? [req.query.path] : req.query.path;
+    if (!Array.isArray(paths) || paths.length === 0 || paths.length > 20 || paths.some(item => typeof item !== 'string') || new Set(paths).size !== paths.length || typeof req.query.bundleDigest !== 'string') return res.status(400).end();
+    try {
+      const entry = await resolve(req.params.kind, req.params.id);
+      if (!entry) return res.status(404).end();
+      const bundle = await resourceBundle(entry, roots.noticeRoot);
+      if (bundle.restricted) return res.status(403).json({ error: { code: 'RESTRICTED_CONTENT', message: 'This content needs a separate license review' } });
+      if (bundle.bundleDigest !== req.query.bundleDigest) return res.status(409).end();
+      const files = (paths as string[]).map(relative => bundle.files.find(file => file.path === relative));
+      if (files.some(file => !file)) return res.status(404).end();
+      if (files.reduce((total, file) => total + file!.size, 0) > 20 * 1024 * 1024) return res.status(413).end();
+      const staged = [];
+      for (const file of files) {
+        const body = await resourceFile(entry.root, file!.path, roots.noticeRoot);
+        if (sha256(body) !== file!.sha256) return res.status(409).end();
+        staged.push({ path: file!.path, content: body.toString('base64') });
+      }
+      return res.json({ bundleDigest: bundle.bundleDigest, files: staged });
+    } catch { return res.status(503).json({ error: { code: 'CATALOGUE_UNAVAILABLE', message: 'Resource unavailable' } }); }
+  });
   app.get('/api/embedded/catalogue/:kind/:id/file/*file', async (req, res) => {
     try {
       const entry = await resolve(req.params.kind, req.params.id);

@@ -52,6 +52,37 @@ describe('embedded creative resource provenance', () => {
     }
   });
 
+  it('returns only a bounded exact batch from the reviewed bundle and rechecks licensing', async () => {
+    const detail = await (await fetch(origin)).json() as Detail;
+    const query = new URLSearchParams({ bundleDigest: detail.bundleDigest });
+    query.append('path', 'asset.svg'); query.append('path', '_repository-notices/LICENSE');
+    const response = await fetch(origin + '/files?' + query);
+    expect(response.status).toBe(200);
+    const result = await response.json() as { bundleDigest: string; files: Array<{ path: string; content: string }> };
+    expect(result.bundleDigest).toBe(detail.bundleDigest);
+    expect(result.files.map(file => [file.path, Buffer.from(file.content, 'base64').toString()])).toEqual([['asset.svg', '<svg>fixture</svg>'], ['_repository-notices/LICENSE', 'Apache inherited repository fixture license']]);
+    const invalid = new URLSearchParams(query); invalid.append('path', 'asset.svg');
+    expect((await fetch(origin + '/files?' + invalid)).status).toBe(400);
+    const traversal = new URLSearchParams({ bundleDigest: detail.bundleDigest, path: '../outside' });
+    expect((await fetch(origin + '/files?' + traversal)).status).toBe(404);
+    await writeFile(path.join(bundle, 'asset.svg'), 'changed');
+    expect((await fetch(origin + '/files?' + query)).status).toBe(409);
+    await writeFile(path.join(bundle, 'LICENSE'), 'For non-commercial use only.');
+    expect((await fetch(origin + '/files?' + query)).status).toBe(403);
+  });
+
+  it('bounds batch count and total bytes before returning any asset', async () => {
+    const countQuery = new URLSearchParams({ bundleDigest: 'a'.repeat(64) });
+    for (let index = 0; index < 21; index++) countQuery.append('path', `fixture-${index}`);
+    expect((await fetch(origin + '/files?' + countQuery)).status).toBe(400);
+    await writeFile(path.join(bundle, 'large-one.bin'), Buffer.alloc(11 * 1024 * 1024));
+    await writeFile(path.join(bundle, 'large-two.bin'), Buffer.alloc(11 * 1024 * 1024));
+    const detail = await (await fetch(origin)).json() as Detail;
+    const bytesQuery = new URLSearchParams({ bundleDigest: detail.bundleDigest });
+    bytesQuery.append('path', 'large-one.bin'); bytesQuery.append('path', 'large-two.bin');
+    expect((await fetch(origin + '/files?' + bytesQuery)).status).toBe(413);
+  });
+
   it('hashes supporting bytes and changes the bundle identity when an asset changes', async () => {
     const first = await (await fetch(origin)).json() as Detail;
     const file = first.files.find((item) => item.path === 'asset.svg')!;
