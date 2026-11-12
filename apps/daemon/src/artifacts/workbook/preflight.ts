@@ -2,8 +2,9 @@ import type { Element } from '@xmldom/xmldom';
 import { WORKBOOK_MODEL_LIMITS } from '@open-design/contracts/runtime/workbook';
 import { address, child, children, range } from './parts.js';
 import { WorkbookFormatError } from './package.js';
+import { readArrayFormulaMetadata } from './array-metadata.js';
 
-export interface WorkbookImportBudget { cells: number; rows: number; mergedCells: number }
+export interface WorkbookImportBudget { cells: number; rows: number; mergedCells: number; arrayCells?: number }
 function index(value: string | null): number {
   if (!value || !/^[0-9]+$/.test(value)) throw new WorkbookFormatError('Invalid worksheet index.');
   const result = Number(value);
@@ -30,6 +31,11 @@ export function preflightWorksheet(root: Element, budget: WorkbookImportBudget):
       if (position.row !== rowIndex || position.column >= WORKBOOK_MODEL_LIMITS.columns || positions.has(position.column)) throw new WorkbookFormatError('Invalid or duplicate worksheet cell.');
       positions.add(position.column);
       if (++budget.cells > WORKBOOK_MODEL_LIMITS.cells) throw new WorkbookFormatError('Workbook cell count exceeds the import limit.', 'WORKBOOK_LIMIT');
+      const array = readArrayFormulaMetadata(child(cell, 'f'), position);
+      if (array) {
+        budget.arrayCells = (budget.arrayCells ?? 0) + (array.range.endRow - array.range.startRow + 1) * (array.range.endColumn - array.range.startColumn + 1);
+        if (budget.arrayCells > WORKBOOK_MODEL_LIMITS.cells) throw new WorkbookFormatError('Array formula ranges exceed the import limit.', 'WORKBOOK_LIMIT');
+      }
     }
   }
   const columns = child(root, 'cols');

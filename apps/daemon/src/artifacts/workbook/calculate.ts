@@ -45,6 +45,9 @@ function resultCell(original: WorkbookCell, result: TypedResult | undefined): Wo
  * Does not write files or trust cached results supplied by a browser. */
 export async function calculateWorkbook(input: WorkbookDocument): Promise<WorkbookDocument> {
   const model = workbookDocumentSchema.parse(input);
+  if (model.sheets.some(sheet => sheet.arrayFormulas?.some(array => array.kind === 'dataTable'))) {
+    throw new WorkbookFormatError('Excel data tables cannot be recalculated here. Their saved results are preserved.', 'WORKBOOK_UNSUPPORTED');
+  }
   if (!model.sheets.some(sheet => sheet.cells.some(cell => cell.formula))) return model;
   const capture = `EVEBOT_CACHE_${randomUUID().replaceAll('-', '').toUpperCase()}`;
   const results = new Map<string, TypedResult>();

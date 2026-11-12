@@ -6,6 +6,7 @@ import { font, style } from './styles.js';
 import { readWorkbookTheme } from './theme.js';
 import { preflightWorksheet, type WorkbookImportBudget } from './preflight.js';
 import { readWorkbookMetadata } from './metadata.js';
+import { readArrayFormulaMetadata } from './array-metadata.js';
 
 export interface ReadWorkbook { model: ReturnType<typeof workbookDocumentSchema.parse>; parts: WorkbookParts; sheetParts: Map<string, string> }
 function number(value: string | null, fallback?: number): number {
@@ -105,7 +106,7 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
     if (!source || source.name !== name) throw new WorkbookFormatError('Workbook sheet identities do not match its source.');
     const root = xmlPart(parts, relation.target).documentElement;
     if (!root || root.localName !== 'worksheet' || !MAIN_NAMESPACES.has(root.namespaceURI ?? '')) throw new WorkbookFormatError('Invalid worksheet root.');
-    const cells: WorkbookCell[] = [], rowDimensions: WorkbookSheet['rowDimensions'] = [], columnDimensions: WorkbookSheet['columnDimensions'] = [];
+    const cells: WorkbookCell[] = [], rowDimensions: WorkbookSheet['rowDimensions'] = [], columnDimensions: WorkbookSheet['columnDimensions'] = [], arrayFormulas: NonNullable<WorkbookSheet['arrayFormulas']> = [];
     let rowCount = 100, columnCount = 26, previousRow = -1;
     const data = child(root, 'sheetData');
     for (const rowNode of data ? children(data, 'row') : []) {
@@ -121,8 +122,10 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
         const imported = source.getCell(position.row + 1, position.column + 1);
         const styleId = admitStyle(imported.style);
         const formulaNode = child(cell, 'f');
+        const array = readArrayFormulaMetadata(formulaNode, position);
+        if (array) { arrayFormulas.push(array); rowCount = Math.max(rowCount, array.range.endRow + 1); columnCount = Math.max(columnCount, array.range.endColumn + 1); }
         const formula = formulaNode ? imported.formula : undefined;
-        if (formulaNode && !formula) throw new WorkbookFormatError('Workbook formula could not be resolved.');
+        if (formulaNode && !formula && array?.kind !== 'dataTable') throw new WorkbookFormatError('Workbook formula could not be resolved.');
         cells.push({ ...position, ...cellValue(cell.getAttribute('t'), child(cell, 'v')?.textContent ?? undefined, imported, sharedCount, date1904), ...(styleId ? { style: styleId } : {}), ...(formula ? { formula: `=${formula}` } : {}) });
       }
     }
@@ -139,7 +142,7 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
     const frozenRows = frozen ? integer(pane!.getAttribute('ySplit'), 0) : 0, frozenColumns = frozen ? integer(pane!.getAttribute('xSplit'), 0) : 0;
     rowCount = Math.max(rowCount, frozenRows); columnCount = Math.max(columnCount, frozenColumns);
     const format = child(root, 'sheetFormatPr');
-    sheets.push({ id, name, visibility: (node.getAttribute('state') ?? 'visible') as WorkbookSheet['visibility'], rowCount, columnCount, cells, merges, rowDimensions, columnDimensions, frozenRows, frozenColumns,
+    sheets.push({ id, name, visibility: (node.getAttribute('state') ?? 'visible') as WorkbookSheet['visibility'], rowCount, columnCount, cells, merges, arrayFormulas, rowDimensions, columnDimensions, frozenRows, frozenColumns,
       ...(format?.hasAttribute('defaultRowHeight') ? { defaultRowHeight: number(format.getAttribute('defaultRowHeight')) } : {}),
       ...(format?.hasAttribute('defaultColWidth') ? { defaultColumnWidth: number(format.getAttribute('defaultColWidth')) } : {}) });
     sheetParts.set(id, relation.target);

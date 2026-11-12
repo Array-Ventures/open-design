@@ -58,7 +58,7 @@ function fixture(includeArray = false) {
     const end = api.getFormula().calculationEnd(state => { if (state === 3) { clearTimeout(timer); end.dispose(); resolve(); } });
     change();
   });
-  return { api, book, original, model, fetch, calculated, status: () => status, formulas, arrayResults };
+  return { api, book, original, model, fetch, calculated, status: () => status, formulas, arrayResults, arrayModel: univer.__getInjector().get(engine.FormulaDataModel) };
 }
 
 it('calculates supported scalar formulas while preserving limited caches and their dependent chains', async () => {
@@ -91,7 +91,23 @@ it('exposes the separate array mutation boundary rather than claiming scalar fil
     const mutation = value as { arrayFormulaRange?: Record<string, Record<string, Record<number, Record<number, { endRow: number }>>>> };
     return mutation.arrayFormulaRange?.['formula-results']?.inputs?.[12]?.[3]?.endRow === 14;
   })).toBe(true);
+  expect(f.arrayModel.getArrayFormulaCellData()['formula-results']?.inputs?.[13]?.[3]?.v).toBe(2);
+  expect(f.book.save().sheets.inputs!.cellData?.[13]?.[3]).toBeUndefined();
+  expect(workbookGridEdits(f.model, 'a'.repeat(64), f.original, f.book.save()).edits).toEqual([{ sheetId: 'inputs', cell: { row: 1, column: 1, kind: 'number', value: 15000 } }]);
   expect(f.fetch).not.toHaveBeenCalled();
+});
+
+it('admits an actual literal edit after its old calculated spill is removed', async () => {
+  const f = fixture(true);
+  await f.calculated(() => f.book.getActiveSheet().getRange('B2').setValue(15000));
+  f.book.getActiveSheet().getRange('D13').setValue(99);
+  await vi.waitFor(() => expect(f.arrayModel.getArrayFormulaCellData()['formula-results']?.inputs?.[13]?.[3]).toBeFalsy());
+  f.book.getActiveSheet().getRange('D14').setValue(42);
+  expect(workbookGridEdits(f.model, 'a'.repeat(64), f.original, f.book.save()).edits).toEqual([
+    { sheetId: 'inputs', cell: { row: 1, column: 1, kind: 'number', value: 15000 } },
+    { sheetId: 'inputs', cell: { row: 12, column: 3, kind: 'number', value: 99 } },
+    { sheetId: 'inputs', cell: { row: 13, column: 3, kind: 'number', value: 42 } },
+  ]);
 });
 
 it('does not reuse the source cache for a different or newly entered unsupported formula', async () => {

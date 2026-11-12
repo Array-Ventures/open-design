@@ -16,6 +16,27 @@ function fixture(): WorkbookDocument {
     }],
   };
 }
+
+it('keeps v1 models without array metadata compatible and validates explicit source array ownership', () => {
+  const old = fixture(); expect(workbookDocumentSchema.parse(old).sheets[0]!.arrayFormulas).toBeUndefined();
+  const model = fixture(), sheet = model.sheets[0]!;
+  sheet.cells[0]!.formula = '=SEQUENCE(3)';
+  const array = { kind: 'array' as const, row: 4, column: 2, range: { startRow: 4, endRow: 6, startColumn: 2, endColumn: 2 } };
+  sheet.arrayFormulas = [array]; expect(workbookDocumentSchema.parse(model).sheets[0]!.arrayFormulas).toEqual([array]);
+  for (const invalid of [
+    { ...array, row: 5 },
+    { ...array, range: { ...array.range, endRow: 100 } },
+    { ...array, range: { ...array.range, endRow: 3 } },
+  ]) {
+    sheet.arrayFormulas = [invalid]; expect(workbookDocumentSchema.safeParse(model).success).toBe(false);
+  }
+  sheet.arrayFormulas = [array, array]; expect(workbookDocumentSchema.safeParse(model).success).toBe(false);
+  sheet.arrayFormulas = [array]; delete sheet.cells[0]!.formula; expect(workbookDocumentSchema.safeParse(model).success).toBe(false);
+  sheet.arrayFormulas = [{ ...array, kind: 'dataTable' }]; expect(workbookDocumentSchema.safeParse(model).success).toBe(true);
+  sheet.rowCount = 1_048_576; sheet.cells[0]!.formula = '=SEQUENCE(100001)';
+  sheet.arrayFormulas = [{ ...array, range: { ...array.range, endRow: 100004 } }];
+  expect(workbookDocumentSchema.safeParse(model).success).toBe(false);
+});
 describe('workbook model boundary', () => {
   it('bounds host commit metadata and keeps authority fields out of user edit plans', () => {
     const request = { operationId: '43370120-4626-43b7-ae9f-808ce5edc582', fileName: 'reports/book.xlsx', sourceSha256: 'a'.repeat(64), targetSha256: 'b'.repeat(64), actor: 'human:fixture', mode: 'reconcile' };

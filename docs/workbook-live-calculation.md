@@ -81,10 +81,33 @@ tests/artifacts/workbook-grid-edits.test.ts --maxWorkers=1` from the repo root.
 The same actual-runtime fixture proves that `SEQUENCE` publishes a separate
 `SetArrayFormulaDataMutation` with a three-row spill even when this helper keeps
 the anchor's saved value. Array metadata is merged into the engine's data model
-before scalar results apply. Scalar filtering alone therefore does not prevent
-spills, preserve their cached display, or distinguish derived coordinates from
-literal edits in the save writer. Source array metadata is not presently part
-of the normalized workbook model.
+before scalar results apply. The display interceptor reads spill values from
+`FormulaDataModel`'s array overlay: the tested D14 value is 2 there, while
+`Workbook.save()` has no raw D14 cell. For a newly calculated spill, the existing
+sparse writer therefore does not emit those overlay values as literal edits.
+The test also removes the array anchor and genuinely types 42 at D14; that edit
+is retained in the writer plan. A blanket derived-coordinate ignore list would
+lose this real edit and must not be used.
+
+The normalized v1 model now has optional per-sheet `arrayFormulas` with source
+OOXML `kind` (`array` or `dataTable`), anchor and range. The reader emits `[]`
+when verified empty; absence from an older pin is **unknown**, not proof that
+there are no arrays. Ownership is not inferred from function names, cached
+numeric values, or formula-free followers. Import validates bounded, nonoverlapping
+ranges and retains source formula text, cached values and package bytes.
+`source-array-ownership.ts` exposes ownership/caches without rewriting them.
+It does not seed or enable Univer calculation by itself.
+
+The reader can display a cached ref-only Excel data table. Recalculation refuses
+any source data-table metadata before returning an output, including an outside
+input edit; treating its old result cells as literal calculation inputs would
+produce plausible stale results. Existing array/data-table region save refusals
+remain intact. This metadata work does not implement array persistence.
+
+Scalar filtering alone still does not preserve limited arrays' cached overlay,
+or prove imported-array growth/contraction and writer behavior. The new metadata
+must first be wired into the engine's explicit source ownership/cache channel,
+without clearing source cells or changing formulas/local references.
 
 Before enabling arbitrary live calculation, implement and test that separate
 array/derived-data boundary: preserve original spill values and formula bytes,

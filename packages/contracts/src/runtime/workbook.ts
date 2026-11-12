@@ -57,12 +57,18 @@ export const workbookDimensionEditSchema = z.discriminatedUnion('axis', [
 ]).refine(edit => edit.size !== undefined || edit.hidden !== undefined, 'A dimension edit must change size or visibility.');
 export type WorkbookDimensionEdit = z.infer<typeof workbookDimensionEditSchema>;
 export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional() }).strict();
+/** Source ownership from OOXML f/@t and f/@ref, never inferred from cached
+ * numeric cells or a formula's function name. Dynamic/legacy array identity is
+ * intentionally not guessed: their additional source parts remain retained. */
+export const workbookArrayFormulaSchema = z.object({ kind: z.enum(['array', 'dataTable']), row, column, range: workbookRangeSchema }).strict();
+export type WorkbookArrayFormula = z.infer<typeof workbookArrayFormulaSchema>;
 export const workbookSheetSchema = z.object({
   id, name: z.string().min(1).max(31).refine(name => !/[\\/*?:[\]]/.test(name) && !name.startsWith("'") && !name.endsWith("'"), 'Invalid sheet name.'),
   visibility: z.enum(['visible', 'hidden', 'veryHidden']),
   rowCount: z.number().int().min(1).max(WORKBOOK_MODEL_LIMITS.rows), columnCount: z.number().int().min(1).max(WORKBOOK_MODEL_LIMITS.columns),
   defaultRowHeight: z.number().min(0).max(409).optional(), defaultColumnWidth: z.number().min(0).max(255).optional(),
   cells: z.array(workbookCellSchema).max(WORKBOOK_MODEL_LIMITS.cells), merges: z.array(workbookRangeSchema).max(4096),
+  arrayFormulas: z.array(workbookArrayFormulaSchema).max(4096).optional(),
   rowDimensions: z.array(z.object({ index: row, height: z.number().min(0).max(409).optional(), hidden: z.boolean().optional(), style: position.style }).strict()).max(100_000),
   columnDimensions: z.array(z.object({ index: column, width: z.number().min(0).max(255).optional(), hidden: z.boolean().optional(), style: position.style }).strict()).max(WORKBOOK_MODEL_LIMITS.columns),
   frozenRows: z.number().int().min(0).max(WORKBOOK_MODEL_LIMITS.rows), frozenColumns: z.number().int().min(0).max(WORKBOOK_MODEL_LIMITS.columns),
@@ -82,7 +88,7 @@ export const workbookDocumentSchema = z.object({
   features: z.object({ charts: z.number().int().min(0).max(4096), drawings: z.number().int().min(0).max(4096), externalLinks: z.number().int().min(0).max(4096), macros: z.boolean(), signed: z.boolean() }).strict(),
 }).strict().superRefine((workbook, context) => {
   const ids = new Set<string>(), names = new Set<string>();
-  let count = 0, text = 0;
+  let count = 0, text = 0, arrayCells = 0;
   const invalid = (message: string) => context.addIssue({ code: z.ZodIssueCode.custom, message });
   for (const sheet of workbook.sheets) {
     if (ids.has(sheet.id) || names.has(sheet.name.toLowerCase())) invalid('Sheet names and identities must be unique.');
@@ -101,6 +107,18 @@ export const workbookDocumentSchema = z.object({
       }
     }
     for (const range of sheet.merges) if (range.endRow >= sheet.rowCount || range.endColumn >= sheet.columnCount) invalid('Merge is outside its sheet.');
+    const formulaCells = new Set(sheet.cells.filter(cell => cell.formula).map(cell => `${cell.row}:${cell.column}`));
+    let previousArrays: WorkbookRange[] = [];
+    for (const array of [...sheet.arrayFormulas ?? []].sort((a, b) => a.range.startRow - b.range.startRow || a.range.startColumn - b.range.startColumn)) {
+      const range = array.range;
+      if (array.row !== range.startRow || array.column !== range.startColumn || range.endRow >= sheet.rowCount || range.endColumn >= sheet.columnCount
+        || array.kind === 'array' && !formulaCells.has(`${array.row}:${array.column}`)) invalid('Invalid array formula ownership.');
+      arrayCells += (range.endRow - range.startRow + 1) * (range.endColumn - range.startColumn + 1);
+      if (arrayCells > WORKBOOK_MODEL_LIMITS.cells) invalid('Array formula ranges exceed the workbook limit.');
+      previousArrays = previousArrays.filter(previous => previous.endRow >= range.startRow);
+      if (previousArrays.some(previous => previous.startColumn <= range.endColumn && previous.endColumn >= range.startColumn)) invalid('Array formula ranges overlap.');
+      previousArrays.push(range);
+    }
     let active: WorkbookRange[] = [];
     for (const range of [...sheet.merges].sort((a, b) => a.startRow - b.startRow || a.startColumn - b.startColumn)) {
       active = active.filter(previous => previous.endRow >= range.startRow);
