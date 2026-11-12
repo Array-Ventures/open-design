@@ -9,7 +9,12 @@ export interface SourceArrayEngineData {
   arrayFormulaEmbedded: Record<string, never>;
 }
 export type SourceArraySeed = { state: 'unknown' | 'conflict' | 'limited'; reason: string } | {
-  state: 'known'; data: SourceArrayEngineData; owners: number;
+  state: 'known';
+  /** Genuine authority. Never hand its object to Univer, which mutates inputs. */
+  data: SourceArrayEngineData;
+  /** A disposable copy for Univer's array-data channel. */
+  runtimeData(): SourceArrayEngineData;
+  owners: number;
   /** Source t="array" alone does not prove legacy CSE vs dynamic semantics. */
   calculation: 'unverified' | 'not-applicable';
 };
@@ -61,7 +66,7 @@ export function sourceArrayEngineData(model: WorkbookDocument, loaded: IWorkbook
     data.arrayFormulaRange[loaded.id]![sheet.id] = ranges;
     data.arrayFormulaCellData[loaded.id]![sheet.id] = caches;
   }
-  return { state: 'known', data, owners, calculation: owners ? 'unverified' : 'not-applicable' };
+  return { state: 'known', data, runtimeData: () => structuredClone(data), owners, calculation: owners ? 'unverified' : 'not-applicable' };
 }
 
 /** A separate interactive representation: proven source follower caches belong

@@ -125,6 +125,9 @@ against the validated source adapter, refuses changed values/formulas, preserves
 blank holes, and never rewrites raw cells or references. Unknown ownership,
 data tables and ambiguous typed error caches are not treated as ready. The
 `known` result certifies only the bootstrap data, not live calculation support.
+Pass `runtimeData()` to Univer: its controllers retain and mutate supplied map
+objects. Never pass the genuine `data` authority object itself. Tests verify
+that both the loaded source and this cache authority survive calculations intact.
 
 Actual pinned-engine probes establish:
 
@@ -136,7 +139,7 @@ Actual pinned-engine probes establish:
   the scalar result's source formula map covers the dependent scalar formula
   but omits the array owner. That scalar map is not array-result identity proof.
 
-Two probes explicitly document unresolved behavior rather than asserting success:
+Two counterexamples motivate the separate representation and dependency policy:
 
 1. Contracting a three-row imported array to two rows removes the retired
    follower's overlay but leaves its original raw cache 3. That value can
@@ -149,9 +152,9 @@ Two probes explicitly document unresolved behavior rather than asserting success
    source/runtime ownership relation and pinned range references must also be
    considered before claiming safe dependent calculation.
 
-These failures require a reviewed array calculation/display seam. Neither the
-bootstrap helper nor passing counterexample tests enables arrays or certifies
-their save path; the grid engine remains disabled.
+The following helpers address those display/provenance issues without changing
+the retained source. They do not enable arrays or certify their save path; the
+grid engine remains disabled.
 
 ### Separate interactive cache representation
 
@@ -176,3 +179,43 @@ The retained source parts preserve those records, but resolving/validating that
 identity in the normalized model is still open. The bootstrap explicitly reports
 `calculation: unverified` for source arrays. Do not infer dynamic mode from a
 function name or claim legacy contraction fidelity from the dynamic probe.
+
+### Limited branch output and dependency policy
+
+`array-formula-dependencies.ts` augments the emitted graph with pinned reference
+tokens decoded against actual worksheet names and explicit source/runtime array
+ranges. It uses Univer's own RTree and propagates limitations transitively;
+formula text, local reference semantics, inputs and the engine graph stay
+unchanged. The actual-runtime test covers a spill follower, its scalar dependent,
+and a real outside literal's unaffected dependent. This is necessary even when
+the engine calculates correct dynamic output: its emitted graph need not expose
+the spill-follower relationship used internally by the calculation engine.
+
+`limited-array-display.ts` returns stored overlay output only for an unchanged
+limited source owner with genuine caches. It also checks that no follower input
+changed from the interactive baseline, no other array output overlaps, and no
+unhandled embedded result mode is present. A conflict makes the batch explicitly
+unpublishable, rather than concealing an input. Changed/new unsupported formulas
+cannot borrow an unrelated old cache and remain unavailable. Source values are
+not labeled recalculated.
+
+The pinned-runtime test runs an unsupported source array, retains its original
+overlay values, protects its cross-sheet scalar chain with genuine saved caches,
+and preserves the new B2 input. After publication, an actual competing array
+still encounters `#SPILL!`; the literal 99 stays intact. No collision comparison
+or calculation input was weakened. A changed follower 42 is rejected by the
+projection without modifying it.
+
+### Remaining enablement gates
+
+None of these helpers installs a grid lifecycle. Before enabling calculation:
+
+- Buffer the array mutation until matching graph/current formula identity is
+  known, publish atomically, clean up listeners, and expose compact stored,
+  unavailable and conflict status. Reject unpublishable batches.
+- Resolve dynamic/legacy source identity and verify their actual semantics;
+  source `t="array"` and a recognized function name are insufficient.
+- Implement real array persistence and preservation, retaining existing save
+  refusals until qualified. A displayed dynamic result is not a saved array.
+- Qualify source refresh, undo, changing formulas, imported/new arrays, dynamic
+  references, typed error/rich caches, conflicts, and both themes in the UI.

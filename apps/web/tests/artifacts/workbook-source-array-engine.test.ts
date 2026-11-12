@@ -6,6 +6,9 @@ import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { gridWorkbook } from '../../src/components/embedded/workbook/grid-model';
 import { workbookGridEdits } from '../../src/components/embedded/workbook/grid-edits';
 import { sourceArrayEngineData, sourceArrayInteractiveSnapshot } from '../../src/components/embedded/workbook/source-array-engine-data';
+import { workbookFormulaPolicy, preserveWorkbookFormulaResults } from '../../src/components/embedded/workbook/formula-result-policy';
+import { sourceArrayDependencyRegions, workbookArrayFormulaPolicy } from '../../src/components/embedded/workbook/array-formula-dependencies';
+import { limitedSourceArrayDisplay, type ArrayDisplayData } from '../../src/components/embedded/workbook/limited-array-display';
 
 const require = createRequire(realpathSync(fileURLToPath(new URL('../../node_modules/@univerjs/preset-sheets-core/package.json', import.meta.url))));
 const core = require('@univerjs/core') as typeof import('@univerjs/presets');
@@ -19,13 +22,17 @@ const closers: (() => void)[] = [];
 type Tree = { treeId: number; unitId: string; subUnitId: string; row: number; column: number; formula: string; parents: number[]; children: number[]; rangeList: { unitId: string; sheetId: string; range: { startRow: number; endRow: number; startColumn: number; endColumn: number } }[] };
 afterEach(() => { for (const close of closers.splice(0).reverse()) close(); vi.unstubAllGlobals(); });
 
-function fixture(projectSource = false, varyingResults = false) {
+function fixture(projectSource = false, varyingResults = false, sourceFormula?: string) {
   const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 'inputs', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 'inputs', name: 'Inputs', visibility: 'visible', rowCount: 100, columnCount: 20, frozenRows: 0, frozenColumns: 0, merges: [], rowDimensions: [], columnDimensions: [], arrayFormulas: [{ kind: 'array', row: 2, column: 3, range: { startRow: 2, endRow: 4, startColumn: 3, endColumn: 3 } }], cells: [
-    { row: 1, column: 1, kind: 'number', value: 15000 }, { row: 2, column: 3, kind: 'number', value: varyingResults ? 15000 : 1, formula: varyingResults ? '=SEQUENCE(3,1,B2)' : '=SEQUENCE(B2/5000)' },
+    { row: 1, column: 1, kind: 'number', value: 15000 }, { row: 2, column: 3, kind: 'number', value: varyingResults ? 15000 : 1, formula: sourceFormula ?? (varyingResults ? '=SEQUENCE(3,1,B2)' : '=SEQUENCE(B2/5000)') },
     { row: 3, column: 3, kind: 'number', value: varyingResults ? 15001 : 2 }, { row: 4, column: 3, kind: 'number', value: varyingResults ? 15002 : 3 },
     { row: 5, column: 3, kind: 'number', value: 99 },
   ] }] };
-  model.sheets.push({ id: 'summary', name: 'Summary', visibility: 'visible', rowCount: 100, columnCount: 20, frozenRows: 0, frozenColumns: 0, merges: [], rowDimensions: [], columnDimensions: [], arrayFormulas: [], cells: [{ row: 0, column: 0, kind: 'number', value: varyingResults ? 15011 : 12, formula: '=Inputs!D4+10' }] });
+  model.sheets.push({ id: 'summary', name: 'Summary', visibility: 'visible', rowCount: 100, columnCount: 20, frozenRows: 0, frozenColumns: 0, merges: [], rowDimensions: [], columnDimensions: [], arrayFormulas: [], cells: [
+    { row: 0, column: 0, kind: 'number', value: varyingResults ? 15011 : 12, formula: '=Inputs!D4+10' },
+    { row: 0, column: 1, kind: 'number', value: varyingResults ? 15012 : 13, formula: '=A1+1' },
+    { row: 1, column: 0, kind: 'number', value: 100, formula: '=Inputs!D6+1' },
+  ] });
   const fetch = vi.fn(() => { throw Error('Formula network access is forbidden.'); }); vi.stubGlobal('fetch', fetch);
   const univer = new core.Univer({ locale: core.LocaleType.EN_US, locales: { [core.LocaleType.EN_US]: English.default ?? English } }); closers.push(() => univer.dispose());
   univer.registerPlugin(engine.UniverFormulaEnginePlugin, { notExecuteFormula: false }); univer.registerPlugin(sheets.UniverSheetsPlugin);
@@ -40,19 +47,21 @@ function fixture(projectSource = false, varyingResults = false) {
   const seed = projection ?? sourceArrayEngineData(model, original); expect(seed.state).toBe('known');
   if (seed.state !== 'known') throw Error(seed.reason);
   expect(seed.calculation).toBe('unverified'); // probes are not production eligibility
-  api.syncExecuteCommand(engine.SetArrayFormulaDataMutation.id, seed.data, { onlyLocal: true });
-  const events: string[] = [], graphs: Tree[][] = [], sourceFormulaMaps: unknown[] = [];
+  api.syncExecuteCommand(engine.SetArrayFormulaDataMutation.id, seed.runtimeData(), { onlyLocal: true });
+  const events: string[] = [], graphs: Tree[][] = [], sourceFormulaMaps: unknown[] = [], scalarResults: Parameters<typeof preserveWorkbookFormulaResults>[0][] = [], arrayResults: ArrayDisplayData[] = [];
   const observe = univer.__getInjector().get(core.ICommandService).beforeCommandExecuted(command => {
     if (command.id === engine.SetFormulaCalculationStartMutation.id) events.push('start');
-    if (command.id === engine.SetArrayFormulaDataMutation.id) events.push('array');
+    if (command.id === engine.SetArrayFormulaDataMutation.id) { events.push('array'); arrayResults.push(structuredClone(command.params) as ArrayDisplayData); }
     if (command.id === engine.SetFormulaDependencyCalculationResultMutation.id) { events.push('graph'); graphs.push((command.params as { result: Tree[] }).result); }
-    if (command.id === engine.SetFormulaCalculationResultMutation.id) { events.push('scalar'); sourceFormulaMaps.push(structuredClone((command.params as { sourceFormulaData: unknown }).sourceFormulaData)); }
+    if (command.id === engine.SetFormulaCalculationResultMutation.id) { events.push('scalar'); sourceFormulaMaps.push(structuredClone((command.params as { sourceFormulaData: unknown }).sourceFormulaData)); scalarResults.push(structuredClone(command.params) as Parameters<typeof preserveWorkbookFormulaResults>[0]); }
   }); closers.push(() => observe.dispose());
   const calculated = (change: () => void) => new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => { end.dispose(); reject(Error('Pinned source array calculation did not finish.')); }, 2000);
     const end = api.getFormula().calculationEnd(state => { if (state === 3) { clearTimeout(timer); end.dispose(); resolve(); } }); change();
   });
-  return { model, api, book, original, arrayModel, calculated, fetch, events, graphs, sourceFormulaMaps, loadedSource };
+  const functions = univer.__getInjector().get(engine.IFunctionService);
+  const runtime = { sequenceNodesBuilder: (value: string) => api.getFormula().sequenceNodesBuilder(value), hasExecutor: (name: string) => functions.hasExecutor(name), deserializeRangeWithSheet: engine.deserializeRangeWithSheet, sequenceNodeType: engine.sequenceNodeType };
+  return { model, api, book, original, arrayModel, calculated, fetch, events, graphs, sourceFormulaMaps, loadedSource, scalarResults, runtime, arrayResults, seed };
 }
 
 it('loads source ownership/cache without changing any raw formula, reference or value', () => {
@@ -117,13 +126,14 @@ it('exposes a retired raw cache after contraction as an unresolved display block
 });
 
 it('projects only proven follower caches into the overlay and qualifies contraction without changing source values', async () => {
-  const f = fixture(true), source = structuredClone(f.loadedSource), model = structuredClone(f.model);
+  const f = fixture(true), source = structuredClone(f.loadedSource), model = structuredClone(f.model), cacheAuthority = structuredClone(f.seed.data);
   expect(f.original.sheets.inputs!.cellData?.[3]?.[3]).toBeUndefined();
   expect(f.arrayModel.getArrayFormulaCellData()['source-array']?.inputs?.[3]?.[3]?.v).toBe(2);
   await f.calculated(() => f.book.getActiveSheet().getRange('B2').setValue(10000));
   expect(f.arrayModel.getArrayFormulaCellData()['source-array']?.inputs?.[4]?.[3]).toBeUndefined();
   expect(f.book.save().sheets.inputs!.cellData?.[4]?.[3]).toBeUndefined();
   expect(f.loadedSource).toEqual(source); expect(f.model).toEqual(model);
+  expect(f.seed.data).toEqual(cacheAuthority);
   expect(f.loadedSource.sheets.inputs!.cellData![4]![3]!.v).toBe(3);
   expect(f.book.save().sheets.inputs!.cellData![2]![3]!.f).toBe('=SEQUENCE(B2/5000)');
   expect(workbookGridEdits(f.model, 'a'.repeat(64), f.original, f.book.save()).edits).toEqual([{ sheetId: 'inputs', cell: { row: 1, column: 1, kind: 'number', value: 10000 } }]);
@@ -149,4 +159,65 @@ it('checks real cross-sheet dependent values from a varying array without rewrit
   expect(f.book.save().sheets.summary!.cellData![0]![0]!.v).toBe(10011);
   expect(f.book.save().sheets.inputs!.cellData![2]![3]!.f).toBe('=SEQUENCE(3,1,B2)');
   expect(f.loadedSource.sheets.inputs!.cellData![3]![3]!.v).toBe(15001);
+  expect(f.book.save().sheets.summary!.cellData![0]![1]!.v).toBe(10012);
+});
+
+it('protects a limited spill follower and its transitive scalar dependent using actual pinned reference ranges', async () => {
+  const f = fixture(true, true); await f.calculated(() => f.book.getActiveSheet().getRange('B2').setValue(10000));
+  const current = f.book.save(), graph = f.graphs.at(-1)!;
+  const base = workbookFormulaPolicy(current, graph, f.runtime);
+  const policy = workbookArrayFormulaPolicy(current, base, graph, sourceArrayDependencyRegions(f.model, current), f.runtime);
+  expect(base.limited.some(cell => cell.sheetId === 'summary' && cell.row === 0)).toBe(false);
+  expect(policy.limited).toEqual(expect.arrayContaining([
+    expect.objectContaining({ sheetId: 'summary', row: 0, column: 0, formula: '=Inputs!D4+10', reason: 'dependent' }),
+    expect.objectContaining({ sheetId: 'summary', row: 0, column: 1, formula: '=A1+1', reason: 'dependent' }),
+  ]));
+  expect(policy.limited.some(cell => cell.sheetId === 'summary' && cell.row === 1)).toBe(false); // actual outside literal is independent
+  const results = structuredClone(f.scalarResults.at(-1)!);
+  const status = preserveWorkbookFormulaResults(results, f.original, current, policy);
+  expect(results.unitData['source-array']?.summary?.[0]?.[0]?.v).toBe(15011);
+  expect(results.unitData['source-array']?.summary?.[0]?.[1]?.v).toBe(15012);
+  expect(status.cells.filter(cell => cell.sheetId === 'summary')).toEqual(expect.arrayContaining([expect.objectContaining({ row: 0, column: 0, result: 'stored' }), expect.objectContaining({ row: 0, column: 1, result: 'stored' })]));
+  expect(current.sheets.summary!.cellData![0]![0]!.f).toBe('=Inputs!D4+10');
+  expect(f.fetch).not.toHaveBeenCalled();
+});
+
+it('retains genuine source caches for an unchanged unsupported array without claiming they recalculated', async () => {
+  const f = fixture(true, false, '=UNKNOWN_ARRAY(B2)');
+  const authority = structuredClone(f.seed.data);
+  await f.calculated(() => f.book.getActiveSheet().getRange('B2').setValue(10000));
+  const current = f.book.save(), graph = f.graphs.at(-1)!;
+  const base = workbookFormulaPolicy(current, graph, f.runtime), policy = workbookArrayFormulaPolicy(current, base, graph, sourceArrayDependencyRegions(f.model, current), f.runtime);
+  const projection = limitedSourceArrayDisplay(f.loadedSource, f.original, current, f.seed.data, f.arrayResults.at(-1)!, policy);
+  expect(projection.publishable).toBe(true); expect(projection.states).toEqual([{ sheetId: 'inputs', row: 2, column: 3, result: 'stored' }]);
+  expect(projection.data.arrayFormulaCellData['source-array']?.inputs?.[3]?.[3]?.v).toBe(2);
+  f.api.syncExecuteCommand(engine.SetArrayFormulaDataMutation.id, projection.data, { onlyLocal: true });
+  expect(f.arrayModel.getArrayFormulaCellData()['source-array']?.inputs?.[3]?.[3]?.v).toBe(2);
+  const scalars = structuredClone(f.scalarResults.at(-1)!);
+  const status = preserveWorkbookFormulaResults(scalars, f.original, current, policy);
+  expect(scalars.unitData['source-array']?.summary?.[0]?.[0]?.v).toBe(12);
+  expect(status.cells.find(cell => cell.sheetId === 'inputs' && cell.row === 2)).toMatchObject({ result: 'stored', reason: 'unsupported-function' });
+  expect(current.sheets.inputs!.cellData![2]![3]!.f).toBe('=UNKNOWN_ARRAY(B2)');
+  expect(current.sheets.inputs!.cellData![1]![1]!.v).toBe(10000);
+  expect(f.fetch).not.toHaveBeenCalled();
+  expect(f.seed.data).toEqual(authority);
+  await f.calculated(() => f.book.getActiveSheet().getRange('C4').setValue({ f: '=SEQUENCE(1,2)' }));
+  expect(f.book.save().sheets.inputs!.cellData![3]![2]!.v).toBe('#SPILL!');
+  expect(f.book.save().sheets.inputs!.cellData![5]![3]!.v).toBe(99);
+});
+
+it('refuses to conceal an actual changed follower or restore an unrelated cache for a changed formula', async () => {
+  const f = fixture(true, false, '=UNKNOWN_ARRAY(B2)'); await f.calculated(() => f.book.getActiveSheet().getRange('B2').setValue(10000));
+  const current = f.book.save(), graph = f.graphs.at(-1)!, base = workbookFormulaPolicy(current, graph, f.runtime);
+  const policy = workbookArrayFormulaPolicy(current, base, graph, sourceArrayDependencyRegions(f.model, current), f.runtime);
+  const changed = structuredClone(current); (changed.sheets.inputs!.cellData![3] ??= {})[3] = { v: 42, t: core.CellValueType.NUMBER };
+  const rejected = limitedSourceArrayDisplay(f.loadedSource, f.original, changed, f.seed.data, f.arrayResults.at(-1)!, policy);
+  expect(rejected.publishable).toBe(false); expect(rejected.states[0]!.result).toBe('conflict');
+  expect(changed.sheets.inputs!.cellData![3]![3]!.v).toBe(42);
+  await f.calculated(() => f.book.getActiveSheet().getRange('D3').setValue({ f: '=OTHER_UNKNOWN(B2)' }));
+  const edited = f.book.save(), editedGraph = f.graphs.at(-1)!, editedBase = workbookFormulaPolicy(edited, editedGraph, f.runtime);
+  const editedPolicy = workbookArrayFormulaPolicy(edited, editedBase, editedGraph, sourceArrayDependencyRegions(f.model, edited), f.runtime);
+  const unavailable = limitedSourceArrayDisplay(f.loadedSource, f.original, edited, f.seed.data, f.arrayResults.at(-1)!, editedPolicy);
+  expect(unavailable.states[0]!.result).toBe('unavailable');
+  expect(edited.sheets.inputs!.cellData![2]![3]!.f).toBe('=OTHER_UNKNOWN(B2)');
 });
