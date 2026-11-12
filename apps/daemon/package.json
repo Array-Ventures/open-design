@@ -54,6 +54,7 @@
     "blake3-wasm": "2.1.5",
     "cheerio": "1.2.0",
     "chokidar": "3.6.0",
+    "exceljs-community": "5.2.2",
     "express": "5.2.1",
     "gsap": "3.14.2",
     "htmlparser2": "10.1.0",

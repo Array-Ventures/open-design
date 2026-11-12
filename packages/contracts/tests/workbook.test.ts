@@ -17,6 +17,30 @@ function fixture(): WorkbookDocument {
   };
 }
 describe('workbook model boundary', () => {
+  it('retains theme colors, inherited dimension styles and gradient geometry', () => {
+    const input = fixture();
+    input.themeColors = Array.from({ length: 12 }, () => 'FF123456');
+    input.styles.push({ fill: { gradient: 'angle', degree: 45, stops: [
+      { position: 0, color: { kind: 'theme', index: 4, tint: 0.5 } },
+      { position: 1, color: { kind: 'rgb', argb: 'FFFFFFFF' } },
+    ] } });
+    input.sheets[0]!.defaultRowHeight = 22;
+    input.sheets[0]!.defaultColumnWidth = 16;
+    input.sheets[0]!.rowDimensions.push({ index: 2, style: 1 });
+    input.sheets[0]!.columnDimensions.push({ index: 3, style: 1 });
+    expect(workbookDocumentSchema.parse(input)).toEqual(input);
+    input.sheets[0]!.columnDimensions[0]!.style = 2;
+    expect(workbookDocumentSchema.safeParse(input).success).toBe(false);
+  });
+  it('rejects malformed theme tables and gradient positions', () => {
+    const input = fixture(); input.themeColors = ['FF123456'];
+    expect(workbookDocumentSchema.safeParse(input).success).toBe(false);
+    delete input.themeColors;
+    input.styles[0]!.fill = { gradient: 'path', center: { left: 0.5, top: 0.5 }, stops: [
+      { position: -0.1, color: { kind: 'auto' } }, { position: 1, color: { kind: 'auto' } },
+    ] };
+    expect(workbookDocumentSchema.safeParse(input).success).toBe(false);
+  });
   it('retains sparse coordinates, cached formulas, styles, ranges and distinct sheet identities', () => {
     const input = fixture();
     expect(workbookDocumentSchema.parse(input)).toEqual(input);

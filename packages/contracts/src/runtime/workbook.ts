@@ -24,9 +24,14 @@ export const workbookFontSchema = z.object({
 }).strict();
 export type WorkbookFont = z.infer<typeof workbookFontSchema>;
 const border = z.object({ style: z.enum(['thin', 'dotted', 'hair', 'medium', 'double', 'thick', 'dashDot', 'dashDotDot', 'slantDashDot', 'mediumDashed', 'mediumDashDotDot', 'mediumDashDot', 'dashed']), color: workbookColorSchema.optional() }).strict();
+const gradientStops = z.array(z.object({ position: z.number().min(0).max(1), color: workbookColorSchema }).strict()).min(2).max(64);
 export const workbookStyleSchema = z.object({
   font: workbookFontSchema.optional(), numberFormat: z.string().max(1024).optional(),
-  fill: z.object({ pattern: z.string().max(40), foreground: workbookColorSchema.optional(), background: workbookColorSchema.optional() }).strict().optional(),
+  fill: z.union([
+    z.object({ pattern: z.string().max(40), foreground: workbookColorSchema.optional(), background: workbookColorSchema.optional() }).strict(),
+    z.object({ gradient: z.literal('angle'), degree: z.number().min(0).max(360), stops: gradientStops }).strict(),
+    z.object({ gradient: z.literal('path'), center: z.object({ left: z.number().min(0).max(1), top: z.number().min(0).max(1) }).strict(), stops: gradientStops }).strict(),
+  ]).optional(),
   alignment: z.object({ horizontal: z.enum(['general', 'left', 'center', 'right', 'fill', 'justify', 'centerContinuous', 'distributed']).optional(),
     vertical: z.enum(['top', 'middle', 'bottom', 'justify', 'distributed']).optional(), wrap: z.boolean().optional(), shrink: z.boolean().optional(),
     indent: z.number().int().min(0).max(250).optional(), rotation: z.union([z.number().int().min(-90).max(90), z.literal('vertical')]).optional(),
@@ -48,14 +53,16 @@ export const workbookSheetSchema = z.object({
   id, name: z.string().min(1).max(31).refine(name => !/[\\/*?:[\]]/.test(name) && !name.startsWith("'") && !name.endsWith("'"), 'Invalid sheet name.'),
   visibility: z.enum(['visible', 'hidden', 'veryHidden']),
   rowCount: z.number().int().min(1).max(WORKBOOK_MODEL_LIMITS.rows), columnCount: z.number().int().min(1).max(WORKBOOK_MODEL_LIMITS.columns),
+  defaultRowHeight: z.number().min(0).max(409).optional(), defaultColumnWidth: z.number().min(0).max(255).optional(),
   cells: z.array(workbookCellSchema).max(WORKBOOK_MODEL_LIMITS.cells), merges: z.array(workbookRangeSchema).max(4096),
-  rowDimensions: z.array(z.object({ index: row, height: z.number().min(0).max(409).optional(), hidden: z.boolean().optional() }).strict()).max(100_000),
-  columnDimensions: z.array(z.object({ index: column, width: z.number().min(0).max(255).optional(), hidden: z.boolean().optional() }).strict()).max(WORKBOOK_MODEL_LIMITS.columns),
+  rowDimensions: z.array(z.object({ index: row, height: z.number().min(0).max(409).optional(), hidden: z.boolean().optional(), style: position.style }).strict()).max(100_000),
+  columnDimensions: z.array(z.object({ index: column, width: z.number().min(0).max(255).optional(), hidden: z.boolean().optional(), style: position.style }).strict()).max(WORKBOOK_MODEL_LIMITS.columns),
   frozenRows: z.number().int().min(0).max(WORKBOOK_MODEL_LIMITS.rows), frozenColumns: z.number().int().min(0).max(WORKBOOK_MODEL_LIMITS.columns),
 }).strict();
 export type WorkbookSheet = z.infer<typeof workbookSheetSchema>;
 export const workbookDocumentSchema = z.object({
   version: z.literal(1), date1904: z.boolean(), activeSheetId: id,
+  themeColors: z.array(z.string().regex(/^[A-Fa-f0-9]{8}$/)).length(12).optional(),
   styles: z.array(workbookStyleSchema).min(1).max(WORKBOOK_MODEL_LIMITS.styles),
   sheets: z.array(workbookSheetSchema).min(1).max(WORKBOOK_MODEL_LIMITS.sheets),
   features: z.object({ charts: z.number().int().min(0).max(4096), drawings: z.number().int().min(0).max(4096), externalLinks: z.number().int().min(0).max(4096), macros: z.boolean(), signed: z.boolean() }).strict(),
@@ -91,7 +98,7 @@ export const workbookDocumentSchema = z.object({
     if (sheet.frozenRows > sheet.rowCount || sheet.frozenColumns > sheet.columnCount) invalid('Frozen region is outside its sheet.');
     for (const [dimensions, extent] of [[sheet.rowDimensions, sheet.rowCount], [sheet.columnDimensions, sheet.columnCount]] as const) {
       const seen = new Set<number>();
-      for (const dimension of dimensions) { if (seen.has(dimension.index) || dimension.index >= extent) invalid('Invalid row or column dimensions.'); seen.add(dimension.index); }
+      for (const dimension of dimensions) { if (seen.has(dimension.index) || dimension.index >= extent || dimension.style !== undefined && dimension.style >= workbook.styles.length) invalid('Invalid row or column dimensions.'); seen.add(dimension.index); }
     }
   }
   if (count > WORKBOOK_MODEL_LIMITS.cells || text > WORKBOOK_MODEL_LIMITS.text) invalid('Workbook content exceeds its limit.');
