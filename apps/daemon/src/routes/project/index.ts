@@ -7835,7 +7835,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         await ensureProject(PROJECTS_DIR, projectId, uploadProject?.metadata);
         if (req.file) {
           try {
-            const buf = await fs.promises.readFile(req.file.path);
+            if (rejectInternalVersionPath(res, req.body?.name ?? req.file.originalname)) return;
+            const buf = req.file.buffer ?? await fs.promises.readFile(req.file.path);
             // A caller-supplied `name` may carry an intentional subdirectory
             // (e.g. "imagery/hero.png" from the design-kit uploader). Preserve it
             // with sanitizePath (sanitizes each segment, keeps the slashes) so the
@@ -7903,7 +7904,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             };
             return res.json(body);
           } finally {
-            fs.promises.unlink(req.file.path).catch(() => {});
+            if (req.file.path) fs.promises.unlink(req.file.path).catch(() => {});
           }
         }
         const {

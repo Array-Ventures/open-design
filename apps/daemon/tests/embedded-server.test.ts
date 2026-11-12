@@ -270,3 +270,27 @@ it("returns structured errors for malformed JSON without exposing a stack", asyn
     },
   });
 });
+it('stages single multipart uploads until the actual contained file handler commits them without duplicate names', async () => {
+  const base = await boot('workbook'), workbook = new ExcelJS.Workbook(); workbook.addWorksheet('Inputs').getCell('A1').value = 12;
+  const payload = Buffer.from(await workbook.xlsx.writeBuffer());
+  const upload = async (name?: string, filename = 'book.xlsx') => {
+    const data = new FormData(); if (name) data.append('name', name);
+    data.append('file', new Blob([payload]), filename);
+    return fetch(`${base}/api/projects/${id}/files`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: data });
+  };
+  for (let index = 0; index < 2; index++) {
+    const response = await upload(); expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ file: { name: 'book.xlsx', size: payload.length } });
+  }
+  const list = await (await fetch(`${base}/api/projects/${id}/files`, { headers })).json() as ProjectFilesResponse;
+  expect(list.files.filter(file => file.name.endsWith('.xlsx')).map(file => file.name)).toEqual(['book.xlsx']);
+  expect(await readFile(path.join(directory, 'book.xlsx'))).toEqual(payload);
+  const renamed = await upload('reports/forecast.xlsx'); expect(renamed.status).toBe(200);
+  expect(await readFile(path.join(directory, 'reports/forecast.xlsx'))).toEqual(payload);
+  const unicode = await upload(undefined, 'Résumé 数据.xlsx'); expect(unicode.status).toBe(200);
+  // Existing sanitizer replaces whitespace while retaining Unicode.
+  expect(await unicode.json()).toMatchObject({ file: { name: 'Résumé-数据.xlsx' } });
+  expect(await readFile(path.join(directory, 'Résumé-数据.xlsx'))).toEqual(payload);
+  const refused = await upload('.file-versions/denied.xlsx'); expect(refused.status).toBe(404);
+  await expect(readFile(path.join(directory, '.file-versions/denied.xlsx'))).rejects.toMatchObject({ code: 'ENOENT' });
+});

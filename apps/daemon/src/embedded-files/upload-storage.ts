@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { StorageEngine } from 'multer';
+import multer, { type StorageEngine } from 'multer';
 import { withEmbeddedProject } from './pinned-project.js';
 
 type Metadata = Record<string, unknown>;
@@ -24,15 +24,20 @@ export function embeddedUploadStorage(options: {
   sanitizeName: (name: string) => string;
   sanitizePath: (name: string) => string;
 }): StorageEngine {
+  const staged = multer.memoryStorage();
   return {
     _handleFile(req, file, callback) {
       try {
       const metadata = options.metadata(req.params.id as string);
       if (metadata?.embeddedHost !== 'evebot') return options.fallback._handleFile(req, file, callback);
+      file.originalname = options.decodeName(file.originalname);
+      // The single-file endpoint owns conditional replacement and versioning.
+      // Stage under Multer's existing byte limit; only its authorized handler
+      // may commit the bytes. Bulk asset uploads retain contained streaming.
+      if (req.route?.path === '/api/projects/:id/files') return staged._handleFile(req, file, callback);
       const id = req.params.id as string;
       const relDir = typeof req.body?.dir === 'string' && req.body.dir.trim() ? options.sanitizePath(req.body.dir.trim()) : '';
       Object.assign(req, { _uploadRelDir: relDir });
-      file.originalname = options.decodeName(file.originalname);
       const safe = options.sanitizeName(file.originalname);
       const previous = (req as typeof req & { _embeddedUploadTail?: Promise<unknown> })._embeddedUploadTail ?? Promise.resolve();
       const operation = previous.catch(() => {}).then(() => withEmbeddedProject(id, metadata, async (project) => {
@@ -59,6 +64,7 @@ export function embeddedUploadStorage(options: {
       } catch (error) { callback(error as Error); }
     },
     _removeFile(req, file: Uploaded, callback) {
+      if (Buffer.isBuffer(file.buffer)) return staged._removeFile(req, file, callback);
       if (!file.embeddedRemove) return options.fallback._removeFile(req, file, callback);
       file.embeddedRemove().then(() => callback(null), callback);
     },

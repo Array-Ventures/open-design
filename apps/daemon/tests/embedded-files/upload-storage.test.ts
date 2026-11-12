@@ -24,6 +24,7 @@ beforeEach(async () => {
   app.post('/:id', upload.array('files', 12), (req, res) => res.json((req.files as Express.Multer.File[]).map((file) => ({
     filename: file.filename, size: file.embeddedStat?.size, hasHostPath: Boolean(file.path),
   }))));
+  app.post('/api/projects/:id/files', upload.single('file'), (req, res) => res.json({ bytes: req.file?.buffer.toString('utf8'), hasHostPath: Boolean(req.file?.path) }));
   app.use((_error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => { res.status(400).json({ error: 'upload rejected' }); });
   server = await new Promise<Server>((resolve) => { const started = app.listen(0, '127.0.0.1', () => resolve(started)); });
   const address = server.address(); if (!address || typeof address === 'string') throw new Error('Missing fixture port');
@@ -59,4 +60,18 @@ it('refuses an upload into a symlinked subfolder without changing outside files'
   const data = new FormData(); data.append('dir', 'assets'); data.append('files', new Blob(['UPLOAD']), 'test.txt');
   const response = await fetch(`${origin}/${id}`, { method: 'POST', body: data });
   expect(response.status).toBe(400); expect(await readdir(outside)).toEqual([]);
+});
+
+it('stages single-file bytes without committing before the authorized route handler', async () => {
+  const data = new FormData(); data.append('file', new Blob(['FIRST']), 'book.xlsx');
+  const response = await fetch(`${origin}/api/projects/${id}/files`, { method: 'POST', body: data });
+  expect(response.status).toBe(200); expect(await response.json()).toEqual({ bytes: 'FIRST', hasHostPath: false }); expect(await readdir(directory)).toEqual([]);
+});
+it('enforces the same multipart byte and field limits for staged single-file uploads without leaving files', async () => {
+  for (const second of [false, true]) {
+    const data = new FormData(); data.append('file', new Blob([second ? 'FIRST' : 'THIS_EXCEEDS_EIGHT_BYTES']), 'book.xlsx');
+    if (second) data.append('file', new Blob(['SECOND']), 'other.xlsx');
+    const response = await fetch(`${origin}/api/projects/${id}/files`, { method: 'POST', body: data });
+    expect(response.status).toBe(400); expect(await readdir(directory)).toEqual([]);
+  }
 });
