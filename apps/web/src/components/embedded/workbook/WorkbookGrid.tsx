@@ -105,6 +105,8 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
       let calculationOwner: ReturnType<typeof ownWorkbookCalculationWorker> | null = null;
       let readyForInput = false;
       let arrayOwner: ReturnType<typeof ownArrayProjectionWorker> | null = null;
+      let arrayInput: ReturnType<typeof ownArrayInputNormalization> | null = null;
+      const stopArrayInput = () => { const owned = arrayInput; arrayInput = null; owned?.dispose(); };
       const stopCalculation = () => { const owned = calculationOwner; calculationOwner = null; owned?.dispose(); const arrays = arrayOwner; arrayOwner = null; arrays?.dispose(); };
       let readSnapshot: (() => IWorkbookData) | undefined;
       const fallback = () => {
@@ -118,7 +120,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
         }
       };
       // Own every instance before an asynchronous startup or plugin setup.
-      layer.own(() => { stopCalculation(); univer.dispose(); });
+      layer.own(() => { try { stopArrayInput(); } finally { try { stopCalculation(); } finally { univer.dispose(); } } });
       dispose = () => { stopCalculation(); layer.retire(); };
       const recovered = carried.current?.id === id && carried.current.model === model ? carried.current.snapshot : undefined;
       const sourceSeed = recovered ?? restored.current ?? original;
@@ -139,8 +141,8 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
         if (!current()) { close(); return; }
         univer.registerPlugin(UniverRPCMainThreadPlugin, { workerURL: calculationOwner.worker });
       }
-      const arrayInput = arraySeed ? ownArrayInputNormalization(univer, () => current() && readyForInput) : null;
-      if (arrayInput) layer.own(() => arrayInput.dispose());
+      arrayInput = arraySeed ? ownArrayInputNormalization(univer, () => current() && readyForInput) : null;
+      const guardedArrayInput = arrayInput ? { ...arrayInput, dispose: stopArrayInput } : null;
       univer.registerPlugin(UniverRenderEnginePlugin);
       univer.registerPlugin(UniverFormulaEnginePlugin, { notExecuteFormula: true });
       univer.registerPlugin(UniverUIPlugin, { container: layer.element, header: false, toolbar: false, contextMenu: false, disableAutoFocus: true });
@@ -166,7 +168,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
       workbook.setActiveSheet(previous && prepared.data.sheets?.[previous.sheetId] ? previous.sheetId : seed?.sheetOrder[0] ?? prepared.activeSheetId); workbook.setEditable(false);
       readSnapshot = () => workbook.save();
       const calculationChanged = (value: WorkbookCalculationState) => { if (current()) { calculationState.current = value; publish.current(); } };
-      const calculation = arraySeed ? attachWorkbookArrayCalculation(univer, univerAPI, model, original, workbook.save(), sourceSha256!, readSnapshot, arrayOwner, calculationChanged, { ready: univer.__getInjector().get(LifecycleService).onStage(LifecycleStages.Rendered), available: () => Boolean(univer.__getInjector().get(IRenderManagerService).getRenderUnitById(id)) }, arrayInput!) : attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, calculationChanged);
+      const calculation = arraySeed ? attachWorkbookArrayCalculation(univer, univerAPI, model, original, workbook.save(), sourceSha256!, readSnapshot, arrayOwner, calculationChanged, { ready: univer.__getInjector().get(LifecycleService).onStage(LifecycleStages.Rendered), available: () => Boolean(univer.__getInjector().get(IRenderManagerService).getRenderUnitById(id)) }, guardedArrayInput!) : attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, calculationChanged);
       dispose = () => {
         try { const sheet = workbook.getActiveSheet(); view.current = { id, sourceFormat: model.sourceFormat, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() }; }
         finally { workbook.setEditable(false); calculation.dispose(); stopCalculation(); layer.retire(); }

@@ -9,18 +9,27 @@ import { CommandType } from '@univerjs/presets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookGrid } from '../../../src/components/embedded/workbook/WorkbookGrid';
 
-const runtime = vi.hoisted(() => ({ rendered: Promise.resolve(), context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
+const runtime = vi.hoisted(() => ({ events: [] as string[], workers: [] as { dispose: ReturnType<typeof vi.fn> }[], inputs: [] as { dispose: ReturnType<typeof vi.fn> }[], rendered: Promise.resolve(), context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
   calculation: null as null | ((state: { phase: string; stored: number; unavailable: number; paused: boolean }) => void),
   input: null as null | ((message: string) => void), live: false, fail: null as null | (() => void), calculationDisposed: vi.fn(),
   getRange: vi.fn(), select: vi.fn(), createWorkbook: vi.fn(), editable: vi.fn(), activeSheet: vi.fn(), saved: vi.fn(), listener: null as null | ((event: { type: number; id: string }) => void) }));
 vi.mock('@univerjs/presets', async original => ({ ...await original<typeof import('@univerjs/presets')>(),
-  Univer: class { constructor() { runtime.created(this); } registerPlugin = runtime.register; dispose = () => runtime.dispose(this); __getInjector = () => ({ get: () => ({ setContextValue: runtime.context, onStage: () => runtime.rendered }) }); },
+  Univer: class { constructor() { runtime.created(this); } registerPlugin = runtime.register; dispose = () => { runtime.events.push(`univer:${runtime.created.mock.calls.findIndex(([instance]) => instance === this) + 1}`); runtime.dispose(this); }; __getInjector = () => ({ get: () => ({ setContextValue: runtime.context, onStage: () => runtime.rendered }) }); },
   FUniver: { newAPI: () => ({ createWorkbook: runtime.createWorkbook, getActiveWorkbook: () => runtime.createWorkbook.mock.results.at(-1)?.value, Event: { CommandExecuted: 'CommandExecuted', ActiveSheetChanged: 'ActiveSheetChanged' },
     addEvent: (event: string, callback: NonNullable<typeof runtime.listener>) => { if (event === 'CommandExecuted') { runtime.listener = callback; return { dispose: runtime.off }; } return { dispose() {} }; }, setTheme: runtime.theme, toggleDarkMode: runtime.dark }) },
 }));
 vi.mock('@univerjs/preset-sheets-core', () => ({ ...Object.fromEntries(['UniverRenderEnginePlugin', 'UniverFormulaEnginePlugin', 'UniverUIPlugin', 'UniverDocsPlugin', 'UniverDocsUIPlugin', 'UniverSheetsPlugin', 'UniverSheetsUIPlugin', 'UniverSheetsFormulaPlugin', 'UniverSheetsFormulaUIPlugin', 'UniverSheetsNumfmtPlugin', 'UniverSheetsNumfmtUIPlugin'].map(name => [name, name])), IRenderManagerService: 'IRenderManagerService', DISABLE_AUTO_FOCUS_KEY: 'disableAutoFocus', CalculationMode: { NO_CALCULATION: 2 } }));
 vi.mock('../../../src/components/embedded/workbook/grid-calculation', () => ({ workbookLiveCalculationEligible: () => runtime.live, attachWorkbookCalculation: (...args: unknown[]) => { runtime.calculation = args[7] as NonNullable<typeof runtime.calculation>; return { dispose() {} }; } }));
 vi.mock('../../../src/components/embedded/workbook/calculation-worker-owner', () => ({ ownWorkbookCalculationWorker: (fail: () => void) => { runtime.fail = fail; return { loaded: Promise.resolve(true), ready: true, worker: {}, dispose: runtime.calculationDisposed }; } }));
+vi.mock('../../../src/components/embedded/workbook/array-projection-owner', () => ({ ownArrayProjectionWorker: () => {
+  const id = runtime.workers.length + 1, owned = { loaded: Promise.resolve(true), ready: true, dispose: vi.fn(() => runtime.events.push(`worker:${id}`)) }; runtime.workers.push(owned); return owned;
+} }));
+vi.mock('../../../src/components/embedded/workbook/array-input-normalization', () => ({ ownArrayInputNormalization: () => {
+  const id = runtime.inputs.length + 1, owned = { dispose: vi.fn(() => runtime.events.push(`input:${id}`)) }; runtime.inputs.push(owned); return owned;
+} }));
+vi.mock('../../../src/components/embedded/workbook/grid-array-calculation', () => ({ attachWorkbookArrayCalculation: (...args: unknown[]) => {
+  const input = args[10] as { dispose(): void }; return { dispose() { input.dispose(); } };
+} }));
 vi.mock('../../../src/components/embedded/workbook/csv-literal-input', () => ({ attachCsvLiteralInput: (_univer: unknown, _api: unknown, _kernel: unknown, _element: unknown, _model: unknown, report: (message: string) => void) => { runtime.input = report; return { dispose() { runtime.input = null; } }; } }));
 // The array display adapter imports the real sheets/formula modules. Preserve
 // their RPC dependency exports while replacing only the owned plugin token.
@@ -28,6 +37,7 @@ vi.mock('@univerjs/rpc', async original => ({ ...await original<typeof import('@
 const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 'inputs', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
   sheets: [{ id: 'inputs', name: 'Inputs', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
 beforeEach(() => {
+  runtime.events = []; runtime.workers = []; runtime.inputs = [];
   runtime.live = false; runtime.fail = null; runtime.rendered = Promise.resolve();
   runtime.createWorkbook.mockReturnValue({ onSelectionChange: () => ({ dispose: runtime.selectionOff }), getWorkbookPermission: () => ({ canEdit: () => true }), setActiveSheet: runtime.activeSheet, setEditable: runtime.editable, save: runtime.saved, getActiveSheet: () => ({ getSheetId: () => 'inputs', getMaxRows: () => 100, getMaxColumns: () => 26, getSelection: () => ({ getActiveRange: () => ({ getRange: () => ({ startRow: 5, endRow: 5, startColumn: 2, endColumn: 2 }) }) }), getRange: runtime.getRange, setActiveRange: runtime.select }) });
   runtime.getRange.mockReturnValue({ boundWorksheet: 'inputs' });
@@ -278,4 +288,35 @@ it('withdraws a retained canvas immediately when its artifact identity changes',
   await waitFor(() => expect(runtime.created).toHaveBeenCalledTimes(2));
   expect(previous.isConnected).toBe(false); expect(runtime.dispose).toHaveBeenCalledTimes(1);
   view.unmount(); expect(runtime.dispose).toHaveBeenCalledTimes(2);
+});
+
+
+const arrayModel: WorkbookDocument = { ...model, calculationMetadata: 'verified', sheets: [{ ...model.sheets[0]!, arrayFormulas: [{kind:'array',calculation:'dynamic',row:2,column:3,range:{startRow:2,endRow:4,startColumn:3,endColumn:3}}], cells: [{row:2,column:3,kind:'number',value:10,formula:'=SEQUENCE(3,1,10)'},{row:3,column:3,kind:'number',value:11},{row:4,column:3,kind:'number',value:12}] }] };
+it('disposes every array kernel owner exactly once through retained-view replacement and unmount', async () => {
+ runtime.saved.mockImplementation(() => { runtime.events.push('save'); return gridWorkbook(arrayModel, 'array-grid', 'Arrays').data; });
+ const view=render(<WorkbookGrid id="array-grid" title="Arrays" model={arrayModel} sourceSha256={'a'.repeat(64)} onSnapshot={vi.fn()} />);
+ await waitFor(()=>expect(runtime.editable).toHaveBeenLastCalledWith(true));
+ expect(runtime.inputs).toHaveLength(1);expect(runtime.workers).toHaveLength(1);expect(runtime.dispose).not.toHaveBeenCalled();
+ runtime.events.push('replace');
+ view.rerender(<WorkbookGrid id="array-grid" title="Arrays" model={structuredClone(arrayModel)} sourceSha256={'b'.repeat(64)} onSnapshot={vi.fn()} />);
+ await waitFor(()=>expect(runtime.dispose).toHaveBeenCalledTimes(1));
+ expect(runtime.inputs).toHaveLength(2);expect(runtime.workers).toHaveLength(2);
+ expect(runtime.inputs[0]!.dispose).toHaveBeenCalledOnce();expect(runtime.workers[0]!.dispose).toHaveBeenCalledOnce();
+ const replacement=runtime.events.slice(runtime.events.indexOf('replace')+1);
+ expect(replacement.indexOf('save')).toBeLessThan(replacement.indexOf('input:1'));
+ expect(replacement.indexOf('input:1')).toBeLessThan(replacement.indexOf('univer:1'));
+ view.unmount();
+ for(const owned of [...runtime.inputs,...runtime.workers]) expect(owned.dispose).toHaveBeenCalledOnce();
+ expect(runtime.dispose).toHaveBeenCalledTimes(2);
+});
+
+it('releases array input, worker and Univer when plugin setup throws before a canvas exists', async () => {
+ runtime.register.mockImplementationOnce(()=>{throw new Error('Owned plugin setup failed');});
+ const view=render(<WorkbookGrid id="failed-array" title="Arrays" model={arrayModel} sourceSha256={'a'.repeat(64)} onSnapshot={vi.fn()} />);
+ expect(await screen.findByRole('alert')).toHaveTextContent('The workbook grid could not be opened.');
+ expect(runtime.inputs).toHaveLength(1);expect(runtime.workers).toHaveLength(1);
+ expect(runtime.inputs[0]!.dispose).toHaveBeenCalledOnce();expect(runtime.workers[0]!.dispose).toHaveBeenCalledOnce();expect(runtime.dispose).toHaveBeenCalledOnce();
+ expect(runtime.events.indexOf('input:1')).toBeLessThan(runtime.events.indexOf('univer:1'));
+ expect(runtime.events.indexOf('worker:1')).toBeLessThan(runtime.events.indexOf('univer:1'));
+ view.unmount();expect(runtime.dispose).toHaveBeenCalledOnce();expect(runtime.inputs[0]!.dispose).toHaveBeenCalledOnce();
 });

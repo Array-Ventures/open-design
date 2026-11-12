@@ -33,3 +33,11 @@ before SDK metadata changes, forged cache/formula/coordinate writes, expired
 and thrown-call scopes, async dispatch and ownership-safe disposal. This is
 source-level qualification; packaged native editor interaction is a separate
 browser acceptance gate.
+
+The input lifetime shares the Grid layer's single cleanup owner; registering a
+second owner would replace worker/Univer cleanup in the retained-view manager.
+A shared release handle lets calculation retirement stop input promptly while
+the layer still guarantees worker and Univer cleanup after failures. The real
+Grid component regressions use a verified source array and cover replacement,
+setup exceptions and unmount, including snapshot capture before kernel disposal
+and exactly-once resource release. Both fail against the preceding owner wiring.
