@@ -44,7 +44,7 @@ function styleDelta(a: Record<string, unknown>, b: Record<string, unknown>): Par
   for (const [key, property] of [['cl', 'fontColor'], ['bg', 'fillColor']] as const) {
     if (!same(a[key], b[key])) {
       const value = b[key] as { rgb?: unknown } | null | undefined;
-      if (value == null) result[property] = null;
+      if (value?.rgb === (key === 'cl' ? 'rgb(0, 0, 0)' : 'rgba(0,0,0,0)') || value == null || typeof value === 'object' && (Object.keys(value).length === 0 || Object.keys(value).length === 1 && value.rgb === null)) result[property] = null;
       else {
         if (typeof value !== 'object' || Object.keys(value).some(key => key !== 'rgb') || typeof value.rgb !== 'string' || !/^#[a-fA-F0-9]{6}([a-fA-F0-9]{2})?$/.test(value.rgb)) fail('This color change cannot be saved yet.');
         const rgb = value.rgb as string; result[property] = rgb.length === 7 ? `FF${rgb.slice(1)}` : `${rgb.slice(7)}${rgb.slice(1, 7)}`;

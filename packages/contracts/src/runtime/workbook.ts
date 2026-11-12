@@ -61,7 +61,7 @@ export const workbookStyleEditSchema = z.object({ sheetId: id, row, column,
   bold: z.boolean().optional(), italic: z.boolean().optional(),
   fontColor: z.string().regex(/^[A-Fa-f0-9]{8}$/).nullable().optional(),
   fillColor: z.string().regex(/^[A-Fa-f0-9]{8}$/).nullable().optional(),
-}).strict().refine(edit => ['bold', 'italic', 'fontColor', 'fillColor'].some(key => Object.hasOwn(edit, key)), 'Empty style edit.');
+}).strict().refine(edit => edit.bold !== undefined || edit.italic !== undefined || edit.fontColor !== undefined || edit.fillColor !== undefined, 'Empty style edit.');
 export type WorkbookStyleEdit = z.infer<typeof workbookStyleEditSchema>;
 export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), styles: z.array(workbookStyleEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional() }).strict();
 /** Source ownership from OOXML f/@t and f/@ref, never inferred from cached

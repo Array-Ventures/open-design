@@ -90,18 +90,31 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
   // through its same pinned style parser so omitted cells inherit the authored
   // Normal font/fill/alignment instead of an invented empty editor style.
   const styleLink = [...links.values()].find(link => link.type.endsWith('/styles'));
+  const rawStyles = styleLink && !styleLink.external ? xmlPart(parts, styleLink.target).documentElement : undefined;
+  const rawXfs = rawStyles && child(rawStyles, 'cellXfs'), rawFonts = rawStyles && child(rawStyles, 'fonts');
+  const rawXfEntries = rawXfs ? children(rawXfs, 'xf') : [], rawFontEntries = rawFonts ? children(rawFonts, 'font') : [];
+  const sourceStyle = (value: Partial<ExcelJS.Style>, rawId?: number): WorkbookStyle => {
+    const normalized = style(value);
+    // The pinned color reader omits auto=1. Recover that source semantic instead
+    // of reviving an inherited authored color after an automatic-color reset.
+    const xf = rawId === undefined ? undefined : rawXfEntries[rawId];
+    const sourceFont = xf ? rawFontEntries[integer(xf.getAttribute('fontId'), 0)] : undefined;
+    const color = sourceFont && child(sourceFont, 'color');
+    if (color?.hasAttribute('auto') && bool(color.getAttribute('auto')) && !['rgb', 'theme', 'indexed'].some(attribute => color.hasAttribute(attribute))) normalized.font = { ...normalized.font, color: { kind: 'auto' } };
+    return normalized;
+  };
   let normal: WorkbookStyle = {};
   if (styleLink && !styleLink.external) {
     const StylesXform = createRequire(import.meta.url)('exceljs-community/lib/xlsx/xform/style/styles-xform.js') as new () => {
       parseStream(stream: Readable): Promise<unknown>; getStyleModel(id: number): Partial<ExcelJS.Style> | null;
     };
     const parser = new StylesXform(); await parser.parseStream(Readable.from([parts.get(styleLink.target)!]));
-    normal = style(parser.getStyleModel(0) ?? {});
+    normal = sourceStyle(parser.getStyleModel(0) ?? {}, 0);
   }
   const styles: WorkbookStyle[] = [normal];
   const styleIds = new Map<string, number>([[JSON.stringify(normal), 0]]);
-  const admitStyle = (value: Partial<ExcelJS.Style>): number => {
-    const normalized = style(value), key = JSON.stringify(normalized);
+  const admitStyle = (value: Partial<ExcelJS.Style>, rawId?: number): number => {
+    const normalized = sourceStyle(value, rawId), key = JSON.stringify(normalized);
     let id = styleIds.get(key);
     if (id === undefined) { id = styles.length; styleIds.set(key, id); styles.push(normalized); }
     if (styles.length > WORKBOOK_MODEL_LIMITS.styles) throw new WorkbookFormatError('Workbook style count exceeds its limit.', 'WORKBOOK_LIMIT');
@@ -126,7 +139,7 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
     for (const rowNode of data ? children(data, 'row') : []) {
       const rowIndex = rowNode.hasAttribute('r') ? integer(rowNode.getAttribute('r')) - 1 : previousRow + 1;
       previousRow = rowIndex; rowCount = Math.max(rowCount, rowIndex + 1);
-      if (rowNode.hasAttribute('ht') || rowNode.hasAttribute('hidden') || rowNode.hasAttribute('s')) rowDimensions.push({ index: rowIndex, ...(rowNode.hasAttribute('ht') ? { height: number(rowNode.getAttribute('ht')) } : {}), ...(rowNode.hasAttribute('hidden') ? { hidden: bool(rowNode.getAttribute('hidden')) } : {}), ...(rowNode.hasAttribute('s') ? { style: rowNode.getAttribute('s') === '0' ? 0 : admitStyle(source.getRow(rowIndex + 1)) } : {}) });
+      if (rowNode.hasAttribute('ht') || rowNode.hasAttribute('hidden') || rowNode.hasAttribute('s')) rowDimensions.push({ index: rowIndex, ...(rowNode.hasAttribute('ht') ? { height: number(rowNode.getAttribute('ht')) } : {}), ...(rowNode.hasAttribute('hidden') ? { hidden: bool(rowNode.getAttribute('hidden')) } : {}), ...(rowNode.hasAttribute('s') ? { style: rowNode.getAttribute('s') === '0' ? 0 : admitStyle(source.getRow(rowIndex + 1), integer(rowNode.getAttribute('s'))) } : {}) });
       let previousColumn = -1;
       for (const cell of children(rowNode, 'c')) {
         if (++cellCount > WORKBOOK_MODEL_LIMITS.cells) throw new WorkbookFormatError('Workbook cell count exceeds its limit.', 'WORKBOOK_LIMIT');
@@ -134,7 +147,7 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
         if (position.row !== rowIndex) throw new WorkbookFormatError('Cell does not belong to its declared row.');
         previousColumn = position.column; columnCount = Math.max(columnCount, position.column + 1);
         const imported = source.getCell(position.row + 1, position.column + 1);
-        const styleId = cell.getAttribute('s') === '0' || !cell.hasAttribute('s') && Object.keys(imported.style).length === 0 ? 0 : admitStyle(imported.style);
+        const styleId = cell.getAttribute('s') === '0' || !cell.hasAttribute('s') && Object.keys(imported.style).length === 0 ? 0 : admitStyle(imported.style, cell.hasAttribute('s') ? integer(cell.getAttribute('s')) : undefined);
         const formulaNode = child(cell, 'f');
         const array = readArrayFormulaMetadata(formulaNode, position);
         if (array) { arrayFormulas.push(array); rowCount = Math.max(rowCount, array.range.endRow + 1); columnCount = Math.max(columnCount, array.range.endColumn + 1); }
@@ -147,7 +160,7 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
       const min = integer(item.getAttribute('min')), max = integer(item.getAttribute('max'));
       if (min < 1 || max < min || max > WORKBOOK_MODEL_LIMITS.columns) throw new WorkbookFormatError('Invalid workbook column dimensions.');
       columnCount = Math.max(columnCount, max);
-      for (let index = min - 1; index < max; index++) columnDimensions.push({ index, ...(item.hasAttribute('width') ? { width: number(item.getAttribute('width')) } : {}), ...(item.hasAttribute('hidden') ? { hidden: bool(item.getAttribute('hidden')) } : {}), ...(item.hasAttribute('style') ? { style: item.getAttribute('style') === '0' ? 0 : admitStyle(source.getColumn(index + 1).style) } : {}) });
+      for (let index = min - 1; index < max; index++) columnDimensions.push({ index, ...(item.hasAttribute('width') ? { width: number(item.getAttribute('width')) } : {}), ...(item.hasAttribute('hidden') ? { hidden: bool(item.getAttribute('hidden')) } : {}), ...(item.hasAttribute('style') ? { style: item.getAttribute('style') === '0' ? 0 : admitStyle(source.getColumn(index + 1).style, integer(item.getAttribute('style'))) } : {}) });
     }
     const merges = child(root, 'mergeCells') ? children(child(root, 'mergeCells')!, 'mergeCell').map(item => range(item.getAttribute('ref') ?? '')) : [];
     for (const merge of merges) { rowCount = Math.max(rowCount, merge.endRow + 1); columnCount = Math.max(columnCount, merge.endColumn + 1); }

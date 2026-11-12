@@ -29,10 +29,12 @@ const borders: Record<NonNullable<NonNullable<WorkbookStyle['borders']>['top']>[
   dashDot: BorderStyleTypes.DASH_DOT, dashDotDot: BorderStyleTypes.DASH_DOT_DOT, slantDashDot: BorderStyleTypes.SLANT_DASH_DOT, mediumDashed: BorderStyleTypes.MEDIUM_DASHED,
   mediumDashDotDot: BorderStyleTypes.MEDIUM_DASH_DOT_DOT, mediumDashDot: BorderStyleTypes.MEDIUM_DASH_DOT, dashed: BorderStyleTypes.DASHED,
 };
-function style(input: WorkbookStyle, model: WorkbookDocument, gaps: Set<WorkbookDisplayGap>): IStyleData {
+function style(input: WorkbookStyle, model: WorkbookDocument, gaps: Set<WorkbookDisplayGap>, normal = false): IStyleData {
   const value: IStyleData = { ...font(input.font, model, gaps), ...(input.numberFormat === undefined ? {} : { n: { pattern: input.numberFormat } }) };
+  if (!normal && input.font?.color?.kind === 'auto') value.cl = { rgb: 'rgb(0, 0, 0)' };
   if (input.fill) {
     if ('gradient' in input.fill) gaps.add('gradient-fills');
+    else if (!normal && input.fill.pattern === 'none') value.bg = { rgb: 'rgba(0,0,0,0)' };
     else if (input.fill.pattern === 'solid') value.bg = color(input.fill.foreground, model, gaps);
     else if (!['none', 'gray125'].includes(input.fill.pattern)) gaps.add('pattern-fills');
   }
@@ -76,7 +78,7 @@ function cellValue(cell: WorkbookCell, model: WorkbookDocument, gaps: Set<Workbo
 export function gridWorkbook(input: WorkbookDocument, id: string, title: string, defaultTextColor?: string): GridWorkbook {
   const model = workbookDocumentSchema.parse(input), gaps = new Set<WorkbookDisplayGap>();
   const data: Partial<IWorkbookData> = { id, name: title, appVersion: '1.4.0', locale: LocaleType.EN_US, dateSystem: model.date1904 ? DateSystem.Date1904 : DateSystem.Date1900,
-    sheetOrder: model.sheets.map(sheet => sheet.id), styles: Object.fromEntries(model.styles.map((input, index) => [String(index), style(input, model, gaps)])), sheets: {} };
+    sheetOrder: model.sheets.map(sheet => sheet.id), styles: Object.fromEntries(model.styles.map((input, index) => [String(index), style(input, model, gaps, index === 0)])), sheets: {} };
   // OOXML style zero is the inherited Normal style even when cells omit s.
   // Give the editor that same inheritance so typing does not materialize its
   // document UI color as a new authored cell style. Automatic/unspecified font

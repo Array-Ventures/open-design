@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import ExcelJS from 'exceljs-community';
 import JSZip from 'jszip';
 import { readXlsxWorkbook } from '../../src/artifacts/workbook/reader.js';
@@ -38,6 +38,7 @@ it('deduplicates identical edits and repeated saves; inherits a column font for 
   const source = await fixture(), edit = { sheetId: '1', row: 4, column: 3, bold: true };
   const first = await readXlsxWorkbook(await patchWorkbookStyles(source, [edit]));
   const second = await readXlsxWorkbook(await patchWorkbookStyles(first, [edit]));
+  expect(child(xmlPart(first.parts, 'xl/worksheets/sheet1.xml').documentElement!, 'dimension')).toBeUndefined();
   expect(second.parts.get('xl/styles.xml')).toEqual(first.parts.get('xl/styles.xml'));
   expect(second.parts.get('xl/worksheets/sheet1.xml')).toEqual(first.parts.get('xl/worksheets/sheet1.xml'));
   const cell = second.model.sheets[0]!.cells.find(c => c.row === 4 && c.column === 3)!;
@@ -55,4 +56,70 @@ it('imports authored Normal as deduplicated style zero for omitted cells and def
   const reopened = await readXlsxWorkbook(await writeWorkbookPackage(parts));
   expect(reopened.model.styles[0]?.font?.name).toBe('Aptos');
   expect(reopened.model.sheets[0]!.cells.find(c => c.column === 1)?.style).toBeUndefined();
+});
+
+it('rejects ambiguous inherited row/column composition instead of dropping either source style', async () => {
+  const source = await fixture(), part = 'xl/worksheets/sheet1.xml', document = xmlPart(source.parts, part);
+  const row = children(child(document.documentElement!, 'sheetData')!, 'row')[0]!;
+  row.setAttribute('s', '0'); row.setAttribute('customFormat', '1');
+  // ExcelJS materializes a styled D1 while assigning the column font. Omit
+  // that explicit XF to exercise actual row/column inheritance instead.
+  children(row, 'c').find(cell => cell.getAttribute('r') === 'D1')?.removeAttribute('s');
+  const parts = new Map(source.parts); parts.set(part, Buffer.from(document.toString()));
+  await expect(patchWorkbookStyles({ ...source, parts }, [{ sheetId: '1', row: 0, column: 3, bold: true }])).rejects.toMatchObject({ code: 'WORKBOOK_UNSUPPORTED' });
+});
+
+it('accepts true row formatting flags and preserves inherited properties on a bold-only edit', async () => {
+  const source = await fixture(), part = 'xl/worksheets/sheet1.xml', document = xmlPart(source.parts, part);
+  const row = children(child(document.documentElement!, 'sheetData')!, 'row')[0]!;
+  const sourceCell = children(row, 'c').find(cell => cell.getAttribute('r') === 'A1')!;
+  row.setAttribute('s', sourceCell.getAttribute('s')!); row.setAttribute('customFormat', 'true'); sourceCell.removeAttribute('s');
+  const parts = new Map(source.parts); parts.set(part, Buffer.from(document.toString()));
+  const bytes = await patchWorkbookStyles({ ...source, parts }, [{ sheetId: '1', row: 0, column: 0, bold: true }]);
+  const independent = new ExcelJS.Workbook(); await independent.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(independent.worksheets[0]!.getCell('A1').font).toMatchObject({ name: 'Arial', size: 14, italic: true, bold: true, color: { theme: 4 } });
+  expect(independent.worksheets[0]!.getCell('A1').alignment).toMatchObject({ horizontal: 'right', wrapText: true });
+  expect(independent.worksheets[0]!.getCell('A1').numFmt).toBe('$0.00');
+  row.setAttribute('customFormat', 'invalid'); parts.set(part, Buffer.from(document.toString()));
+  await expect(patchWorkbookStyles({ ...source, parts }, [{ sheetId: '1', row: 0, column: 0, bold: true }])).rejects.toThrow('Invalid row formatting flag');
+});
+
+it('rejects malformed indices, counts and duplicate component tables before formatting', async () => {
+  const source = await fixture();
+  for (const mutate of [
+    (parts: Map<string, Buffer>) => { const doc = xmlPart(parts, 'xl/worksheets/sheet1.xml'); children(children(child(doc.documentElement!, 'sheetData')!, 'row')[0]!, 'c')[0]!.setAttribute('s', ''); parts.set('xl/worksheets/sheet1.xml', Buffer.from(doc.toString())); },
+    (parts: Map<string, Buffer>) => { const doc = xmlPart(parts, 'xl/styles.xml'); children(child(doc.documentElement!, 'cellXfs')!, 'xf')[0]!.setAttribute('fontId', '1.0'); parts.set('xl/styles.xml', Buffer.from(doc.toString())); },
+    (parts: Map<string, Buffer>) => { const doc = xmlPart(parts, 'xl/styles.xml'); child(doc.documentElement!, 'fonts')!.setAttribute('count', '999'); parts.set('xl/styles.xml', Buffer.from(doc.toString())); },
+    (parts: Map<string, Buffer>) => { const doc = xmlPart(parts, 'xl/styles.xml'); doc.documentElement!.appendChild(child(doc.documentElement!, 'fills')!.cloneNode(true)); parts.set('xl/styles.xml', Buffer.from(doc.toString())); },
+  ]) {
+    const parts = new Map(source.parts); mutate(parts);
+    const error = await patchWorkbookStyles({ ...source, parts }, [{ sheetId: '1', row: 0, column: 0, bold: true }]).then(() => null, error => error);
+    expect(error).toBeInstanceOf(Error);
+  }
+});
+it('indexes source rows and component signatures once for a thousand-cell formatting selection', async () => {
+  const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('Many');
+  for (let row = 1; row <= 1000; row++) { sheet.getCell(row, 1).value = row; sheet.getCell(row, 1).font = { name: `Font${row % 10}`, size: 11 }; }
+  const source = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer()));
+  const edits = Array.from({ length: 1000 }, (_, row) => ({ sheetId: '1', row, column: 0, bold: true }));
+  // Array.from is the primitive used by both XML child scanning and structural
+  // signatures. This checks work rather than imposing a machine-speed deadline.
+  const scanned = vi.spyOn(Array, 'from'); let bytes: Buffer, operations: number;
+  try { bytes = await patchWorkbookStyles(source, edits); operations = scanned.mock.calls.length; }
+  finally { scanned.mockRestore(); }
+  expect(operations).toBeLessThan(80_000);
+  const independent = new ExcelJS.Workbook(); await independent.xlsx.load(Uint8Array.from(bytes!).buffer);
+  expect(independent.worksheets[0]!.getCell('A1000').font).toMatchObject({ name: 'Font0', bold: true });
+  const reopened = await readXlsxWorkbook(bytes!); expect(reopened.model.styles.length).toBeLessThan(30);
+});
+
+it('writes automatic font color and no fill as real OOXML rather than white paint', async () => {
+  const source = await fixture(); const bytes = await patchWorkbookStyles(source, [{ sheetId: '1', row: 0, column: 0, fontColor: null, fillColor: null }]);
+  const independent = new ExcelJS.Workbook(); await independent.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(independent.worksheets[0]!.getCell('A1').font.color).toBeUndefined(); // pinned reader omits auto=1
+  const reopened = await readXlsxWorkbook(bytes), cell = reopened.model.sheets[0]!.cells.find(cell => cell.row === 0 && cell.column === 0)!;
+  expect(reopened.model.styles[cell.style!]?.font?.color).toEqual({ kind: 'auto' });
+  expect(reopened.parts.get('xl/styles.xml')!.toString()).toContain('auto="1"');
+  expect(independent.worksheets[0]!.getCell('A1').fill).toMatchObject({ type: 'pattern', pattern: 'none' });
+  expect(independent.worksheets[0]!.getCell('B1').result).toBe(71);
 });

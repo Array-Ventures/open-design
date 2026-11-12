@@ -34,6 +34,12 @@ it('executes genuine pinned formatting commands, creates sparse style plans and 
   message({ property: 'italic', value: true }); message({ property: 'fontColor', value: '#123456' }); message({ property: 'fillColor', value: '#abcdef' });
   const plan = workbookGridEdits(model, 'a'.repeat(64), initial, book.save());
   expect(plan.edits).toEqual([]); expect(plan.styles).toEqual([{ sheetId: 's', row: 1, column: 1, italic: true, fontColor: 'FF123456', fillColor: 'FFabcdef' }]);
+  message({ property: 'fontColor', value: null }); message({ property: 'fillColor', value: null });
+  expect(sheet.getRange(1, 1).getCellStyleData()?.cl).toEqual({ rgb: 'rgb(0, 0, 0)' });
+  expect(sheet.getRange(1, 1).getCellStyleData()?.bg).toEqual({ rgb: 'rgba(0,0,0,0)' });
+  expect(core.getColorStyle({ rgb: 'rgb(0, 0, 0)' })).toBe('#000000');
+  const reset = workbookGridEdits(model, 'a'.repeat(64), initial, book.save());
+  expect(reset.styles?.[0]).toMatchObject({ fontColor: null, fillColor: null });
   const saved = book.save();
   message({ property: 'bold', value: true }, 'stale');
   message({ property: 'bold', value: true }, 's:1:1:1:1', { origin: 'http://other.invalid' });

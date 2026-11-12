@@ -6,8 +6,8 @@ const color = z.string().regex(/^#[a-fA-F0-9]{6}$/);
 export const workbookFormatActionSchema = z.discriminatedUnion('property', [
   z.object({ property: z.literal('bold'), value: z.boolean() }).strict(),
   z.object({ property: z.literal('italic'), value: z.boolean() }).strict(),
-  z.object({ property: z.literal('fontColor'), value: color }).strict(),
-  z.object({ property: z.literal('fillColor'), value: color }).strict(),
+  z.object({ property: z.literal('fontColor'), value: color.nullable() }).strict(),
+  z.object({ property: z.literal('fillColor'), value: color.nullable() }).strict(),
 ]);
 const requestSchema = z.object({ type: z.literal('studio:workbook-format'), projectId: z.string().uuid(), controllerId: z.string().uuid(), selectionKey: z.string().max(200), action: workbookFormatActionSchema }).strict();
 export type WorkbookFormatAction = z.infer<typeof workbookFormatActionSchema>;
@@ -23,7 +23,7 @@ export function workbookFormattingBridge(api: FUniver, scope: () => WorkbookForm
     // Rich run formatting has a separate OOXML owner and cannot be replaced by
     // a whole-cell font without changing the visible content's meaning.
     if (selected.getCellDatas().some(row => row.some(cell => cell?.p))) return null;
-    return { selected, selectionKey: `${sheet.getSheetId()}:${range.startRow}:${range.startColumn}:${range.endRow}:${range.endColumn}` };
+    return { selected, unitId: book.getId(), sheetId: sheet.getSheetId(), selectionKey: `${sheet.getSheetId()}:${range.startRow}:${range.startColumn}:${range.endRow}:${range.endColumn}` };
   }
   function publish() {
     const current = scope(); if (!current) return;
@@ -43,8 +43,11 @@ export function workbookFormattingBridge(api: FUniver, scope: () => WorkbookForm
       const action = parsed.data.action;
       if (action.property === 'bold') range.selected.setFontWeight(action.value ? 'bold' : 'normal');
       else if (action.property === 'italic') range.selected.setFontStyle(action.value ? 'italic' : 'normal');
-      else if (action.property === 'fontColor') range.selected.setFontColor(action.value);
-      else range.selected.setBackgroundColor(action.value);
+      else if (action.property === 'fontColor') range.selected.setFontColor(action.value ?? 'rgb(0, 0, 0)');
+      // Null removes an override and revives inherited fill. Transparent paint
+      // is the pinned renderer's no-fill override; the sparse delta maps it to
+      // patternType=none, never a white authored fill.
+      else range.selected.setBackgroundColor(action.value ?? 'rgba(0,0,0,0)');
       error = null;
     } catch { error = 'This selection could not be formatted. Your workbook is still open.'; }
     publish();

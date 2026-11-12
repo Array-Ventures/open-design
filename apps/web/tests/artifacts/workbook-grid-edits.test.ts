@@ -99,3 +99,13 @@ it('blocks unsupported styles even when a permitted style is changed in the same
   current.sheets.s1!.cellData![2]![0]!.s = { bl: 1 };
   expect(() => workbookGridEdits(model, hash, initial, current)).toThrow('Rich text formatting changes');
 });
+
+it('represents explicit automatic color and no fill without reviving authored Normal colors', () => {
+  const { model } = fixture();
+  model.styles[0] = { font: { color: { kind: 'rgb', argb: 'FF123456' } }, fill: { pattern: 'solid', foreground: { kind: 'rgb', argb: 'FFABCDEF' } } };
+  model.styles.push({ font: { color: { kind: 'auto' } }, fill: { pattern: 'none' } });
+  model.sheets[0]!.cells[0]!.style = 1;
+  const data = gridWorkbook(model, 'grid', 'Forecast').data as IWorkbookData;
+  expect(data.styles['1']).toMatchObject({ cl: { rgb: 'rgb(0, 0, 0)' }, bg: { rgb: 'rgba(0,0,0,0)' } });
+  expect(workbookGridEdits(model, hash, data, structuredClone(data)).styles).toBeUndefined();
+});
