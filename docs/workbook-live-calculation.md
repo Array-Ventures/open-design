@@ -296,3 +296,26 @@ production result tags carry a valid digest of the current main inputs. Unit
 coverage distinguishes literal types/formula spelling from derived cache/style
 changes and rejects an away-and-back mutation revision. None of this promotes
 calculated or recovery snapshots into genuine loaded-cache authority.
+
+## Derived-write and display boundary (Grid still disabled)
+
+The worker preset omits the UI controller that normally copies the dependency
+return configuration into calculation requests. The worker therefore requests
+`isCalculateTreeModel` explicitly on every admitted calculation start. Actual
+pinned trees and array geometry travel over typed messages on the same owned
+Worker channel, before their matching scalar result. This is necessary because
+stock RPC does not replicate the global dependency mutation to the main unit.
+
+The pinned worker also applies a scalar result locally, generating nested
+`SetRangeValuesMutation` calls which RPC replicates separately. Filtering only
+the outer result is insufficient. Each nested write is bound to its exact parent
+result's source-formula object; main-thread application validates every derived
+range against its tagged input hash and dependency generation. Untagged or stale
+writes are refused before raw cells change. Genuine source caches, previous
+verified live values during calculation, and unavailable output stay separate.
+The display interceptor preserves literal edits ahead of any array overlay.
+
+The actual production-entry/RPC/interceptor test verifies scalar10, original
+unsupported55 and dependent56, genuine DIV/0, unavailable new EXPAND, and rapid
+edits converging12. These checks do not yet qualify Grid/writer recreation or
+XLSX persistence, so production Grid remains disabled at this stage.

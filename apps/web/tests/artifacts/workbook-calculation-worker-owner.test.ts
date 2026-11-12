@@ -23,3 +23,15 @@ it('fails closed when setup never reports readiness or explicitly refuses admiss
   const refused = new OwnedWorker(), second = ownWorkbookCalculationWorker(unavailable, () => refused as unknown as Worker); refused.message('unavailable');
   expect(await second.loaded).toBe(false); expect(refused.terminate).toHaveBeenCalledOnce(); owner.dispose(); second.dispose();
 });
+it('delivers typed graph sidebands only to the active owner and fails closed on malformed worker metadata', async () => {
+  const worker = new OwnedWorker(), unavailable = vi.fn(), owner = ownWorkbookCalculationWorker(unavailable, () => worker as unknown as Worker), listener = vi.fn();
+  const off = owner.onResult(listener);
+  const graph = { type: 'studio:workbook-calculation-worker', kind: 'graph', result: [], workbookCalculation: { version: 1, unitId: 'book', generation: 1, valid: true, inputSha256: '0'.repeat(64) } };
+  worker.dispatchEvent(new MessageEvent('message', { data: graph })); expect(listener).not.toHaveBeenCalled();
+  worker.message('ready'); await owner.loaded;
+  worker.dispatchEvent(new MessageEvent('message', { data: graph })); expect(listener).toHaveBeenCalledOnce();
+  off(); worker.dispatchEvent(new MessageEvent('message', { data: graph })); expect(listener).toHaveBeenCalledOnce();
+  worker.dispatchEvent(new MessageEvent('message', { data: { ...graph, result: [{ treeId: 1 }] } }));
+  expect(unavailable).toHaveBeenCalledOnce(); expect(worker.terminate).toHaveBeenCalledOnce();
+  worker.message('ready'); expect(owner.ready).toBe(false); owner.dispose();
+});
