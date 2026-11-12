@@ -21,7 +21,10 @@ bounds the payload, identities and offsets. SQLite preserves canonical valid
 structured anchors in the existing TEXT column; malformed/oversized reserved
 payloads fail before writes. Generic HTML hints retain their old whitespace
 normalization and 180-character limit. Saved-document chat context carries the
-full bounded quote instead of the generic 160-character excerpt.
+full bounded quote instead of the generic 160-character excerpt. Human-facing
+quote previews also decode that payload; saved/editing thread quotes preserve
+whitespace and scroll within a bounded focusable region. List previews remain
+compact. Pointer and keyboard resizing both follow the pane's text direction.
 A selected thread resolves only when both block identities, offsets and quote
 still match. Changed/deleted text is explicitly unavailable; the thread remains
 readable. There is no fuzzy retargeting or coordinate-based canvas selection.

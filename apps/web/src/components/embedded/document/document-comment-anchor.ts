@@ -58,3 +58,8 @@ export function documentCommentTarget(fileName: string, anchor: DocumentCommentA
 export function readDocumentCommentAnchor(target: Pick<PreviewCommentTarget, 'htmlHint'>): DocumentCommentAnchor | null {
   return readDocumentCommentAnchorHint(target.htmlHint);
 }
+
+/** Structured quotes retain exact whitespace and tail beyond legacy excerpts. */
+export function documentCommentQuote(target: Pick<PreviewCommentTarget, 'htmlHint' | 'text'> | null | undefined): string {
+  return target ? readDocumentCommentAnchor(target)?.quote ?? target.text : '';
+}

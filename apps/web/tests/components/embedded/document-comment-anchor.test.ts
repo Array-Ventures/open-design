@@ -2,7 +2,7 @@
 import { expect, it } from 'vitest';
 import { createEditor, $createParagraphNode, $createTextNode, $createLineBreakNode, $getRoot, $setState, $createRangeSelection, $setSelection } from 'lexical';
 import { documentBlockId } from '../../../src/components/embedded/document/document-identity';
-import { captureDocumentComment, resolveDocumentComment, documentCommentTarget, readDocumentCommentAnchor } from '../../../src/components/embedded/document/document-comment-anchor';
+import { captureDocumentComment, documentCommentQuote, resolveDocumentComment, documentCommentTarget, readDocumentCommentAnchor } from '../../../src/components/embedded/document/document-comment-anchor';
 function run(test: () => void) { const editor = createEditor({ onError: error => { throw error; } }); editor.update(test, { discrete: true }); }
 it('roundtrips exact Unicode selection across formatting and blocks without changing the document', () => run(() => {
   const first = $createParagraphNode(), second = $createParagraphNode(), a = $createTextNode('Hello 😀 '), b = $createTextNode('world'), c = $createTextNode('Next paragraph');
@@ -36,4 +36,9 @@ it('keeps the complete structured quote in contextual chat handoff beyond generi
   const attachments = commentsToAttachments([{ ...target, id: 'comment', projectId: 'project', conversationId: 'project', note: 'Revise this', createdAt: 1, updatedAt: 1, status: 'open', text: quote.slice(0, 160) }]);
   expect(attachments[0]!.currentText).toBe(quote);
   expect(commentFeedbackContext(attachments)[0]!.selectedText).toBe(quote);
+});
+
+it('uses a generic target excerpt when there is no valid structured anchor', () => {
+  expect(documentCommentQuote({ htmlHint: '<p>Generic</p>', text: 'Generic excerpt' })).toBe('Generic excerpt');
+  expect(documentCommentQuote(null)).toBe('');
 });

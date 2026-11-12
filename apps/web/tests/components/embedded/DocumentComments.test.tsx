@@ -176,3 +176,27 @@ it('does not let an older close confirmation discard newly typed comment text', 
   fireEvent.change(input, { target: { value: 'Typed during confirmation' } }); await act(async () => finish(true));
   expect(input).toHaveValue('Typed during confirmation'); expect(screen.getByRole('dialog', { name: 'Document comments' })).toBeTruthy();
 });
+
+it('reopens and edits a saved long multiline quote beyond the generic database excerpt', async () => {
+  const quote = ('Exact  spaces\nUnicode 😀 selected text.\n').repeat(10) + 'Quoted tail beyond the old 160-character cap';
+  const target = documentCommentTarget('report.html', { version: 1, start: { block: 'body', offset: 0 }, end: { block: 'body', offset: quote.length }, quote });
+  const saved: PreviewComment = { ...target, id: 'long-root', projectId: 'project', conversationId: 'project', note: 'Long root', status: 'open', authorMemberId: 'evebot:person', authorDisplayName: 'Person', createdAt: 1, updatedAt: 1, text: quote.replace(/\s+/g, ' ').slice(0, 160) };
+  const source = { html: documentHtml('Report', '<p data-od-id="body">' + quote.replace(/\n/g, '<br>') + '</p>'), sha256: 'source' };
+  render(<CommentReviewProvider projectId="project" changeStatus={async () => true}><DocumentEditor projectId="project" fileName="report.html" title="Report" observed={source} onSaved={() => {}} feedback={{ previewComments: [saved], previewCommentsState: 'success', onSavePreviewComment: api.save }} /></CommentReviewProvider>);
+  command('comments'); const row = await screen.findByRole('button', { name: /Long root/ }); expect(row.textContent).toContain(quote);
+  fireEvent.click(row); await screen.findByRole('textbox', { name: 'Reply' });
+  expect(screen.getByRole('dialog', { name: 'Document comments' }).querySelector('blockquote')!.textContent).toBe(quote);
+  fireEvent.click(screen.getByRole('button', { name: 'Comment actions' })); fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+  await screen.findByRole('textbox', { name: 'Comment on selected text' });
+  expect(screen.getByRole('dialog', { name: 'Document comments' }).querySelector('blockquote')!.textContent).toBe(quote);
+});
+
+it.each(['ltr', 'rtl'])('resizes the comments pane with logical keyboard directions in %s', async direction => {
+  render(<Harness />); command('comments'); const separator = await screen.findByRole('separator', { name: 'Resize document comments' });
+  separator.style.direction = direction;
+  expect(separator).toHaveAttribute('aria-valuenow', '320');
+  fireEvent.keyDown(separator, { key: 'ArrowLeft' }); expect(separator).toHaveAttribute('aria-valuenow', direction === 'rtl' ? '304' : '336');
+  fireEvent.keyDown(separator, { key: 'ArrowRight' }); expect(separator).toHaveAttribute('aria-valuenow', '320');
+  fireEvent.keyDown(separator, { key: 'Home' }); expect(separator).toHaveAttribute('aria-valuenow', '240');
+  fireEvent.keyDown(separator, { key: 'End' }); expect(separator).toHaveAttribute('aria-valuenow', '480');
+});
