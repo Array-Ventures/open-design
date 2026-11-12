@@ -99,6 +99,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       // The original model is the only authority for loaded formula caches.
       const original = structuredClone(prepared.data) as IWorkbookData;
       let calculationOwner: ReturnType<typeof ownWorkbookCalculationWorker> | null = null;
+      let readyForInput = false;
       const stopCalculation = () => { const owned = calculationOwner; calculationOwner = null; owned?.dispose(); };
       let readSnapshot: (() => IWorkbookData) | undefined;
       const fallback = () => {
@@ -161,20 +162,25 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       // writer. An unmounted/revoked surface must never become editable later.
       await callbacks.current.onReady?.(workbook.save());
       if (!current()) return;
-      workbook.setEditable(editable);
       // This pinned version uses disableAutoFocus for all editor focus, not
       // just startup. Enable it only after a person enters this grid so opening
       // an artifact cannot steal the chat composer's keyboard focus.
       const context = univer.__getInjector().get(IContextService), element = container.current;
-      const activate = () => context.setContextValue(DISABLE_AUTO_FOCUS_KEY, !editable);
+      const activate = () => context.setContextValue(DISABLE_AUTO_FOCUS_KEY, !editable || !readyForInput);
       const release = () => context.setContextValue(DISABLE_AUTO_FOCUS_KEY, true);
       element.addEventListener('pointerdown', activate, true); element.addEventListener('focusin', activate);
       window.addEventListener('blur', release);
       const literal = model.sourceFormat === 'csv' ? attachCsvLiteralInput(univer, univerAPI, kernel, element, model, message => { if (current()) reportInputError(message || null); }) : null;
       const beforeLiteral = dispose;
       if (literal) dispose = () => { try { literal.dispose(); } finally { beforeLiteral(); } };
-      const formatting = workbookFormattingBridge(univerAPI, () => editable && model.sourceFormat !== 'csv' ? format.current : undefined); formattingRef.current = formatting;
-      const exporter = workbookExportBridge(univerAPI, () => exportCurrent.current); exportBridge.current = exporter;
+      const formatting = workbookFormattingBridge(univerAPI, () => {
+        const scope = format.current;
+        return editable && model.sourceFormat !== 'csv' && scope ? { ...scope, blocked: scope.blocked || !readyForInput } : undefined;
+      }); formattingRef.current = formatting;
+      const exporter = workbookExportBridge(univerAPI, () => {
+        const scope = exportCurrent.current;
+        return scope ? { ...scope, blocked: scope.blocked || !readyForInput } : undefined;
+      }); exportBridge.current = exporter;
       const changed = univerAPI.addEvent(univerAPI.Event.CommandExecuted, event => {
         if (current() && event.type === CommandType.MUTATION && event.id.startsWith('sheet.')) { callbacks.current.onSnapshot?.(workbook.save()); formatting.publish(); }
       });
@@ -186,6 +192,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       });
       themes.observe(root, { attributes: true, attributeFilter: ['style', 'data-theme'] });
       dispose = () => {
+        readyForInput = false;
         try {
           const sheet = workbook.getActiveSheet();
           view.current = { id, sourceFormat: model.sourceFormat, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() };
@@ -197,6 +204,8 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
       if (!current()) return;
       layer.show();
+      readyForInput = true; workbook.setEditable(editable);
+      formatting.publish(); exporter.publish();
       callbacks.current.onDisplayGaps?.(prepared.gaps); setError(null);
     } catch { close(); if (current()) setError('The workbook grid could not be opened.'); }
     };

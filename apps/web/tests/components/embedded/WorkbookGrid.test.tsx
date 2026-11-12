@@ -227,7 +227,8 @@ it('retains CSV sizing through the real writer acknowledgement and refreshed sou
 
 it('retains an inert rendered canvas until the replacement renderer is ready, then releases the old kernel', async () => {
   runtime.saved.mockReturnValue(gridWorkbook(model, 'grid', 'Revenue').data);
-  const view = render(<WorkbookGrid id="grid" title="Revenue" model={model} />);
+  const editing = { onSnapshot: vi.fn(), onReady: vi.fn() };
+  const view = render(<WorkbookGrid id="grid" title="Revenue" model={model} {...editing} />);
   const host = screen.getByRole('region', { name: 'Workbook grid' });
   await waitFor(() => expect(runtime.listener).not.toBeNull());
   await waitFor(() => expect(host).not.toHaveAttribute('aria-busy'));
@@ -236,16 +237,23 @@ it('retains an inert rendered canvas until the replacement renderer is ready, th
   expect(previous).not.toBeNull();
   let rendered!: () => void;
   runtime.rendered = new Promise<void>(resolve => { rendered = resolve; });
-  view.rerender(<WorkbookGrid id="grid" title="Revenue" model={{ ...model }} />);
+  view.rerender(<WorkbookGrid id="grid" title="Revenue" model={{ ...model }} {...editing} />);
   await waitFor(() => expect(runtime.created).toHaveBeenCalledTimes(2));
   expect(previous.isConnected).toBe(true); expect(previous.inert).toBe(true);
   expect(previous).toHaveAttribute('aria-hidden', 'true');
   expect(host.children).toHaveLength(2);
   expect(runtime.dispose).not.toHaveBeenCalledWith(previousKernel);
   expect(host.lastElementChild).toHaveStyle({ visibility: 'hidden' });
+  expect(Boolean((host.lastElementChild as HTMLElement).inert)).toBe(false);
+  fireEvent.pointerDown(host);
+  expect(runtime.context).toHaveBeenLastCalledWith('disableAutoFocus', true);
+  expect(runtime.editable).toHaveBeenLastCalledWith(false);
   await act(async () => { rendered(); });
   await waitFor(() => expect(host).not.toHaveAttribute('aria-busy'));
   expect(previous.isConnected).toBe(false); expect(host.children).toHaveLength(1);
+  fireEvent.pointerDown(host);
+  expect(runtime.context).toHaveBeenLastCalledWith('disableAutoFocus', false);
+  expect(runtime.editable).toHaveBeenLastCalledWith(true);
   expect(runtime.dispose).toHaveBeenCalledWith(previousKernel);
   expect((host.firstElementChild as HTMLElement).inert).toBe(false);
   const replacementKernel = runtime.created.mock.calls[1]![0];

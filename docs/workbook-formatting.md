@@ -98,3 +98,14 @@ read-only retirement, immediate cross-artifact withdrawal, the existing dirty
 worker-fallback handoff and CSV dimensions across acknowledged writer refresh.
 Actual packaged transition recording remains required before claiming the
 skeleton flash fixed in the product preview.
+
+The pinned browser/runtime suppresses text `beforeinput` when the incoming
+editor is initialized inside `inert`, even after that attribute is removed.
+An independent real-browser comparison reproduced this with fresh kernels:
+hidden-only initialization types correctly; hidden plus inert does not. Incoming
+layers therefore initialize hidden, with write permissions, input activation,
+formatting and export selection held until the rendered handoff. Only retired
+layers become inert. The app regression types through the actual canvas after
+Save, then Undo verifies that only the first acknowledged edit changed source.
+Its broken-package baseline reaches the replacement and fails on that second
+keyboard mutation; packaged green qualification is still required.

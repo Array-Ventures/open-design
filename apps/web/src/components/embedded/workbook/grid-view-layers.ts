@@ -11,7 +11,9 @@ export class WorkbookViewLayers {
     const element = document.createElement('div');
     element.className = 'absolute inset-0';
     const replacing = this.shown !== null;
-    if (replacing) { element.style.visibility = 'hidden'; element.inert = true; }
+    // The pinned document input must initialize outside inert. Hidden CSS
+    // already prevents pointer/focus access until the layer is revealed.
+    if (replacing) element.style.visibility = 'hidden';
     this.host.appendChild(element);
     this.host.setAttribute('aria-busy', 'true');
     let owned = () => {}, disposed = false;
