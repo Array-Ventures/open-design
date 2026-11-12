@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { workbookDocumentSchema, type WorkbookDocument } from '../src/runtime/workbook.js';
+import { workbookDocumentSchema, workbookEditPlanSchema, workbookPreviewSchema, type WorkbookDocument } from '../src/runtime/workbook.js';
 
 function fixture(): WorkbookDocument {
   return {
@@ -17,6 +17,14 @@ function fixture(): WorkbookDocument {
   };
 }
 describe('workbook model boundary', () => {
+  it('binds previews and edit plans to an exact source hash without accepting authority fields', () => {
+    const sourceSha256 = 'a'.repeat(64), cell = { row: 0, column: 0, kind: 'number', value: 2 };
+    expect(workbookPreviewSchema.parse({ sourceSha256, model: fixture() }).sourceSha256).toBe(sourceSha256);
+    expect(workbookEditPlanSchema.parse({ sourceSha256, edits: [{ sheetId: 'inputs', cell }] }).edits).toHaveLength(1);
+    expect(workbookPreviewSchema.safeParse({ sourceSha256: 'invalid', model: fixture() }).success).toBe(false);
+    expect(workbookEditPlanSchema.safeParse({ edits: [{ sheetId: 'inputs', cell }] }).success).toBe(false);
+    expect(workbookEditPlanSchema.safeParse({ sourceSha256, edits: [{ sheetId: 'inputs', cell }], path: '/outside' }).success).toBe(false);
+  });
   it('keeps workbook and sheet name scopes distinct and validates table geometry', () => {
     const input = fixture();
     input.definedNames = [{ name: 'Rate', formula: '3' }, { name: 'Rate', formula: '2', sheetId: 'summary' }];

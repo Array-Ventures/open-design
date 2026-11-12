@@ -1,11 +1,11 @@
 import type { Document, Element } from '@xmldom/xmldom';
-import { workbookCellSchema, type WorkbookCell, type WorkbookRange } from '@open-design/contracts/runtime/workbook';
+import { workbookCellSchema, type WorkbookCell, type WorkbookCellEdit, type WorkbookRange } from '@open-design/contracts/runtime/workbook';
 import { WorkbookFormatError, writeWorkbookPackage } from './package.js';
 import { address, child, children, range, relationshipTarget, xmlPart } from './parts.js';
 import type { ReadWorkbook } from './reader.js';
 import { writeWorkbookXml } from './xml.js';
 
-export interface WorkbookCellEdit { sheetId: string; cell: WorkbookCell }
+export type { WorkbookCellEdit } from '@open-design/contracts/runtime/workbook';
 function element(document: Document, parent: Element, name: string): Element {
   return document.createElementNS(parent.namespaceURI, parent.prefix ? `${parent.prefix}:${name}` : name);
 }

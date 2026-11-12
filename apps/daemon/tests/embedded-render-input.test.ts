@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { RenderInput } from '../src/embedded-render/input.js';
 describe('contained render request', () => {
+  it.each(['workbook', 'xlsx'])('accepts bounded workbook processing for %s and rejects capture options', format => {
+    expect(RenderInput.safeParse({ fileName: 'book.xlsx', format, dataFile: 'edits.json' }).success).toBe(true);
+    for (const invalid of [{ fileName: 'report.html' }, { fileName: 'book.xlsm' }, { deck: true }, { width: 800 }, { height: 600 }, { index: 0 }, { editable: true }]) {
+      expect(RenderInput.safeParse({ fileName: 'book.xlsx', format, ...invalid }).success).toBe(false);
+    }
+  });
   it('accepts local project inputs and bounded render dimensions', () => {
     expect(RenderInput.parse({ fileName: 'dist/index.html', format: 'pdf', deck: true }).deck).toBe(true);
   });

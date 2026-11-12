@@ -15,6 +15,7 @@ import { bundleStandaloneHtml } from '../artifacts/standalone-html.js';
 import { buildScreenshotPdf, buildScreenshotPptx, type SlideImage } from '../deck-export.js';
 import { prepareDocument, exportDocument, documentPrintCss, documentPrintOptions } from './documents.js';
 import { RenderInput } from './input.js';
+import { renderWorkbook } from './workbooks.js';
 
 const MIME: Record<string, string> = { '.html': 'text/html', '.htm': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mp3': 'audio/mpeg', '.wav': 'audio/wav' };
 const mime = (name: string) => MIME[path.extname(name).toLowerCase()] ?? 'application/octet-stream';
@@ -34,6 +35,7 @@ export async function renderSnapshot(source: string, output: string, value: unkn
     if (!info.isFile() || info.size > 50 * 1024 * 1024) throw new Error('Asset size limit');
     return readFile(file);
   }
+  if (input.format === 'workbook' || input.format === 'xlsx') return renderWorkbook(output, { fileName: input.fileName, format: input.format, ...(input.dataFile ? { dataFile: input.dataFile } : {}) }, asset);
   const original = (await asset(input.fileName)).toString('utf8');
   let html = original;
   const document = !input.deck && !input.dataFile ? await prepareDocument(html, input.fileName, input.title) : null;

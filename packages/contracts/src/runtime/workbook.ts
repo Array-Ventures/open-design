@@ -49,6 +49,9 @@ export const workbookCellSchema = z.discriminatedUnion('kind', [
   z.object({ ...position, kind: z.literal('error'), value: z.string().min(1).max(100) }).strict(),
 ]);
 export type WorkbookCell = z.infer<typeof workbookCellSchema>;
+export const workbookCellEditSchema = z.object({ sheetId: id, cell: workbookCellSchema }).strict();
+export type WorkbookCellEdit = z.infer<typeof workbookCellEditSchema>;
+export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells) }).strict();
 export const workbookSheetSchema = z.object({
   id, name: z.string().min(1).max(31).refine(name => !/[\\/*?:[\]]/.test(name) && !name.startsWith("'") && !name.endsWith("'"), 'Invalid sheet name.'),
   visibility: z.enum(['visible', 'hidden', 'veryHidden']),
@@ -125,3 +128,4 @@ export const workbookDocumentSchema = z.object({
   if (!workbook.sheets.some(sheet => sheet.id === workbook.activeSheetId && sheet.visibility === 'visible')) invalid('Active sheet must be visible.');
 });
 export type WorkbookDocument = z.infer<typeof workbookDocumentSchema>;
+export const workbookPreviewSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), model: workbookDocumentSchema }).strict();
