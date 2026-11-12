@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { workbookEditPlanSchema, workbookPreviewSchema } from '@open-design/contracts/runtime/workbook';
 import type { WorkbookCheckpoint } from './workbook-writer';
-import { workbookGridEdits } from './grid-edits';
+import { workbookGridPlan } from './grid-plan';
 
 export const workbookDraftScopeSchema = z.object({ viewerId: z.string().min(1).max(200), projectId: z.string().uuid(), fileName: z.string().min(1).max(500), draftId: z.string().uuid() }).strict();
 export type WorkbookDraftScope = z.infer<typeof workbookDraftScopeSchema>;
@@ -30,6 +30,7 @@ export function decodeWorkbookDraft(value: unknown, scope: WorkbookDraftScope): 
   // Univer snapshots contain extensible presentation fields. The bounded
   // structure is validated here; only a derived typed edit plan reaches OOXML.
   const state = parsed.checkpoint as unknown as WorkbookCheckpoint, gridId = `${scope.projectId}:${scope.fileName}`;
+  if (/\.csv$/i.test(scope.fileName) !== (state.source.model.sourceFormat === 'csv')) throw new Error('The workbook draft source format is inconsistent.');
   if ([state.acknowledged, state.desired, ...(state.pending ? [state.pending.snapshot] : [])].some(sheet => sheet.id !== gridId)) throw new Error('The workbook draft identity is inconsistent.');
   for (const data of [state.acknowledged, state.desired, ...(state.pending ? [state.pending.snapshot] : [])]) {
     if (new Set(data.sheetOrder).size !== data.sheetOrder.length || JSON.stringify([...data.sheetOrder].sort()) !== JSON.stringify(Object.keys(data.sheets).sort())) throw new Error('The workbook draft sheet structure is inconsistent.');
@@ -41,7 +42,7 @@ export function decodeWorkbookDraft(value: unknown, scope: WorkbookDraftScope): 
   const sheetIds = state.source.model.sheets.map(sheet => sheet.id);
   if (JSON.stringify(state.acknowledged.sheetOrder) !== JSON.stringify(sheetIds)) throw new Error('The workbook draft baseline is inconsistent.');
   if (state.pending) {
-    const derived = workbookGridEdits(state.source.model, state.source.sourceSha256, state.acknowledged, state.pending.snapshot);
+    const derived = workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.pending.snapshot);
     if (JSON.stringify(derived) !== JSON.stringify(state.pending.intent.plan)) throw new Error('The pending workbook save does not match its protected snapshot.');
   }
   return state;

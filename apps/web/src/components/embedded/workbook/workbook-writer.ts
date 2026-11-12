@@ -1,8 +1,7 @@
-import { csvGridEdits } from './csv-grid-edits';
+import { workbookGridPlan } from './grid-plan';
 import type { IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument, workbookEditPlanSchema } from '@open-design/contracts/runtime/workbook';
 import type { z } from 'zod';
-import { workbookGridEdits } from './grid-edits';
 import { isWorkbookSaveRejection, WorkbookSaveTerminalError } from './save-terminal';
 
 type Preview = { sourceSha256: string; model: WorkbookDocument };
@@ -41,7 +40,7 @@ export class WorkbookWriter {
       }
     }
   }
-  private plan() { return (this.source.model.sourceFormat === 'csv' ? csvGridEdits : workbookGridEdits)(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired); }
+  private plan() { return workbookGridPlan(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired); }
   state(): WorkbookWriteState {
     let dirty = Boolean(this.pending || this.running);
     try { const plan = this.plan(); dirty ||= plan.edits.length > 0 || Boolean(plan.dimensions?.length || plan.styles?.length); } catch { dirty = true; }
