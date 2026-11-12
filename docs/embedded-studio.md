@@ -17,12 +17,25 @@ only a checked durable terminal receipt can clear that pending fence. Expired
 preparations rotate only after durable candidate removal and a second absent
 save receipt, preserving the operation identity and frozen plan.
 
-Focused integration tests pass 66 cases across nine files. Full web/workspace
+Focused integration tests pass 92 cases across thirteen files. Full web/workspace
 typechecks and the guard are recorded separately by the integration owner.
 This is development source, not active preview or release provenance. Actual
 browser crash/reload, multiple-tab and permission-revocation acceptance,
 download inspection and light/dark visual checks remain required. The existing
 owned preview and first-release companion candidate are unchanged by this work.
+
+Manual acceptance against clean development package
+`dbcb9c9dc76a1b43b60fa18b92036971ab94bf193e1e12f2bffa9635f5237ef6`
+verified reload/restore of an unsaved scalar edit, acknowledged navigation
+discard followed by reopening the unchanged file, and refusal to restore/delete
+another tab's active draft. Continue opened the original file in a new branch
+without replacing the other tab's unsaved value. Light and dark screenshots
+were inspected. This pass found further defects rather than clearing release
+acceptance: missing Normal-style inheritance made a plain edit create a new
+style, recovery-list default indentation was wrong, dark zoom icons lacked
+contrast, and the canvas covered the error/download overlay. The adapter and
+chrome fixes are now in source and must be checked in the next clean package.
+Download inspection, actual crash and revoked-access scenarios remain open.
 
 The Evebot integration uses Open Design’s actual visual file workspace while Evebot owns bots, chat, approvals, workspace access, providers, exports and publication. Studio has no separate agent conversation or runner in this mode.
 

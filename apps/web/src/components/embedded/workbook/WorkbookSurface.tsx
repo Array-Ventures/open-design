@@ -67,11 +67,11 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
       <WorkbookRecoveryCard drafts={recovery.drafts} busy={recovery.busy} error={recovery.error} onRestore={id => void recovery.restore(id)} onDiscard={id => void recovery.discard(id)} onDownload={id => void recovery.download(id)} onContinue={() => void recovery.continueCurrent()} />}
   </div>;
   return <div className="relative h-full min-h-0 w-full">
-    <div className="h-full" onKeyDownCapture={event => { if (editor.discarding) { event.preventDefault(); event.stopPropagation(); } }} onPointerDownCapture={event => { if (editor.discarding) { event.preventDefault(); event.stopPropagation(); } }}>{content}</div>
-    {editor.discarding ? <div role="status" className="absolute inset-0 flex items-center justify-center bg-background-primary-default/80 text-body-2-regular text-text-tertiary">Discarding changes…</div> : null}
-    {editor.state.error || downloadError ? <div role="alert" className="absolute bottom-12 start-3 end-3 flex items-center gap-3 rounded-lg border border-border-button-default bg-background-primary-default p-3 text-body-2-regular text-text-error-primary">
+    <div className="relative z-0 h-full" onKeyDownCapture={event => { if (editor.discarding) { event.preventDefault(); event.stopPropagation(); } }} onPointerDownCapture={event => { if (editor.discarding) { event.preventDefault(); event.stopPropagation(); } }}>{content}</div>
+    {editor.discarding ? <div role="status" className="absolute inset-0 z-20 flex items-center justify-center bg-background-primary-default/80 text-body-2-regular text-text-tertiary">Discarding changes…</div> : null}
+    {editor.state.error || downloadError ? <div role="alert" className="absolute bottom-12 start-3 end-3 z-10 flex items-center gap-3 rounded-lg border border-border-button-default bg-background-primary-default p-3 text-body-2-regular text-text-error-primary">
       <span className="min-w-0 flex-1">{downloadError ?? editor.state.error}</span>
-      <Button variant="ghost" size="small" iconOnly leadingIcon={RiDownloadLine} aria-label="Download recovery copy (JSON)" title="Download recovery copy (JSON)" onClick={downloadCurrent} />
+      <Button variant="ghost" size="small" iconOnly leadingIcon={RiDownloadLine} className={cx(ARTIFACT_ICON_BUTTON, 'shrink-0')} aria-label="Download recovery copy (JSON)" title="Download recovery copy (JSON)" onClick={downloadCurrent} />
     </div> : null}
     {error ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry loading workbook" title={error} className={cx(ARTIFACT_ICON_BUTTON, 'absolute end-3 top-3')} onClick={() => setRetry(value => value + 1)} /> : null}
   </div>;

@@ -7,6 +7,8 @@ import '@univerjs/preset-sheets-core/lib/index.css';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { gridWorkbook, type WorkbookDisplayGap } from './grid-model';
 import { workbookGridTheme } from './grid-theme';
+import styles from './WorkbookGrid.module.css';
+import { cx } from '../boardui/cx';
 
 export interface WorkbookGridProps {
   id: string; title: string; model: WorkbookDocument;
@@ -28,7 +30,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
   const editable = Boolean(onSnapshot);
   useEffect(() => {
     if (!container.current) return;
-    const root = document.documentElement, prepared = gridWorkbook(model, id, callbacks.current.title);
+    const root = document.documentElement;
     let dispose = () => {}, active = true;
     const close = () => { const owned = dispose; dispose = () => {}; owned(); };
     const start = async () => {
@@ -37,7 +39,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
       // not initialize a late module load after the viewer/session unmounts.
       const { DISABLE_AUTO_FOCUS_KEY, CalculationMode, UniverDocsPlugin, UniverDocsUIPlugin, UniverFormulaEnginePlugin, UniverRenderEnginePlugin, UniverSheetsPlugin, UniverSheetsUIPlugin, UniverSheetsFormulaPlugin, UniverSheetsFormulaUIPlugin, UniverSheetsNumfmtPlugin, UniverSheetsNumfmtUIPlugin, UniverUIPlugin } = await import('@univerjs/preset-sheets-core');
       if (!active || !container.current) return;
-      const theme = workbookGridTheme(root);
+      const theme = workbookGridTheme(root), prepared = gridWorkbook(model, id, callbacks.current.title, theme.gray[900]);
       const univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: English }, theme, darkMode: root.dataset.theme === 'dark' });
       // Own the instance before plugin registration so failed setup also closes it.
       dispose = () => univer.dispose();
@@ -95,7 +97,7 @@ export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, on
     return () => { active = false; close(); };
   }, [id, model, editable]);
   return <div className="relative h-full min-h-0 w-full">
-    <div ref={container} className="h-full min-h-0 w-full" role="region" aria-label="Workbook grid" tabIndex={0} />
+    <div ref={container} className={cx(styles.grid, 'h-full min-h-0 w-full')} role="region" aria-label="Workbook grid" tabIndex={0} />
     {error ? <div role="alert" className="absolute inset-0 bg-background-primary-default p-4 text-body-2-regular text-text-error-primary">{error}</div> : null}
   </div>;
 }
