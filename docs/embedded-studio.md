@@ -103,6 +103,14 @@ corepack pnpm exec tsx scripts/build-embedded-companion.ts --out "$STUDIO_BUILD_
 
 The builder requires a clean pinned fork commit and a fresh output directory. `--allow-dirty` is for isolated development fixtures only. The receipt records source/build identity and the complete relocated application inventory, including file checksums and contained dependency links. A paired host must verify the expected digest before execution; it must not discover or silently replace a live upstream version.
 
+Legacy pnpm deployment may hard-link generated dependencies back to the
+checkout. The builder now materializes independent regular files before native
+addon changes and before final inventory; symlinks remain subject to the
+existing containment checks. Never bypass a checksum mismatch after another
+workspace build. Run `corepack pnpm exec tsx scripts/test-package-hardlinks.ts`
+for actual alias-mutation, executable-mode and symlink regressions, and qualify
+each packaged candidate again after rebuilding workspace dependencies.
+
 The standalone web server renders embedded project pages at request time so they do not write per-project cache files into the verified application package. Writable home, runtime state and workspace files are supplied separately by the host.
 
 ## Recovery
