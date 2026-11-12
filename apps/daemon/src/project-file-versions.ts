@@ -11,6 +11,7 @@ import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/p
 import path from 'node:path';
 
 import { isSafeId, kindFor, mimeFor, resolveProjectDir, validateProjectPath } from './projects.js';
+import { isWorkbookHistoryFile, persistWorkbookHistoryFile, readWorkbookHistoryFile, requireWorkbookHistoryBytes, validateWorkbookHistoryManifest, WORKBOOK_HISTORY_MANIFEST_BYTES } from './artifacts/workbook/history-storage.js';
 
 export const isVersionedDocumentFile = (name: string): boolean => /\.(html?|md|markdown)$/i.test(name);
 
@@ -70,6 +71,23 @@ export interface ProjectFileVersionLockContext {
 export interface ProjectFileVersionContentMatch {
   status: Extract<ArtifactOriginStatus, 'matched' | 'missing_version' | 'digest_mismatch' | 'unknown'>;
   version: ProjectFileVersion | null;
+}
+
+export interface ProjectFileVersionBytesLockContext {
+  safeName: string;
+  createVersion: (content: Buffer, options?: CreateProjectFileVersionOptions) => Promise<ProjectFileVersion>;
+  ensureCurrentVersion: (content: Buffer, options?: CreateProjectFileVersionOptions) => Promise<ProjectFileVersion | null>;
+  matchVersionContent: (content: Buffer, versionId?: string) => Promise<ProjectFileVersionContentMatch>;
+}
+export async function withProjectFileVersionBytesLock<T>(projectsRoot: string, projectId: string, fileName: string, metadata: unknown, work: (context: ProjectFileVersionBytesLockContext) => Promise<T>): Promise<T> {
+  const safeName = validateUserFileName(fileName);
+  if (!isWorkbookHistoryFile(safeName)) throw codedError('Binary version storage requires an XLSX file.', 'EINVAL');
+  assertProjectAvailable(projectsRoot, projectId, metadata);
+  return withVersionFileLock(projectsRoot, projectId, safeName, () => work({ safeName,
+    createVersion: (bytes, options = {}) => createProjectFileVersionUnlocked(projectsRoot, projectId, safeName, requireWorkbookHistoryBytes(bytes), options),
+    ensureCurrentVersion: (bytes, options = {}) => ensureCurrentProjectFileVersionUnlocked(projectsRoot, projectId, safeName, requireWorkbookHistoryBytes(bytes), options),
+    matchVersionContent: (bytes, versionId) => resolveProjectFileVersionContentMatchUnlocked(projectsRoot, projectId, safeName, requireWorkbookHistoryBytes(bytes), versionId),
+  }));
 }
 
 function codedError(message: string, code: string): Error & { code: string } {
@@ -161,6 +179,7 @@ export async function withProjectFileVersionLock<T>(
   fn: (context: ProjectFileVersionLockContext) => Promise<T>,
 ): Promise<T> {
   const safeName = validateUserFileName(fileName);
+  if (isWorkbookHistoryFile(safeName)) throw codedError('Use the binary workbook version API.', 'EINVAL');
   assertProjectAvailable(projectsRoot, projectId, metadata);
   return withVersionFileLock(projectsRoot, projectId, safeName, () =>
     fn({
@@ -188,7 +207,7 @@ function normalizePrompt(value: unknown): string | null {
 }
 
 function normalizeContentPath(value: unknown, id: string): string {
-  if (typeof value === 'string' && /^[A-Za-z0-9._-]+\.(?:html|md|markdown)$/u.test(value) && !value.includes('..')) {
+  if (typeof value === 'string' && /^[A-Za-z0-9._-]+\.(?:html|md|markdown|xlsx)$/u.test(value) && !value.includes('..')) {
     return value;
   }
   return `${id}.html`;
@@ -258,8 +277,8 @@ function artifactOriginsEqual(
   );
 }
 
-export function projectFileVersionContentDigest(content: string): string {
-  return createHash('sha256').update(Buffer.from(String(content ?? ''), 'utf8')).digest('hex');
+export function projectFileVersionContentDigest(content: string | Buffer): string {
+  return createHash('sha256').update(Buffer.isBuffer(content) ? content : Buffer.from(String(content ?? ''), 'utf8')).digest('hex');
 }
 
 function normalizePromptSource(value: unknown): VersionPromptSource | undefined {
@@ -361,8 +380,12 @@ async function readVersionManifestState(
   fileName: string,
 ): Promise<VersionManifestState> {
   try {
-    const raw = await readFile(path.join(versionRootFor(projectsRoot, projectId, fileName), VERSION_MANIFEST), 'utf8');
-    return normalizeManifestState(JSON.parse(raw) as unknown, fileName);
+    const raw = isWorkbookHistoryFile(fileName)
+      ? new TextDecoder('utf-8', { fatal: true }).decode(await readWorkbookHistoryFile(versionRootFor(projectsRoot, projectId, fileName), VERSION_MANIFEST, WORKBOOK_HISTORY_MANIFEST_BYTES))
+      : await readFile(path.join(versionRootFor(projectsRoot, projectId, fileName), VERSION_MANIFEST), 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    if (isWorkbookHistoryFile(fileName)) validateWorkbookHistoryManifest(parsed);
+    return normalizeManifestState(parsed, fileName);
   } catch (err) {
     if (errorCode(err) === 'ENOENT') return { entries: [], currentVersionId: null };
     throw err;
@@ -393,7 +416,10 @@ async function writeVersionManifest(
   if (typeof options.deletedAt === 'number' && Number.isFinite(options.deletedAt)) {
     manifest.deletedAt = options.deletedAt;
   }
-  await writeFile(path.join(root, VERSION_MANIFEST), JSON.stringify(manifest, null, 2));
+  if (isWorkbookHistoryFile(fileName)) {
+    validateWorkbookHistoryManifest(manifest);
+    await persistWorkbookHistoryFile(root, VERSION_MANIFEST, JSON.stringify(manifest, null, 2), true);
+  } else await writeFile(path.join(root, VERSION_MANIFEST), JSON.stringify(manifest, null, 2));
 }
 
 function publicVersion(entry: VersionEntry, currentId: string | null): ProjectFileVersion {
@@ -457,6 +483,14 @@ export async function readProjectFileVersion(
   versionId: string,
   metadata?: unknown,
 ): Promise<{ version: ProjectFileVersion; content: string }> {
+  if (isWorkbookHistoryFile(fileName)) throw codedError('Use the binary workbook version API.', 'EINVAL');
+  const result = await readProjectFileVersionBytes(projectsRoot, projectId, fileName, versionId, metadata);
+  return { version: result.version, content: result.content.toString('utf8') };
+}
+
+export async function readProjectFileVersionBytes(
+  projectsRoot: string, projectId: string, fileName: string, versionId: string, metadata?: unknown,
+): Promise<{ version: ProjectFileVersion; content: Buffer }> {
   const safeName = validateUserFileName(fileName);
   const safeVersionId = String(versionId || '').trim();
   if (!safeVersionId || !VERSION_ID_RE.test(safeVersionId)) {
@@ -468,7 +502,10 @@ export async function readProjectFileVersion(
   if (!entry) {
     throw codedError('version not found', 'ENOENT');
   }
-  const content = await readFile(path.join(versionRootFor(projectsRoot, projectId, safeName), entry.contentPath), 'utf8');
+  const content = isWorkbookHistoryFile(safeName)
+    ? await readWorkbookHistoryFile(versionRootFor(projectsRoot, projectId, safeName), entry.contentPath)
+    : await readFile(path.join(versionRootFor(projectsRoot, projectId, safeName), entry.contentPath));
+  if (isWorkbookHistoryFile(safeName) && (content.length !== entry.size || projectFileVersionContentDigest(content) !== entry.contentDigest)) throw codedError('Workbook history bytes do not match their recorded digest.', 'EIO');
   return {
     version: publicVersion(entry, state.currentVersionId),
     content,
@@ -484,6 +521,7 @@ export async function createProjectFileVersion(
   metadata?: unknown,
 ): Promise<ProjectFileVersion> {
   const safeName = validateUserFileName(fileName);
+  if (isWorkbookHistoryFile(safeName)) throw codedError('Use the binary workbook version API.', 'EINVAL');
   assertProjectAvailable(projectsRoot, projectId, metadata);
   return withVersionFileLock(projectsRoot, projectId, safeName, () =>
     createProjectFileVersionUnlocked(projectsRoot, projectId, safeName, content, options),
@@ -494,14 +532,14 @@ async function createProjectFileVersionUnlocked(
   projectsRoot: string,
   projectId: string,
   safeName: string,
-  content: string,
+  content: string | Buffer,
   options: CreateProjectFileVersionOptions,
 ): Promise<ProjectFileVersion> {
   const root = versionRootFor(projectsRoot, projectId, safeName);
   await mkdir(root, { recursive: true });
   const state = await readVersionManifestState(projectsRoot, projectId, safeName);
   const preserveDeletedHistory =
-    typeof options.restoreFromVersionId === 'string' &&
+    isWorkbookHistoryFile(safeName) || typeof options.restoreFromVersionId === 'string' &&
     state.entries.some((entry) => entry.id === options.restoreFromVersionId);
   let entries = state.entries;
   let priorCurrentVersionId = state.currentVersionId;
@@ -521,9 +559,9 @@ async function createProjectFileVersionUnlocked(
   const now = Date.now();
   const version = entries.reduce((max, entry) => Math.max(max, Number(entry.version) || 0), 0) + 1;
   const id = randomUUID();
-  const extension = /\.(md|markdown)$/i.test(safeName) ? 'md' : 'html';
+  const extension = isWorkbookHistoryFile(safeName) ? 'xlsx' : /\.(md|markdown)$/i.test(safeName) ? 'md' : 'html';
   const contentPath = `${String(version).padStart(4, '0')}-${id}.${extension}`;
-  const text = String(content ?? '');
+  const text = Buffer.isBuffer(content) ? content : Buffer.from(String(content ?? ''), 'utf8');
   const source = inferVersionSource(options.source, options.promptSource, options.restoreFromVersionId);
   const entry: VersionEntry = {
     id,
@@ -555,7 +593,8 @@ async function createProjectFileVersionUnlocked(
     const origin = normalizeArtifactOrigin(options.origin);
     if (origin) entry.origin = origin;
   }
-  await writeFile(path.join(root, contentPath), text);
+  if (isWorkbookHistoryFile(safeName)) await persistWorkbookHistoryFile(root, contentPath, text, false);
+  else await writeFile(path.join(root, contentPath), text);
   const nextEntries = [...entries, entry];
   await writeVersionManifest(projectsRoot, projectId, safeName, nextEntries, {
     currentVersionId: id,
@@ -570,7 +609,7 @@ export async function markProjectFileVersionStoreDeleted(
   metadata?: unknown,
 ): Promise<void> {
   const safeName = validateUserFileName(fileName);
-  if (!isVersionedDocumentFile(safeName)) return;
+  if (!isVersionedDocumentFile(safeName) && !isWorkbookHistoryFile(safeName)) return;
   assertProjectAvailable(projectsRoot, projectId, metadata);
   await withVersionFileLock(projectsRoot, projectId, safeName, async () => {
     const state = await readVersionManifestState(projectsRoot, projectId, safeName);
@@ -592,7 +631,8 @@ export async function renameProjectFileVersionStore(
   const safeFrom = validateUserFileName(fromName);
   const safeTo = validateUserFileName(toName);
   if (safeFrom === safeTo) return;
-  if (!isVersionedDocumentFile(safeFrom) || !isVersionedDocumentFile(safeTo)) return;
+  const workbook = isWorkbookHistoryFile(safeFrom) && isWorkbookHistoryFile(safeTo);
+  if (!workbook && (!isVersionedDocumentFile(safeFrom) || !isVersionedDocumentFile(safeTo))) return;
 
   assertProjectAvailable(projectsRoot, projectId, metadata);
   await withVersionFileLocks(projectsRoot, projectId, [safeFrom, safeTo], async () => {
@@ -606,7 +646,7 @@ export async function renameProjectFileVersionStore(
     }
 
     const fromState = await readVersionManifestState(projectsRoot, projectId, safeFrom);
-    if (fromState.deletedAt) {
+    if (fromState.deletedAt && !workbook) {
       await rm(oldRoot, { recursive: true, force: true });
       const toState = await readVersionManifestState(projectsRoot, projectId, safeTo);
       if (toState.deletedAt) {
@@ -628,7 +668,7 @@ export async function renameProjectFileVersionStore(
     }
 
     const existingState = await readVersionManifestState(projectsRoot, projectId, safeTo);
-    if (existingState.deletedAt) {
+    if (existingState.deletedAt && !workbook) {
       await rm(newRoot, { recursive: true, force: true });
       await rename(oldRoot, newRoot);
       await writeVersionManifest(projectsRoot, projectId, safeTo, renamedEntries, {
@@ -684,11 +724,11 @@ async function ensureCurrentProjectFileVersionUnlocked(
   projectsRoot: string,
   projectId: string,
   safeName: string,
-  content: string,
+  content: string | Buffer,
   options: CreateProjectFileVersionOptions,
 ): Promise<ProjectFileVersion | null> {
-  if (!isVersionedDocumentFile(safeName)) return null;
-  const text = String(content ?? '');
+  if (!isVersionedDocumentFile(safeName) && !isWorkbookHistoryFile(safeName)) return null;
+  const text = Buffer.isBuffer(content) ? content : Buffer.from(String(content ?? ''), 'utf8');
   const state = await readVersionManifestState(projectsRoot, projectId, safeName);
   if (!state.deletedAt) {
     const current = state.currentVersionId
@@ -696,8 +736,11 @@ async function ensureCurrentProjectFileVersionUnlocked(
       : null;
     if (current?.contentPath) {
       try {
-        const prior = await readFile(path.join(versionRootFor(projectsRoot, projectId, safeName), current.contentPath), 'utf8');
-        if (prior === text) {
+        const prior = isWorkbookHistoryFile(safeName)
+          ? await readWorkbookHistoryFile(versionRootFor(projectsRoot, projectId, safeName), current.contentPath)
+          : await readFile(path.join(versionRootFor(projectsRoot, projectId, safeName), current.contentPath));
+        if (isWorkbookHistoryFile(safeName) && (prior.length !== current.size || projectFileVersionContentDigest(prior) !== current.contentDigest)) throw codedError('Workbook history bytes do not match their recorded digest.', 'EIO');
+        if (prior.equals(text)) {
           const source = inferVersionSource(
             options.source,
             options.promptSource,
@@ -714,6 +757,7 @@ async function ensureCurrentProjectFileVersionUnlocked(
           }
         }
       } catch (err) {
+        if (isWorkbookHistoryFile(safeName)) throw err;
         if (errorCode(err) !== 'ENOENT') throw err;
       }
     }
@@ -749,7 +793,7 @@ async function resolveProjectFileVersionContentMatchUnlocked(
   projectsRoot: string,
   projectId: string,
   safeName: string,
-  content: string,
+  content: string | Buffer,
   versionId?: string,
 ): Promise<ProjectFileVersionContentMatch> {
   const state = await readVersionManifestState(projectsRoot, projectId, safeName);
