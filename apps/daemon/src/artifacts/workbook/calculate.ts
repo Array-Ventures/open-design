@@ -10,7 +10,7 @@ import '@univerjs/sheets/facade';
 import '@univerjs/sheets-formula/facade';
 import { workbookCellSchema, workbookDocumentSchema, type WorkbookCell, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookFormatError } from './package.js';
-import { retainedFormulaCaches, formulaCellKey, type FormulaDependencyNode } from './formula-cache-policy.js';
+import { createFormulaCacheAnalysis, retainedFormulaCaches, formulaCellKey, type FormulaDependencyNode } from './formula-cache-policy.js';
 import { calculationFormula } from './formula-input.js';
 
 function engineCell(cell: WorkbookCell, capture: string, normalized?: string): ICellData {
@@ -118,10 +118,6 @@ export async function calculateWorkbookResults(input: WorkbookDocument, original
     for (const [index, name] of (model.definedNames ?? []).entries()) api.syncExecuteCommand(SetDefinedNameMutation.id, { unitId, id: `name-${index}`, name: name.name, formulaOrRefString: name.formula,
       ...(name.sheetId === undefined ? {} : { localSheetId: name.sheetId }), ...(name.hidden === undefined ? {} : { hidden: name.hidden }) }, { local: true });
     const formula = api.getFormula();
-    formula.executeCalculation();
-    await formula.onCalculationResultApplied(5000);
-    if (unsupportedArray) throw new WorkbookFormatError('Array formulas cannot be saved here yet. Your file has not changed.', 'WORKBOOK_UNSUPPORTED');
-    if (!trees) throw new WorkbookFormatError('Formula dependency results are missing.', 'WORKBOOK_UNSUPPORTED');
     const functions = univer.__getInjector().get(IFunctionService), names = univer.__getInjector().get(IDefinedNamesService), tables = univer.__getInjector().get(ISuperTableService);
     const tableNames = new Set([...tables.getTableMap(unitId)?.keys() ?? []].map(name => name.toLowerCase()));
     const qualifiedNames = new Map<string, NonNullable<ReturnType<typeof names.getValueByName>>>();
@@ -131,12 +127,18 @@ export async function calculateWorkbookResults(input: WorkbookDocument, original
       qualifiedNames.set(`${sheet.name}!${name.name}`.toLowerCase(), resolved);
       qualifiedNames.set(`'${quoteSheetName(sheet.name)}'!${name.name}`.toLowerCase(), resolved);
     }
-    const retained = retainedFormulaCaches(model, original, unitId, trees, engineFormulas, normalized, {
+    const analysis = createFormulaCacheAnalysis({
       nodes: expression => formula.sequenceNodesBuilder(expression), hasExecutor: name => functions.hasExecutor(name), isLiteral: token => ERROR_TYPE_SET.has(token as ErrorType) || token.toUpperCase() === BooleanValue.TRUE || token.toUpperCase() === BooleanValue.FALSE, types: sequenceNodeType,
       externalReference: token => Boolean(deserializeRangeWithSheet(token).unitId),
       name: (token, sheetId) => { const value = names.getValueByName(unitId, token, sheetId) ?? qualifiedNames.get(token.toLowerCase()); return value ? { id: value.id, formula: value.formulaOrRefString, ...(value.localSheetId ? { sheetId: value.localSheetId } : {}) } : undefined; },
       table: token => { const parsed = splitTableStructuredRef(token); return !parsed.unitQualifier && tableNames.has(parsed.tableName.toLowerCase()); },
     });
+    for (const sheet of model.sheets) for (const cell of sheet.cells) if (cell.formula) analysis.admit(normalized.get(formulaCellKey(sheet.id, cell.row, cell.column))!, sheet.id);
+    formula.executeCalculation();
+    await formula.onCalculationResultApplied(5000);
+    if (unsupportedArray) throw new WorkbookFormatError('Array formulas cannot be saved here yet. Your file has not changed.', 'WORKBOOK_UNSUPPORTED');
+    if (!trees) throw new WorkbookFormatError('Formula dependency results are missing.', 'WORKBOOK_UNSUPPORTED');
+    const retained = retainedFormulaCaches(model, original, unitId, trees, engineFormulas, normalized, analysis);
     const originals = new Map(original.sheets.flatMap(sheet => sheet.cells.map(cell => [formulaCellKey(sheet.id, cell.row, cell.column), cell] as const)));
     for (const sheet of model.sheets) sheet.cells = sheet.cells.map(cell => !cell.formula ? cell : retained.has(formulaCellKey(sheet.id, cell.row, cell.column))
       ? storedResultCell(cell, originals.get(formulaCellKey(sheet.id, cell.row, cell.column))!) : resultCell(cell, results.get(`${sheet.id}:${cell.row}:${cell.column}`)));
