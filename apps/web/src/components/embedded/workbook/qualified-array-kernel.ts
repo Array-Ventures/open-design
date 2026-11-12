@@ -2,7 +2,7 @@ import { CellValueType, ICommandService, IConfigService, LocaleType, RANGE_TYPE,
 import { FUniver } from '@univerjs/core/facade';
 import * as engine from '@univerjs/engine-formula';
 import { UniverSheetsPlugin } from '@univerjs/sheets';
-import { CalculationMode, UniverSheetsFormulaPlugin } from '@univerjs/sheets-formula';
+import { CalculationMode, TriggerCalculationController, UniverSheetsFormulaPlugin } from '@univerjs/sheets-formula';
 import SheetsEnUS from '@univerjs/sheets/locale/en-US';
 import '@univerjs/sheets/facade';
 import '@univerjs/engine-formula/facade';
@@ -36,9 +36,8 @@ export interface QualifiedArrayProjection {
 }
 interface Pass { owners: ArrayDependencyRegion[]; values: Map<string, Value[][]>; scalar: Map<string, Value>; trees: FormulaDependencyNode[]; snapshot: IWorkbookData }
 
-/** Worker-only groundwork. The product Grid remains gated until its dedicated
- * transport can apply one complete projection atomically and preserve source
- * profiles across refresh/fallback. Source modes come only from the daemon's
+/** A private headless kernel returns complete read-only projections through
+ * the owned worker transport. Source modes come only from the daemon's
  * SHA-verified preview, never a browser edit plan or inferred function name. */
 export function qualifiedArrayKernel(model: WorkbookDocument, unitId: string, sourceSha256: string) {
   model = workbookDocumentSchema.parse(model);
@@ -140,6 +139,11 @@ export function qualifiedArrayKernel(model: WorkbookDocument, unitId: string, so
         if (command.id === engine.SetFormulaDependencyCalculationResultMutation.id) trees = (command.params as { result: FormulaDependencyNode[] }).result;
       });
       univer.__getInjector().get(IConfigService).setConfig(engine.ENGINE_FORMULA_RETURN_DEPENDENCY_TREE, true);
+      // The browser branch defers these services to the UI Rendered stage.
+      // A private headless kernel starts the public SDK services explicitly;
+      // Node reuses their existing instances and start() is idempotent.
+      univer.__getInjector().get(TriggerCalculationController);
+      univer.__getInjector().get(engine.FormulaCalculationTriggerService).start();
       try { formulas.executeCalculation(); await formulas.onCalculationResultApplied(5_000); } finally { subscription.dispose(); }
       if (failed) fail(failure);
       if (!trees) fail('The calculation did not meet its execution boundary.');

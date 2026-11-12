@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { ICommandService, Univer } from '@univerjs/core';
+import { ICommandService, Univer, isNodeEnv } from '@univerjs/core';
 import { FUniver } from '@univerjs/core/facade';
 import { SetFormulaCalculationStartMutation } from '@univerjs/engine-formula';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
@@ -95,4 +95,19 @@ it('requires dependency evidence when the worker has no UI controller to request
   expect(result.cells.s?.[0]?.[5]).toEqual({ kind: 'number', value: 111 });
   expect(result.unavailable).toEqual([]);
  } finally { missingUi.mockRestore(); }
+});
+
+it('calculates with the real non-Node headless worker lifecycle', async () => {
+ const node = Object.getOwnPropertyDescriptor(process.versions, 'node')!;
+ // Keep the process runtime intact, but enter the SDK branch used by an actual
+ // browser worker: no Node-only eager controller and no rendered UI stage.
+ Object.defineProperty(process.versions, 'node', { ...node, value: undefined });
+ try {
+  expect(isNodeEnv()).toBe(false);
+  const kernel = qualifiedArrayKernel(model(), 'array-browser-worker', sha);
+  const result = await kernel.calculate(kernel.initial, 1);
+  expect(result.cells.s?.[3]?.[3]).toEqual({ kind: 'number', value: 11 });
+  expect(result.cells.s?.[0]?.[5]).toEqual({ kind: 'number', value: 111 });
+  expect(result.unavailable).toEqual([]);
+ } finally { Object.defineProperty(process.versions, 'node', node); }
 });
