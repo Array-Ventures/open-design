@@ -142,6 +142,24 @@ it.each([false, true])('keeps rich ownership through native editing, undo and di
   expect(injector.get(ICommandService).syncExecuteCommand('univer.command.undo')).toBe(true);
   expect(workbookGridEdits(model, 'a'.repeat(64), initial, book.save()).edits).toEqual([]);
 
+  const mixed = createDocumentModelWithStyle('mixed runs', inherited).getSnapshot();
+  mixed.id = DOCS_NORMAL_EDITOR_UNIT_ID_KEY;
+  if (rendered) mixed.documentStyle!.marginTop = 2;
+  mixed.body!.textRuns = [{ st: 0, ed: 5, ts: { bl: 1 } }, { st: 5, ed: 10, ts: { it: 1 } }];
+  doc.reset(mixed);
+  // The emitted command already owns its rich document. A synchronous refresh
+  // of the secondary editor buffer must not replace that authoritative body.
+  const refresh = manager.intercept(kernel.AFTER_CELL_EDIT, { priority: 901, handler(value, _context, next) {
+    if (value?.p) { const buffer = structuredClone(doc.getSnapshot()); delete buffer.body!.textRuns; doc.reset(buffer); }
+    return next(value);
+  } });
+  try { await controller.submitCellData(doc); } finally { refresh(); }
+  expect(workbookGridEdits(model, 'a'.repeat(64), initial, book.save()).edits[0]!.cell).toMatchObject({
+    value: 'mixed runs', runs: [{ text: 'mixed', font: { bold: true } }, { text: ' runs', font: { italic: true } }],
+  });
+  expect(injector.get(ICommandService).syncExecuteCommand('univer.command.undo')).toBe(true);
+  expect(workbookGridEdits(model, 'a'.repeat(64), initial, book.save()).edits).toEqual([]);
+
   const resetEditor = (text: string) => {
     const next = createDocumentModelWithStyle(text, inherited).getSnapshot();
     next.id = DOCS_NORMAL_EDITOR_UNIT_ID_KEY;

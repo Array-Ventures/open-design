@@ -127,7 +127,10 @@ export function attachWorkbookRichInput(univer: Univer, api: FUniver, kernel: Ke
       const editorId = bridge.getCurrentEditorId();
       if (editorId !== DOCS_NORMAL_EDITOR_UNIT_ID_KEY && editorId !== DOCS_FORMULA_BAR_EDITOR_UNIT_ID_KEY)
         throw Error('The active rich editor could not be verified.');
-      const snapshot = instances.getUnit<DocumentDataModel>(editorId)?.getSnapshot(),
+      // A rich command already contains the completed document. The shared
+      // editor buffer can refresh synchronously during submission; read it only
+      // for the uniform-run case where the SDK has flattened cell.p away.
+      const snapshot = cell?.p ?? instances.getUnit<DocumentDataModel>(editorId)?.getSnapshot(),
         body = snapshot?.body;
       if (!snapshot || !body?.dataStream.endsWith('\r\n'))
         throw Error('The active rich editor text could not be verified.');
