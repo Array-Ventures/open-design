@@ -21,6 +21,7 @@ await build({
     "./src/runtime/motion-source-player.ts",
     "./src/runtime/deck-protocol.ts",
     "./src/runtime/document.ts",
+    "./src/runtime/workbook.ts",
     "./src/runtime/preview-observability.ts",
     "./src/runtime/preview-build-focus.ts",
     "./src/runtime/preview-runtime-state.ts",
