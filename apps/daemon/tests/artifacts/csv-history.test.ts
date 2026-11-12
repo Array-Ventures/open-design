@@ -47,3 +47,17 @@ it('enforces fresh authority and expected-source identity before any live CSV ch
   const receipt = await commitEmbeddedWorkbook(db, projectsRoot, input(), metadata(), authorize);
   expect(receipt.state).toBe('conflict'); expect((await pinned.read('data.csv')).buffer).toEqual(external);
 });
+
+it('restores exact retained CSV bytes with lineage and reconciles after deletion without resurrecting the working file', async () => {
+  const saved = await commitEmbeddedWorkbook(db, projectsRoot, input(), metadata(), authorize);
+  const restore = { ...input(), sourceSha256: sha(candidate), bytes: original, restore: { versionId: saved.sourceVersionId!, contentDigest: sha(original) } };
+  const receipt = await commitEmbeddedWorkbook(db, projectsRoot, restore, metadata(), authorize);
+  expect(receipt).toMatchObject({ state: 'applied', targetSha256: sha(original), restoreFromVersionId: saved.sourceVersionId });
+  expect((await pinned.read('data.csv')).buffer).toEqual(original);
+  await rm(path.join(directory, 'data.csv'));
+  expect(await commitEmbeddedWorkbook(db, projectsRoot, restore, metadata(), authorize)).toEqual(receipt);
+  await expect(pinned.read('data.csv')).rejects.toMatchObject({ code: 'ENOENT' });
+  const fresh = await commitEmbeddedWorkbook(db, projectsRoot, { ...restore, operationId: randomUUID(), sourceSha256: sha(original) }, metadata(), authorize);
+  expect(fresh).toMatchObject({ state: 'conflict', actualSha256: null });
+  await expect(pinned.read('data.csv')).rejects.toMatchObject({ code: 'ENOENT' });
+});

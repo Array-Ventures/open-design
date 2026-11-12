@@ -22,6 +22,7 @@ await build({
     "./src/runtime/deck-protocol.ts",
     "./src/runtime/document.ts",
     "./src/runtime/workbook.ts",
+    "./src/runtime/delimited-text.ts",
     "./src/runtime/preview-observability.ts",
     "./src/runtime/preview-build-focus.ts",
     "./src/runtime/preview-runtime-state.ts",

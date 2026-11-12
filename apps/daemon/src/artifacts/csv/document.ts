@@ -1,17 +1,17 @@
+import { parseDelimitedText, DelimitedTextError, DELIMITED_LIMITS, validateDelimitedLiteral, type DelimitedField } from '@open-design/contracts/runtime/delimited-text';
 import { createHash } from 'node:crypto';
-import { workbookDocumentSchema, workbookEditPlanSchema, WORKBOOK_MODEL_LIMITS, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import { workbookDocumentSchema, workbookEditPlanSchema, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookFormatError } from '../workbook/package.js';
 
-export const CSV_LIMITS = { bytes: 25 * 1024 * 1024, cells: WORKBOOK_MODEL_LIMITS.cells, text: WORKBOOK_MODEL_LIMITS.text, cellText: 32767 } as const;
+export const CSV_LIMITS = DELIMITED_LIMITS;
 export const CSV_SHEET_ID = 'csv';
-interface Field { start: number; end: number; value: string; quoted: boolean }
+type Field = DelimitedField;
 export interface CsvDocument { readonly source: string; readonly sourceSha256: string; readonly rows: readonly (readonly Field[])[]; readonly model: WorkbookDocument }
 const invalid = (message: string): never => { throw new WorkbookFormatError(message); };
 const limit = (message: string): never => { throw new WorkbookFormatError(message, 'WORKBOOK_LIMIT'); };
 function literal(value: string): string {
-  if (value.length > CSV_LIMITS.cellText) limit('A CSV field exceeds the text limit.');
-  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value) || Buffer.from(value, 'utf8').toString('utf8') !== value) invalid('CSV contains unsupported control characters or invalid Unicode.');
-  return value;
+  try { return validateDelimitedLiteral(value); }
+  catch (error) { if (error instanceof DelimitedTextError) throw new WorkbookFormatError(error.message, error.code); throw error; }
 }
 /** Explicit comma/UTF-8 dialect. No date, numeric or formula inference; source
  * token spans retain unchanged quoting, BOM, record separators and final newline.
@@ -21,38 +21,9 @@ export function readCsvDocument(bytes: Uint8Array): CsvDocument {
   let source: string;
   try { source = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
   catch { return invalid('CSV must contain valid UTF-8 text. UTF-16 and legacy encodings are not supported.'); }
-  let at = source.startsWith('\ufeff') ? 1 : 0, count = 0, text = 0;
-  const rows: Field[][] = []; let row: Field[] = [];
-  while (true) {
-    const start = at, quoted = source[at] === '"'; let value: string;
-    if (quoted) {
-      const content = ++at; let closed = false;
-      while (at < source.length) {
-        if (source[at] !== '"') { at++; continue; }
-        if (source[at + 1] === '"') { at += 2; continue; }
-        value = source.slice(content, at).replace(/""/g, '"'); at++; closed = true; break;
-      }
-      if (!closed) return invalid('CSV has an unterminated quoted field.');
-      if (at < source.length && ![',', '\r', '\n'].includes(source[at]!)) return invalid('CSV has text after a closing quote.');
-    } else {
-      while (at < source.length && ![',', '\r', '\n'].includes(source[at]!)) {
-        if (source[at] === '"') return invalid('CSV has a quote inside an unquoted field.');
-        at++;
-      }
-      value = source.slice(start, at);
-    }
-    literal(value!); text += value!.length;
-    if (++count > CSV_LIMITS.cells || text > CSV_LIMITS.text) limit('CSV content exceeds its import limit.');
-    if (row.length >= WORKBOOK_MODEL_LIMITS.columns) limit('CSV exceeds its column limit.');
-    row.push({ start, end: at, value: value!, quoted });
-    if (source[at] === ',') { at++; continue; }
-    rows.push(row); row = [];
-    if (at === source.length) break;
-    const newline = source[at] === '\r' ? source.slice(at, at + 2) : '\n';
-    if (newline !== '\n' && newline !== '\r\n') return invalid('CSV uses a bare carriage return as a record separator.');
-    at += newline.length;
-    if (at === source.length) break;
-  }
+  let rows: DelimitedField[][];
+  try { rows = parseDelimitedText(source, ',', true); }
+  catch (error) { if (error instanceof DelimitedTextError) throw new WorkbookFormatError(error.message, error.code); throw error; }
   const columnCount = rows.reduce((maximum, row) => Math.max(maximum, row.length), 1);
   const model = workbookDocumentSchema.parse({ version: 1, sourceFormat: 'csv', date1904: false, activeSheetId: CSV_SHEET_ID,
     styles: [{ numberFormat: '@' }], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },

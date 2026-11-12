@@ -114,6 +114,10 @@
       "types": "./dist/runtime/document.d.ts",
       "default": "./dist/runtime/document.mjs"
     },
+    "./runtime/delimited-text": {
+      "types": "./dist/runtime/delimited-text.d.ts",
+      "default": "./dist/runtime/delimited-text.mjs"
+    },
     "./runtime/workbook": {
       "types": "./dist/runtime/workbook.d.ts",
       "default": "./dist/runtime/workbook.mjs"
