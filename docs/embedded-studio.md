@@ -221,3 +221,19 @@ produces empty bytes. The limits are one million output fields and 50 MiB.
 The export dialog names the selected sheet and states the saved-cache policy.
 CSV-from-CSV retains its existing exact-source/edit-plan behavior. Browser and
 paired-package acceptance are still required; these are source-qualified changes.
+
+## Single-save continuation after a cancelled preparation
+
+A matching `WorkbookSavePreparationCancelledError` is a durable no-future-write
+proof, not an ordinary HTTP error. The writer can continue one explicit Save
+through reconciliation and one fresh preparation after the cleared pending
+identity is journaled successfully. The replacement snapshots the latest desired
+edits, including typing during that checkpoint. A second cancellation in the same
+flush stops with retained edits instead of retrying indefinitely.
+
+Different operation/preparation/render proofs keep their pending fence. Device
+storage failures and a closed writer cannot launch a replacement. Conflicts,
+uncertain transport errors and failed preparation errors retain their existing
+semantics. Three new behavioral tests first reproduced the two-click defect;
+all 54 focused writer/save/discard tests now pass, along with guard and workspace
+typecheck. Packaged/native browser qualification is a separate following gate.

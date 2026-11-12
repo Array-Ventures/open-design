@@ -2,7 +2,7 @@ import { workbookGridPlan } from './grid-plan';
 import type { IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument, workbookEditPlanSchema } from '@open-design/contracts/runtime/workbook';
 import type { z } from 'zod';
-import { isWorkbookSaveRejection, WorkbookSaveTerminalError } from './save-terminal';
+import { isWorkbookSaveRejection, WorkbookSaveTerminalError, WorkbookSavePreparationCancelledError } from './save-terminal';
 
 type Preview = { sourceSha256: string; model: WorkbookDocument };
 type Plan = z.infer<typeof workbookEditPlanSchema>;
@@ -75,6 +75,7 @@ export class WorkbookWriter {
     this.publish(); return this.running;
   }
   private async drain() {
+    let replacedCancelledPreparation = false;
     while (this.active) {
       try {
         if (!this.pending) {
@@ -96,8 +97,15 @@ export class WorkbookWriter {
           // out a later write.
           // Generic transport errors retain the pending identity for recovery.
           this.pending = null; this.recoveryConflict ||= error instanceof WorkbookSaveTerminalError && error.state === 'conflict';
-          try { await this.persist(); }
-          catch (failure) { error = new Error(this.persistenceError(failure)); }
+          try {
+            await this.persist();
+            // One explicit Save may finish reconciliation and its replacement.
+            // This branded, identity-checked proof fences late admission; a
+            // transport failure or conflict never authorizes a new operation.
+            if (this.active && error instanceof WorkbookSavePreparationCancelledError && !replacedCancelledPreparation) {
+              replacedCancelledPreparation = true; this.error = null; continue;
+            }
+          } catch (failure) { error = new Error(this.persistenceError(failure)); }
         }
         if (this.active) { this.error = error instanceof Error ? error.message : 'The workbook could not be saved.'; this.publish(); }
         return;

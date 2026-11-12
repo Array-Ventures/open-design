@@ -3,7 +3,7 @@ import { CellValueType, type IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookWriter, type WorkbookWriteIntent, type WorkbookCheckpoint } from '../../src/components/embedded/workbook/workbook-writer';
 import { gridWorkbook } from '../../src/components/embedded/workbook/grid-model';
-import { WorkbookSaveTerminalError, WorkbookSaveUnadmittedError } from '../../src/components/embedded/workbook/save-terminal';
+import { WorkbookSaveTerminalError, WorkbookSaveUnadmittedError, WorkbookSavePreparationCancelledError } from '../../src/components/embedded/workbook/save-terminal';
 function fixture() {
   const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 's', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 's', name: 'Sheet', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [{ row: 0, column: 0, kind: 'number', value: 1 }], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
   const initial = gridWorkbook(model, 'grid', 'Forecast').data as IWorkbookData;
@@ -150,4 +150,82 @@ it('keeps exact rich runs in a frozen pending intent and checkpoint, and ignores
  const writer=new WorkbookWriter(source,initial,()=>response.promise,changed,accepted);writer.update(desired);const running=writer.flush();await Promise.resolve();
  const checkpoint=writer.checkpoint();expect(checkpoint.desired).toEqual(desired);expect(checkpoint.pending?.intent.plan.edits[0]!.cell).toMatchObject({kind:'string',value:'rich 😀',runs:[{text:'rich ',font:{bold:true}},{text:'😀',font:{italic:true}}]});
  writer.dispose();changed.mockClear();response.resolve({...source,sourceSha256:'b'.repeat(64)});await running;expect(changed).not.toHaveBeenCalled();expect(accepted).not.toHaveBeenCalled();expect(checkpoint.desired).toEqual(desired);
+});
+
+
+it('continues one explicit save after journaling a matching cancelled preparation proof', async () => {
+  const { source, initial, snapshot } = fixture(), checkpoints: (WorkbookCheckpoint | null)[] = [], intents: WorkbookWriteIntent[] = [];
+  const writer = new WorkbookWriter(source, initial, async intent => {
+    expect(checkpoints.at(-1)?.pending?.intent).toEqual(intent);
+    intents.push(structuredClone(intent));
+    if (intents.length === 1) throw new WorkbookSavePreparationCancelledError(intent.id, intent.preparationId, null);
+    expect(checkpoints.some(checkpoint => checkpoint?.desired.sheets.s?.cellData?.[0]?.[0]?.v === 2 && !checkpoint.pending)).toBe(true);
+    return { ...source, sourceSha256: 'b'.repeat(64) };
+  }, () => {}, undefined, { save: async checkpoint => { checkpoints.push(structuredClone(checkpoint)); } });
+  writer.update(snapshot(2)); await writer.flush();
+  expect(intents).toHaveLength(2); expect(intents[1]!.id).not.toBe(intents[0]!.id);
+  expect(intents[1]!.preparationId).not.toBe(intents[0]!.preparationId);
+  expect(intents[1]!.plan).toEqual(intents[0]!.plan);
+  expect(writer.state()).toEqual({ dirty: false, saving: false, error: null });
+});
+
+it('bounds cancelled preparation continuation to one replacement per explicit save', async () => {
+  const { source, initial, snapshot } = fixture();
+  const write = vi.fn(async (intent: WorkbookWriteIntent) => { throw new WorkbookSavePreparationCancelledError(intent.id, intent.preparationId, null); });
+  const writer = new WorkbookWriter(source, initial, write, () => {}, undefined, { save: async () => {} });
+  writer.update(snapshot(2)); await writer.flush();
+  expect(write).toHaveBeenCalledTimes(2); expect(writer.checkpoint().pending).toBeNull();
+  expect(writer.recoveredSnapshot()).toEqual(snapshot(2)); expect(writer.state()).toMatchObject({ dirty: true, saving: false, error: expect.stringContaining('cancelled') });
+});
+
+it.each(['operation', 'preparation', 'render'] as const)('retains pending and refuses replacement for a different %s cancellation proof', async field => {
+  const { source, initial, snapshot } = fixture();
+  const write = vi.fn(async (intent: WorkbookWriteIntent) => {
+    intent.renderId = crypto.randomUUID();
+    throw new WorkbookSavePreparationCancelledError(field === 'operation' ? crypto.randomUUID() : intent.id,
+      field === 'preparation' ? crypto.randomUUID() : intent.preparationId, field === 'render' ? crypto.randomUUID() : intent.renderId);
+  });
+  const writer = new WorkbookWriter(source, initial, write, () => {}, undefined, { save: async () => {} });
+  writer.update(snapshot(2)); await writer.flush();
+  expect(write).toHaveBeenCalledOnce(); expect(writer.checkpoint().pending).not.toBeNull(); expect(writer.recoveredSnapshot()).toEqual(snapshot(2));
+});
+
+it('refuses replacement when the cancelled pending identity cannot be durably cleared', async () => {
+  const { source, initial, snapshot } = fixture(); let proven = false;
+  const write = vi.fn(async (intent: WorkbookWriteIntent) => {
+    proven = true; throw new WorkbookSavePreparationCancelledError(intent.id, intent.preparationId, null);
+  });
+  const writer = new WorkbookWriter(source, initial, write, () => {}, undefined, { save: async checkpoint => {
+    if (proven && checkpoint && !checkpoint.pending) throw Error('Device storage failed');
+  } });
+  writer.update(snapshot(2)); await writer.flush();
+  expect(write).toHaveBeenCalledOnce(); expect(writer.recoveredSnapshot()).toEqual(snapshot(2));
+  expect(writer.state()).toMatchObject({ dirty: true, saving: false, error: expect.stringContaining('could not be protected') });
+});
+
+it('does not replace a cancelled preparation after closing while its clear checkpoint is pending', async () => {
+  const { source, initial, snapshot } = fixture(), clearing = deferred<void>(), release = deferred<void>(); let proven = false;
+  const write = vi.fn(async (intent: WorkbookWriteIntent) => {
+    proven = true; throw new WorkbookSavePreparationCancelledError(intent.id, intent.preparationId, null);
+  });
+  const writer = new WorkbookWriter(source, initial, write, () => {}, undefined, { save: async checkpoint => {
+    if (proven && checkpoint && !checkpoint.pending) { clearing.resolve(); await release.promise; }
+  } });
+  writer.update(snapshot(2)); const saving = writer.flush(); await clearing.promise;
+  const closed = writer.close(); release.resolve(); await Promise.all([closed, saving]);
+  expect(write).toHaveBeenCalledOnce();
+});
+
+it('includes edits made while clearing a proven cancelled preparation in the replacement save', async () => {
+  const { source, initial, snapshot } = fixture(), clearing = deferred<void>(), release = deferred<void>(); let proven = false;
+  const write = vi.fn(async (intent: WorkbookWriteIntent) => {
+    if (!proven) { proven = true; throw new WorkbookSavePreparationCancelledError(intent.id, intent.preparationId, null); }
+    expect(intent.plan.edits[0]!.cell.value).toBe(3); return { ...source, sourceSha256: 'b'.repeat(64) };
+  });
+  const writer = new WorkbookWriter(source, initial, write, () => {}, undefined, { save: async checkpoint => {
+    if (proven && checkpoint && !checkpoint.pending) { clearing.resolve(); await release.promise; }
+  } });
+  writer.update(snapshot(2)); const saving = writer.flush(); await clearing.promise;
+  writer.update(snapshot(3)); release.resolve(); await saving;
+  expect(write).toHaveBeenCalledTimes(2); expect(writer.state()).toEqual({ dirty: false, saving: false, error: null });
 });
