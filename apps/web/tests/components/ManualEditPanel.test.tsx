@@ -67,6 +67,10 @@ describe('ManualEditPanel', () => {
     renderPanel({ sourceControls: false, selectedTarget: { ...target, kind: 'container' } });
     expect(host.querySelector('.manual-edit-code')).toBeNull();
     expect(host.querySelector('textarea')).toBeNull();
+    const actions = host.querySelector('.manual-edit-footer-right')!;
+    expect(actions.textContent?.trim()).toBe('');
+    expect(actions.querySelector('button[aria-label="Save"]')).not.toBeNull();
+    expect(actions.querySelector('button[aria-label="Cancel"]')).not.toBeNull();
     expect(sectionByTitle(PARAMETERS).textContent).toContain('Font size');
     renderPanel({ sourceControls: true, selectedTarget: { ...target, kind: 'container' } });
     expect(host.querySelector('.manual-edit-code')).not.toBeNull();

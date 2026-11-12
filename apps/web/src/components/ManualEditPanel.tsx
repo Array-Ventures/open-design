@@ -230,7 +230,7 @@ export function ManualEditPanel({
             </button>
           ) : null}
         </div>
-        <fieldset className="manual-edit-scroll" disabled={busy || uploadingImage} aria-busy={Boolean(busy || uploadingImage)}>
+        <div className="manual-edit-scroll"><fieldset className="manual-edit-fields" disabled={busy || uploadingImage} aria-busy={Boolean(busy || uploadingImage)}>
           {targetForInspector ? (
             <>
               <ContentInspector
@@ -307,7 +307,7 @@ export function ManualEditPanel({
               </div>
             </div>
           ) : null}
-        </fieldset>
+        </fieldset></div>
 
         <div className="manual-edit-footer">
           <div className="manual-edit-footer-actions">
@@ -352,30 +352,33 @@ export function ManualEditPanel({
             </div>
             <div className="manual-edit-footer-right">
               {resetAvailable ? (
-                <Button unstyled variant="secondary" size="sm"
+                <Button unstyled variant={sourceControls ? 'secondary' : 'ghost'} size={sourceControls ? 'sm' : 'icon'}
                   type="button"
-                  className="manual-edit-footer-btn subtle"
+                  className={sourceControls ? "manual-edit-footer-btn subtle" : "manual-edit-history-btn"}
+                  aria-label={t('ds.reset')} title={t('ds.reset')}
                   disabled={busy}
                   onClick={onResetDraft}
                 >
-                  {t('ds.reset')}
+                  {sourceControls ? t('ds.reset') : <Icon name="refresh" size={15} />}
                 </Button>
               ) : null}
-              <Button unstyled variant="secondary" size="sm"
+              <Button unstyled variant={sourceControls ? 'secondary' : 'ghost'} size={sourceControls ? 'sm' : 'icon'}
                 type="button"
-                className="manual-edit-footer-btn subtle"
+                className={sourceControls ? "manual-edit-footer-btn subtle" : "manual-edit-history-btn"}
+                aria-label={t('common.cancel')} title={t('common.cancel')}
                 disabled={busy}
                 onClick={onCancelDraft}
               >
-                {t('common.cancel')}
+                {sourceControls ? t('common.cancel') : <Icon name="close" size={15} />}
               </Button>
-              <Button unstyled variant="primary" size="sm"
+              <Button unstyled variant={sourceControls ? 'primary' : 'ghost'} size={sourceControls ? 'sm' : 'icon'}
                 type="button"
-                className="manual-edit-footer-btn primary"
+                className={sourceControls ? "manual-edit-footer-btn primary" : "manual-edit-history-btn"}
+                aria-label={t('common.save')} title={t('common.save')}
                 disabled={busy}
                 onClick={onSaveDraft}
               >
-                {t('common.save')}
+                {sourceControls ? t('common.save') : <Icon name="check" size={15} />}
               </Button>
             </div>
           </div>

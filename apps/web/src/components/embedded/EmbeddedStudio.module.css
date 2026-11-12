@@ -81,11 +81,12 @@
   flex: 1;
   width: 100%;
 }
-/* Keep history and draft actions on separate lines instead of letting the
-   optional Reset button push the two groups into each other. */
+/* Embedded properties use icon actions; keep history and draft controls in
+   one compact row without allowing scrolled fields to paint through it. */
 .hostTypography :global(.manual-edit-footer-actions) {
-  flex-direction: column;
-  align-items: stretch;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
 .hostTypography :global(.manual-edit-footer-left) {
@@ -96,6 +97,11 @@
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.hostTypography :global(.manual-edit-floating .manual-edit-modal.cc-panel),
+.hostTypography :global(.manual-edit-footer) {
+  background: var(--color-background-primary-default);
 }
 
 .hostTypography :global(.manual-edit-modal) {
