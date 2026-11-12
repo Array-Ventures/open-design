@@ -7,7 +7,7 @@ import { EmbeddedWriteGate } from '../embedded-files/write-gate.js';
 
 type Database = Parameters<typeof getProject>[0];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const KINDS = new Set(['prototype','deck','document','image','video','audio','hyperframes','dashboard','other']);
+const KINDS = new Set(['prototype','deck','document','workbook','image','video','audio','hyperframes','dashboard','other']);
 const gates = new WeakMap<Express, EmbeddedWriteGate>();
 const equal = (left: string, right: string) => {
   const a = Buffer.from(left); const b = Buffer.from(right);
@@ -53,6 +53,7 @@ export function embeddedOperationAllowed(method: string, pathname: string): bool
   if (pathname === '/embedded/maintenance') return ['POST', 'DELETE'].includes(method);
   if (pathname === '/embedded/catalogue' || pathname.startsWith('/embedded/catalogue/')) return method === 'GET';
   if (pathname === '/embedded/projects') return method === 'POST';
+  if (/^\/embedded\/projects\/[0-9a-f-]+\/workbook-writes\/[0-9a-f-]+$/i.test(pathname)) return method === 'POST';
   if (method === 'GET' && /^\/(health|version|app-version)$/.test(pathname)) return true;
   if (method === 'GET' && /^\/(skills|design-templates|design-systems)(\/|$)/.test(pathname)) return true;
   // No conversation, run, terminal, login, generic imports, settings or cloud deployment routes.

@@ -130,6 +130,13 @@ export const workbookDocumentSchema = z.object({
 export type WorkbookDocument = z.infer<typeof workbookDocumentSchema>;
 export const workbookPreviewSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), model: workbookDocumentSchema }).strict();
 export const workbookWriteIdentitySchema = z.object({ operationId: z.string().uuid(), sourceSha256: z.string().regex(/^[0-9a-f]{64}$/) }).strict();
+/** Host-service metadata; workbook bytes use a bounded octet-stream body. */
+export const workbookCommitRequestSchema = workbookWriteIdentitySchema.extend({
+  fileName: z.string().min(1).max(500).refine(value => /\.xlsx$/i.test(value) && value.split('/').every(part => part && part !== '.' && part !== '..' && !/[\\\u0000]/.test(part))),
+  targetSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  actor: z.string().regex(/^[A-Za-z0-9:_-]{1,200}$/),
+  mode: z.enum(['commit', 'reconcile']),
+}).strict();
 export const workbookWriteReceiptSchema = workbookWriteIdentitySchema.extend({
   fileName: z.string().min(1).max(500), state: z.enum(['pending', 'applied', 'conflict']),
   targetSha256: z.string().regex(/^[0-9a-f]{64}$/),

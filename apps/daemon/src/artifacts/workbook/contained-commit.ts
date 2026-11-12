@@ -8,10 +8,11 @@ import { WORKBOOK_HISTORY_BYTES } from './history-storage.js';
 /** Contained adapter for the native host's eventual authorized save endpoint.
  * It never accepts a caller-selected host directory or parses XLSX in process.
  * Authorization is supplied by the route's verified current workspace context. */
-export async function commitEmbeddedWorkbook(db: Database.Database, projectsRoot: string, input: WorkbookCommitInput, metadata: Record<string, unknown>, authorize: () => Promise<void>) {
+export async function commitEmbeddedWorkbook(db: Database.Database, projectsRoot: string, input: WorkbookCommitInput, metadata: Record<string, unknown>, authorize: () => Promise<void>, mode: 'commit' | 'reconcile' = 'commit') {
   const fileName = validateProjectPath(input.fileName) as string;
   return commitWorkbook(db, projectsRoot, { ...input, fileName }, metadata, {
     authorize,
+    mayWrite: mode === 'commit',
     read: async () => {
       try { return await withEmbeddedProject(input.projectId, metadata, async project => (await project.read(fileName, WORKBOOK_HISTORY_BYTES)).buffer); }
       catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }

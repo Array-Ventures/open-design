@@ -8,6 +8,8 @@ import { requireWorkbookHistoryBytes } from './history-storage.js';
 export interface WorkbookCommitInput { projectId: string; actor: string; operationId: string; fileName: string; sourceSha256: string; bytes: Buffer }
 export interface WorkbookCommitFiles {
   authorize: () => Promise<void>;
+  /** Recovery after revocation may settle a receipt but must not install bytes. */
+  mayWrite?: boolean;
   read: () => Promise<Buffer | null>;
   /** The adapter must use the registered descriptor-pinned project writer and
    * recheck the expected digest at its last supported commit boundary. */
@@ -33,6 +35,7 @@ export async function commitWorkbook(db: Database.Database, projectsRoot: string
     let current = await files.read(), actual = digest(current);
     if (actual !== identity.sourceSha256 && actual !== targetSha256) return finishWorkbookWrite(db, identity, { state: 'conflict', actualSha256: actual });
     if (actual !== targetSha256) {
+      if (files.mayWrite === false) return finishWorkbookWrite(db, identity, { state: 'conflict', actualSha256: actual });
       const prior = await history.ensureCurrentVersion(current!, { source: 'manual', label: 'Before workbook edit' });
       if (!prior) throw new Error('Workbook source history was not captured.');
       receipt = recordWorkbookSourceVersion(db, identity, prior.id);

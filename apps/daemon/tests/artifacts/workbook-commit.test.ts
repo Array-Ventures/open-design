@@ -115,6 +115,27 @@ describe('workbook save receipt coordination', () => {
     expect(await commit()).toMatchObject({ state: 'conflict', actualSha256: null });
     await expect(readFile(path.join(directory, 'book.xlsx'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
+  it('reconciles a revoked operation without installing its prepared bytes', async () => {
+    vi.mocked(files.write).mockRejectedValueOnce(new Error('Uncertain attempt'));
+    await expect(commit()).rejects.toThrow('Uncertain attempt');
+    files.mayWrite = false;
+    expect(await commit()).toMatchObject({ state: 'conflict', actualSha256: digest(original) });
+    files.mayWrite = true;
+    expect((await commit()).state).toBe('conflict');
+    expect((await pinned.read('book.xlsx')).buffer).toEqual(original); expect(files.write).toHaveBeenCalledTimes(1);
+  });
+  it('settles already-written bytes after revocation without another workspace write', async () => {
+    const write = vi.mocked(files.write).getMockImplementation()!;
+    vi.mocked(files.write).mockImplementationOnce(async (...args) => { await write(...args); throw new Error('Lost completion'); });
+    await expect(commit()).rejects.toThrow('Lost completion'); files.mayWrite = false;
+    expect((await commit()).state).toBe('applied'); expect(files.write).toHaveBeenCalledTimes(1); expect(await versions()).toHaveLength(2);
+  });
+  it('fences a not-yet-attempted operation when revocation reconciliation arrives first', async () => {
+    files.mayWrite = false;
+    expect((await commit()).state).toBe('conflict'); files.mayWrite = true;
+    expect((await commit()).state).toBe('conflict'); expect(files.write).not.toHaveBeenCalled();
+    expect(await versions()).toHaveLength(0);
+  });
   it('serializes two managed saves and refuses the stale second source', async () => {
     const [first, second] = await Promise.all([commit(), commit({ ...input, operationId: randomUUID(), bytes: later })]);
     expect(first.state).toBe('applied'); expect(second.state).toBe('conflict'); expect(files.write).toHaveBeenCalledTimes(1);

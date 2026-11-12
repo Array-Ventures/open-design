@@ -46,8 +46,8 @@ if (process.argv[2] === '--child') {
   async function workbook(value: number) { const book = new ExcelJS.Workbook(); book.addWorksheet('Inputs').getCell('A1').value = value; return Buffer.from(await book.xlsx.writeBuffer()); }
   try {
     const original = await workbook(2), candidate = await workbook(8), later = await workbook(16);
-    for (const checkpoint of ['before-workspace-rename', 'after-workspace-sync', 'after-receipt-commit']) {
-      const root = path.join(scratch, checkpoint), projectId = randomUUID(), operationId = randomUUID(), directory = path.join(root, 'workspaces/team/projects', projectId);
+    for (const mode of ['commit', 'reconcile'] as const) for (const checkpoint of ['before-workspace-rename', 'after-workspace-sync', 'after-receipt-commit']) {
+      const root = path.join(scratch, `${checkpoint}-${mode}`), projectId = randomUUID(), operationId = randomUUID(), directory = path.join(root, 'workspaces/team/projects', projectId);
       await mkdir(directory, { recursive: true }); await chmod(path.join(root, 'workspaces'), 0o700); await writeFile(path.join(directory, 'book.xlsx'), original);
       let db = database.openDatabase(root); database.insertProject(db, { id: projectId, name: 'Crash fixture', createdAt: 1, updatedAt: 1 }); database.closeDatabase();
       const configuration: Configuration = { root, projectId, directory, operationId, checkpoint, sourceSha256: digest(original), bytes: candidate.toString('base64') };
@@ -59,15 +59,17 @@ if (process.argv[2] === '--child') {
       const afterCrash = db.prepare('SELECT state FROM workbook_writes WHERE project_id=? AND operation_id=?').get(projectId, operationId) as { state: string };
       assert.equal(afterCrash.state, checkpoint === 'after-receipt-commit' ? 'applied' : 'pending');
       assert.deepEqual(await readFile(path.join(directory, 'book.xlsx')), checkpoint === 'before-workspace-rename' ? original : candidate);
-      const settled = await commit.commitEmbeddedWorkbook(db, projectsRoot, request, metadata, async () => {});
-      assert.equal(settled.state, 'applied'); assert.equal((await history.listProjectFileVersions(projectsRoot, projectId, 'book.xlsx', metadata)).length, 2);
-      const next = await commit.commitEmbeddedWorkbook(db, projectsRoot, { ...request, operationId: randomUUID(), sourceSha256: digest(candidate), bytes: later }, metadata, async () => {});
+      const applied = mode === 'commit' || checkpoint !== 'before-workspace-rename';
+      const settled = await commit.commitEmbeddedWorkbook(db, projectsRoot, request, metadata, async () => {}, mode);
+      assert.equal(settled.state, applied ? 'applied' : 'conflict'); assert.equal((await history.listProjectFileVersions(projectsRoot, projectId, 'book.xlsx', metadata)).length, applied ? 2 : 1);
+      assert.deepEqual(await readFile(path.join(directory, 'book.xlsx')), applied ? candidate : original);
+      const next = await commit.commitEmbeddedWorkbook(db, projectsRoot, { ...request, operationId: randomUUID(), sourceSha256: digest(applied ? candidate : original), bytes: later }, metadata, async () => {});
       assert.equal(next.state, 'applied');
       assert.deepEqual(await commit.commitEmbeddedWorkbook(db, projectsRoot, request, metadata, async () => {}), settled);
       assert.deepEqual(await readFile(path.join(directory, 'book.xlsx')), later, 'An old receipt must never overwrite a newer save');
       const versions = await history.listProjectFileVersions(projectsRoot, projectId, 'book.xlsx', metadata);
-      assert.equal(versions.length, 3); assert.equal(versions.find(version => version.current)?.id, next.versionId);
-      process.stdout.write(`PASS: ${checkpoint} settles one save, retains history and preserves newer edits on replay\n`);
+      assert.equal(versions.length, applied ? 3 : 2); assert.equal(versions.find(version => version.current)?.id, next.versionId);
+      process.stdout.write(`PASS: ${checkpoint} (${mode}) settles one save, retains history and preserves newer edits on replay\n`);
       database.closeDatabase();
     }
   } finally {

@@ -6,6 +6,8 @@ import type {
   ProjectTabsState,
   PreviewComment,
 } from "@open-design/contracts";
+import ExcelJS from 'exceljs-community';
+import { createHash, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   chmod,
@@ -54,7 +56,7 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   await rm(scratch, { recursive: true, force: true });
 });
-async function boot() {
+async function boot(kind = "prototype") {
   runtime = await startDaemonRuntime({ host: "127.0.0.1", port: 0 });
   const response = await fetch(runtime.url + "/api/embedded/projects", {
     method: "POST",
@@ -62,13 +64,36 @@ async function boot() {
     body: JSON.stringify({
       id,
       name: "Embedded",
-      kind: "prototype",
+      kind,
       directory,
     }),
   });
   expect(response.status).toBe(201);
   return runtime.url;
 }
+it('commits host-prepared workbooks through the actual authenticated embedded runtime', async () => {
+  const base = await boot('workbook');
+  async function workbook(value: number) { const book = new ExcelJS.Workbook(); book.addWorksheet('Inputs').getCell('A1').value = value; return Buffer.from(await book.xlsx.writeBuffer()); }
+  const original = await workbook(2), candidate = await workbook(8), later = await workbook(16);
+  const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
+  await writeFile(path.join(directory, 'book.xlsx'), original);
+  const operation = randomUUID();
+  const save = (operationId = operation, source = original, target = candidate, mode = 'commit', authorized = true, claimedHash = digest(target)) => fetch(`${base}/api/embedded/projects/${id}/workbook-writes/${operationId}?fileName=book.xlsx`, {
+    method: 'POST', headers: { 'content-type': 'application/octet-stream', ...(authorized ? { authorization: `Bearer ${token}` } : {}), 'x-od-workbook-source': digest(source), 'x-od-workbook-target': claimedHash, 'x-od-workbook-actor': 'human:fixture', 'x-od-workbook-mode': mode }, body: Uint8Array.from(target),
+  });
+  expect((await save(operation, original, candidate, 'commit', false)).status).toBe(401);
+  expect((await save(operation, original, candidate, 'commit', true, '0'.repeat(64))).status).toBe(400);
+  expect(await readFile(path.join(directory, 'book.xlsx'))).toEqual(original);
+  const response = await save(); expect(response.status, await response.clone().text()).toBe(200);
+  const first = await response.json(); expect(first).toMatchObject({ receipt: { operationId: operation, state: 'applied', sourceSha256: digest(original), targetSha256: digest(candidate) } });
+  expect((await save(randomUUID(), candidate, later)).status).toBe(200);
+  expect(await (await save()).json()).toEqual(first);
+  expect(await readFile(path.join(directory, 'book.xlsx'))).toEqual(later);
+  const revoked = randomUUID();
+  expect(await (await save(revoked, later, candidate, 'reconcile')).json()).toMatchObject({ receipt: { state: 'conflict', actualSha256: digest(later) } });
+  expect(await (await save(revoked, later, candidate)).json()).toMatchObject({ receipt: { state: 'conflict' } });
+  expect(await readFile(path.join(directory, 'book.xlsx'))).toEqual(later);
+});
 it("boots real project/file/preview/history services without the standalone server module", async () => {
   const base = await boot();
   expect(await (await fetch(base + "/api/health")).json()).toEqual({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { workbookDocumentSchema, workbookEditPlanSchema, workbookPreviewSchema, workbookWriteReceiptSchema, type WorkbookDocument } from '../src/runtime/workbook.js';
+import { workbookCommitRequestSchema, workbookDocumentSchema, workbookEditPlanSchema, workbookPreviewSchema, workbookWriteReceiptSchema, type WorkbookDocument } from '../src/runtime/workbook.js';
 
 function fixture(): WorkbookDocument {
   return {
@@ -17,6 +17,14 @@ function fixture(): WorkbookDocument {
   };
 }
 describe('workbook model boundary', () => {
+  it('bounds host commit metadata and keeps authority fields out of user edit plans', () => {
+    const request = { operationId: '43370120-4626-43b7-ae9f-808ce5edc582', fileName: 'reports/book.xlsx', sourceSha256: 'a'.repeat(64), targetSha256: 'b'.repeat(64), actor: 'human:fixture', mode: 'reconcile' };
+    expect(workbookCommitRequestSchema.parse(request)).toEqual(request);
+    for (const fileName of ['../book.xlsx', '/book.xlsx', 'a//book.xlsx', 'a/./book.xlsx', 'book.csv', 'a\\book.xlsx']) expect(workbookCommitRequestSchema.safeParse({ ...request, fileName }).success).toBe(false);
+    expect(workbookCommitRequestSchema.safeParse({ ...request, mode: 'force' }).success).toBe(false);
+    expect(workbookCommitRequestSchema.safeParse({ ...request, actor: 'untrusted actor' }).success).toBe(false);
+    expect(workbookCommitRequestSchema.safeParse({ ...request, directory: '/host' }).success).toBe(false);
+  });
   it('accepts complete operation receipts and refuses contradictory completion acknowledgements', () => {
     const receipt = { operationId: '43370120-4626-43b7-ae9f-808ce5edc582', fileName: 'book.xlsx', state: 'applied', sourceSha256: 'a'.repeat(64), targetSha256: 'b'.repeat(64), actualSha256: 'b'.repeat(64), versionId: 'v2', sourceVersionId: 'v1', createdAt: 1, updatedAt: 2 };
     expect(workbookWriteReceiptSchema.parse(receipt)).toEqual(receipt);
