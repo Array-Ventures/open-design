@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { chmod, copyFile, lstat, readdir, rename, rm } from 'node:fs/promises';
+import { chmod, copyFile, lstat, readdir, realpath, rename, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
@@ -28,4 +28,12 @@ export async function detachPackageHardlinks(directory: string): Promise<number>
   }
   await walk(directory);
   return detached;
+}
+
+/** Resolve a dependency destination before any package-build write follows it. */
+export async function requirePackageDirectory(root: string, directory: string): Promise<string> {
+  const base = await realpath(root), target = await realpath(directory);
+  if (target !== base && !target.startsWith(base + path.sep)) throw new Error('Package dependency directory escapes its staging root.');
+  if (!(await lstat(target)).isDirectory()) throw new Error('Package dependency destination is not a directory.');
+  return target;
 }

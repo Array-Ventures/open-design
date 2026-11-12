@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { detachPackageHardlinks } from './lib/package-hardlinks.js';
+import { detachPackageHardlinks, requirePackageDirectory } from './lib/package-hardlinks.js';
 const roots: string[] = [];
 const checks: (() => Promise<void>)[] = [];
 const it = (_name: string, run: () => Promise<void>) => checks.push(run);
@@ -29,6 +29,17 @@ it('never follows dependency symlinks into another tree', async () => {
   assert.equal(await detachPackageHardlinks(output), 0);
   assert.equal((await lstat(path.join(output, 'dependency'))).isSymbolicLink(), true);
   await assert.rejects(detachPackageHardlinks(path.join(output, 'dependency')), /real directory/);
+});
+
+it('refuses escaped dependency destinations before package-build writes', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'od-package-target-')); roots.push(root);
+  const output = path.join(root, 'package'), inside = path.join(output, 'inside'), outside = path.join(root, 'outside');
+  await mkdir(inside, { recursive: true }); await mkdir(outside);
+  await symlink(outside, path.join(output, 'escaped'), 'dir');
+  await symlink(inside, path.join(output, 'contained'), 'dir');
+  await assert.rejects(requirePackageDirectory(output, path.join(output, 'escaped')), /escapes/);
+  assert.equal(await requirePackageDirectory(output, path.join(output, 'contained')), inside);
+  assert.deepEqual(await readdir(outside), []);
 });
 
 try { for (const run of checks) await run(); process.stdout.write(`Package hard-link isolation: ${checks.length} checks passed.\n`); }

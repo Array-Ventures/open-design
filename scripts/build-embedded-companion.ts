@@ -1,4 +1,4 @@
-import { detachPackageHardlinks } from './lib/package-hardlinks.js';
+import { detachPackageHardlinks, requirePackageDirectory } from './lib/package-hardlinks.js';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
@@ -59,7 +59,7 @@ try {
   const sourceRequire = createRequire(path.join(root, 'apps/daemon/package.json'));
   const deployedRequire = createRequire(path.join(deployedDaemon, 'package.json'));
   const sourceSqlite = path.dirname(sourceRequire.resolve('better-sqlite3/package.json'));
-  const deployedSqlite = path.dirname(deployedRequire.resolve('better-sqlite3/package.json'));
+  const deployedSqlite = await requirePackageDirectory(staging, path.dirname(deployedRequire.resolve('better-sqlite3/package.json')));
   if (JSON.parse(await readFile(path.join(sourceSqlite, 'package.json'), 'utf8')).version !== JSON.parse(await readFile(path.join(deployedSqlite, 'package.json'), 'utf8')).version) throw new Error('SQLite build and deployment versions differ.');
   await mkdir(path.join(deployedSqlite, 'build/Release'), { recursive: true });
   await cp(path.join(sourceSqlite, 'build/Release/better_sqlite3.node'), path.join(deployedSqlite, 'build/Release/better_sqlite3.node'));
