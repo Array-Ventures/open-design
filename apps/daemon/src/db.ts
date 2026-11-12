@@ -1,6 +1,7 @@
 import { pendingCommentFileRetirements } from './collab/comment-file-retirements.js';
 import { migratePreviewCommentReplies } from './storage/preview-comment-replies.js';
 import { migratePreviewCommentWrites, previewCommentEditToken } from './storage/preview-comment-writes.js';
+import { migrateWorkbookWrites } from './storage/workbook-writes.js';
 // SQLite-backed persistence for projects, conversations, messages, and the
 // per-project set of open workspace tabs. The on-disk project folder under
 // .od/projects/<id>/ is still the single owner of the user's actual files
@@ -94,6 +95,7 @@ export function openDatabase(projectRoot: string, { dataDir }: { dataDir?: strin
   migrate(db);
   migratePreviewCommentReplies(db);
   migratePreviewCommentWrites(db);
+  migrateWorkbookWrites(db);
   dbInstance = db;
   dbFile = file;
   return db;

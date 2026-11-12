@@ -129,3 +129,14 @@ export const workbookDocumentSchema = z.object({
 });
 export type WorkbookDocument = z.infer<typeof workbookDocumentSchema>;
 export const workbookPreviewSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), model: workbookDocumentSchema }).strict();
+export const workbookWriteIdentitySchema = z.object({ operationId: z.string().uuid(), sourceSha256: z.string().regex(/^[0-9a-f]{64}$/) }).strict();
+export const workbookWriteReceiptSchema = workbookWriteIdentitySchema.extend({
+  fileName: z.string().min(1).max(500), state: z.enum(['pending', 'applied', 'conflict']),
+  targetSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  actualSha256: z.string().regex(/^[0-9a-f]{64}$/).nullable(), versionId: id.nullable(), sourceVersionId: id.nullable(),
+  createdAt: z.number().int().nonnegative(), updatedAt: z.number().int().nonnegative(),
+}).strict().superRefine((receipt, context) => {
+  if (receipt.state === 'applied' ? !receipt.versionId || receipt.actualSha256 !== receipt.targetSha256 : receipt.versionId !== null
+    || receipt.state === 'pending' && receipt.actualSha256 !== null) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Workbook receipt state is inconsistent.' });
+});
+export type WorkbookWriteReceipt = z.infer<typeof workbookWriteReceiptSchema>;

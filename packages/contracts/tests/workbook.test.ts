@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { workbookDocumentSchema, workbookEditPlanSchema, workbookPreviewSchema, type WorkbookDocument } from '../src/runtime/workbook.js';
+import { workbookDocumentSchema, workbookEditPlanSchema, workbookPreviewSchema, workbookWriteReceiptSchema, type WorkbookDocument } from '../src/runtime/workbook.js';
 
 function fixture(): WorkbookDocument {
   return {
@@ -17,6 +17,15 @@ function fixture(): WorkbookDocument {
   };
 }
 describe('workbook model boundary', () => {
+  it('accepts complete operation receipts and refuses contradictory completion acknowledgements', () => {
+    const receipt = { operationId: '43370120-4626-43b7-ae9f-808ce5edc582', fileName: 'book.xlsx', state: 'applied', sourceSha256: 'a'.repeat(64), targetSha256: 'b'.repeat(64), actualSha256: 'b'.repeat(64), versionId: 'v2', sourceVersionId: 'v1', createdAt: 1, updatedAt: 2 };
+    expect(workbookWriteReceiptSchema.parse(receipt)).toEqual(receipt);
+    expect(workbookWriteReceiptSchema.safeParse({ ...receipt, versionId: null }).success).toBe(false);
+    expect(workbookWriteReceiptSchema.safeParse({ ...receipt, actualSha256: 'c'.repeat(64) }).success).toBe(false);
+    expect(workbookWriteReceiptSchema.safeParse({ ...receipt, state: 'pending' }).success).toBe(false);
+    expect(workbookWriteReceiptSchema.safeParse({ ...receipt, state: 'conflict' }).success).toBe(false);
+    expect(workbookWriteReceiptSchema.safeParse({ ...receipt, state: 'conflict', versionId: null, actualSha256: null }).success).toBe(true);
+  });
   it('binds previews and edit plans to an exact source hash without accepting authority fields', () => {
     const sourceSha256 = 'a'.repeat(64), cell = { row: 0, column: 0, kind: 'number', value: 2 };
     expect(workbookPreviewSchema.parse({ sourceSha256, model: fixture() }).sourceSha256).toBe(sourceSha256);

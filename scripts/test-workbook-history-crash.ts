@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { once } from 'node:events';
 import fs, { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { killWorkbookFixtureAt } from './lib/workbook-crash-process.js';
 import ExcelJS from 'exceljs-community';
 
 type History = typeof import('../apps/daemon/src/project-file-versions.js');
@@ -41,7 +39,6 @@ if (process.argv[2] === '--child') {
 } else {
   const history = await import(moduleUrl) as History;
   const root = await mkdtemp(path.join(tmpdir(), 'od-workbook-history-crash-')), projectId = 'history-crash';
-  const children = new Set<ReturnType<typeof spawn>>();
   async function workbook(value: number) {
     const book = new ExcelJS.Workbook(); book.addWorksheet('Inputs').getCell('A1').value = value;
     return Buffer.from(await book.xlsx.writeBuffer());
@@ -54,19 +51,7 @@ if (process.argv[2] === '--child') {
       const first = await history.withProjectFileVersionBytesLock(root, projectId, fileName, undefined, lock => lock.ensureCurrentVersion(original, { source: 'manual' }));
       const configFile = path.join(root, `${checkpoint}.json`);
       await writeFile(configFile, JSON.stringify({ root, projectId, fileName, bytes: next.toString('base64'), checkpoint } satisfies Configuration));
-      const child = spawn(process.execPath, ['--import', 'tsx', fileURLToPath(import.meta.url), '--child', configFile], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
-      children.add(child); let stderr = ''; child.stderr!.on('data', chunk => { stderr += chunk.toString(); });
-      const exit = once(child, 'exit').then(result => { children.delete(child); return result; });
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        const message = await Promise.race([
-          once(child, 'message').then(([message]) => message as { checkpoint: string }),
-          exit.then(() => { throw new Error(`History child exited before its mark: ${stderr}`); }),
-          new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error(`History checkpoint timed out: ${stderr}`)), 10_000); }),
-        ]);
-        assert.equal(message.checkpoint, checkpoint); child.kill('SIGKILL');
-        const [, signal] = await exit; children.delete(child); assert.equal(signal, 'SIGKILL');
-      } finally { if (timer) clearTimeout(timer); }
+      await killWorkbookFixtureAt(new URL(import.meta.url), configFile, checkpoint);
       const afterCrash = await history.listProjectFileVersions(root, projectId, fileName);
       assert.equal(afterCrash.length, checkpoint === 'before-manifest-rename' ? 1 : 2);
       assert.deepEqual((await history.readProjectFileVersionBytes(root, projectId, fileName, first!.id)).content, original);
@@ -78,8 +63,6 @@ if (process.argv[2] === '--child') {
       process.stdout.write(`PASS: ${checkpoint} preserves history and settles one new binary revision\n`);
     }
   } finally {
-    for (const child of children) child.kill('SIGKILL');
-    await Promise.all([...children].map(child => once(child, 'exit')));
     await rm(root, { recursive: true, force: true });
   }
 }
