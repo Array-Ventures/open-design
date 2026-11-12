@@ -1,3 +1,4 @@
+import { detachPackageHardlinks } from './lib/package-hardlinks.js';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
@@ -52,6 +53,7 @@ try {
   await mkdir(path.join(staging, 'apps'), { recursive: true });
   const deployedDaemon = path.join(staging, 'apps/daemon');
   pnpm('--filter', '@open-design/daemon', 'deploy', '--legacy', '--prod', '--ignore-scripts', deployedDaemon);
+  await detachPackageHardlinks(deployedDaemon);
   // pnpm's deployment copy uses published package files, which omit SQLite's
   // locally built native addon. Include the installed, platform-matched binary.
   const sourceRequire = createRequire(path.join(root, 'apps/daemon/package.json'));
@@ -111,6 +113,8 @@ try {
       }
     }
   }
+  // Copied bundles and resource trees must not retain cache aliases either.
+  await detachPackageHardlinks(staging);
   await inventory(staging);
   if (await sourceDigest() !== sourceTreeSha256) throw new Error('Source files changed during the companion build. Build again from stable source.');
   const identity = { schemaVersion: 1, bridgeVersion: 1, sourceCommit, sourceTreeSha256, dirty, nodeMajor: 24, platform: process.platform, architecture: process.arch, entries: { daemon: 'apps/daemon/dist/cli.js', web: 'web/apps/web/server.js' }, files };
