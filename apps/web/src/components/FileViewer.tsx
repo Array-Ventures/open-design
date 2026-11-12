@@ -17383,8 +17383,10 @@ function HtmlViewer({
       commenting
     />
   ) : null;
-  const commentComposer = workspaceActive && commentComposerNode && commentComposerPortalMetrics
-    ? createPortal(<CommentReviewPage value={reviewPageAvailable}>{commentComposerNode}</CommentReviewPage>, commentComposerPortalMetrics.host)
+  // Layout can collapse to zero while native mobile chat hides this iframe.
+  // Portal ownership follows the actual host, never its transient measurements.
+  const commentComposer = workspaceActive && commentComposerNode && commentComposerHost
+    ? createPortal(<CommentReviewPage value={reviewPageAvailable}>{commentComposerNode}</CommentReviewPage>, commentComposerHost)
     : workspaceActive ? <CommentReviewPage value={reviewPageAvailable}>{commentComposerNode}</CommentReviewPage> : null;
   const speakerNotesFeedback = speakerNotesStatus === 'saved'
       ? { className: 'saved', label: t('fileViewer.speakerNotesSaved') }
