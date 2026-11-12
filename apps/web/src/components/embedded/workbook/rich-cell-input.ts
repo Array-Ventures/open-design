@@ -70,7 +70,11 @@ function contentSnapshot(
         typeof value !== 'object' ||
         Object.entries(value).some(
           ([key, value]) =>
-            value != null && (!renderKeys.has(key) || typeof value !== 'number' || !Number.isFinite(value)),
+            value != null && (key === 'zeroWidthParagraphBreak'
+              // Worksheet.getCellDocumentModel sets this exact renderer flag
+              // for rich cells. It is not an authored paragraph property.
+              ? value !== 1
+              : !renderKeys.has(key) || typeof value !== 'number' || !Number.isFinite(value)),
         )
       )
         return;

@@ -81,8 +81,15 @@ it('keeps single-run rich ownership through the actual in-cell editor normalizat
     hook.dispose();
     univer.dispose();
   };
-  const inherited = sheet.getComposedCellStyle(0, 0),
-    snapshot = createDocumentModelWithStyle('sum(a1)+true', inherited).getSnapshot();
+  const inherited = sheet.getComposedCellStyle(0, 0);
+  // Use the actual worksheet rich-cell layout path used by the browser.
+  // The generic text factory omits its zero-width paragraph-break setting.
+  const sourceCell = structuredClone(sheet.getCellRaw(0, 0)!);
+  sourceCell.p!.body!.dataStream = 'sum(a1)+true\r\n';
+  sourceCell.p!.body!.paragraphs![0]!.startIndex = sourceCell.p!.body!.dataStream.length - 2;
+  const layout = sheet.getCellDocumentModel(sourceCell, inherited, { isDeepClone: true })!;
+  const snapshot = structuredClone(layout.documentModel!.getSnapshot());
+  layout.documentModel!.dispose();
   snapshot.id = DOCS_NORMAL_EDITOR_UNIT_ID_KEY;
   snapshot.body!.textRuns = [{ st: 0, ed: 12, ts: { bl: 1 } }];
   const doc = univer.createUnit(UniverInstanceType.UNIVER_DOC, snapshot) as DocumentDataModel;
