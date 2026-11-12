@@ -63,3 +63,15 @@ it('suppresses stale mismatch/reload copy and holds Restore until the fresh head
   expect(screen.queryByText('The workbook changed elsewhere. Reload it before restoring.')).toBeNull();
   expect(reload).not.toHaveBeenCalled();
 });
+
+it('shows a confirmed missing-file outcome once as neutral status while preserving genuine error severity', () => {
+  const notice = 'The restore completed, but the current file is now missing. It was not recreated.';
+  const history = { ...fixture(), statusOnly: true, available: true, sha: null, notice };
+  const view = render(<WorkbookHistory history={history} dirty={false} reload={vi.fn()} />);
+  expect(screen.getByRole('status').textContent).toBe(notice);
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.queryByText('The current workbook is missing. History restore will not recreate it.')).toBeNull();
+  view.rerender(<WorkbookHistory history={{ ...history, error: 'Receipt status could not be read.' }} dirty={false} reload={vi.fn()} />);
+  expect(screen.getByRole('alert').textContent).toBe('Receipt status could not be read.');
+  expect(screen.queryByText(notice)).toBeNull();
+});

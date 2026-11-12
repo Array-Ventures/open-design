@@ -16,6 +16,7 @@ export function useWorkbookHistory(options: Options) {
   const [open, setOpen] = useState(false), [versions, setVersions] = useState<WorkbookHistoryVersion[]>([]);
   const [selected, setSelected] = useState<WorkbookHistoryVersion | null>(null), [cursor, setCursor] = useState<string | null>(null);
   const [sha, setSha] = useState<string | null>(null), [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false), [working, setWorking] = useState(false), [checking, setChecking] = useState(true);
   const [available, setAvailable] = useState(false), [denied, setDenied] = useState(false), [accessAttempt, setAccessAttempt] = useState(0);
   const [fresh, setFresh] = useState(false), [opening, setOpening] = useState(0);
@@ -31,7 +32,7 @@ export function useWorkbookHistory(options: Options) {
   const headFresh = fresh && freshFor.current === headKey && refreshedOpening.current === opening;
   const revoke = useCallback(() => {
     life.current?.abort(); life.current = null; listing.current?.abort(); listing.current = null; setFresh(false); generation.current += 1;
-    setAvailable(false); setDenied(true); setChecking(false); setWorking(false); setLoading(false); setIntent(null); setVersions([]); setSelected(null); setCursor(null); setSha(null); setOpen(false);
+    setNotice(null); setAvailable(false); setDenied(true); setChecking(false); setWorking(false); setLoading(false); setIntent(null); setVersions([]); setSelected(null); setCursor(null); setSha(null); setOpen(false);
     latest.current.onAccessLost?.();
   }, []);
   // Only fresh server-authorized passive history may unlock restore identity
@@ -40,7 +41,7 @@ export function useWorkbookHistory(options: Options) {
   useEffect(() => {
     const controller = new AbortController(); life.current = controller;
     const initialRead = readKey.current; setFresh(false);
-    busy.current = false; paging.current = false; setWorking(false); setLoading(false); setChecking(true); setAvailable(false); setError(null);
+    busy.current = false; paging.current = false; setWorking(false); setLoading(false); setChecking(true); setAvailable(false); setError(null); setNotice(null);
     void (async () => {
       try {
         const result = await listWorkbookHistory(options.scope.projectId, options.scope.fileName, controller.signal, { limit: 20 });
@@ -101,7 +102,7 @@ export function useWorkbookHistory(options: Options) {
     if (!intent && (!chosen || current.source !== null && sha !== current.source.sourceSha256 || chosen.contentDigest === sha)) {
       setError('The current workbook changed. Refresh the workbook and history before restoring.'); return;
     }
-    generation.current += 1; busy.current = true; setWorking(true); setError(null);
+    generation.current += 1; setNotice(null); busy.current = true; setWorking(true); setError(null);
     let accepted = false, paused = false;
     const attempt: WorkbookRestoreIntent = intent ?? { version: 1, ...current.scope, operationId: crypto.randomUUID(), preparationId: crypto.randomUUID(), versionId: chosen!.id, versionNumber: chosen!.version, versionSha256: chosen!.contentDigest, sourceSha256: sha! };
     let lease: Awaited<ReturnType<typeof acquireWorkbookDraftLease>> = null;
@@ -171,19 +172,19 @@ export function useWorkbookHistory(options: Options) {
       if (signal.aborted) return;
       setIntent(null); showCurrent(fresh); setSha(actualSha); setOpen(true);
       if (current.dirty()) {
-        setError(actualSha === null ? 'The restore completed, but the current file is now missing. Your local draft was kept.' : 'The restore completed. Your local draft was kept; reload only after keeping your edits.');
+        setNotice(actualSha === null ? 'The restore completed, but the current file is now missing. Your local draft was kept.' : 'The restore completed. Your local draft was kept; reload only after keeping your edits.');
       } else if (actualSha === null) {
         const message = 'The restore completed, but the current file is now missing. It was not recreated.';
-        accepted = true; current.unreadable?.(message, false); setError(message);
+        accepted = true; current.unreadable?.(message, false); setNotice(message);
       } else if (refreshed) {
         accepted = true; current.accepted(refreshed);
         setOpen(actualSha !== receipt.targetSha256);
-        if (actualSha !== receipt.targetSha256) setError('The revision was restored, then changed elsewhere. Refresh history before another restore.');
+        if (actualSha !== receipt.targetSha256) setNotice('The revision was restored, then changed elsewhere. Refresh history before another restore.');
       } else if (mayReplace) {
         accepted = true; current.unreadable?.();
-        setError('The saved version was restored but cannot be previewed. Choose another version; local drafts are kept.');
+        setNotice('The saved version was restored but cannot be previewed. Choose another version; local drafts are kept.');
       } else {
-        setError(current.statusOnly ? 'The restore was confirmed. Return to the artifact to view its current file.' : 'The restore was confirmed. Your drafts were kept; reload the current workbook when ready.');
+        setNotice(current.statusOnly ? 'The restore was confirmed. Return to the artifact to view its current file.' : 'The restore was confirmed. Your drafts were kept; reload the current workbook when ready.');
       }
     } catch (cause) {
       let failure = cause;
@@ -204,6 +205,6 @@ export function useWorkbookHistory(options: Options) {
       finally { if (!signal.aborted) { busy.current = false; setWorking(false); } }
     }
   }, [checking, intent, sha, available, revoke, headFresh]);
-  return { generation: () => generation.current, isRestoring: () => busy.current || Boolean(intent), statusOnly: Boolean(options.statusOnly), available, canOpen: !denied, missing: available && sha === null, denyAccess: revoke, open, show, toggle, close, versions, selected, select: setSelected, cursor, sha, error, fresh: headFresh, loading, working, checking, intent,
+  return { generation: () => generation.current, isRestoring: () => busy.current || Boolean(intent), statusOnly: Boolean(options.statusOnly), available, canOpen: !denied, missing: available && sha === null, denyAccess: revoke, open, show, toggle, close, versions, selected, select: setSelected, cursor, sha, error, notice, fresh: headFresh, loading, working, checking, intent,
     blocked: checking || !available || Boolean(intent) || working, refresh: () => available ? page() : Promise.resolve(setAccessAttempt(value => value + 1)), more: () => page(true), restore };
 }

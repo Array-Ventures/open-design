@@ -124,7 +124,7 @@ it('leaves an applied but unpreviewable revision recoverable through another sel
   await waitFor(() => expect(view.result.current.checking).toBe(false)); act(() => view.result.current.select(revision));
   await act(async () => view.result.current.restore());
   expect(record()).toBeNull(); expect(view.result.current.open).toBe(true); expect(view.result.current.blocked).toBe(false);
-  expect(unreadable).toHaveBeenCalledOnce(); expect(view.result.current.error).toContain('cannot be previewed');
+  expect(unreadable).toHaveBeenCalledOnce(); expect(view.result.current.error).toBeNull(); expect(view.result.current.notice).toContain('cannot be previewed');
 });
 it('hides previously authorized restore metadata on revocation while retaining its protected record', async () => {
   const { WorkbookHostError } = await import('../../../src/components/embedded/workbook/host-request');
@@ -151,7 +151,7 @@ it('reconciles a lost applied acknowledgement after file deletion without previe
   await act(async () => view.result.current.restore());
   expect(mocks.restore).toHaveBeenCalledExactlyOnceWith(pending, expect.any(Function), expect.any(AbortSignal), { allowPrepare: false });
   expect(record()).toBeNull(); expect(view.result.current.intent).toBeNull(); expect(view.result.current.canOpen).toBe(true); expect(view.result.current.missing).toBe(true);
-  expect(view.result.current.error).toContain('now missing'); expect(mocks.preview).not.toHaveBeenCalled(); expect(options.pause).not.toHaveBeenCalled();
+  expect(view.result.current.error).toBeNull(); expect(view.result.current.notice).toContain('now missing'); expect(mocks.preview).not.toHaveBeenCalled(); expect(options.pause).not.toHaveBeenCalled();
   expect(unreadable).toHaveBeenCalledWith(expect.stringContaining('not recreated'), false);
 });
 it('accepts an exact terminal receipt before checking a changed source and then clears only that operation', async () => {
@@ -192,7 +192,7 @@ it('reconciles a terminal operation without replacing an already dirty local dra
   const view = renderHook(() => useWorkbookHistory(options));
   await waitFor(() => expect(view.result.current.intent).toEqual(pending)); await act(async () => view.result.current.restore());
   expect(record()).toBeNull(); expect(options.accepted).not.toHaveBeenCalled(); expect(options.pause).not.toHaveBeenCalled(); expect(mocks.preview).not.toHaveBeenCalled();
-  expect(view.result.current.error).toContain('local draft was kept');
+  expect(view.result.current.error).toBeNull(); expect(view.result.current.notice).toContain('local draft was kept');
 });
 it.each([false, true])('classifies preview 404 through fresh history (project denied: %s)', async denied => {
   const { WorkbookHostError } = await import('../../../src/components/embedded/workbook/host-request');

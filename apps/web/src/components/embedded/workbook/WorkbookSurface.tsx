@@ -35,7 +35,7 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
     pause: async () => editorRef.current?.pause() ?? false,
     resume: async accepted => { await editorRef.current?.resumeClean(accepted); },
     accepted: source => { setLoaded(source); setError(null); onSaved?.(); },
-    unreadable: (message, refresh = true) => { setLoaded(null); setError(message ?? 'The saved version was restored but cannot be previewed. Choose another version in History.'); if (refresh) onSaved?.(); },
+    unreadable: (_message, refresh = true) => { setLoaded(null); setError(null); if (refresh) onSaved?.(); },
     onAccessLost: () => { void editorRef.current?.close(); setLoaded(null); setError('This workbook is unavailable. Reopen it after checking access.'); onAccessLost?.(); },
     focusOnClose: () => window.parent.postMessage({ type: 'studio:workbook-history-focus', projectId, controllerId: editorRef.current?.controllerId }, window.location.origin),
   });
@@ -82,7 +82,7 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
     } catch { setDownloadError('The recovery copy could not be downloaded. Keep this workbook open.'); }
   };
   let content;
-  if (!loaded) content = <div role={error ? 'alert' : 'status'} className="flex h-full items-center justify-center gap-2 p-4 text-body-2-regular text-text-tertiary">{error ?? (statusOnly ? history.available && !history.intent && !history.checking ? 'No unresolved restore remains for this file.' : 'Open History to check the pending restore.' : 'Loading workbook…')}</div>;
+  if (!loaded) content = history.open ? null : <div role={error ? 'alert' : 'status'} className="flex h-full items-center justify-center gap-2 p-4 text-body-2-regular text-text-tertiary">{error ?? history.notice ?? (statusOnly ? history.available && !history.intent && !history.checking ? 'No unresolved restore remains for this file.' : 'Open History to check the pending restore.' : 'Loading workbook…')}</div>;
   else if (recovery.session) content = <Suspense fallback={<div role="status" className="p-4 text-body-2-regular text-text-tertiary">Loading workbook…</div>}>
     <WorkbookGrid id={`${projectId}:${fileName}`} title={title} model={loaded.model} initialSnapshot={recovery.session.journal.restored?.desired} onReady={editor.ready} onSnapshot={editor.snapshot} formatScope={{ projectId, controllerId: editor.controllerId, blocked: editor.discarding || history.blocked }} />
   </Suspense>;

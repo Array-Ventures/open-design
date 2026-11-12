@@ -105,7 +105,15 @@ it.each([false, true, 'transient'])('recovers through real transports while reta
     expect(host.artifact).toHaveBeenLastCalledWith(projectId, null, false);
     const callsBeforeCheck = host.request.mock.calls.length;
     fireEvent.click(check);
-    await screen.findAllByText('The restore completed, but the current file is now missing. It was not recreated.');
+    const completion = 'The restore completed, but the current file is now missing. It was not recreated.';
+    const notice = await screen.findByText(completion);
+    expect(notice.getAttribute('role')).toBe('status');
+    expect(screen.getAllByText(completion)).toHaveLength(1);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText('The current workbook is missing. History restore will not recreate it.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close workbook history' }));
+    expect(screen.getAllByText(completion)).toHaveLength(1);
+    expect(screen.getByText(completion).getAttribute('role')).toBe('status');
     expect(host.request.mock.calls.slice(callsBeforeCheck).every(([, request]) => ['read-save', 'list-history'].includes(request.action))).toBe(true);
     expect(drafts.listWorkbookDrafts).not.toHaveBeenCalled(); expect(drafts.readWorkbookDraft).not.toHaveBeenCalled();
   } else await screen.findByRole('heading', { name: 'Unsaved drafts' });
