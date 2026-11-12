@@ -1,3 +1,4 @@
+import { normalizeDocumentCommentHint } from '@open-design/contracts';
 import { pendingCommentFileRetirements } from './collab/comment-file-retirements.js';
 import { migratePreviewCommentReplies } from './storage/preview-comment-replies.js';
 import { migratePreviewCommentWrites, previewCommentEditToken } from './storage/preview-comment-writes.js';
@@ -3980,7 +3981,7 @@ export function upsertPreviewComment(
   const selector = cleanRequiredString(target.selector, 'selector');
   const label = cleanRequiredString(target.label, 'label');
   const text = typeof target.text === 'string' ? compactWhitespace(target.text).slice(0, 160) : '';
-  const htmlHint = typeof target.htmlHint === 'string' ? compactWhitespace(target.htmlHint).slice(0, 180) : '';
+  const htmlHint = normalizeDocumentCommentHint(target.htmlHint);
   const position = normalizePosition(target.position);
   const selectionKind = target.selectionKind === 'pod' ? 'pod' : 'element';
   const podMembers = selectionKind === 'pod' ? normalizePodMembers(target.podMembers) : [];
