@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { workbookEditPlanSchema } from '@open-design/contracts/runtime/workbook';
 import { workbookHostRequest, WorkbookHostError } from './host-request';
-import { prepareWorkbookJob, workbookPollDelay } from './preview-transport';
+import { prepareWorkbookJob, workbookPollDelay, checkedWorkbookJob } from './preview-transport';
 
 const digest = z.string().regex(/^[0-9a-f]{64}$/);
 const Save = z.object({ id: z.string().uuid(), projectId: z.string().uuid(), renderId: z.string().uuid(), fileName: z.string(),
@@ -29,6 +29,25 @@ export async function saveWorkbook(attempt: WorkbookSaveAttempt, signal?: AbortS
   let save: z.infer<typeof Save> | undefined;
   try { save = checkedSave(await workbookHostRequest(attempt.projectId, { action: 'read-save', saveId: attempt.operationId }, signal), attempt); }
   catch (error) { if (!(error instanceof WorkbookHostError) || error.status !== 404) throw error; }
+  if (!save && attempt.renderId) {
+    // A 404 save lookup alone races an earlier admission. A durable render
+    // tombstone shares admission's row lock, so no delayed old-candidate request
+    // can be admitted after this proof. Probe the receipt again after it.
+    const previous = checkedWorkbookJob(await workbookHostRequest(attempt.projectId, { action: 'read-render', renderId: attempt.renderId }, signal), attempt.projectId, attempt.fileName, 'xlsx');
+    if (previous.id !== attempt.renderId) throw new WorkbookHostError('The workbook preparation identity changed.');
+    if (previous.state === 'deleted') {
+      try { save = checkedSave(await workbookHostRequest(attempt.projectId, { action: 'read-save', saveId: attempt.operationId }, signal), attempt); }
+      catch (error) { if (!(error instanceof WorkbookHostError) || error.status !== 404) throw error; }
+      if (!save) {
+        if (!beforeAdmission) throw new WorkbookHostError('Recovery storage is required before replacing this expired workbook preparation.');
+        const renderId = attempt.renderId, preparationId = attempt.preparationId;
+        attempt.preparationId = crypto.randomUUID();
+        delete attempt.renderId;
+        try { await beforeAdmission(); }
+        catch (error) { attempt.renderId = renderId; attempt.preparationId = preparationId; throw error; }
+      }
+    }
+  }
   if (!save) {
     if (!attempt.renderId) {
       const job = await prepareWorkbookJob(attempt.projectId, attempt.fileName, 'xlsx', attempt.preparationId, signal, JSON.stringify(attempt.plan));
