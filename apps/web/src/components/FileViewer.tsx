@@ -16619,7 +16619,8 @@ function HtmlViewer({
   // which reproduces the exact same "newest first" default. Persisted
   // server-side (see the `/reorder` route) instead of living only in React
   // state, so a drag survives a refresh/tab-switch/device-switch.
-  const reviewPageAvailable = boardMode && (!effectiveDeck || typeof slideState?.active === 'number');
+  // Reviewing saved comments does not require enabling element selection.
+  const reviewPageAvailable = !effectiveDeck || typeof slideState?.active === 'number';
   const visibleSideComments = useMemo(
     () =>
       commentsInReviewScope(commentReview?.showResolved ? previewComments : creationSortedSideComments, {

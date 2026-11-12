@@ -86,7 +86,7 @@ it('requires saving unsent changes before starting resolution', () => {
   fireEvent.click(resolve); expect(change).not.toHaveBeenCalled();
 });
 
-it('offers page scope only while commenting and retains the chosen scope when temporarily unavailable', async () => {
+it('offers page scope only while its page is known and retains the chosen scope when temporarily unavailable', async () => {
   const { CommentReviewPage } = await import('../../../src/components/embedded/CommentReview');
   function State({ available }: { available: boolean }) { const review = useCommentReview(); return <CommentReviewPage value={available}><CommentReviewFilter /><output aria-label="Page scope">{review?.pageScope}</output></CommentReviewPage>; }
   const view = (available: boolean) => <CommentReviewProvider changeStatus={vi.fn()}><State available={available} /></CommentReviewProvider>;

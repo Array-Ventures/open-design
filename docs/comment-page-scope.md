@@ -2,15 +2,17 @@
 
 The compact comment filter offers **This page**, **All pages**, and the existing
 **Show resolved** choice. All pages is the initial scope, preserving the current
-list behavior. This page is available while commenting and, on decks, after the
-active slide is known. Outside comment mode the list shows all pages without
+list behavior. In the generic artifact viewer, This page is available whenever
+the current page is known, including a list opened directly from the native header in interactive preview. Decks wait for
+the active slide report; while it is unknown the list shows all pages without
 forgetting the person's previous scope choice.
 
 Pages belong to the current artifact file. For a deck, This page shows the active
 slide plus legacy comments without a slide identity; All pages shows all slides.
 For a plain HTML page both scopes describe that one page. Neither scope lists
 comments from the project's internal files. Structured documents keep their
-existing selection-aware surface; this change does not add a document outline.
+existing selection-aware surface with no modeled page boundary, so its page
+choice remains unavailable; this change does not add a document outline.
 
 Changing a filter only changes list membership. It does not retarget the saved
 thread, clear a reply/root draft, remove image receipts, close markup, save a

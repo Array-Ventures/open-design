@@ -119,3 +119,18 @@ it('invalidates earlier consent when another accepted retarget replaces the comp
   expect(post).not.toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 1 }, '*');
   expect(reply).toHaveValue('Draft after replacement');
 });
+it('filters a direct native all-comments list while the preview remains interactive', async () => {
+  const { control, dispatch } = await setup();
+  await control('comments');
+  const state = () => host.postMessage.mock.calls.filter(([value]) => value.type === 'studio:feedback-state').at(-1)![0];
+  expect(state().commenting).toBe(false);
+  expect(screen.getByText('Note first')).toBeVisible(); expect(screen.getByText('Note second')).toBeVisible();
+  await filter('This page');
+  expect(screen.getByText('Note first')).toBeVisible(); expect(screen.queryByText('Note second')).toBeNull();
+  expect(state().commenting).toBe(false);
+  await dispatch({ type: 'od:slide-state', active: 1, count: 2 });
+  expect(screen.getByText('Note second')).toBeVisible(); expect(screen.queryByText('Note first')).toBeNull();
+  await filter('All pages');
+  expect(screen.getByText('Note first')).toBeVisible(); expect(screen.getByText('Note second')).toBeVisible();
+  expect(state().commenting).toBe(false);
+});

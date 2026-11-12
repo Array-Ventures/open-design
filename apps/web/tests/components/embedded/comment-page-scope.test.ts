@@ -13,7 +13,7 @@ it('keeps all pages inside the current artifact and composes resolved filtering'
   expect(commentsInReviewScope(comments, { ...scope, showResolved: true }).map(c => c.id)).toEqual(['first', 'legacy', 'resolved']);
   expect(commentsInReviewScope(comments, { ...scope, pageScope: 'all', showResolved: true }).map(c => c.id)).toEqual(['first', 'second', 'legacy', 'resolved']);
 });
-it('suspends page filtering outside comment mode and treats a plain file as one page', () => {
+it('suspends page filtering while the page is unknown and treats a plain file as one page', () => {
   expect(commentsInReviewScope(comments, { ...scope, pageAvailable: false }).map(c => c.id)).toEqual(['first', 'second', 'legacy']);
   expect(commentsInReviewScope(comments, { ...scope, slideIndex: null }).map(c => c.id)).toEqual(['first', 'second', 'legacy']);
 });
