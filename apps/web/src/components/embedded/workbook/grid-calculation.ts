@@ -12,6 +12,7 @@ import type { FUniver } from '@univerjs/core/facade';
 /** Only this disposable calculation replica receives authored cells. It cannot
  * fetch assets, save files, select a different branch or acknowledge a journal. */
 export function workbookLiveCalculationEligible(model: WorkbookDocument, snapshot: IWorkbookData): boolean {
+  if (model.calculationMetadata === 'unsupported') return false;
   if (model.sheets.some(sheet => sheet.arrayFormulas === undefined || sheet.arrayFormulas.length > 0)) return false;
   try { assertWorkbookCalculationBudget([snapshot], true); return true; } catch { return false; }
 }

@@ -66,8 +66,9 @@ export type WorkbookStyleEdit = z.infer<typeof workbookStyleEditSchema>;
 export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), styles: z.array(workbookStyleEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional() }).strict();
 /** Source ownership from OOXML f/@t and f/@ref, never inferred from cached
  * numeric cells or a formula's function name. Dynamic/legacy array identity is
- * intentionally not guessed: their additional source parts remain retained. */
-export const workbookArrayFormulaSchema = z.object({ kind: z.enum(['array', 'dataTable']), row, column, range: workbookRangeSchema }).strict();
+ * never inferred from functions. Optional calculation identity is qualified by
+ * the daemon from retained metadata; older absence remains unknown. */
+export const workbookArrayFormulaSchema = z.object({ kind: z.enum(['array', 'dataTable']), row, column, range: workbookRangeSchema, calculation: z.enum(['fixed', 'dynamic', 'unsupported']).optional() }).strict();
 export type WorkbookArrayFormula = z.infer<typeof workbookArrayFormulaSchema>;
 export const workbookSheetSchema = z.object({
   id, name: z.string().min(1).max(31).refine(name => !/[\\/*?:[\]]/.test(name) && !name.startsWith("'") && !name.endsWith("'"), 'Invalid sheet name.'),
@@ -87,7 +88,7 @@ export const workbookTableSchema = z.object({ name: formulaName, sheetId: id, ra
 export type WorkbookDefinedName = z.infer<typeof workbookDefinedNameSchema>;
 export type WorkbookTable = z.infer<typeof workbookTableSchema>;
 export const workbookDocumentSchema = z.object({
-  version: z.literal(1), sourceFormat: z.literal('csv').optional(), date1904: z.boolean(), activeSheetId: id,
+  version: z.literal(1), calculationMetadata: z.enum(['verified', 'unsupported']).optional(), sourceFormat: z.literal('csv').optional(), date1904: z.boolean(), activeSheetId: id,
   themeColors: z.array(z.string().regex(/^[A-Fa-f0-9]{8}$/)).length(12).optional(),
   styles: z.array(workbookStyleSchema).min(1).max(WORKBOOK_MODEL_LIMITS.styles),
   sheets: z.array(workbookSheetSchema).min(1).max(WORKBOOK_MODEL_LIMITS.sheets),

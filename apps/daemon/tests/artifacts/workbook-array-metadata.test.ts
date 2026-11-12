@@ -26,7 +26,7 @@ async function fixture(kind: 'array' | 'dataTable' = 'array', ref = 'C3:C5') {
 
 it.each(['array', 'dataTable'] as const)('retains explicit %s ownership and every original cached value without changing source bytes', async kind => {
   const f = await fixture(kind), source = await readXlsxWorkbook(f.bytes), sheet = source.model.sheets[0]!;
-  expect(sheet.arrayFormulas).toEqual([{ kind, row: 2, column: 2, range: { startRow: 2, endRow: 4, startColumn: 2, endColumn: 2 } }]);
+  expect(sheet.arrayFormulas).toEqual([{ kind, calculation: kind === 'dataTable' ? 'unsupported' : 'fixed', row: 2, column: 2, range: { startRow: 2, endRow: 4, startColumn: 2, endColumn: 2 } }]);
   expect(sheet.cells.filter(cell => cell.column === 2).map(cell => cell.value)).toEqual([1, 2, 3]);
   expect(sheet.cells.find(cell => cell.row === 2 && cell.column === 2)?.formula).toBe(kind === 'array' ? '=_xlfn.SEQUENCE(3)' : undefined);
   expect(source.parts.get('xl/worksheets/sheet1.xml')).toEqual(f.sourcePart);

@@ -147,7 +147,7 @@ it('authors and reuses genuine dynamic ownership for newly entered array formula
   expect(independent.worksheets[0]!.getCell('D3').result).toBe(10);
   expect(independent.worksheets[0]!.getCell('D5').value).toBe(12);
   expect(independent.worksheets[1]!.getCell('A1').result).toBe(112);
-  expect(reopened.model.sheets[0]!.arrayFormulas).toEqual([{ kind: 'array', row: 2, column: 3, range: { startRow: 2, endRow: 4, startColumn: 3, endColumn: 3 } }]);
+  expect(reopened.model.sheets[0]!.arrayFormulas).toEqual([{ kind: 'array', calculation: 'dynamic', row: 2, column: 3, range: { startRow: 2, endRow: 4, startColumn: 3, endColumn: 3 } }]);
   expect(reopened.parts.get('xl/metadata.xml')?.toString()).toContain('name="XLDAPR"');
   const next = await calculateWorkbookCellEdits(reopened, [{ sheetId: '1', cell: { row: 2, column: 5, kind: 'number', value: 7654, formula: '=SEQUENCE(2,1,50)' } }]);
   const twice = await readXlsxWorkbook(next.bytes);
@@ -387,7 +387,7 @@ it('writes new reference-array ownership when the anchor remains blank and prese
   const { bytes, model } = await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 0, column: 4, kind: 'number', value: 987654, formula: '=A1:A3' } }]);
   const reopened = await readXlsxWorkbook(bytes);
   expect(model).toEqual(reopened.model);
-  expect(model.sheets[0]!.arrayFormulas).toEqual([{ kind: 'array', row: 0, column: 4, range: { startRow: 0, endRow: 2, startColumn: 4, endColumn: 4 } }]);
+  expect(model.sheets[0]!.arrayFormulas).toEqual([{ kind: 'array', calculation: 'dynamic', row: 0, column: 4, range: { startRow: 0, endRow: 2, startColumn: 4, endColumn: 4 } }]);
   expect(model.sheets[0]!.cells.find(cell => cell.row === 0 && cell.column === 4)).toMatchObject({ formula: '=A1:A3', kind: 'blank', value: null });
   const saved = await JSZip.loadAsync(bytes), xml = await saved.file('xl/worksheets/sheet1.xml')!.async('string');
   const anchor = xml.match(/<c\b[^>]*\br="E1"[^>]*>.*?<\/c>/)![0]!;

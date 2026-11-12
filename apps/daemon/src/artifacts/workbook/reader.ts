@@ -8,6 +8,8 @@ import { font, style } from './styles.js';
 import { readWorkbookTheme } from './theme.js';
 import { preflightWorksheet, type WorkbookImportBudget } from './preflight.js';
 import { readWorkbookMetadata } from './metadata.js';
+import { verifiedDynamicArrayOwners } from './dynamic-array-metadata.js';
+import { formulaCellKey } from './formula-cache-policy.js';
 import { readArrayFormulaMetadata } from './array-metadata.js';
 
 export interface ReadWorkbook { model: ReturnType<typeof workbookDocumentSchema.parse>; parts: WorkbookParts; sheetParts: Map<string, string> }
@@ -177,7 +179,17 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
   const model = workbookDocumentSchema.parse({ version: 1, date1904, activeSheetId: sheets[active]?.visibility === 'visible' ? sheets[active]!.id : sheets.find(sheet => sheet.visibility === 'visible')?.id,
     styles, sheets, ...metadata, ...(themeColors ? { themeColors } : {}), features: { charts: names.filter(name => /\/charts\/[^/]+\.xml$/i.test(name)).length, drawings: names.filter(name => /\/drawings\/[^/]+\.xml$/i.test(name)).length,
       externalLinks: names.filter(name => /\/externalLinks\/[^/]+\.xml$/i.test(name)).length, macros: names.some(name => /(?:^|\/)vbaProject\.bin$/i.test(name)), signed: names.some(name => name.startsWith('_xmlsignatures/')) } });
-  return { model, parts, sheetParts };
+  const result = { model, parts, sheetParts };
+  try {
+    const dynamic = verifiedDynamicArrayOwners(result);
+    model.calculationMetadata = 'verified';
+    for (const sheet of model.sheets) for (const owner of sheet.arrayFormulas ?? []) owner.calculation = owner.kind === 'dataTable' ? 'unsupported' : dynamic.has(formulaCellKey(sheet.id, owner.row, owner.column)) ? 'dynamic' : 'fixed';
+  } catch (error) {
+    if (!(error instanceof WorkbookFormatError)) throw error;
+    model.calculationMetadata = 'unsupported';
+    for (const sheet of model.sheets) for (const owner of sheet.arrayFormulas ?? []) owner.calculation = 'unsupported';
+  }
+  return result;
 }
 
 export async function readXlsxWorkbook(bytes: Buffer): Promise<ReadWorkbook> {

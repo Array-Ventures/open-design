@@ -452,3 +452,13 @@ The known XLDAPR identity follows the [Microsoft metadata extension
 specification](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-xlsx/3dd44d53-847b-402f-a8c7-41a85024caf7)
 and [dynamic-array property
 specification](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-xlsx/d1ef676d-d970-4ddd-b642-62f5e0c291e0).
+
+
+The preview model now carries additive source calculation proof. The reader uses
+its existing OOXML metadata resolver to mark each owner `fixed`, `dynamic`, or
+`unsupported`, and the document metadata `verified` or `unsupported`. Missing
+fields on older previews remain unknown. Unqualified metadata keeps original
+caches readable and disables live execution; it does not become a read failure.
+These fields describe the SHA-verified preview source only. The save worker
+continues to resolve ownership from source package bytes and never treats an
+asserted client mode as permission to resize a fixed owner.
