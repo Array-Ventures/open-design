@@ -1,3 +1,4 @@
+import { ERROR_TYPE_SET, type ErrorType } from '@univerjs/engine-formula';
 import type { ICellData, IWorkbookData } from '@univerjs/presets';
 
 export type FormulaCalculationLimit = 'unsupported-function' | 'external-reference' | 'unsupported-reference' | 'dynamic-result' | 'pending-analysis' | 'dependent';
@@ -35,8 +36,12 @@ function limitation(formula: string, runtime: FormulaAnalysisRuntime): FormulaCa
   const nodes = runtime.sequenceNodesBuilder(formula);
   if (!nodes) return 'pending-analysis';
   for (const node of nodes) {
-    if (typeof node === 'string') continue;
+    if (typeof node === 'string') {
+      if (node === '#') return 'unsupported-reference'; // pinned spill suffix currently produces #VALUE, not an array reference
+      continue;
+    }
     if (node.nodeType === runtime.sequenceNodeType.FUNCTION) {
+      if (ERROR_TYPE_SET.has(node.token as ErrorType)) continue;
       const name = node.token.toUpperCase();
       if (!runtime.hasExecutor(name)) return 'unsupported-function';
       if (dynamicResults.has(name)) return 'dynamic-result';

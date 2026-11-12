@@ -12,8 +12,8 @@ const pinned = createRequire(realpathSync(fileURLToPath(new URL('../../node_modu
 const core = pinned('@univerjs/core'), engine = pinned('@univerjs/engine-formula'), sheets = pinned('@univerjs/sheets'), formula = pinned('@univerjs/sheets-formula');
 const { FUniver } = pinned('@univerjs/core/facade'); pinned('@univerjs/engine-formula/facade'); pinned('@univerjs/sheets/facade');
 const closers: (() => void)[] = []; afterEach(() => closers.splice(0).reverse().forEach(close => close()));
-function fixture(array = false) {
-  const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 's', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 's', name: 'Inputs', visibility: 'visible', rowCount: 100, columnCount: 20, frozenRows: 0, frozenColumns: 0, merges: [], rowDimensions: [], columnDimensions: [], arrayFormulas: array ? [{ kind: 'array', row: 0, column: 1, range: { startRow: 0, endRow: 2, startColumn: 1, endColumn: 1 } }] : [], cells: array ? [{ row: 0, column: 0, kind: 'number', value: 3 }, { row: 0, column: 1, kind: 'number', value: 1, formula: '=SEQUENCE(A1)' }, { row: 1, column: 1, kind: 'number', value: 2 }, { row: 2, column: 1, kind: 'number', value: 3 }] : [{ row: 0, column: 0, kind: 'number', value: 2 }, { row: 0, column: 1, kind: 'number', value: 999, formula: '=A1+3' }, { row: 0, column: 2, kind: 'number', value: 55, formula: '=UNKNOWN(A1)' }, { row: 0, column: 3, kind: 'number', value: 56, formula: '=C1+1' }] }] };
+function fixture(array = false, scalarFormula = '=A1+3') {
+  const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 's', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 's', name: 'Inputs', visibility: 'visible', rowCount: 100, columnCount: 20, frozenRows: 0, frozenColumns: 0, merges: [], rowDimensions: [], columnDimensions: [], arrayFormulas: array ? [{ kind: 'array', row: 0, column: 1, range: { startRow: 0, endRow: 2, startColumn: 1, endColumn: 1 } }] : [], cells: array ? [{ row: 0, column: 0, kind: 'number', value: 3 }, { row: 0, column: 1, kind: 'number', value: 1, formula: '=SEQUENCE(A1)' }, { row: 1, column: 1, kind: 'number', value: 2 }, { row: 2, column: 1, kind: 'number', value: 3 }] : [{ row: 0, column: 0, kind: 'number', value: 2 }, { row: 0, column: 1, kind: 'number', value: 999, formula: scalarFormula }, { row: 0, column: 2, kind: 'number', value: 55, formula: '=UNKNOWN(A1)' }, { row: 0, column: 3, kind: 'number', value: 56, formula: '=C1+1' }] }] };
   const original = gridWorkbook(model, 'display', 'Display').data as IWorkbookData, projection = sourceArrayInteractiveSnapshot(model, original); if (projection.state !== 'known') throw Error(projection.reason);
   const initial = projection.interactiveSnapshot;
   const English = pinned('@univerjs/preset-sheets-core/locales/en-US'), univer = new core.Univer({ locale: core.LocaleType.EN_US, locales: { [core.LocaleType.EN_US]: English.default ?? English } }); closers.push(() => univer.dispose());
@@ -71,4 +71,28 @@ it('binds every nested derived range to its exact parent and rejects stale or un
   current.sheets.s!.cellData![0]![0]!.v = 8; f.display.update(current, true);
   expect(f.display.rangeResult(remote)).toBe(false); expect(remote.cellValue).toEqual({});
   expect(current.sheets.s!.cellData![0]![0]!.v).toBe(8);
+});
+
+it('uses actual pinned spill tokens to display unchanged caches as stored and changed spill formulas as unavailable', () => {
+  const f = fixture(false, '=SUM(A1#)'), current = structuredClone(f.initial);
+  f.display.update(current, true);
+  const proof = tag(current); f.display.graphResult({ workbookCalculation: proof, result: graph(current) });
+  const result = { workbookCalculation: proof, unitData: { display: { s: { 0: { 1: { v: '#VALUE!', t: 4 } } } } }, sourceFormulaData: { display: { s: { 0: { 1: { f: '=SUM(A1#)' } } } } } };
+  expect(f.display.scalarResult(result)).toBe(true);
+  expect(result.unitData.display.s[0][1].v).toBe(999);
+  expect(f.display.status('s', 0, 1)?.result).toBe('stored');
+  current.sheets.s!.cellData![0]![1]!.f = '=SUM(A2#)'; f.display.update(current, true);
+  const next = tag(current, 2); f.display.graphResult({ workbookCalculation: next, result: graph(current) });
+  const changed = { workbookCalculation: next, unitData: { display: { s: { 0: { 1: { v: '#VALUE!', t: 4 } } } } }, sourceFormulaData: { display: { s: { 0: { 1: { f: '=SUM(A2#)' } } } } } };
+  expect(f.display.scalarResult(changed)).toBe(true);
+  expect(f.display.status('s', 0, 1)?.result).toBe('unavailable');
+  expect(f.display.display('s', 0, 1, { v: '#VALUE!' }, current.sheets.s!.cellData![0]![1]).v).toBeNull();
+  expect(f.original.sheets.s!.cellData![0]![1]!.v).toBe(999);
+});
+it.each(['="#"', '=#NAME?'])('does not classify literal/error %s as an unsupported spill', formula => {
+  const f = fixture(false, formula), current = structuredClone(f.initial); f.display.update(current, true);
+  const proof = tag(current); f.display.graphResult({ workbookCalculation: proof, result: graph(current) });
+  const value = formula === '="#"' ? '#' : '#NAME?';
+  expect(f.display.scalarResult({ workbookCalculation: proof, unitData: { display: { s: { 0: { 1: { v: value, t: 4 } } } } }, sourceFormulaData: { display: { s: { 0: { 1: { f: formula } } } } } })).toBe(true);
+  expect(f.display.status('s', 0, 1)?.result).toBe('calculated');
 });

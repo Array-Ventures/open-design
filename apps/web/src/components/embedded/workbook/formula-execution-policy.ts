@@ -24,7 +24,11 @@ export function assertWorkbookFormulaExecution(books: readonly IWorkbookData[], 
       if (!tokens || tokens.length > 512) throw new WorkbookCalculationBudgetError('This formula needs a separate calculation adapter.');
       let rows = 1, columns = 1;
       for (const token of tokens) {
-        if (typeof token === 'string') { if (token === '&') throw new WorkbookCalculationBudgetError('Live text concatenation needs a bounded text adapter.'); continue; }
+        if (typeof token === 'string') {
+          if (token === '#') throw new WorkbookCalculationBudgetError('Live spill references need a separate calculation adapter. Stored results are preserved.');
+          if (token === '&') throw new WorkbookCalculationBudgetError('Live text concatenation needs a bounded text adapter.');
+          continue;
+        }
         if (token.nodeType === runtime.sequenceNodeType.ARRAY) throw new WorkbookCalculationBudgetError('Live array literals need a separate allocation adapter.');
         if (token.nodeType !== runtime.sequenceNodeType.REFERENCE) continue;
         const ref = runtime.deserializeRangeWithSheet(token.token);

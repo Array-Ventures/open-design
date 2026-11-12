@@ -20,8 +20,8 @@ function fixture() {
 }
 it('uses genuine pinned tokens to admit bounded ordinary ranges and reject unqualified allocation syntax', () => {
   const f = fixture();
-  for (const formula of ['=sum(A1:A100)', '=SUM(A:A)', '=MAX(1:1)', '=IF(A1>3,"up","down")', '="&"', "='[external.xlsx]Sheet1'!A1"]) expect(() => assertWorkbookFormulaExecution([f.withFormula(formula)], f.runtime), formula).not.toThrow();
-  for (const formula of ['=SUM(A1:A1000000)', '={1,2;3,4}', '="a"&"b"', `=SUM(${Array(600).fill('A1').join(',')})`]) expect(() => assertWorkbookFormulaExecution([f.withFormula(formula)], f.runtime), formula).toThrow();
+  for (const formula of ['=sum(A1:A100)', '=SUM(A:A)', '=MAX(1:1)', '=IF(A1>3,"up","down")', '="#"', '=#NAME?', '="&"', "='[external.xlsx]Sheet1'!A1"]) expect(() => assertWorkbookFormulaExecution([f.withFormula(formula)], f.runtime), formula).not.toThrow();
+  for (const formula of ['=SUM(A1:A1000000)', '=SUM(A1#)', '={1,2;3,4}', '="a"&"b"', `=SUM(${Array(600).fill('A1').join(',')})`]) expect(() => assertWorkbookFormulaExecution([f.withFormula(formula)], f.runtime), formula).toThrow();
 });
 it('bounds aggregate broadcast work before a calculation starts', () => {
   const f = fixture(), book = f.withFormula('=SUM(A:A)');
@@ -37,4 +37,16 @@ it('uses the real preset function override API, keeping scalar/operator kernels 
     const [Unavailable, token] = overrides.find(([, current]) => String(current) === name)!;
     expect((new Unavailable(token).calculate() as { getValue(): unknown }).getValue()).toBe('#N/A');
   }
+});
+
+it('refuses the pinned raw spill suffix before execution without confusing quoted # or genuine errors', () => {
+  const f = fixture();
+  expect(f.runtime.sequenceNodesBuilder('=SUM(A1#)')).toContain('#');
+  for (const value of ['="#"', '=#NAME?']) {
+    expect(f.runtime.sequenceNodesBuilder(value)).not.toContain('#');
+    expect(() => assertWorkbookFormulaExecution([f.withFormula(value)], f.runtime)).not.toThrow();
+  }
+  let executed = 0;
+  const execute = () => { assertWorkbookFormulaExecution([f.withFormula('=SUM(A1#)')], f.runtime); executed++; };
+  expect(execute).toThrow('spill references'); expect(executed).toBe(0);
 });
