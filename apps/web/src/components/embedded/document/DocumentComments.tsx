@@ -16,6 +16,7 @@ import { ScrollFade, useScrollFade } from '../boardui/scroll-fade';
 import { CommentMentions } from '../CommentMentions';
 import { CommentAuthor, SavedCommentThread } from '../SavedCommentThread';
 import { CommentReviewFilter, useCommentReview } from '../CommentReview';
+import { useDocumentCommentPlacement } from './useDocumentCommentPlacement';
 import { useRootCommentEditor } from '../useRootCommentEditor';
 import { RootCommentRecovery } from '../RootCommentRecovery';
 import { commentIconButton } from '../comment-button-style';
@@ -132,10 +133,11 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
   };
   const location = useMemo(() => target && readDocumentCommentAnchor(target), [target]);
   const located = useMemo(() => location ? editor.getEditorState().read(() => Boolean(resolveDocumentComment(location))) : true, [editor, location, revision]);
+  const placement = useDocumentCommentPlacement(editor, location, open && !list, revision, width);
   return <>
     <ArtifactAnnotationControls projectId={projectId} commenting={open && !list} marking={false} markupAvailable={false} dirty={dirty} disabled={!viewer}
       onComment={() => { void (open && !list ? close() : begin()); }} onMark={() => {}} onComments={focus => { returnFocus.current = focus; void allowed().then(ok => { if (ok && life.current) { setOpen(true); setList(true); } }); }} onDiscard={() => { if (!pending.current) { reset(); setOpen(false); } }} />
-    {open ? <aside role="dialog" aria-label="Document comments" onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); void close(); } }} className="absolute end-3 top-3 z-30 flex min-h-0 max-h-[calc(100%_-_24px)] max-w-[calc(100%_-_24px)] flex-col rounded-2xl border border-separator-border bg-background-primary-default shadow-lg" style={{ width }}>
+    {open ? <aside ref={placement.card} role="dialog" aria-label="Document comments" onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); void close(); } }} className="absolute end-3 top-3 z-30 flex min-h-0 max-h-[calc(100%_-_24px)] max-w-[calc(100%_-_24px)] flex-col rounded-2xl border border-separator-border bg-background-primary-default shadow-lg" style={{ width, ...placement.style }}>
       <div role="separator" aria-label="Resize document comments" aria-orientation="vertical" aria-valuemin={240} aria-valuemax={480} aria-valuenow={width} tabIndex={0}
         className="absolute inset-y-0 -start-1 w-2 cursor-col-resize focus-visible:ring-2 focus-visible:ring-border-focus-ring"
         onKeyDown={event => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { event.preventDefault(); const grows = event.key === (getComputedStyle(event.currentTarget).direction === 'rtl' ? 'ArrowRight' : 'ArrowLeft'); setWidth(value => event.key === 'Home' ? 240 : event.key === 'End' ? 480 : Math.max(240, Math.min(480, value + (grows ? 16 : -16)))); } }}
