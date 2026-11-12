@@ -27,3 +27,10 @@ and a retained selected-text comment draft. Placement is a restrained mapping
 of the recorded section-navigation requirement, not a claim of a fresh Claude
 visual comparison. Final light/dark/narrow/chat visual qualification remains
 pending. No browser, build, service or model is used to qualify this source slice.
+
+The bounded outline list reuses the shared BoardUI `ScrollFade` and
+`useScrollFade` primitive. Its stationary overlay sits outside the scrollable
+navigation, resets at the top and on reopening, and cannot intercept pointer
+input. A focused component regression checks those transitions without any
+source save. Light/dark, narrow viewport, zoom and placement remain packaged
+visual acceptance gates; this follow-up does not claim browser qualification.

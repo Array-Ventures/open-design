@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { RiMenu2Line } from '@remixicon/react';
 import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem } from '../boardui/dropdown';
+import { ScrollFade, useScrollFade } from '../boardui/scroll-fade';
 import { cx } from '../boardui/cx';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
 import { focusDocumentSection, readDocumentSections, type DocumentSection } from './document-outline';
@@ -15,6 +16,8 @@ export function DocumentOutline() {
   const [sections, setSections] = useState<DocumentSection[]>([]);
   const [open, setOpen] = useState(false), [active, setActive] = useState<string | null>(null);
   const list = useRef<HTMLElement>(null);
+  const fade = useScrollFade();
+  useEffect(() => { if (!open) fade.reset(); }, [open, fade.reset]);
   const pending = useRef(0), releaseTarget = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
     const sync = () => editor.getEditorState().read(() => {
@@ -57,14 +60,17 @@ export function DocumentOutline() {
   };
   return <Dropdown isOpen={open} onOpenChange={setOpen}>
     <DropdownTrigger aria-label="Document outline" className={cx(DOCUMENT_ICON_BUTTON, 'me-auto box-border flex size-8 shrink-0 items-center justify-center rounded-lg border-0 p-0')}><span title="Outline"><RiMenu2Line className="size-4 shrink-0" aria-hidden /></span></DropdownTrigger>
-    <DropdownPopover aria-label="Document outline" placement="bottom start" className="max-h-80 w-64 max-w-[calc(100vw-24px)] overflow-y-auto">
-      <nav ref={list} aria-label="Document sections" onKeyDown={move}>
+    <DropdownPopover aria-label="Document outline" placement="bottom start" className="w-64 max-w-[calc(100vw-24px)] overflow-hidden">
+      <div className="relative">
+      <nav ref={list} aria-label="Document sections" className="max-h-80 overflow-y-auto" onScroll={fade.onScroll} onKeyDown={move}>
         {sections.length ? <ol className="m-0 flex list-none flex-col gap-1 p-0">{sections.map((section, index) => <li key={section.id} data-document-section-id={section.id}>
           <DropdownItem selected={active === section.id} className={cx('min-h-8 py-1.5 pe-2 text-body-2-regular', indent[section.level - 1])} onSelect={() => navigate(section.id)}>
             <span className="sr-only">{`Section ${index + 1}, heading level ${section.level}: ${section.title}`}</span><span aria-hidden className="min-w-0 truncate" title={section.title}>{section.title}</span>
           </DropdownItem>
         </li>)}</ol> : <p className="m-0 px-2 py-1.5 text-body-2-regular text-text-tertiary">No headings yet</p>}
       </nav>
+      <ScrollFade progress={fade.progress} />
+      </div>
     </DropdownPopover>
   </Dropdown>;
 }

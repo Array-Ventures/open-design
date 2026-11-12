@@ -102,3 +102,19 @@ it('retains unsaved document text and its editor identity while navigating secti
   expect(active.getEditorState().read(() => $generateHtmlFromNodes(active))).toBe(desired);
   expect(screen.getByRole('button', { name: 'Save document' })).toBeEnabled(); expect(save).not.toHaveBeenCalled();
 });
+
+
+it('keeps the outline fade outside its bounded scroller and resets it when reopened', async () => {
+ setup();const list=open();
+ expect(list).toHaveClass('max-h-80','overflow-y-auto');
+ const overlay=list.nextElementSibling as HTMLElement;
+ expect(overlay).toHaveAttribute('aria-hidden','true');expect(overlay).toHaveClass('pointer-events-none','absolute');
+ const opacity=()=>[...overlay.children].map(layer=>(layer as HTMLElement).style.opacity);
+ expect(opacity()).toEqual(['0','0','0']);
+ fireEvent.scroll(list,{target:{scrollTop:24}});expect(opacity()).toEqual(['1','1','1']);
+ fireEvent.scroll(list,{target:{scrollTop:0}});expect(opacity()).toEqual(['0','0','0']);
+ fireEvent.scroll(list,{target:{scrollTop:24}});
+ fireEvent.click(screen.getByRole('button',{name:'Document outline'}));await settle();
+ const reopened=open();expect([...reopened.nextElementSibling!.children].map(layer=>(layer as HTMLElement).style.opacity)).toEqual(['0','0','0']);
+ expect(save).not.toHaveBeenCalled();
+});
