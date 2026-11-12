@@ -279,7 +279,8 @@ export async function calculateWorkbookResults(input: WorkbookDocument, original
       if (!values) throw new WorkbookFormatError('Fixed source array did not produce an exact typed array result.', 'WORKBOOK_UNSUPPORTED');
       const actual = snapshot.sheets[owner.sheetId]?.cellData?.[owner.row]?.[owner.column], first = values[0]![0]!;
       const expected = first.kind === 'boolean' ? first.value ? 1 : 0 : first.value;
-      if (actual?.v !== expected && actual?.v !== first.value) throw new WorkbookFormatError('Array typed result and final engine anchor disagree.', 'WORKBOOK_UNSUPPORTED');
+      const blank = first.kind === 'blank' && actual != null && actual.v == null;
+      if (!blank && actual?.v !== expected && actual?.v !== first.value) throw new WorkbookFormatError('Array typed result and final engine anchor disagree.', 'WORKBOOK_UNSUPPORTED');
       const sheet = sheetsById.get(owner.sheetId)!;
       if (dynamic.has(key)) {
         const declared = declaredArrays.get(key)!;

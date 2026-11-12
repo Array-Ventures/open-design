@@ -6,6 +6,8 @@ import ExcelJS from 'exceljs-community';
 import JSZip from 'jszip';
 import { readXlsxWorkbook } from '../../src/artifacts/workbook/reader.js';
 import { calculateWorkbookCellEdits } from '../../src/artifacts/workbook/calculated-patch.js';
+import { verifiedDynamicArrayOwners } from '../../src/artifacts/workbook/dynamic-array-metadata.js';
+import { formulaCellKey } from '../../src/artifacts/workbook/formula-cache-policy.js';
 
 async function fixture(formula = 'SEQUENCE(3,1,A1)') {
   const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('Inputs');
@@ -374,4 +376,26 @@ it('bounds the number of new array owners before metadata authoring', async () =
   const source = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer())), before = new Map(source.parts);
   const edits = Array.from({ length: 4097 }, (_, index) => ({ sheetId: '1', cell: { row: 0, column: index + 1, kind: 'number' as const, value: 99999, formula: '=SEQUENCE(1)' } }));
   await expect(calculateWorkbookCellEdits(source, edits)).rejects.toMatchObject({ code: 'WORKBOOK_LIMIT' }); expect(source.parts).toEqual(before);
+});
+it('writes new reference-array ownership when the anchor remains blank and preserves unrelated package parts', async () => {
+  const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('Inputs');
+  sheet.getCell('A2').value = 2; sheet.getCell('A3').value = 3;
+  book.addWorksheet('Unrelated').getCell('A1').value = 'keep';
+  const zip = await JSZip.loadAsync(await book.xlsx.writeBuffer());
+  zip.file('customXml/opaque.xml', '<opaque xmlns="urn:test:preserved" value="keep"/>');
+  const source = await readXlsxWorkbook(await zip.generateAsync({ type: 'nodebuffer' }));
+  const { bytes, model } = await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 0, column: 4, kind: 'number', value: 987654, formula: '=A1:A3' } }]);
+  const reopened = await readXlsxWorkbook(bytes);
+  expect(model).toEqual(reopened.model);
+  expect(model.sheets[0]!.arrayFormulas).toEqual([{ kind: 'array', row: 0, column: 4, range: { startRow: 0, endRow: 2, startColumn: 4, endColumn: 4 } }]);
+  expect(model.sheets[0]!.cells.find(cell => cell.row === 0 && cell.column === 4)).toMatchObject({ formula: '=A1:A3', kind: 'blank', value: null });
+  const saved = await JSZip.loadAsync(bytes), xml = await saved.file('xl/worksheets/sheet1.xml')!.async('string');
+  const anchor = xml.match(/<c\b[^>]*\br="E1"[^>]*>.*?<\/c>/)![0]!;
+  expect(anchor).toContain('cm="1"'); expect(anchor).toContain('<f t="array" ref="E1:E3">A1:A3</f>'); expect(anchor).not.toMatch(/<v(?:\s|\/|>)/);
+  expect(verifiedDynamicArrayOwners(reopened)).toEqual(new Set([formulaCellKey('1', 0, 4)]));
+  const independent = new ExcelJS.Workbook(); await independent.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(independent.worksheets[0]!.getCell('E1').formula).toBe('A1:A3'); expect(independent.worksheets[0]!.getCell('E1').result).toBeUndefined();
+  expect(independent.worksheets[0]!.getCell('E2').value).toBe(2); expect(independent.worksheets[0]!.getCell('E3').value).toBe(3);
+  const changed = new Set(['xl/worksheets/sheet1.xml', 'xl/workbook.xml', 'xl/_rels/workbook.xml.rels', '[Content_Types].xml']);
+  for (const [name, part] of source.parts) if (!changed.has(name)) expect(reopened.parts.get(name), name).toEqual(part);
 });
