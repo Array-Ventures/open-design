@@ -73,14 +73,19 @@ function cellValue(cell: WorkbookCell, model: WorkbookDocument, gaps: Set<Workbo
 
 /** Display-only adapter. OOXML remains authoritative; Univer serialization is
  * never used to save the package, styles or uncaptured workbook parts. */
-export function gridWorkbook(input: WorkbookDocument, id: string, title: string): GridWorkbook {
+export function gridWorkbook(input: WorkbookDocument, id: string, title: string, defaultTextColor?: string): GridWorkbook {
   const model = workbookDocumentSchema.parse(input), gaps = new Set<WorkbookDisplayGap>();
   const data: Partial<IWorkbookData> = { id, name: title, appVersion: '1.4.0', locale: LocaleType.EN_US, dateSystem: model.date1904 ? DateSystem.Date1904 : DateSystem.Date1900,
     sheetOrder: model.sheets.map(sheet => sheet.id), styles: Object.fromEntries(model.styles.map((input, index) => [String(index), style(input, model, gaps)])), sheets: {} };
+  // OOXML style zero is the inherited Normal style even when cells omit s.
+  // Give the editor that same inheritance so typing does not materialize its
+  // document UI color as a new authored cell style. Automatic/unspecified font
+  // color may use the host's presentation foreground; explicit colors win.
+  if (defaultTextColor && data.styles?.['0'] && !data.styles['0'].cl) data.styles['0'].cl = { rgb: defaultTextColor };
   for (const sheet of model.sheets) {
     const cellData: IObjectMatrixPrimitiveType<ICellData> = {};
     for (const cell of sheet.cells) (cellData[cell.row] ??= {})[cell.column] = cellValue(cell, model, gaps, `${id}:${sheet.id}`);
-    data.sheets![sheet.id] = { id: sheet.id, name: sheet.name, rowCount: sheet.rowCount, columnCount: sheet.columnCount, cellData,
+    data.sheets![sheet.id] = { id: sheet.id, name: sheet.name, defaultStyle: '0', rowCount: sheet.rowCount, columnCount: sheet.columnCount, cellData,
       hidden: sheet.visibility === 'visible' ? WorksheetHiddenState.VISIBLE : sheet.visibility === 'hidden' ? WorksheetHiddenState.HIDDEN : WorksheetHiddenState.VERY_HIDDEN,
       mergeData: sheet.merges.map(range => ({ ...range })),
       freeze: { xSplit: sheet.frozenColumns, ySplit: sheet.frozenRows, startRow: sheet.frozenRows ? sheet.frozenRows : -1, startColumn: sheet.frozenColumns ? sheet.frozenColumns : -1 },

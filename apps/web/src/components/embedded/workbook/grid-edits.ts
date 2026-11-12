@@ -13,7 +13,20 @@ function canonical(value: unknown): string {
   return `{${Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
 }
 function same(a: unknown, b: unknown) { return canonical(a) === canonical(b); }
-const sheetContent = ['name', 'hidden', 'rowCount', 'columnCount', 'mergeData', 'freeze', 'defaultRowHeight', 'defaultColumnWidth'] as const;
+function unchangedStyles(initial: IWorkbookData['styles'], current: IWorkbookData['styles']) {
+  // Univer may intern an empty style after removing inherited editor defaults.
+  // Existing definitions remain immutable; a positive new style is unsupported.
+  return Object.entries(initial).every(([key, value]) => Object.hasOwn(current, key) && same(value, current[key]))
+    && Object.entries(current).every(([key, value]) => Object.hasOwn(initial, key) || same(value, {}));
+}
+function formatting(cell: ICellData, styles: IWorkbookData['styles']) {
+  const other = { ...cell }, s = cell.s;
+  for (const key of ['v', 't', 'f', 'p', 's'] as const) delete other[key];
+  const style = typeof s === 'string' ? styles[s] : s;
+  if (s == null || same(style, {})) return other;
+  return { ...other, s };
+}
+const sheetContent = ['name', 'hidden', 'rowCount', 'columnCount', 'mergeData', 'freeze', 'defaultRowHeight', 'defaultColumnWidth', 'defaultStyle'] as const;
 function positions(matrix: IWorkbookData['sheets'][string]['cellData']) {
   const result = new Set<string>();
   for (const [row, cells] of Object.entries(matrix ?? {})) for (const column of Object.keys(cells ?? {})) result.add(`${row}:${column}`);
@@ -48,7 +61,7 @@ function scalar(cell: ICellData, original: WorkbookCell | undefined, row: number
  * unsupported cells, so a successful save cannot silently discard an edit. */
 export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string, initial: IWorkbookData, current: IWorkbookData) {
   if (!same(initial.sheetOrder, current.sheetOrder) || !same(Object.keys(initial.sheets).sort(), Object.keys(current.sheets).sort())) fail('Sheet structure changed. Keep this workbook open; these changes cannot be saved yet.');
-  if (!same(initial.styles, current.styles) || initial.dateSystem !== current.dateSystem) fail('Workbook formatting changed. Keep this workbook open; these changes cannot be saved yet.');
+  if (!unchangedStyles(initial.styles, current.styles) || initial.dateSystem !== current.dateSystem) fail('Workbook formatting changed. Keep this workbook open; these changes cannot be saved yet.');
   const edits: { sheetId: string; cell: WorkbookCell }[] = [];
   const dimensions: WorkbookDimensionEdit[] = [];
   for (const sheet of model.sheets) {
@@ -63,8 +76,9 @@ export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string,
       if (!Number.isSafeInteger(row) || !Number.isSafeInteger(column) || row < 0 || column < 0 || row >= sheet.rowCount || column >= sheet.columnCount) fail('An edited cell is outside the workbook.');
       const a = cellAt(before.cellData, row, column), b = cellAt(after.cellData, row, column);
       if (same(a, b)) continue;
-      const { v: av, t: at, f: af, p: ap, ...aFormatting } = a;
-      const { v: bv, t: bt, f: bf, p: bp, ...bFormatting } = b;
+      const { v: av, t: at, f: af, p: ap } = a;
+      const { v: bv, t: bt, f: bf, p: bp } = b;
+      const aFormatting = formatting(a, initial.styles), bFormatting = formatting(b, current.styles);
       // Deleting a cell may remove its grid style; the OOXML patch retains the
       // original style. Any positive new style change needs its own writer.
       if (!same(aFormatting, bFormatting) && !(Object.keys(b).length === 0)) fail('Cell formatting changed. Keep this workbook open; these changes cannot be saved yet.');

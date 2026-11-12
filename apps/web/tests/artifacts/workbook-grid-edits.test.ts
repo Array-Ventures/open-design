@@ -71,3 +71,12 @@ it('records row and column resizing as dimensions instead of rejecting or invent
     { sheetId: 's1', axis: 'row', index: 10, size: 36 }, { sheetId: 's1', axis: 'column', index: 2, size: 25 },
   ]);
 });
+it('accepts empty interned style aliases but rejects every positive new color or authored style change', () => {
+  const { model, initial, current } = fixture();
+  current.styles.empty = {}; current.sheets.s1!.cellData![100] = { 0: { v: 7, t: CellValueType.NUMBER, s: 'empty' } };
+  expect(workbookGridEdits(model, hash, initial, current).edits).toContainEqual({ sheetId: 's1', cell: { row: 100, column: 0, kind: 'number', value: 7 } });
+  current.styles.empty = { cl: { rgb: '#0a0a0a' } };
+  expect(() => workbookGridEdits(model, hash, initial, current)).toThrow('Workbook formatting changed');
+  current.styles.empty = {}; current.styles['0'] = { cl: { rgb: '#ff0000' } };
+  expect(() => workbookGridEdits(model, hash, initial, current)).toThrow('Workbook formatting changed');
+});
