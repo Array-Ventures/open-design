@@ -3,7 +3,7 @@ import { ICommandService, IUniverInstanceService, LocaleType, Univer, UniverInst
 import English from '@univerjs/sheets/locale/en-US';
 import type { FUniver } from '@univerjs/core/facade';
 import { UniverFormulaEnginePlugin } from '@univerjs/engine-formula';
-import { SetRangeValuesCommand, SetRangeValuesMutation, UniverSheetsPlugin } from '@univerjs/sheets';
+import { SetRangeValuesCommand, SetStyleCommand, SetRangeValuesMutation, UniverSheetsPlugin } from '@univerjs/sheets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { attachWorkbookArrayCalculation } from '../../src/components/embedded/workbook/grid-array-calculation';
 import { qualifiedArrayKernel, type QualifiedArrayProjection } from '../../src/components/embedded/workbook/qualified-array-kernel';
@@ -48,4 +48,11 @@ it('admits source-bound interactive recovery but preserves unknown and legacy ra
  const unknown=structuredClone(source);delete unknown.calculationMetadata;expect(prepareWorkbookArrayLiveSource(unknown,kernel.original,sha)).toBeUndefined();
  expect(prepareWorkbookArrayLiveSource(source,kernel.original,undefined)).toBeUndefined();
  const retired=structuredClone(kernel.initial);retired.sheets.s!.cellData![2]![3]={};(retired.sheets.s!.cellData![3]??={})[3]={v:42,t:2};expect(prepareWorkbookArrayLiveSource(source,kernel.original,sha,retired)).toBeDefined();expect(retired.sheets.s!.cellData![3]![3]!.v).toBe(42);
+});
+
+it('permits native formatting on a projected follower without creating a literal or invalidating calculation identity', async () => {
+ const live=setup();await live.flush();const sheet=live.core.getSheetBySheetId('s')!;
+ expect(live.commands.syncExecuteCommand(SetStyleCommand.id,{unitId:'unit',subUnitId:'s',range:{startRow:3,endRow:3,startColumn:3,endColumn:3},style:{type:'bl',value:1}})).toBe(true);
+ expect(sheet.getCell(3,3)?.v).toBe(11);expect(sheet.getCellRaw(3,3)?.v).toBeUndefined();
+ const plan=workbookGridEdits(source,sha,live.baseline,live.snapshot());expect(plan.edits).toEqual([]);expect(plan.styles).toEqual([{sheetId:'s',row:3,column:3,bold:true}]);
 });

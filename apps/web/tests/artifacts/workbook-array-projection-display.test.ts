@@ -16,3 +16,12 @@ it('labels unsupported source followers stored, changed unknown anchors unavaila
  expect(display.accept(await kernel.calculate(current,1))).toBe(true);expect(display.status('s',3,3)).toBe('stored');expect(display.display('s',3,3,{}).v).toBe(11);
  current.sheets.s!.cellData![2]![3]!.f='=NEWUNKNOWN(A1)';(current.sheets.s!.cellData![3]??={})[3]={v:42,t:2};display.update(current,true);expect(display.accept(await kernel.calculate(current,2))).toBe(true);expect(display.status('s',2,3)).toBe('unavailable');expect(display.display('s',2,3,{v:999,f:'=NEWUNKNOWN(A1)'}).v).toBeNull();expect(display.display('s',3,3,{v:42,t:2})).toEqual({v:42,t:2});expect(display.isFollower('s',3,3)).toBe(false);display.dispose();
 });
+
+it('supersedes original follower caches and protection after accepted shrink and spill collision',async()=>{
+ const source=model(),kernel=qualifiedArrayKernel(source,'unit',sha),current=structuredClone(kernel.initial),display=new ArrayProjectionDisplay(source,kernel.original,current,sha);
+ current.sheets.s!.cellData![0]![0]!.v=1;display.update(current,true);expect(display.accept(await kernel.calculate(current,1))).toBe(true);
+ expect(display.display('s',3,3,{})).toEqual({});expect(display.status('s',3,3)).toBeUndefined();expect(display.isFollower('s',3,3)).toBe(false);
+ (current.sheets.s!.cellData![3]??={})[3]={v:42,t:2};display.update(current,true);expect(display.accept(await kernel.calculate(current,2))).toBe(true);expect(display.display('s',3,3,{v:42,t:2})).toEqual({v:42,t:2});
+ current.sheets.s!.cellData![0]![0]!.v=4;delete current.sheets.s!.cellData![3]![3];(current.sheets.s!.cellData![5]??={})[3]={v:99,t:2};display.update(current,true);expect(display.accept(await kernel.calculate(current,3))).toBe(true);
+ expect(display.display('s',2,3,{})).toMatchObject({v:'#SPILL!',t:1});expect(display.display('s',3,3,{})).toEqual({});expect(display.isFollower('s',3,3)).toBe(false);display.dispose();
+});

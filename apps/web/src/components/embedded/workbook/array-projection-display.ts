@@ -53,7 +53,7 @@ export class ArrayProjectionDisplay {
     const owners: { row: number; column: number; formula: string }[] = [];
     const source = this.sourceOwners.get(key(sheet, row, column));
     const formula = source ? at(this.original, sheet, source.row, source.column)?.f : undefined;
-    if (source && formula && (source.row !== row || source.column !== column) && at(this.current, sheet, source.row, source.column)?.f === formula) owners.push({ ...source, formula });
+    if (source && formula && (!this.projection || this.stored.has(key(sheet, source.row, source.column)) || this.unavailable.has(key(sheet, source.row, source.column))) && (source.row !== row || source.column !== column) && at(this.current, sheet, source.row, source.column)?.f === formula) owners.push({ ...source, formula });
     for (const id of this.ownership.searchGenerator({ unitId: this.current.id, sheetId: sheet, range: { startRow: row, endRow: row, startColumn: column, endColumn: column } })) {
       const owner = this.runtimeOwners.get(String(id));
       if (owner && (owner.row !== row || owner.column !== column) && at(this.current, sheet, owner.row, owner.column)?.f === owner.formula) owners.push(owner);
@@ -73,6 +73,10 @@ export class ArrayProjectionDisplay {
     if (cell && (cell.v != null || cell.p)) return;
     const owner = this.sourceOwners.get(key(sheet, row, column));
     if (!owner || at(this.current, sheet, owner.row, owner.column)?.f !== at(this.original, sheet, owner.row, owner.column)?.f) return;
+    // A complete calculated owner supersedes all source follower geometry.
+    // Stored/unavailable owners retain source evidence; retired followers do not.
+    const ownerId = key(sheet, owner.row, owner.column);
+    if (this.projection && !this.stored.has(ownerId) && !this.unavailable.has(ownerId)) return;
     return original;
   }
   status(sheet: string, row: number, column: number): ArrayProjectionStatus | undefined {

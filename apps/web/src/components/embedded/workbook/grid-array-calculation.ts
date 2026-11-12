@@ -28,13 +28,15 @@ export function assertArrayFollowerMutation(display: ArrayProjectionDisplay, par
 export function attachWorkbookArrayCalculation(univer: Univer, api: FUniver, model: WorkbookDocument, original: IWorkbookData, initial: IWorkbookData, sourceSha256: string,
   snapshot: () => IWorkbookData, owner: ReturnType<typeof ownArrayProjectionWorker> | null, changed: (state: WorkbookCalculationState) => void) {
   const injector = univer.__getInjector(), commands = injector.get(ICommandService), display = new ArrayProjectionDisplay(model, original, initial, sourceSha256);
-  let active = true;
+  let active = true, calculating = false;
   const publish = () => changed(workbookCalculationState(display.summary()));
   const repaint = () => { for (const sheet of api.getActiveWorkbook()?.getSheets() ?? []) sheet.refreshCanvas(); };
   const update = (calculate: boolean) => {
     if (!active) return;
-    const current = snapshot(); display.update(current, Boolean(owner && calculate));
-    if (owner && calculate && owner.calculate(current) === null) display.pause();
+    const current = snapshot();
+    if (owner && calculate) calculating = true;
+    display.update(current, Boolean(owner && calculating));
+    if (owner && calculate && owner.calculate(current) === null) { calculating = false; display.pause(); }
     publish(); repaint();
   };
   const before = commands.beforeCommandExecuted((command, options) => {
@@ -47,7 +49,7 @@ export function attachWorkbookArrayCalculation(univer: Univer, api: FUniver, mod
   const after = commands.onCommandExecuted((command) => {
     if (command.id === SetRangeValuesMutation.id) update(workbookCalculationChangesInputs(command.params));
   });
-  const result = owner?.onResult(projection => { if (!active) return; display.update(snapshot(), true); if (!display.accept(projection)) { owner.fail(); return; } publish(); repaint(); });
+  const result = owner?.onResult(projection => { if (!active) return; calculating = false; display.update(snapshot(), false); if (!display.accept(projection)) { owner.fail(); return; } publish(); repaint(); });
   const intercept = injector.get(SheetInterceptorService).intercept(INTERCEPTOR_POINT.CELL_CONTENT, { priority: 90, effect: InterceptorEffectEnum.Value,
     handler: (cell, location, next) => next(display.display(location.subUnitId, location.row, location.col, (cell ?? {}) as ICellData)),
   });
