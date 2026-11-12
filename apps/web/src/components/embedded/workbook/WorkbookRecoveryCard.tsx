@@ -39,7 +39,7 @@ export function WorkbookRecoveryCard({ drafts, busy, error, onRestore, onDiscard
           <div className="flex shrink-0 items-center gap-1">
             <Button type="button" variant="ghost" size="xs" disabled={busy} aria-label={`Restore ${name}`} onClick={() => onRestore(draftId)}>Restore</Button>
             {onDownload ? <Button type="button" variant="ghost" size="small" iconOnly leadingIcon={RiDownloadLine} disabled={busy}
-              aria-label={`Download ${name}`} title="Download draft" onClick={() => onDownload(draftId)} /> : null}
+              aria-label={`Download ${name}`} title="Download recovery copy (JSON)" onClick={() => onDownload(draftId)} /> : null}
             <Button type="button" variant="ghost" size="small" iconOnly leadingIcon={RiDeleteBinLine} disabled={busy}
               aria-label={`Discard ${name}`} title="Discard draft" onClick={() => onDiscard(draftId)} />
           </div>

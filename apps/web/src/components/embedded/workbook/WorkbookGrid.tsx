@@ -10,6 +10,7 @@ import { workbookGridTheme } from './grid-theme';
 
 export interface WorkbookGridProps {
   id: string; title: string; model: WorkbookDocument;
+  initialSnapshot?: IWorkbookData;
   onSnapshot?(snapshot: IWorkbookData): void;
   onReady?(snapshot: IWorkbookData): void;
   onDisplayGaps?(gaps: WorkbookDisplayGap[]): void;
@@ -18,10 +19,11 @@ export interface WorkbookGridProps {
 /** A disposable spreadsheet UI, never an XLSX serializer. A surface must supply
  * its durable edit controller before edits are enabled. Refresh/theme changes
  * do not recreate the grid unless the acknowledged source model changes. */
-export function WorkbookGrid({ id, title, model, onSnapshot, onReady, onDisplayGaps }: WorkbookGridProps) {
+export function WorkbookGrid({ id, title, model, initialSnapshot, onSnapshot, onReady, onDisplayGaps }: WorkbookGridProps) {
   const container = useRef<HTMLDivElement>(null), callbacks = useRef({ title, onSnapshot, onReady, onDisplayGaps });
   callbacks.current = { title, onSnapshot, onReady, onDisplayGaps };
   const view = useRef<{ id: string; sheetId: string; snapshot: IWorkbookData; range?: IRange } | null>(null);
+  const restored = useRef(initialSnapshot);
   const [error, setError] = useState<string | null>(null);
   const editable = Boolean(onSnapshot);
   useEffect(() => {
@@ -52,8 +54,9 @@ export function WorkbookGrid({ id, title, model, onSnapshot, onReady, onDisplayG
         const old = previous.snapshot.sheets[sheetId];
         if (old) Object.assign(sheet, { scrollTop: old.scrollTop, scrollLeft: old.scrollLeft, zoomRatio: old.zoomRatio });
       }
-      const workbook = univerAPI.createWorkbook(prepared.data);
-      workbook.setActiveSheet(previous && prepared.data.sheets?.[previous.sheetId] ? previous.sheetId : prepared.activeSheetId); workbook.setEditable(editable);
+      const seed = restored.current; restored.current = undefined;
+      const workbook = univerAPI.createWorkbook(seed ? structuredClone(seed) : prepared.data);
+      workbook.setActiveSheet(previous && prepared.data.sheets?.[previous.sheetId] ? previous.sheetId : seed?.sheetOrder[0] ?? prepared.activeSheetId); workbook.setEditable(editable);
       const selected = workbook.getActiveSheet();
       if (previous?.range && previous.range.endRow < selected.getMaxRows() && previous.range.endColumn < selected.getMaxColumns()) selected.setActiveRange(selected.getRange(previous.range));
       callbacks.current.onReady?.(workbook.save());

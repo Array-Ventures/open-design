@@ -1,5 +1,29 @@
 # Evebot embedded Studio
 
+## Workbook recovery development — November 11
+
+The editor now connects the account/artifact/editor-scoped IndexedDB journal to
+its save controller. Each draft branch has an exclusive Web Lock; restore,
+download and deletion refuse branches still edited elsewhere. Closing a branch
+drains both the remote callback and queued journal writes before releasing it.
+Fresh authorized preview loading precedes recovery reads. Continue opens a new
+editor branch and preserves other drafts. A validated recovery JSON download is
+explicitly named `.recovery.json`, not presented as an Excel export.
+
+Native navigation must pair with the new `studio:discard-workbook` /
+`studio:workbook-discarded` handshake. Deletion acknowledges only after storage
+commits; failures retain the dirty editor. An uncertain save blocks discard;
+only a checked durable terminal receipt can clear that pending fence. Expired
+preparations rotate only after durable candidate removal and a second absent
+save receipt, preserving the operation identity and frozen plan.
+
+Focused integration tests pass 66 cases across nine files. Full web/workspace
+typechecks and the guard are recorded separately by the integration owner.
+This is development source, not active preview or release provenance. Actual
+browser crash/reload, multiple-tab and permission-revocation acceptance,
+download inspection and light/dark visual checks remain required. The existing
+owned preview and first-release companion candidate are unchanged by this work.
+
 The Evebot integration uses Open Design’s actual visual file workspace while Evebot owns bots, chat, approvals, workspace access, providers, exports and publication. Studio has no separate agent conversation or runner in this mode.
 
 ## Runtime boundary

@@ -3,6 +3,7 @@ import { CellValueType, type IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookWriter, type WorkbookWriteIntent, type WorkbookCheckpoint } from '../../src/components/embedded/workbook/workbook-writer';
 import { gridWorkbook } from '../../src/components/embedded/workbook/grid-model';
+import { WorkbookSaveTerminalError } from '../../src/components/embedded/workbook/save-terminal';
 function fixture() {
   const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 's', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 's', name: 'Sheet', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [{ row: 0, column: 0, kind: 'number', value: 1 }], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
   const initial = gridWorkbook(model, 'grid', 'Forecast').data as IWorkbookData;
@@ -83,4 +84,30 @@ it('does not write an unsaved recovered draft over a changed source without a pe
   first.update(snapshot(2)); const restored = first.checkpoint(), write = vi.fn(); first.dispose();
   const next = new WorkbookWriter({ ...source, sourceSha256: 'b'.repeat(64) }, initial, write, () => {}, undefined, { save: async () => {}, restored });
   await next.flush(); expect(write).not.toHaveBeenCalled(); expect(next.state()).toMatchObject({ dirty: true, error: expect.stringContaining('older workbook') }); expect(next.recoveredSnapshot()).toEqual(snapshot(2));
+});
+it('does not release ownership while a late transport checkpoint can still write', async () => {
+  const { source, initial, snapshot } = fixture(), transport = deferred<void>(), started = deferred<void>(), released = vi.fn();
+  const journal = { save: vi.fn(async (_checkpoint: WorkbookCheckpoint | null) => {}) };
+  const writer = new WorkbookWriter(source, initial, async (_intent, checkpoint) => {
+    started.resolve(); await transport.promise; await checkpoint(); return source;
+  }, () => {}, undefined, journal);
+  writer.update(snapshot(2)); void writer.flush(); await started.promise;
+  const closing = writer.close().then(released);
+  expect(released).not.toHaveBeenCalled(); const before = journal.save.mock.calls.length;
+  transport.resolve(); await closing;
+  expect(journal.save.mock.calls.length).toBeGreaterThan(before); expect(released).toHaveBeenCalledOnce();
+  const after = journal.save.mock.calls.length; writer.update(snapshot(3)); await Promise.resolve(); expect(journal.save).toHaveBeenCalledTimes(after);
+});
+it('journals a verified terminal rejection without losing edits or retrying a conflict against the old source', async () => {
+  const { source, initial, snapshot } = fixture(), saved: (WorkbookCheckpoint | null)[] = [];
+  const write = vi.fn(async (intent: WorkbookWriteIntent) => { throw new WorkbookSaveTerminalError(intent.id, crypto.randomUUID(), 'conflict'); });
+  const writer = new WorkbookWriter(source, initial, write, () => {}, undefined, { save: async state => { saved.push(state); } });
+  writer.update(snapshot(2)); await writer.flush();
+  expect(writer.checkpoint().pending).toBeNull(); expect(saved.at(-1)?.pending).toBeNull(); expect(writer.state().dirty).toBe(true);
+  expect(writer.recoveredSnapshot()).toEqual(snapshot(2)); await writer.flush(); expect(write).toHaveBeenCalledOnce();
+});
+it('does not clear a pending intent for a terminal receipt belonging to another operation', async () => {
+  const { source, initial, snapshot } = fixture();
+  const writer = new WorkbookWriter(source, initial, async () => { throw new WorkbookSaveTerminalError(crypto.randomUUID(), crypto.randomUUID(), 'cancelled'); }, () => {});
+  writer.update(snapshot(2)); await writer.flush(); expect(writer.checkpoint().pending).not.toBeNull(); expect(writer.state().dirty).toBe(true);
 });

@@ -2,6 +2,7 @@ import type { IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument, workbookEditPlanSchema } from '@open-design/contracts/runtime/workbook';
 import type { z } from 'zod';
 import { workbookGridEdits } from './grid-edits';
+import { WorkbookSaveTerminalError } from './save-terminal';
 
 type Preview = { sourceSha256: string; model: WorkbookDocument };
 type Plan = z.infer<typeof workbookEditPlanSchema>;
@@ -90,6 +91,14 @@ export class WorkbookWriter {
         await this.persist(); if (!this.active) return;
         this.accepted?.(source, structuredClone(this.acknowledged)); this.publish();
       } catch (error) {
+        if (this.active && error instanceof WorkbookSaveTerminalError && this.pending?.intent.id === error.operationId
+          && (!this.pending.intent.renderId || this.pending.intent.renderId === error.renderId)) {
+          // Only a checked durable terminal receipt rules out a later write.
+          // Generic transport errors retain the pending identity for recovery.
+          this.pending = null; this.recoveryConflict ||= error.state === 'conflict';
+          try { await this.persist(); }
+          catch (failure) { error = new Error(this.persistenceError(failure)); }
+        }
         if (this.active) { this.error = error instanceof Error ? error.message : 'The workbook could not be saved.'; this.publish(); }
         return;
       }
@@ -97,4 +106,11 @@ export class WorkbookWriter {
   }
   private publish() { if (this.active) this.changed(this.state()); }
   dispose() { this.active = false; }
+  /** Abort the transport first. Ownership may be released only after every
+   * possible checkpoint callback and queued transaction has settled. */
+  async close(): Promise<void> {
+    this.dispose();
+    await this.running?.catch(() => {});
+    await this.persistence.catch(() => {});
+  }
 }
