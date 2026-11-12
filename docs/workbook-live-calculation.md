@@ -506,3 +506,22 @@ compares the resulting plan with backend output and independently reopens growth
 and owner-removal results. Packaged worker startup, canvas appearance, crash
 recovery, history and cross-theme user interaction still require browser
 qualification; these tests do not claim that acceptance.
+
+A combined shrink and manual input in a retired source follower uses a separate
+server-only admission transaction. Only explicit edits inside verified dynamic,
+unchanged-owner source rectangles are deferred. The server first calculates all
+other inputs, then requires each deferred coordinate outside every admitted
+owner rectangle with the old owning formula unchanged. It applies the deferred
+inputs and calculates afresh, checks them outside every final owner, and requires
+identical complete owner topology. Intermediate bytes remain private; the
+caller receives only final bytes for its existing conditional commit/history.
+This adds at most two existing two-pass calculations (four fresh kernels), under
+the same outer worker deadline and per-pass resource limits. Source metadata,
+styles, dimensions and opaque unrelated parts keep their existing owners.
+
+Fixed, unknown and retained unsupported ownership still refuses follower edits.
+Inputs that change another owner's topology during this admission, or require
+ambiguous transfer of cached source cells between arrays in the pin, also refuse;
+save the owner change first in those cases. No client projection or submitted
+cache grants permission to write a follower, and no requested literal is silently
+ignored.

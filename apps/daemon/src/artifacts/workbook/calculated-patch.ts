@@ -10,6 +10,7 @@ import { prepareDynamicArrayOwnerEdits } from './array-structural-patch.js';
 import { verifiedDynamicArrayOwners, ensureDynamicArrayMetadata } from './dynamic-array-metadata.js';
 import { formulaCellKey } from './formula-cache-policy.js';
 import { address, appendWorkbookRowCell, orderWorkbookRowCells, child, children, xmlPart } from './parts.js';
+import { partitionRetiredFollowerEdits, assertRetiredFollowersOutsideOwners, assertSameArrayTopology } from './retired-array-followers.js';
 import { writeWorkbookXml } from './xml.js';
 
 function assertCalculationSupported(source: ReadWorkbook): void {
@@ -112,6 +113,18 @@ export async function calculateWorkbookCellEdits(source: ReadWorkbook, edits: re
   }
   assertCalculationSupported(source);
   const dynamicOwners = verifiedDynamicArrayOwners(source);
+  const plan = partitionRetiredFollowerEdits(source, edits, dynamicOwners);
+  if (!plan.deferred.length) return calculateContent(source, edits, dynamicOwners);
+  // At most two complete existing two-pass calculations. Both intermediates
+  // remain private; only the final bytes can reach the caller's CAS/history.
+  const admitted = await readXlsxWorkbook((await calculateContent(source, plan.ordinary, dynamicOwners)).bytes);
+  assertRetiredFollowersOutsideOwners(admitted.model, plan);
+  const final = await calculateContent(admitted, plan.deferred, verifiedDynamicArrayOwners(admitted));
+  assertRetiredFollowersOutsideOwners(final.model, plan);
+  assertSameArrayTopology(admitted.model, final.model);
+  return final;
+}
+async function calculateContent(source: ReadWorkbook, edits: readonly WorkbookCellEdit[], dynamicOwners: ReadonlySet<string>): Promise<{ bytes: Buffer; model: WorkbookDocument }> {
   const prepared = await prepareDynamicArrayOwnerEdits(source, edits, dynamicOwners);
   const patched = await readXlsxWorkbook(await patchWorkbookCells(prepared, edits, { retainFormulaCaches: true }));
   let calculated = await calculateWorkbookResults(patched.model, source.model, dynamicOwners, new Map(), true);
