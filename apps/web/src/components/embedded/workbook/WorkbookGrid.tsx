@@ -1,7 +1,7 @@
 'use client';
 
 import { WorkbookStructureMenu } from './WorkbookStructureMenu';
-import { workbookStructureController, type WorkbookStructureSource, type WorkbookStructureController } from './grid-structure-actions';
+import { liveWorkbookStructureMenu, workbookStructureController, type WorkbookStructureSource, type WorkbookStructureController } from './grid-structure-actions';
 import { hasWorkbookStructureIdentity, ownWorkbookAxisIdentity, seedWorkbookStructureIdentity } from './grid-structure-identity';
 
 import { ownWorkbookVisibility, workbookVisibilityBridge } from './grid-visibility';
@@ -50,7 +50,8 @@ export interface WorkbookGridProps {
  * do not recreate the grid unless the acknowledged source model changes. */
 export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, onSnapshot, onReady, onDisplayGaps, formatScope, exportScope, structureSource, structureBlocked = true }: WorkbookGridProps) {
   const structure = useRef({ source: structureSource, blocked: structureBlocked }); structure.current = { source: structureSource, blocked: structureBlocked };
-  const [structureOwner, setStructureOwner] = useState<WorkbookStructureController | null>(null);
+  const structureOwner = useRef<WorkbookStructureController | null>(null);
+  const structureMenu = useRef(liveWorkbookStructureMenu(() => structureOwner.current));
   const container = useRef<HTMLDivElement>(null), callbacks = useRef({ id, model, title, onSnapshot, onReady, onDisplayGaps });
   const views = useRef<WorkbookViewLayers | null>(null);
   const viewScope = useRef(id);
@@ -96,11 +97,12 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
     // Retire the old menu owner while retaining the host element shared by
     // view layers. Re-keying its wrapper detaches that host during a source
     // acknowledgement or worker fallback and leaves the new canvas invisible.
-    setStructureOwner(null);
+    structureOwner.current = null;
     reportInputError(null);
     calculationState.current = null;
     const root = document.documentElement;
     let dispose = () => {}, active = true;
+    let ownedStructure: WorkbookStructureController | null = null;
     // Crossing artifact identity withdraws old content synchronously, even if
     // the next lazy import or source preparation never completes.
     if (viewScope.current !== id) { views.current?.dispose(); views.current = null; viewScope.current = id; }
@@ -235,7 +237,8 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
         const scope = format.current;
         return scope ? { ...scope, blocked: scope.blocked || Boolean(scope.saving) || structure.current.blocked || !current() || !readyForInput || !editable || !calculationOwner?.ready || Boolean(univer.__getInjector().get(kernel.IEditorBridgeService).isVisible().visible) } : null;
       });
-      layer.own(() => structureActions.dispose());
+      ownedStructure = structureActions; structureOwner.current = structureActions;
+      layer.own(() => { if (structureOwner.current === structureActions) structureOwner.current = null; structureActions.dispose(); });
       const changed = univerAPI.addEvent(univerAPI.Event.CommandExecuted, event => {
         if (!current()) return;
         if (event.type === CommandType.MUTATION && event.id.startsWith('sheet.')) { callbacks.current.onSnapshot?.(workbook.save()); formatting.publish(); visibility.publish(); }
@@ -266,19 +269,18 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
       if (!current()) return;
       layer.show();
       readyForInput = true; workbook.setEditable(editable);
-      setStructureOwner(structureActions);
       formatting.publish(); exporter.publish(); visibility.publish();
       callbacks.current.onDisplayGaps?.(prepared.gaps); setError(null);
     } catch { close(); if (current()) setError('The workbook grid could not be opened.'); }
     };
     void start();
-    return () => { active = false; close(); };
+    return () => { active = false; if (structureOwner.current === ownedStructure) structureOwner.current = null; close(); };
   }, [id, model, sourceSha256, editable, kernel]);
   // Run after the grid effect's cleanup has captured view state and detached
   // listeners. Disposing the kernel first would make workbook.save() invalid.
   useEffect(() => () => { views.current?.dispose(); views.current = null; }, []);
   return <div className="relative h-full min-h-0 w-full">
-    <WorkbookStructureMenu controller={structureOwner} disabled={structureBlocked || Boolean(formatScope?.blocked) || Boolean(formatScope?.saving) || !editable}>
+    <WorkbookStructureMenu controller={structureMenu.current} resetKey={`${id}:${sourceSha256 ?? ""}:${kernel}`} disabled={structureBlocked || Boolean(formatScope?.blocked) || Boolean(formatScope?.saving) || !editable}>
     <div ref={container} className={cx(styles.grid, 'h-full min-h-0 w-full')} role="region" aria-label="Workbook grid" tabIndex={0} />
     </WorkbookStructureMenu>
     {error ? <div role="alert" className="absolute inset-0 bg-background-primary-default p-4 text-body-2-regular text-text-error-primary">{error}</div> : null}

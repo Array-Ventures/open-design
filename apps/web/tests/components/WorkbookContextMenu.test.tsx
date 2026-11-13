@@ -44,3 +44,23 @@ it('does not intercept a retired controller and withdraws an open menu during a 
   owner.dispose(); view.rerender(<WorkbookStructureMenu controller={owner} disabled={false}><button>Grid</button></WorkbookStructureMenu>);
   const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 40 }); fireEvent(screen.getByRole('button'), event); expect(event.defaultPrevented).toBe(false);
 });
+
+import { liveWorkbookStructureMenu, type WorkbookStructureMenuController } from '../../src/components/embedded/workbook/grid-structure-actions';
+it('reads a newly ready kernel at the first gesture without waiting for a React render', async () => {
+  let current: WorkbookStructureMenuController | null = null;
+  const proxy = liveWorkbookStructureMenu(() => current), { owner, run } = actions();
+  render(<WorkbookStructureMenu controller={proxy} disabled={false}><button>Grid</button></WorkbookStructureMenu>);
+  fireEvent.contextMenu(screen.getByRole('button'), { clientX: 30, clientY: 40 }); expect(screen.queryByRole('menu')).toBeNull();
+  // Canvas readiness can publish before React commits another state update.
+  current = owner;
+  fireEvent.contextMenu(screen.getByRole('button'), { clientX: 30, clientY: 40 }); await screen.findByRole('menu');
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Insert rows above' })); expect(run).toHaveBeenCalledOnce();
+  current = null; expect(() => proxy.run('row-before', 'owned-source-selection')).toThrow('not ready');
+});
+it('withdraws a replaced source menu while preserving its actual canvas host', async () => {
+  const { owner } = actions();
+  const view = render(<WorkbookStructureMenu controller={owner} resetKey="source-a" disabled={false}><button>Grid</button></WorkbookStructureMenu>);
+  const host = screen.getByRole('button'); fireEvent.contextMenu(host, { clientX: 30, clientY: 40 }); await screen.findByRole('menu');
+  view.rerender(<WorkbookStructureMenu controller={owner} resetKey="source-b" disabled={false}><button>Grid</button></WorkbookStructureMenu>);
+  expect(screen.queryByRole('menu')).toBeNull(); expect(screen.getByRole('button')).toBe(host); expect(host.isConnected).toBe(true);
+});

@@ -104,6 +104,8 @@ export interface ContextMenuTriggerProps {
   isDisabled?: boolean;
   /** Canvas-owned handlers may stop bubbling; admit the menu in capture phase. */
   capture?: boolean;
+  /** Withdraw an open menu when its underlying canvas/source is replaced. */
+  resetKey?: unknown;
   /** Recheck a live canvas owner before accepting the opening gesture. */
   onBeforeOpen?: () => boolean;
   onOpenChange?: (isOpen: boolean) => void;
@@ -111,7 +113,7 @@ export interface ContextMenuTriggerProps {
   className?: string;
 }
 
-export function ContextMenuTrigger({ children, isDisabled = false, capture = false, onBeforeOpen, onOpenChange, className }: ContextMenuTriggerProps) {
+export function ContextMenuTrigger({ children, isDisabled = false, capture = false, resetKey, onBeforeOpen, onOpenChange, className }: ContextMenuTriggerProps) {
   const id = useId();
   const direction = useLocale().direction;
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -164,6 +166,14 @@ export function ContextMenuTrigger({ children, isDisabled = false, capture = fal
     if (press.current) { window.clearTimeout(press.current.timer); press.current = null; }
     close();
   }, [isDisabled, close]);
+
+  const previousReset = useRef(resetKey);
+  useEffect(() => {
+    if (Object.is(previousReset.current, resetKey)) return;
+    previousReset.current = resetKey;
+    if (press.current) { window.clearTimeout(press.current.timer); press.current = null; }
+    close();
+  }, [resetKey, close]);
 
   // React Aria leaves non-modal popovers open on outside presses, and the
   // anchor is fixed, so close on a press or a scroll outside this menu tree.

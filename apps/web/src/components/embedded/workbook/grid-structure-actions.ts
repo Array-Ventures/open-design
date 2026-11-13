@@ -107,3 +107,13 @@ export function workbookStructureController(univer: Univer, api: FUniver, source
   };
 }
 export type WorkbookStructureController = ReturnType<typeof workbookStructureController>;
+
+export type WorkbookStructureMenuController = Pick<WorkbookStructureController, 'read' | 'run'>;
+/** Stable gesture-time forwarding, without waiting for a React state commit.
+ * Actual kernel owners alone retain disposal and authoritative admission. */
+export function liveWorkbookStructureMenu(current: () => WorkbookStructureMenuController | null): WorkbookStructureMenuController {
+  return {
+    read: () => current()?.read() ?? null,
+    run(action, key) { const owner = current(); if (!owner) throw new Error('The worksheet is not ready for structural changes.'); owner.run(action, key); },
+  };
+}

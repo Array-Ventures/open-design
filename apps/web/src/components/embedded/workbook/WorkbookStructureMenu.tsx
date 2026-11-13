@@ -1,16 +1,16 @@
 'use client';
 import { useState, type ReactNode } from 'react';
 import { ContextMenu, ContextMenuItem, ContextMenuTrigger } from '../boardui/context-menu';
-import { workbookStructureActions, type WorkbookStructureAction, type WorkbookStructureController, type WorkbookStructureSelection } from './grid-structure-actions';
+import { workbookStructureActions, type WorkbookStructureAction, type WorkbookStructureMenuController, type WorkbookStructureSelection } from './grid-structure-actions';
 const labels: Record<WorkbookStructureAction, string> = { 'row-before': 'Insert rows above', 'row-after': 'Insert rows below', 'row-delete': 'Delete rows', 'column-before': 'Insert columns left', 'column-after': 'Insert columns right', 'column-delete': 'Delete columns' };
 /** Selection is captured at the opening gesture and revalidated by the live
  * owner at execution. A menu never supplies workbook or source authority. */
-export function WorkbookStructureMenu({ controller, disabled, children }: { controller: WorkbookStructureController | null; disabled: boolean; children: ReactNode }) {
+export function WorkbookStructureMenu({ controller, disabled, resetKey, children }: { controller: WorkbookStructureMenuController | null; disabled: boolean; resetKey?: string; children: ReactNode }) {
   const [selection, setSelection] = useState<WorkbookStructureSelection | null>(null), [error, setError] = useState<string | null>(null);
   const open = () => { const current = controller?.read() ?? null; setSelection(current); setError(null); return Boolean(current && Object.values(current.allowed).some(Boolean)); };
   const actions = workbookStructureActions.filter(action => selection?.axis === 'row' ? action.startsWith('row-') : selection?.axis === 'column' ? action.startsWith('column-') : true);
   return <>
-    <ContextMenuTrigger capture isDisabled={disabled || !controller} onBeforeOpen={open} onOpenChange={opened => { if (!opened) setSelection(null); }}>
+    <ContextMenuTrigger capture resetKey={resetKey} isDisabled={disabled || !controller} onBeforeOpen={open} onOpenChange={opened => { if (!opened) setSelection(null); }}>
       {children}
       <ContextMenu aria-label="Worksheet rows and columns" onAction={key => {
         if (!selection || !controller || !workbookStructureActions.includes(key as WorkbookStructureAction)) return;
