@@ -18,6 +18,24 @@ async function fixture() {
   zip.file('custom/opaque.bin', Buffer.from([1, 2, 255]));
   return readXlsxWorkbook(await zip.generateAsync({ type: 'nodebuffer' }));
 }
+it('changes point size without losing font identity, inherited styling, formula caches or other package parts', async () => {
+  const source = await fixture();
+  const saved = await calculateWorkbookCellEdits(source, [], [], [{ sheetId: '1', row: 0, column: 0, fontSize: 22.5 }]);
+  const reopened = await readXlsxWorkbook(saved.bytes), cell = reopened.model.sheets[0]!.cells.find(cell => cell.row === 0 && cell.column === 0)!;
+  expect(reopened.model.styles[cell.style!]).toMatchObject({ font: { name: 'Arial', size: 22.5, italic: true, color: { kind: 'theme', index: 4 } }, alignment: { horizontal: 'right', wrap: true }, numberFormat: '$0.00' });
+  expect(reopened.model.sheets[0]!.cells.find(cell => cell.column === 1)).toEqual(source.model.sheets[0]!.cells.find(cell => cell.column === 1));
+  for (const [part, bytes] of source.parts) if (!['xl/styles.xml', 'xl/worksheets/sheet1.xml'].includes(part)) expect(reopened.parts.get(part), part).toEqual(bytes);
+  const independent = new ExcelJS.Workbook(); await independent.xlsx.load(Uint8Array.from(saved.bytes).buffer);
+  // ExcelJS truncates fractional font sizes on read; inspect the retained OOXML
+  // and the source-aware product model for precision, and this reader for other properties.
+  expect(independent.worksheets[0]!.getCell('A1').font).toMatchObject({ name: 'Arial', italic: true, color: { theme: 4 } });
+  const styleRoot = xmlPart(reopened.parts, 'xl/styles.xml').documentElement!;
+  const targetXf = children(child(styleRoot, 'cellXfs')!, 'xf').at(-1)!;
+  const targetFont = children(child(styleRoot, 'fonts')!, 'font')[Number(targetXf.getAttribute('fontId'))]!;
+  expect(child(targetFont, 'sz')?.getAttribute('val')).toBe('22.5');
+  expect(independent.worksheets[0]!.getCell('B1').result).toBe(71);
+  for (const fontSize of [0, -1, 513, NaN, Infinity]) await expect(patchWorkbookStyles(source, [{ sheetId: '1', row: 0, column: 0, fontSize }])).rejects.toThrow();
+});
 it('patches real style components and retains formulas, caches, rich strings and opaque parts', async () => {
   const source = await fixture();
   const prepared = await calculateWorkbookCellEdits(source, [], [], [{ sheetId: '1', row: 0, column: 0, bold: true, italic: false, fontColor: 'FF123456', fillColor: 'FFABCDEF' }]);

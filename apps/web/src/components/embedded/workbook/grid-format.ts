@@ -6,6 +6,7 @@ const color = z.string().regex(/^#[a-fA-F0-9]{6}$/);
 export const workbookFormatActionSchema = z.discriminatedUnion('property', [
   z.object({ property: z.literal('bold'), value: z.boolean() }).strict(),
   z.object({ property: z.literal('italic'), value: z.boolean() }).strict(),
+  z.object({ property: z.literal('fontSize'), value: z.number().positive().max(512) }).strict(),
   z.object({ property: z.literal('fontColor'), value: color.nullable() }).strict(),
   z.object({ property: z.literal('fillColor'), value: color.nullable() }).strict(),
 ]);
@@ -30,6 +31,7 @@ export function workbookFormattingBridge(api: FUniver, scope: () => WorkbookForm
     const range = selected(), style = range?.selected.getCellStyleData();
     window.parent.postMessage({ type: 'studio:workbook-format-state', projectId: current.projectId, controllerId: current.controllerId,
       selected: Boolean(range && !current.blocked), selectionKey: range?.selectionKey ?? '', bold: style?.bl === 1, italic: style?.it === 1,
+      fontSize: typeof style?.fs === 'number' && style.fs > 0 && style.fs <= 512 ? style.fs : null,
       fontColor: typeof style?.cl?.rgb === 'string' && color.safeParse(style.cl.rgb).success ? style.cl.rgb : null,
       fillColor: typeof style?.bg?.rgb === 'string' && color.safeParse(style.bg.rgb).success ? style.bg.rgb : null, error }, window.location.origin);
   }
@@ -43,6 +45,7 @@ export function workbookFormattingBridge(api: FUniver, scope: () => WorkbookForm
       const action = parsed.data.action;
       if (action.property === 'bold') range.selected.setFontWeight(action.value ? 'bold' : 'normal');
       else if (action.property === 'italic') range.selected.setFontStyle(action.value ? 'italic' : 'normal');
+      else if (action.property === 'fontSize') range.selected.setFontSize(action.value);
       else if (action.property === 'fontColor') range.selected.setFontColor(action.value ?? 'rgb(0, 0, 0)');
       // Null removes an override and revives inherited fill. Transparent paint
       // is the pinned renderer's no-fill override; the sparse delta maps it to

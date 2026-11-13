@@ -105,6 +105,15 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
     // of reviving an inherited authored color after an automatic-color reset.
     const xf = rawId === undefined ? undefined : rawXfEntries[rawId];
     const sourceFont = xf ? rawFontEntries[integer(xf.getAttribute('fontId'), 0)] : undefined;
+    // The pinned importer truncates fractional point sizes with parseInt.
+    // The source font component, rather than that rounded value, owns size.
+    const sizes = sourceFont ? children(sourceFont, 'sz') : [];
+    if (sizes.length > 1) throw new WorkbookFormatError('Ambiguous workbook font size.');
+    if (sizes.length) {
+      const size = number(sizes[0]!.getAttribute('val'));
+      if (size <= 0 || size > 512) throw new WorkbookFormatError('Unsupported workbook font size.', 'WORKBOOK_UNSUPPORTED');
+      normalized.font = { ...normalized.font, size };
+    }
     const color = sourceFont && child(sourceFont, 'color');
     if (color?.hasAttribute('auto') && bool(color.getAttribute('auto')) && !['rgb', 'theme', 'indexed'].some(attribute => color.hasAttribute(attribute))) normalized.font = { ...normalized.font, color: { kind: 'auto' } };
     return normalized;
