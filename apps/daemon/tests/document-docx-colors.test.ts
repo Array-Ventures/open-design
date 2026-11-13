@@ -49,3 +49,17 @@ it('projects actual pinned converter cells including merge continuations without
   const broken = fixture.xml.replace('w:vMerge w:val="continue"', 'w:vMerge w:val="restart"');
   expect(() => projectDocumentDocxColors(broken,fixture.owners)).toThrow('ownership');
 });
+
+it('keeps unrelated bookmarks and gives nested authored colors precedence without dropping outer formatting', () => {
+  const outer = { id:'2000000000',name:'EveOuter',kind:'inline' as const,colors:{foreground:'FF0000',background:'FFFF00'} };
+  const inner = { id:'2000000001',name:'EveInner',kind:'inline' as const,colors:{foreground:'0000FF'} };
+  const start=(o:typeof outer|typeof inner)=>`<w:bookmarkStart w:id="${o.id}" w:name="${o.name}"/>`;
+  const end=(o:typeof outer|typeof inner)=>`<w:bookmarkEnd w:id="${o.id}"/>`;
+  const xml=`<w:document xmlns:w="${ns}"><w:body><w:p><w:bookmarkStart w:id="7" w:name="authored-bookmark"/>${start(outer)}<w:r><w:t>outer</w:t></w:r>${start(inner)}<w:r><w:rPr><w:i/></w:rPr><w:t>inner</w:t></w:r>${end(inner)}${end(outer)}<w:bookmarkEnd w:id="7"/></w:p></w:body></w:document>`;
+  const result=projectDocumentDocxColors(xml,[outer,inner]);
+  expect(result).toContain('w:name="authored-bookmark"');expect(result).toContain('w:bookmarkEnd w:id="7"');
+  expect(result).toContain('w:color w:val="0000FF"');expect(result).toContain('w:color w:val="FF0000"');
+  expect(result.match(/w:fill="FFFF00"/g)).toHaveLength(2);expect(result).toContain('<w:i/>');
+  const crossing=xml.replace(end(inner)+end(outer),end(outer)+end(inner));
+  expect(()=>projectDocumentDocxColors(crossing,[outer,inner])).toThrow('ownership');
+});
