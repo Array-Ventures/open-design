@@ -1,0 +1,21 @@
+{
+  "source": "https://github.com/dotnet/Open-XML-SDK/blob/main/data/schemas/schemas_openxmlformats_org_wordprocessingml_2006_main.json",
+  "scope": "Relative ordering subset extracted from primary SDK CT_RPr and CT_TcPr particles for the real fixture properties; not a complete OOXML validator.",
+  "rPr": [
+    "w:rFonts",
+    "w:b",
+    "w:color",
+    "w:sz",
+    "w:u",
+    "w:shd",
+    "w:vertAlign",
+    "w:lang"
+  ],
+  "tcPr": [
+    "w:tcW",
+    "w:shd",
+    "w:noWrap",
+    "w:tcMar",
+    "w:vAlign"
+  ]
+}

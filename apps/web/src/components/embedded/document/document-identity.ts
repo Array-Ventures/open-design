@@ -22,6 +22,8 @@ export function documentHtmlConfig(): HTMLConfig {
       const output = node.exportDOM(editor);
       // Do not freeze the SDK's placeholder column width or implicit start alignment.
       if (node instanceof TableCellNode && output.element instanceof HTMLElement) {
+        // Keep implicit header fill theme-driven; authored node backgrounds survive.
+        if (node.getBackgroundColor() === null) output.element.style.removeProperty('background-color');
         if (!node.getWidth()) output.element.style.removeProperty('width');
         if (!node.getFormatType() && output.element.style.textAlign === 'start') output.element.style.removeProperty('text-align');
       }

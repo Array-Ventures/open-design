@@ -68,7 +68,10 @@ production-only tsconfig. Declaration outputs remain part of the cache contract.
 
 The workspace node also hashes `packages/deck-export` and retains its JavaScript
 and declaration outputs, because desktop and embedded editable deck capture share
-that browser-only runtime. Standalone materialization applies the shared dangling
+that browser-only runtime. It also hashes `packages/document-style` and retains
+both its Node-safe color and browser adapter JavaScript/declarations; the
+workspace cache schema is 14. The package-source witness covers its source and
+proves generated color output is not a key input. Standalone materialization applies the shared dangling
 link cleanup and Next peer dependency hoisting before copying runtime files.
 
 ## Determinant rules

@@ -46,3 +46,14 @@ it('retains independent heading families across every supported heading level in
     expect(getComputedStyle(content.querySelector('p')!).fontFamily).not.toContain('Georgia');
   } finally { style.remove(); content.remove(); }
 });
+
+it('retains the pinned Lexical code export shape used by the Markdown converter fixture', async () => {
+  const { createEditor, $getRoot, $createTextNode, $createLineBreakNode, $createParagraphNode } = await import('lexical');
+  const { CodeNode, $createCodeNode } = await import('@lexical/code');
+  const { $generateHtmlFromNodes } = await import('@lexical/html');
+  const { readFileSync } = await import('node:fs');
+  const editor = createEditor({ namespace: 'owned-code-fixture', theme: { code: 'DocumentEditor-module__qFNIka__code', text: { code: 'DocumentEditor-module__qFNIka__inlineCode' } }, nodes: [CodeNode], onError: error => { throw error; } });
+  editor.update(() => { $getRoot().append($createCodeNode('javascript').setIsSyntaxHighlightSupported(true).append($createTextNode('  const n = 1;'), $createLineBreakNode(), $createTextNode('  n++;')), $createParagraphNode().append($createTextNode(' x  y ').toggleFormat('code'))); }, { discrete: true });
+  const fixture = readFileSync(`${process.cwd()}/../daemon/tests/fixtures/documents/lexical-code-export.html`, 'utf8');
+  editor.getEditorState().read(() => expect(`<!doctype html><html data-eve-document="1"><body>${$generateHtmlFromNodes(editor)}</body></html>`).toBe(fixture));
+});

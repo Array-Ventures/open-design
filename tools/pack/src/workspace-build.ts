@@ -13,6 +13,7 @@ export const WORKSPACE_BUILD_PACKAGES = [
   { directory: "packages/components", name: "@open-design/components" },
   { directory: "packages/contracts", name: "@open-design/contracts" },
   { directory: "packages/deck-export", name: "@open-design/deck-export" },
+  { directory: "packages/document-style", name: "@open-design/document-style" },
   { directory: "packages/registry-protocol", name: "@open-design/registry-protocol" },
   { directory: "packages/sidecar-proto", name: "@open-design/sidecar-proto" },
   { directory: "packages/launcher-proto", name: "@open-design/launcher-proto" },
@@ -48,7 +49,7 @@ export const WORKSPACE_BUILD_COMMANDS = [
   { args: ["--filter", "@open-design/packaged", "run", "build"] },
 ] as const;
 
-export const WORKSPACE_BUILD_CACHE_SCHEMA_VERSION = 13;
+export const WORKSPACE_BUILD_CACHE_SCHEMA_VERSION = 14;
 
 /**
  * V8 old-space ceiling (MB) for the packaged closure build, the stage that runs
@@ -200,6 +201,10 @@ function workspaceBuildOutputFiles(config: ToolPackConfig): string[] {
     "packages/contracts/dist/index.d.ts",
     "packages/deck-export/dist/index.js",
     "packages/deck-export/dist/index.d.ts",
+    "packages/document-style/dist/color.js",
+    "packages/document-style/dist/color.d.ts",
+    "packages/document-style/dist/browser.js",
+    "packages/document-style/dist/browser.d.ts",
     "packages/registry-protocol/dist/index.mjs",
     "packages/registry-protocol/dist/index.d.ts",
     "packages/sidecar-proto/dist/index.mjs",
@@ -243,6 +248,7 @@ function workspaceBuildArtifacts(config: ToolPackConfig): WorkspaceBuildArtifact
     "packages/release/dist",
     "packages/contracts/dist",
     "packages/deck-export/dist",
+    "packages/document-style/dist",
     "packages/registry-protocol/dist",
     "packages/sidecar-proto/dist",
     "packages/launcher-proto/dist",
