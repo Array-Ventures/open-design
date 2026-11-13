@@ -4,6 +4,7 @@ import { documentImportStyles, documentTextStyles } from './document-styles';
 import styles from './DocumentEditor.module.css';
 
 const tags = new Set(['main', 'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'table', 'colgroup', 'col', 'thead', 'tbody', 'tr', 'td', 'th', 'a', 'br', 'span', 'code', 'pre', 'img']);
+const canonicalBorderImageDefaults = new Set(['border-image-source', 'border-image-slice', 'border-image-width', 'border-image-outset', 'border-image-repeat']);
 const inline = new Set(['span', 'strong', 'b', 'em', 'i', 'u', 's', 'code']);
 const attributes: Record<string, string[]> = {
   a: ['href', 'title', 'target', 'rel'], img: ['src', 'alt', 'title', 'width', 'height'],
@@ -42,6 +43,8 @@ function supportedElement(element: HTMLElement): boolean {
     if (Number(element.getAttribute('value')) !== Number(parent.getAttribute('start') ?? 1) + index) return false;
   }
   const rawStyle = element.getAttribute('style') ?? '';
+  const canonicalCellBorder = ['td', 'th'].includes(tag) && /^1px solid (?:black|rgb\(0,\s*0,\s*0\))$/.test(element.style.getPropertyValue('border'));
+
   // CSSOM may expand shorthands (notably border). Validate each authored declaration
   // independently instead of comparing declaration counts with normalized properties.
   for (const declaration of rawStyle.split(';').filter(value => value.trim())) {
@@ -51,14 +54,18 @@ function supportedElement(element: HTMLElement): boolean {
     const probe = document.createElement('span').style;
     probe.cssText = declaration;
     if (!probe.getPropertyValue(name)) return false;
+    // A later default must not hide an earlier authored image or reset.
+    if (canonicalBorderImageDefaults.has(name) && (probe.getPropertyValue(name).trim() !== 'initial' || probe.getPropertyPriority(name))) return false;
   }
   for (const name of Array.from(element.style)) {
     const value = element.style.getPropertyValue(name).trim();
     if (element.style.getPropertyPriority(name)) return false;
     // Lexical's own exports add these presentation defaults, regenerated on every save.
     if (inline.has(tag) && name === 'white-space' && value === 'pre-wrap') continue;
-    const canonicalCellBorder = ['td', 'th'].includes(tag) && /^1px solid (?:black|rgb\(0,\s*0,\s*0\))$/.test(element.style.getPropertyValue('border'));
     if (canonicalCellBorder && name === 'border-image' && value === 'none') continue;
+    // Chromium expands Lexical's border shorthand into these exact reset
+    // longhands. Admit only regenerated initial defaults, never authored images.
+    if (canonicalCellBorder && canonicalBorderImageDefaults.has(name) && value === 'initial') continue;
     if (canonicalCellBorder && /^border(?:-(?:top|right|bottom|left))?(?:-(?:width|style|color))?$/.test(name)) continue;
     // Flattening text wrappers cannot retain contextual CSS-wide values or currentColor.
     if (documentTextStyles.has(name) && /^(?:inherit|initial|unset|revert|revert-layer|currentcolor)$/i.test(value)) return false;

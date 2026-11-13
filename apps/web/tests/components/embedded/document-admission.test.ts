@@ -75,3 +75,42 @@ it.each([['en', 'ltr'], ['zh-Hant-TW', 'ltr'], ['ar', 'rtl'], ['', 'ltr']])('adm
 it.each(['lang="en invalid"', 'dir="auto"'])('retains fallback for unsupported root metadata %s', attribute => {
   expect(supportedDocument(documentHtml('Report', '<p>Body</p>').replace('<html ', `<html ${attribute} `), 'report.html')).toBe(false);
 });
+
+// The actual Chromium save/reopen failure is an owned table-action fixture.
+// Its implicit CSSOM expansion differs from jsdom, so also author those exact
+// declarations explicitly to exercise admission through both DOM parsers.
+it('admits the owned saved table after Chromium expands canonical cell borders', async () => {
+  const { readFileSync } = await import('node:fs');
+  const raw = readFileSync(`${process.cwd()}/tests/fixtures/documents/chromium-table-actions.html`, 'utf8');
+  expect(supportedDocument(raw, 'table-actions.html')).toBe(true);
+  const parsed = new DOMParser().parseFromString(raw, 'text/html');
+  for (const cell of parsed.querySelectorAll<HTMLElement>('td,th')) {
+    const expanded = ['top', 'right', 'bottom', 'left'].flatMap(side => [`border-${side}-width:1px`, `border-${side}-style:solid`, `border-${side}-color:black`]);
+    const defaults = ['source', 'slice', 'width', 'outset', 'repeat'].map(name => `border-image-${name}:initial`);
+    cell.setAttribute('style', `${cell.getAttribute('style')};${expanded.join(';')};${defaults.join(';')}`);
+  }
+  expect(supportedDocument(parsed.documentElement.outerHTML, 'table-actions.html')).toBe(true);
+});
+it.each(['source', 'slice', 'width', 'outset', 'repeat'])('admits only initial Chromium border-image-%s on canonical table cells', name => {
+  const cell = (border: string, image: string) => documentHtml('Table', `<table><tr><td style="${border};border-image-${name}:${image}">Cell</td></tr></table>`);
+  expect(supportedDocument(cell('border:1px solid black', 'initial'), 'table.html')).toBe(true);
+  expect(supportedDocument(cell('border:2px solid black', 'initial'), 'table.html')).toBe(false);
+  expect(supportedDocument(cell('', 'initial'), 'table.html')).toBe(false);
+});
+it.each([
+  'border-image-source:url(https://fixture.test/image.png)',
+  'border-image-source:none', 'border-image-slice:100%', 'border-image-width:1',
+  'border-image-outset:0', 'border-image-repeat:stretch',
+  'border-image-source:initial;border-image-repeat:round',
+  'border-image-source:initial!important', 'border-image-custom:initial',
+  'border-image-source:initial;position:absolute',
+  'border-image-source:url(https://fixture.test/image.png);border-image-source:initial',
+  'border-image-width:2;border-image-width:initial',
+  'border-image-source:initial!important;border-image-source:initial',
+  'border-top-width:2px;border-image-source:initial',
+])('refuses authored border-image or mixed unsupported presentation: %s', declaration => {
+  expect(supportedDocument(documentHtml('Table', `<table><tr><td style="border:1px solid black;${declaration}">Cell</td></tr></table>`), 'table.html')).toBe(false);
+});
+it('does not admit border image defaults on non-cell elements', () => {
+  expect(supportedDocument(documentHtml('Body', '<p style="border:1px solid black;border-image-source:initial">Text</p>'), 'report.html')).toBe(false);
+});

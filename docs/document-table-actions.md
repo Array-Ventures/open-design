@@ -45,3 +45,21 @@ post-edit exports are still required. The supplied Claude reference captures
 showed ordinary document/presentation panels, not an open table context menu;
 this work does not claim observed right-click parity or completed visual
 qualification. Presentation-object and slide-structure actions remain separate.
+
+## Chromium border-default roundtrip
+
+The owned browser save/reopen check on companion 95 exposed a real admission
+mismatch: Chromium expands Lexical's canonical cell `border: 1px solid black`
+into side declarations and five `border-image-*` longhands whose values are
+`initial`. The admission rule now accepts only those exact five initial defaults
+on canonical-border table cells. Noncanonical or mixed borders, custom images,
+nondefault values, important declarations and unknown styles remain refused;
+a later initial value cannot hide an earlier authored image declaration.
+
+The regression includes the actual saved fixture verbatim and explicit expanded
+declarations so the policy is exercised under jsdom as well as Chromium's
+implicit expansion. Five per-longhand admission assertions failed before the
+fix; the final focused suite passed 111 cases across admission, table actions,
+existing editor and HTML serialization. Web types and guard passed. A new
+companion build must still qualify actual Chromium save/reopen; this source
+change does not claim that later browser result.
