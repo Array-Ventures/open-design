@@ -59,6 +59,7 @@ export function documentHtmlConfig(): HTMLConfig {
       }
       const nodes = output?.node ? Array.isArray(output.node) ? output.node : [output.node] : [];
       for (const node of nodes.filter(node => !$isTextNode(node))) {
+        if (!(element instanceof HTMLElement)) continue;
         if ($isElementNode(node) && (element.dir === 'ltr' || element.dir === 'rtl')) node.setDirection(element.dir);
         $setState(node, documentBlockId, documentBlockId.parse(element.getAttribute('data-od-id')));
       }
