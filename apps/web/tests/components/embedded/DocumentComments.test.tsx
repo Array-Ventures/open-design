@@ -312,3 +312,67 @@ it('offers the mention default when explicitly editing a saved root, never when 
   expect(screen.getByRole('checkbox', { name: 'Add to chat' })).toBeChecked();
   expect(api.save).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
 });
+
+it.each([true, false])('binds the completed pointer range and retains drafts/threads with authored identities=%s', async authored => {
+  render(<Harness documentObserved={{ ...observed, html: documentHtml('Report', authored ? '<p data-od-id="body">Ready for review</p>' : '<p>Ready for review</p>') }} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Editing, mode' })); fireEvent.click(await screen.findByRole('button', { name: 'Viewing' }));
+  command('comment'); await screen.findByText('Select text in the document to comment.');
+  const root = screen.getByRole('textbox', { name: 'Report' }), text = root.querySelector('p')!.firstChild!.firstChild!;
+  const select = (end: number) => act(() => { const range = document.createRange(); range.setStart(text, 6); range.setEnd(text, end); window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range); document.dispatchEvent(new Event('selectionchange')); });
+  fireEvent.pointerDown(root, { button: 0 }); select(7);
+  expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
+  select(9); expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
+  fireEvent(root, new MouseEvent('pointerup', { bubbles: true, button: 0 }));
+  const input = await screen.findByRole('textbox', { name: 'Comment on selected text' });
+  expect(screen.getByLabelText('Selected document text').textContent).toBe('for');
+  expect(document.activeElement).not.toBe(input);
+  fireEvent.change(input, { target: { value: 'Retain this exact anchor' } });
+  select(16); fireEvent(root, new MouseEvent('pointerup', { bubbles: true, button: 0 }));
+  expect(input).toHaveValue('Retain this exact anchor'); expect(screen.getByLabelText('Selected document text').textContent).toBe('for');
+  expect(editor().isEditable()).toBe(false); expect(api.documentSave).not.toHaveBeenCalled(); expect(api.save).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' })); await screen.findByRole('textbox', { name: 'Reply' });
+  select(16); fireEvent(root, new MouseEvent('pointerup', { bubbles: true, button: 0 }));
+  expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
+  expect(screen.getByLabelText('Selected document text').textContent).toBe('for'); expect(api.save).toHaveBeenCalledTimes(1); expect(api.send).not.toHaveBeenCalled();
+});
+
+it('waits for Shift release before binding the finished keyboard selection and ignores collapsed selections', async () => {
+  render(<Harness />);
+  fireEvent.click(screen.getByRole('button', { name: 'Editing, mode' })); fireEvent.click(await screen.findByRole('button', { name: 'Viewing' }));
+  command('comment'); await screen.findByText('Select text in the document to comment.');
+  const root = screen.getByRole('textbox', { name: 'Report' }), text = root.querySelector('p')!.firstChild!.firstChild!;
+  const select = (end: number) => act(() => { const range = document.createRange(); range.setStart(text, 6); range.setEnd(text, end); window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range); document.dispatchEvent(new Event('selectionchange')); });
+  select(6); fireEvent(root, new MouseEvent('pointerup', { bubbles: true, button: 0 })); expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
+  fireEvent.keyDown(root, { key: 'Shift', shiftKey: true }); select(7); fireEvent.keyUp(root, { key: 'ArrowRight', shiftKey: true });
+  expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
+  select(9); fireEvent.keyUp(root, { key: 'Shift', shiftKey: false });
+  await screen.findByRole('textbox', { name: 'Comment on selected text' }); expect(screen.getByLabelText('Selected document text').textContent).toBe('for');
+});
+
+it('withdraws the waiting target when navigating to the comment list', async () => {
+  render(<Harness />); command('comment'); await screen.findByText('Select text in the document to comment.');
+  fireEvent.click(screen.getByRole('button', { name: 'All comments' })); await screen.findByText('No comments yet. Select text to add one.');
+  const root = screen.getByRole('textbox', { name: 'Report' }), text = root.querySelector('p')!.firstChild!.firstChild!, range = document.createRange();
+  range.setStart(text, 0); range.setEnd(text, 5);
+  act(() => { window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range); document.dispatchEvent(new Event('selectionchange')); });
+  fireEvent(root, new MouseEvent('pointerup', { bubbles: true, button: 0 }));
+  expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull(); expect(api.save).not.toHaveBeenCalled();
+  expect(host.postMessage.mock.calls.filter(call => call[0].type === 'studio:feedback-state').at(-1)![0].dirty).toBe(false);
+});
+
+it('keeps the mounted thread and its reply draft hidden while the comment list is displayed', async () => {
+  // Browser acceptance qualifies actual utility hit-testing/display. This case
+  // primarily protects reply state against replacing hiding with unmounting.
+  const utilities = document.createElement('style'); utilities.textContent = '.flex{display:flex}.hidden{display:none}'; document.head.appendChild(utilities);
+  try {
+    render(<Harness />); const input = await selectAndOpen(); fireEvent.change(input, { target: { value: 'Saved root' } }); fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+    const reply = await screen.findByRole('textbox', { name: 'Reply' }); fireEvent.change(reply, { target: { value: 'Retained reply draft' } });
+    const quote = screen.getByLabelText('Selected document text'), thread = screen.getByRole('region', { name: 'Comment thread' });
+    fireEvent.click(screen.getByRole('button', { name: 'All comments' }));
+    expect(getComputedStyle(quote.parentElement!).display).toBe('none');
+    expect(quote).not.toBeVisible(); expect(thread).not.toBeVisible(); expect(screen.queryByRole('button', { name: 'Add comment to chat' })).toBeNull();
+    expect(thread.isConnected).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /Saved root/ }));
+    expect(screen.getByRole('textbox', { name: 'Reply' })).toBe(reply); expect(reply).toHaveValue('Retained reply draft'); expect(quote).toBeVisible();
+  } finally { utilities.remove(); }
+});

@@ -329,6 +329,48 @@ editing and staging, and failed handoffs retain their existing retry flow.
 Replies keep their existing separate save/reply and chat-staging controls; they
 do not gain an implicit mention-triggered handoff.
 
+## Choosing document text after opening comments
+
+Opening **Comment** without a selection keeps an unbound selection prompt. A
+subsequent completed pointer selection or keyboard range extension binds the
+exact current block identities, offsets and quote. Intermediate drag ranges do
+not open the composer or steal focus. Once a draft or saved thread has a target,
+new document selections cannot retarget it. List navigation and closing withdraw
+the pending selection; comment operations do not save the working document.
+
+Manual inspection of companion 103 found that its prompt stayed empty after a
+valid Viewing-mode selection. Focused real-editor regressions reproduce that
+failure and cover the source correction, including generated block identities,
+Shift extension and draft/thread retention. Companion 104's manual checks then
+verified completed-range binding in both themes with chat open/closed, bot-name
+suggestions and an explicit unchecked chat-staging choice, exact authored and
+generated anchors across reload, and unchanged working-file hashes.
+
+That inspection also found two older UI problems: an unbound prompt could
+intercept a document drag and become part of its native selection, and the
+retained thread's `flex` utility overrode its list-mode `hidden` attribute. The
+source follow-up makes only an unbound prompt pointer-transparent/nonselectable
+while retaining its controls, and uses explicit hidden/flex display state while
+keeping the reply editor mounted. The source guard still refuses selections
+outside the document; it never widens an anchor to include the comment card.
+Candidate 105's actual packaged browser checks covered physical drag endpoints
+inside the prompt, full quotes only after release, focus retention, real hidden
+thread visibility, the same reply DOM/draft after list navigation, generated
+identities after reload and unchanged source. Manual inspection additionally
+repeated the exact prior obstructed paragraph in dark mode and inspected the
+light 390px layout. These qualify the bounded fixes, not full reference parity.
+
+The passing unit that asserted utility class names was removed after actual
+browser hit-testing covered the behavior; it mirrored implementation tokens
+rather than protecting the interaction. Anchor, source, gesture and retained
+reply-state assertions remain. A separate observed stale-model selection after
+reply focus and the reference's no-selection Comment → list workflow still need
+the next reference-guided interaction slice. Prompt occlusion and document
+markup also remain broader UI gaps.
+
+The [comment selection checkpoint](document-comment-selection.md) records exact
+candidate identities, manual evidence, tests and remaining workflow gaps.
+
 ## Worksheet visibility slice
 
 Ordinary XLSX worksheets support hide/unhide through the host header's scoped
