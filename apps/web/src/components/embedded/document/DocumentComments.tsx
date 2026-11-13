@@ -1,3 +1,5 @@
+import { useCommentChatDefault } from '../useCommentChatDefault';
+import { Checkbox } from '../boardui/checkbox';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { $createRangeSelection, $getNearestNodeFromDOMNode, $getSelection, $isRangeSelection, $isTextNode, $setSelection } from 'lexical';
@@ -31,6 +33,7 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
   useEffect(() => { onOpenChange?.(open); return () => onOpenChange?.(false); }, [open, onOpenChange]);
   const [selected, setSelected] = useState<PreviewComment | null>(null), [target, setTarget] = useState<PreviewCommentTarget | null>(null);
   const [draft, setDraft] = useState(''), [editing, setEditing] = useState(false), [busy, setBusy] = useState(false), [replyDirty, setReplyDirty] = useState(false), [handoffPending, setHandoffPending] = useState(false), [notice, setNotice] = useState<string | null>(null);
+  const [commentEpoch, setCommentEpoch] = useState(0);
   const [width, setWidth] = useState(320), [replyRevision, setReplyRevision] = useState(0);
   const [revision, update] = useState(0);
   const cardScroll = useScrollFade();
@@ -39,6 +42,9 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
   const returnFocus = useRef<() => void>(() => {});
   const current = feedback.previewComments?.find(comment => comment.id === selected?.id) ?? null;
   const authority = { viewerMemberId: viewer?.memberId ?? null, collabEnabled: true, isProjectOwner: false };
+  const mayEdit = Boolean(viewer && canEditComment(current ?? selected, authority));
+  const mayStage = Boolean(viewer && feedback.onSendBoardCommentAttachments && canSendCommentToAgent(current ?? selected, authority));
+  const { selected: addToChat, choose: setAddToChat } = useCommentChatDefault(draft, JSON.stringify([commentEpoch, handoffPending ? null : selected?.id]), mayEdit && mayStage, editing);
   const persisted = useMemo(() => feedback.previewComments?.filter(comment => comment.filePath === fileName && readDocumentCommentAnchor(comment)) ?? [], [feedback.previewComments, fileName]);
   const dirty = busy || replyDirty || handoffPending || editing && draft !== (selected?.note ?? '');
   const notify = useRef(onDirtyChange); notify.current = onDirtyChange;
@@ -80,7 +86,7 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
     const accepted = !dirtyRef.current || await confirmHostFeedbackDiscard(projectId, 'comment');
     return accepted && life.current && !pending.current && version === draftVersion.current.value;
   };
-  const reset = () => { feedback.onDiscardPreviewCommentWrite?.(); setSelected(null); setTarget(null); setDraft(''); setEditing(false); setReplyDirty(false); setHandoffPending(false); setNotice(null); };
+  const reset = () => { setCommentEpoch(value => value + 1); feedback.onDiscardPreviewCommentWrite?.(); setSelected(null); setTarget(null); setDraft(''); setEditing(false); setReplyDirty(false); setHandoffPending(false); setNotice(null); };
   const close = async () => { if (!await allowed() || !life.current) return; reset(); setOpen(false); returnFocus.current(); };
   const begin = async () => {
     capture();
@@ -103,7 +109,7 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
     }, { discrete: true });
   };
   const save = async (attach: boolean) => {
-    if (!target || !draft.trim() || pending.current || !feedback.onSavePreviewComment || root.deleted || root.stale) return;
+    if (!mayEdit || attach && !mayStage || !target || !draft.trim() || pending.current || !feedback.onSavePreviewComment || root.deleted || root.stale) return;
     pending.current = true; setBusy(true);
     const note = draft;
     await root.save(async baseline => {
@@ -161,8 +167,8 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
       {!list && editing ? <div className="flex min-h-0 flex-col gap-2 p-3">
         <blockquote tabIndex={0} aria-label="Selected document text" className="focus-visible:ring-2 focus-visible:ring-border-focus-ring m-0 max-h-32 overflow-y-auto whitespace-pre-wrap break-words border-s-2 border-separator-border ps-2 text-caption-1-regular text-text-tertiary">{documentCommentQuote(target)}</blockquote>
         <RootCommentRecovery failure={root.failure} stale={root.stale} deleted={root.deleted} busy={busy} onRebase={root.rebase} />
-        <CommentMentions value={draft} onChange={setDraft}><TextareaBase aria-label="Comment on selected text" value={draft} onChange={event => setDraft(event.target.value)} rows={3} maxLength={20000} /></CommentMentions>
-        <div className="flex justify-end gap-1"><Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiChatNewLine} aria-label="Save comment and add to chat" disabled={busy || !draft.trim() || root.deleted || root.stale} onClick={() => { void save(true); }} /><Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiArrowUpLine} aria-label="Save comment" disabled={busy || !draft.trim() || root.deleted || root.stale} onClick={() => { void save(false); }} /></div>
+        <CommentMentions value={draft} onChange={setDraft}><TextareaBase aria-label="Comment on selected text" value={draft} onChange={event => setDraft(event.target.value)} rows={3} maxLength={20000} readOnly={!mayEdit} /></CommentMentions>
+        <div className="flex items-center justify-between gap-2">{mayEdit && mayStage ? <Checkbox size="sm" isSelected={addToChat} onChange={setAddToChat} isDisabled={busy}>Add to chat</Checkbox> : <span />}{mayEdit ? <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiArrowUpLine} aria-label="Save comment" disabled={busy || !draft.trim() || root.deleted || root.stale} onClick={() => { void save(addToChat); }} /> : null}</div>
       </div> : null}
       {selected && !editing ? <div hidden={list} className="flex min-h-0 flex-1 flex-col p-3">
         <blockquote tabIndex={0} aria-label="Selected document text" className="focus-visible:ring-2 focus-visible:ring-border-focus-ring m-0 mb-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-words border-s-2 border-separator-border ps-2 text-caption-1-regular text-text-tertiary">{documentCommentQuote(current ?? selected)}</blockquote>

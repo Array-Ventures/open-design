@@ -9,8 +9,8 @@ import { DocumentEditor } from '../../../src/components/embedded/document/Docume
 import { documentHtml } from '../../../src/components/embedded/document/document-html';
 import { readDocumentCommentAnchor, documentCommentTarget } from '../../../src/components/embedded/document/document-comment-anchor';
 import { CommentReviewProvider } from '../../../src/components/embedded/CommentReview';
-const api = vi.hoisted(() => ({ read: vi.fn(), documentSave: vi.fn(), save: vi.fn(), send: vi.fn(), confirm: vi.fn(), remove: vi.fn(), status: vi.fn(), replies: vi.fn(), createReply: vi.fn(), editReply: vi.fn(), deleteReply: vi.fn() }));
-vi.mock('../../../src/components/embedded/host-viewer', () => ({ useEmbeddedViewer: () => ({ memberId: 'evebot:person', displayName: 'Person' }), useEmbeddedMentionBots: () => [{ id: 'chief', name: 'Chief' }] }));
+const api = vi.hoisted(() => ({ viewer: true, read: vi.fn(), documentSave: vi.fn(), save: vi.fn(), send: vi.fn(), confirm: vi.fn(), remove: vi.fn(), status: vi.fn(), replies: vi.fn(), createReply: vi.fn(), editReply: vi.fn(), deleteReply: vi.fn() }));
+vi.mock('../../../src/components/embedded/host-viewer', () => ({ useEmbeddedViewer: () => api.viewer ? ({ memberId: 'evebot:person', displayName: 'Person' }) : null, useEmbeddedMentionBots: () => [{ id: 'chief', name: 'Chief' }] }));
 vi.mock('../../../src/components/embedded/host-context', () => ({ confirmHostFeedbackDiscard: api.confirm }));
 vi.mock('../../../src/components/embedded/document/document-file', () => ({ saveDocumentFile: api.documentSave, readDocumentFile: api.read }));
 vi.mock('../../../src/components/embedded/comment-reply-api', async original => ({ ...await original<object>(), fetchCommentReplies: api.replies, createCommentReply: api.createReply, editCommentReply: api.editReply, deleteCommentReply: api.deleteReply }));
@@ -33,6 +33,7 @@ function Harness({ initial = [], documentObserved = observed }: { initial?: Prev
   </CommentReviewProvider>;
 }
 beforeEach(() => {
+  api.viewer = true;
   Object.defineProperty(window, 'parent', { configurable: true, value: host });
   api.replies.mockResolvedValue([]); api.confirm.mockResolvedValue(false); api.send.mockResolvedValue({ status: 'queued', commentIds: ['root'] });
   api.save.mockImplementation(async (target, note) => ({ ...target, id: 'root', projectId: 'project', conversationId: 'project', note, status: 'open', authorMemberId: 'evebot:person', authorDisplayName: 'Person', createdAt: 1, updatedAt: 1, editToken: 'token' }));
@@ -126,11 +127,13 @@ it('keeps a saved-but-unhanded comment dirty until its contextual chat handoff i
   const normal = api.save.getMockImplementation()!;
   api.save.mockImplementationOnce(async (...args) => ({ ...await normal(...args), handoffPending: true }));
   render(<Harness />); const input = await selectAndOpen(); fireEvent.change(input, { target: { value: 'Saved but not handed off' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Save comment and add to chat' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Add to chat' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
   await waitFor(() => expect(api.save).toHaveBeenCalledTimes(1));
   expect(input).toHaveValue('Saved but not handed off');
   await waitFor(() => expect(host.postMessage.mock.calls.filter(call => call[0].type === 'studio:feedback-state').at(-1)![0].dirty).toBe(true));
-  fireEvent.click(screen.getByRole('button', { name: 'Save comment and add to chat' }));
+  expect(screen.getByRole('checkbox', { name: 'Add to chat' })).toBeChecked();
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
   await screen.findByRole('textbox', { name: 'Reply' }); expect(api.save.mock.calls[1]![4]).toBe('root'); expect(api.save.mock.calls[1]![2]).toBe(true);
 });
 
@@ -266,4 +269,46 @@ it('returns from All comments to the same thread without discarding its unsent r
   expect(api.confirm).not.toHaveBeenCalled();
   expect(api.createReply).not.toHaveBeenCalled();
   expect(api.documentSave).not.toHaveBeenCalled();
+});
+
+
+it('defaults a fresh mentioned comment to chat staging but preserves an explicit opt-out', async () => {
+  render(<Harness />);
+  const input = await selectAndOpen();
+  const checkbox = screen.getByRole('checkbox', { name: 'Add to chat' });
+  expect(checkbox).not.toBeChecked();
+  fireEvent.change(input, { target: { value: '@Chief please revise' } });
+  expect(checkbox).toBeChecked(); expect(api.save).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
+  fireEvent.click(checkbox);
+  fireEvent.change(input, { target: { value: '@Chief please revise @Chief again' } });
+  expect(checkbox).not.toBeChecked();
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+  await waitFor(() => expect(api.save).toHaveBeenCalledOnce());
+  expect(api.save.mock.calls[0]![2]).toBe(false);
+});
+
+
+it('fails closed if the viewer disappears while a mentioned root draft is open', async () => {
+  const view = render(<Harness />); const input = await selectAndOpen();
+  fireEvent.change(input, { target: { value: '@Chief revise' } });
+  expect(screen.getByRole('checkbox', { name: 'Add to chat' })).toBeChecked();
+  api.viewer = false; view.rerender(<Harness />);
+  expect(screen.queryByRole('checkbox', { name: 'Add to chat' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Save comment' })).toBeNull();
+  expect(input).toHaveAttribute('readonly'); expect(api.save).not.toHaveBeenCalled();
+  api.viewer = true; view.rerender(<Harness />);
+  expect(screen.getByRole('checkbox', { name: 'Add to chat' })).toBeChecked();
+});
+it('offers the mention default when explicitly editing a saved root, never when reading its thread', async () => {
+  const target = documentCommentTarget('report.html', { version: 1, start: { block: 'body', offset: 0 }, end: { block: 'body', offset: 5 }, quote: 'Ready' });
+  const saved = { ...target, id: 'root', projectId: 'project', conversationId: 'project', note: '@Chief original', status: 'open' as const, authorMemberId: 'evebot:person', createdAt: 1, updatedAt: 1 };
+  render(<Harness initial={[saved]} />); command('comments');
+  fireEvent.click(await screen.findByRole('button', { name: /@Chief original/ }));
+  await screen.findByRole('textbox', { name: 'Reply' });
+  expect(screen.queryByRole('checkbox', { name: 'Add to chat' })).toBeNull();
+  expect(api.save).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Comment actions' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+  expect(screen.getByRole('checkbox', { name: 'Add to chat' })).toBeChecked();
+  expect(api.save).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
 });
