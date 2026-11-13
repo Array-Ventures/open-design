@@ -1,9 +1,10 @@
 import { Button, Input, Textarea, ValueSelect } from '@open-design/components';
-import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import type { ProjectDesignTokenSuggestion, ProjectDesignTokenSuggestionProp } from '../providers/registry';
 import { useT } from '../i18n';
 import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { Icon } from './Icon';
+import { ScrollFade, useScrollFade } from './embedded/boardui/scroll-fade';
 
 export interface ManualEditDraft {
   text: string;
@@ -97,6 +98,11 @@ export function ManualEditPanel({
   onRedo: () => void;
 }) {
   const t = useT();
+  const scroll = useRef<HTMLDivElement>(null), fade = useScrollFade();
+  useLayoutEffect(() => {
+    if (scroll.current) scroll.current.scrollTop = 0;
+    fade.reset();
+  },[selectedTarget?.id,fade.reset]);
   const [uploadingImage, setUploadingImage] = useState(false);
   // Pin toggle: draggable (pin pulled out) vs locked/fixed (pin pushed in).
   // The lock lives in the parent so it can ALSO freeze the panel's position —
@@ -232,7 +238,7 @@ export function ManualEditPanel({
             </button>
           ) : null}
         </div>
-        <div className="manual-edit-scroll"><fieldset className="manual-edit-fields" disabled={busy || uploadingImage} aria-busy={Boolean(busy || uploadingImage)}>
+        <div className="relative flex min-h-0 flex-1 flex-col"><ScrollFade progress={fade.progress} /><div ref={scroll} onScroll={fade.onScroll} className="manual-edit-scroll"><fieldset className="manual-edit-fields" disabled={busy || uploadingImage} aria-busy={Boolean(busy || uploadingImage)}>
           {targetForInspector ? (
             <>
               <ContentInspector
@@ -309,7 +315,7 @@ export function ManualEditPanel({
               </div>
             </div>
           ) : null}
-        </fieldset></div>
+        </fieldset></div></div>
 
         <div className="manual-edit-footer">
           <div className="manual-edit-footer-actions">

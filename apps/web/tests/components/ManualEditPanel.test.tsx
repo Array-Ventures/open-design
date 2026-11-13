@@ -144,6 +144,22 @@ describe('ManualEditPanel', () => {
     expect(onClearSelection).not.toHaveBeenCalled();
   });
 
+  it('fades only scrolled content and resets the fade when selecting another object', () => {
+    renderPanel();
+    const scroll=host.querySelector<HTMLDivElement>('.manual-edit-scroll')!;
+    const fade=scroll.parentElement!.firstElementChild as HTMLElement;
+    expect(fade.getAttribute('aria-hidden')).toBe('true');
+    const opacities=() => Array.from(fade.children).map(node => (node as HTMLElement).style.opacity);
+    expect(opacities()).toEqual(['0','0','0']);
+    scroll.scrollTop=12; act(() => Simulate.scroll(scroll)); expect(opacities()).toEqual(['0.5','0.5','0.5']);
+    scroll.scrollTop=48; act(() => Simulate.scroll(scroll)); expect(opacities()).toEqual(['1','1','1']);
+    scroll.scrollTop=0; act(() => Simulate.scroll(scroll)); expect(opacities()).toEqual(['0','0','0']);
+    scroll.scrollTop=48; act(() => Simulate.scroll(scroll));
+    renderPanel({selectedTarget:{...target,id:'next-object'}});
+    expect(scroll.scrollTop).toBe(0); expect(opacities()).toEqual(['0','0','0']);
+    expect(scroll.contains(host.querySelector('.manual-edit-footer'))).toBe(false);
+  });
+
   it('keeps inspector controls scrollable separately from footer actions', () => {
     renderPanel();
 
