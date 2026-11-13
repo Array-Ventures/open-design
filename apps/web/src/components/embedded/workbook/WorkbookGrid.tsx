@@ -1,5 +1,6 @@
-import { hasWorkbookStructureIdentity, ownWorkbookAxisIdentity, seedWorkbookStructureIdentity } from './grid-structure-identity';
 'use client';
+
+import { hasWorkbookStructureIdentity, ownWorkbookAxisIdentity, seedWorkbookStructureIdentity } from './grid-structure-identity';
 
 import { ownWorkbookVisibility, workbookVisibilityBridge } from './grid-visibility';
 
