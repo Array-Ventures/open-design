@@ -76,7 +76,8 @@ export function buildPreviewBaseHrefBridge(
       if (next.pathname.charAt(next.pathname.length - 1) !== '/') return;
       var base = document.querySelector('base[data-od-project-preview-base]');
       if (!base) return;
-      base.setAttribute('href', next.href);
+      var relative = base.getAttribute('data-od-project-preview-relative-base');
+      base.setAttribute('href', relative === null ? next.href : new URL(relative, next).href);
       window.parent.postMessage({
         type: 'od:preview-base-updated',
         requestId: typeof data.requestId === 'string' ? data.requestId : '',

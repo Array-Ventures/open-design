@@ -1,3 +1,4 @@
+import { parse, type DefaultTreeAdapterTypes } from 'parse5';
 import { prepareLegacyMotionPreview } from "@open-design/contracts/runtime/motion-source-player";
 import { buildPreviewStorageBridge } from './preview-storage';
 import { injectMotionSourcePlayer, markMotionHostedPreview } from '@open-design/contracts/runtime/motion-source-player';
@@ -1551,14 +1552,51 @@ function injectBeforeBodyEnd(doc: string, payload: string): string {
   return doc + payload;
 }
 
+/** Inspect real HTML base elements with the HTML tokenizer, including entities. */
+function authoredBase(doc: string) {
+  const root = parse(doc, { sourceCodeLocationInfo: true });
+  function visit(node: DefaultTreeAdapterTypes.Node): DefaultTreeAdapterTypes.Element | null {
+    if ('tagName' in node && node.tagName === 'base' && node.attrs.some(attr => attr.name === 'href')) return node;
+    if ('childNodes' in node) for (const child of node.childNodes) {
+      const found = visit(child);
+      if (found) return found;
+    }
+    return null;
+  }
+  return visit(root);
+}
+
 export function htmlHasAuthoredBase(doc: string): boolean {
-  return findRealTagOffset(doc, HTML_TAG_PATTERNS.baseOpen) >= 0;
+  return authoredBase(doc) !== null;
+}
+
+/** Relative authored bases belong to the project and need its renewable scope. */
+export function htmlNeedsProjectPreviewBase(doc: string): boolean {
+  const base = authoredBase(doc);
+  const href = base?.attrs.find(attr => attr.name === 'href')?.value.trim() ?? '';
+  return !/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(href);
 }
 
 function injectBaseHref(doc: string, baseHref: string): string {
-  if (htmlHasAuthoredBase(doc)) return doc;
-  const safeHref = escapeAttr(baseHref);
-  const tag = `<base href="${safeHref}" data-od-project-preview-base>`;
+  const base = authoredBase(doc);
+  if (base) {
+    const relative = base.attrs.find(attr => attr.name === 'href')!.value;
+    if (!htmlNeedsProjectPreviewBase(doc)) return doc;
+    const location = base.sourceCodeLocation;
+    if (!location) return doc;
+    // Store only the authored offset on the transient preview. Renewal applies
+    // it to the new scope; neither scope nor bridge is saved into the artifact.
+    const attrs = base.attrs.filter(attr => !['href', 'data-od-project-preview-base', 'data-od-project-preview-relative-base'].includes(attr.name));
+    let resolved: string;
+    try {
+      const sentinel = 'https://preview.invalid';
+      const url = new URL(relative, new URL(baseHref, sentinel));
+      resolved = /^[a-z][a-z0-9+.-]*:/i.test(baseHref) ? url.href : url.pathname + url.search + url.hash;
+    } catch { return doc; }
+    const tag = `<base href="${escapeAttr(resolved)}" data-od-project-preview-base data-od-project-preview-relative-base="${escapeAttr(relative)}"${attrs.map(attr => ` ${attr.name}="${escapeAttr(attr.value)}"`).join('')}>`;
+    return doc.slice(0, location.startOffset) + tag + doc.slice(location.endOffset);
+  }
+  const tag = `<base href="${escapeAttr(baseHref)}" data-od-project-preview-base>`;
   const headEnd = findRealTagEnd(doc, HTML_TAG_PATTERNS.headOpen);
   if (headEnd >= 0) return doc.slice(0, headEnd) + tag + doc.slice(headEnd);
   const htmlEnd = findRealTagEnd(doc, HTML_TAG_PATTERNS.htmlOpen);

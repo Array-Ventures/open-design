@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { DECK_STRUCTURED_SLIDE_SELECTOR } from '@open-design/contracts/runtime/deck-stage-fallback';
-import { buildSrcdoc } from '../../src/runtime/srcdoc';
+import { buildSrcdoc, htmlNeedsProjectPreviewBase } from '../../src/runtime/srcdoc';
 
 const deckHtml = `<!doctype html>
 <html>
@@ -69,6 +69,31 @@ describe('buildSrcdoc', () => {
     expect(dom.window.document.querySelector('base')?.getAttribute('href'))
       .toBe('https://cdn.example/assets/');
     dom.window.close();
+  });
+
+  it.each(['assets/', 'assets&#47;', 'assets/?a=1&amp;b=2'])('resolves and renews an authored relative base %s without replacing the document', (relative) => {
+    const source = `<html><head><!-- <base href="https://wrong.example/"> --><script>var text='<base href="https://wrong.example/">';</script><base target="_blank"><base href="${relative}"></head><body><img src="../image.svg"></body></html>`;
+    expect(htmlNeedsProjectPreviewBase(source)).toBe(true);
+    const doc = buildSrcdoc(source, { baseHref: 'https://host.example/api/projects/project-1/preview/scope-1/' });
+    const dom = new JSDOM(doc, { url: 'https://host.example/', runScripts: 'dangerously', pretendToBeVisual: true });
+    const before = dom.window.document.documentElement;
+    const base = dom.window.document.querySelector('base[href]')!;
+    const decoded = relative.replace('&#47;', '/').replace('&amp;', '&');
+    expect(base.getAttribute('href')).toBe(new URL(decoded, 'https://host.example/api/projects/project-1/preview/scope-1/').href);
+    expect(dom.window.document.querySelector('base[target]')?.getAttribute('target')).toBe('_blank');
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      source: dom.window.parent,
+      data: { type: 'od:preview-base-update', href: 'https://host.example/api/projects/project-1/preview/scope-2/' },
+    }));
+    expect(dom.window.document.documentElement).toBe(before);
+    expect(base.getAttribute('href')).toBe(new URL(decoded, 'https://host.example/api/projects/project-1/preview/scope-2/').href);
+    dom.window.close();
+  });
+
+  it.each(['https://cdn.example/assets/', '//cdn.example/assets/', '/assets/'])('leaves independently rooted authored bases alone: %s', (href) => {
+    const source = `<html><head><base href="${href}"></head><body></body></html>`;
+    expect(htmlNeedsProjectPreviewBase(source)).toBe(false);
+    expect(buildSrcdoc(source, { baseHref: '/api/projects/project-1/preview/scope-1/' })).toContain(`<base href="${href}">`);
   });
 
   it('updates an injected preview base in place without navigating the document', () => {

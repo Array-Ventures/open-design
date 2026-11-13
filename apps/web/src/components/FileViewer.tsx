@@ -253,7 +253,7 @@ import {
   buildRedirectLoopBlockedDoc,
   buildSrcdoc,
   canActivateSrcDocTransport,
-  htmlHasAuthoredBase,
+  htmlNeedsProjectPreviewBase,
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
 import { ThumbnailRailResize } from './embedded/ThumbnailRailResize';
@@ -10854,21 +10854,21 @@ function HtmlViewer({
   // Wait for source discovery before minting. A committed file switch can
   // still carry the previous file's state until the source-loading effect
   // clears/replaces it, so only inspect bytes witnessed for this identity.
-  const authoredSrcDocBase = useMemo(
+  const needsProjectSrcDocBase = useMemo(
     () => (
       routingSourceIdentity !== currentSourceIdentity || routingHtmlSource == null
         ? null
-        : htmlHasAuthoredBase(routingHtmlSource)
+        : htmlNeedsProjectPreviewBase(routingHtmlSource)
     ),
     [currentSourceIdentity, routingHtmlSource, routingSourceIdentity],
   );
-  const requiresEmbeddedPreviewBase = embedded && !staticSnapshot && (relativeProjectAssetRefs || projectRootAssetRefs);
+  const requiresEmbeddedPreviewBase = embedded && !staticSnapshot && (relativeProjectAssetRefs || projectRootAssetRefs || needsProjectSrcDocBase === true);
   useEffect(() => {
     if (
       (workspaceContext?.workspaceType !== 'team' && !requiresEmbeddedPreviewBase)
       ||
       useUrlLoadPreview
-      || authoredSrcDocBase !== false
+      || needsProjectSrcDocBase !== true
       || effectiveScopedSrcDocPreviewBase
       || !workspaceActive
       || projectResourceReadBlocked
@@ -10887,7 +10887,7 @@ function HtmlViewer({
     };
   }, [
     requiresEmbeddedPreviewBase,
-    authoredSrcDocBase,
+    needsProjectSrcDocBase,
     effectiveScopedSrcDocPreviewBase,
     file.name,
     projectId,
@@ -10955,7 +10955,7 @@ function HtmlViewer({
     let renewableScope: ProjectPreviewBaseScope | null = null;
     if (useUrlLoadPreview) {
       renewableScope = effectiveUrlLoadedPreviewBase;
-    } else if (authoredSrcDocBase === false) {
+    } else if (needsProjectSrcDocBase === true) {
       renewableScope = effectiveScopedSrcDocPreviewBase;
     }
     if (
@@ -11018,7 +11018,7 @@ function HtmlViewer({
       if (timeout !== null) window.clearTimeout(timeout);
     };
   }, [
-    authoredSrcDocBase,
+    needsProjectSrcDocBase,
     effectiveScopedSrcDocPreviewBase,
     effectiveUrlLoadedPreviewBase,
     file.name,
@@ -11430,7 +11430,7 @@ function HtmlViewer({
     srcDocBaseHref,
   ].join('\0');
   const previewStorageScopeKey = previewStorageKey(sourceAuthorizationScopeKey, projectId, file.name);
-  const awaitingEmbeddedPreviewBase = requiresEmbeddedPreviewBase && authoredSrcDocBase === false && !effectiveScopedSrcDocPreviewBase;
+  const awaitingEmbeddedPreviewBase = requiresEmbeddedPreviewBase && needsProjectSrcDocBase === true && !effectiveScopedSrcDocPreviewBase;
   const candidateSrcDocTransport = useMemo(
     () => {
       if (awaitingEmbeddedPreviewBase) return { sourceFingerprint: '', generation: nextPreviewTransportGeneration(), srcDoc: '' };
