@@ -77,7 +77,16 @@ export function projectDocumentDocxColors(xml: string, owners: readonly Document
   const parentCell = (node: Node): Element | undefined => { for (let p = node.parentNode; p; p = p.parentNode) if (p.nodeType === 1 && (p as Element).namespaceURI === w && (p as Element).localName === 'tc') return p as Element; return undefined; };
   const children = (node: Element, name: string) => Array.from(node.childNodes).filter((n): n is Element => n.nodeType === 1 && (n as Element).namespaceURI === w && (n as Element).localName === name);
   const properties = (node: Element, name: string) => { const found = children(node, name); if (found.length > 1) return fail(); if (found[0]) return found[0]; const p = doc.createElementNS(w, `w:${name}`); node.insertBefore(p, node.firstChild); return p; };
-  const set = (p: Element, name: string, attributes: Record<string, string>) => { for (const old of children(p, name)) p.removeChild(old); const item = doc.createElementNS(w, `w:${name}`); for (const [key, value] of Object.entries(attributes)) item.setAttributeNS(w, `w:${key}`, value); p.appendChild(item); };
+  const set = (p: Element, name: string, attributes: Record<string, string>) => { for (const old of children(p, name)) p.removeChild(old); const item = doc.createElementNS(w, `w:${name}`); for (const [key, value] of Object.entries(attributes)) item.setAttributeNS(w, `w:${key}`, value); const later = p.localName === 'tcPr'
+      ? ['noWrap','tcMar','textDirection','tcFitText','vAlign','hideMark','cellIns','cellDel','cellMerge','tcPrChange']
+      : name === 'color'
+        ? ['spacing','w','kern','position','sz','szCs','highlight','u','effect','bdr','shd','fitText','vertAlign','rtl','cs','em','lang','eastAsianLayout','specVanish','rPrChange']
+        : ['fitText','vertAlign','rtl','cs','em','lang','eastAsianLayout','specVanish','rPrChange'];
+    // CT_RPr/CT_TcPr are ordered sequences. Preserve unrelated properties and
+    // insert our owned property before the first schema successor (including
+    // run extension properties), never append after superscript/alignment.
+    const next = Array.from(p.childNodes).find(node => node.nodeType === 1 && ((node as Element).namespaceURI !== w || later.includes((node as Element).localName ?? '')));
+    p.insertBefore(item, next ?? null); };
   const visit = (node: Node): void => {
     if (node.nodeType !== 1) return;
     const element = node as Element, name = element.namespaceURI === w ? element.localName : '';

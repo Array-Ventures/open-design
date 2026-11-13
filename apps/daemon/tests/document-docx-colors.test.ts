@@ -65,3 +65,18 @@ it('keeps unrelated bookmarks and gives nested authored colors precedence withou
   const crossing=xml.replace(end(inner)+end(outer),end(outer)+end(inner));
   expect(()=>projectDocumentDocxColors(crossing,[outer,inner])).toThrow('ownership');
 });
+
+it('places owned properties in the primary OOXML schema order while retaining font, underline, superscript and cell layout', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { DOMParser } = await import('@xmldom/xmldom');
+  const order = JSON.parse(await readFile(new URL('./fixtures/documents/openxml-color-property-order.json',import.meta.url),'utf8'));
+  const cell={id:'2000000000',name:'EveCell',kind:'cell' as const,rowSpan:1,columnSpan:1,colors:{background:'F2F3F5'}}, ink={id:'2000000001',name:'EveInk',kind:'inline' as const,colors:{foreground:'7F1D1D',background:'FFF6AA'}};
+  const start=(o:typeof cell|typeof ink)=>`<w:bookmarkStart w:id="${o.id}" w:name="${o.name}"/>`,end=(o:typeof cell|typeof ink)=>`<w:bookmarkEnd w:id="${o.id}"/>`;
+  const xml=`<w:document xmlns:w="${ns}"><w:body><w:tbl><w:tr><w:tc><w:tcPr><w:tcW w:w="1200" w:type="dxa"/><w:noWrap/><w:tcMar><w:top w:w="80" w:type="dxa"/></w:tcMar><w:vAlign w:val="center"/></w:tcPr><w:p>${start(cell)}${start(ink)}<w:r><w:rPr><w:rFonts w:ascii="Arial"/><w:b/><w:sz w:val="28"/><w:u w:val="single"/><w:vertAlign w:val="superscript"/><w:lang w:val="fr-FR"/></w:rPr><w:t>Styled</w:t></w:r>${end(ink)}${end(cell)}</w:p></w:tc></w:tr></w:tbl></w:body></w:document>`;
+  const result=projectDocumentDocxColors(xml,[cell,ink]),doc=new DOMParser().parseFromString(result,'application/xml');
+  for (const tag of ['rPr','tcPr']) for(const properties of Array.from(doc.getElementsByTagNameNS(ns,tag))) {
+    const ranks=Array.from(properties.childNodes).filter(n=>n.nodeType===1).map(n=>order[tag].indexOf(`w:${(n as import('@xmldom/xmldom').Element).localName}`));
+    expect(ranks.every((value,index)=>value>=0 && (index===0||value>ranks[index-1]!))).toBe(true);
+  }
+  for(const fragment of ['w:ascii="Arial"','w:sz w:val="28"','w:u w:val="single"','w:vertAlign w:val="superscript"','w:lang w:val="fr-FR"','w:top w:w="80"','w:vAlign w:val="center"'])expect(result).toContain(fragment);
+});
