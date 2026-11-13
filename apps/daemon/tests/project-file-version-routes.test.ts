@@ -1,5 +1,5 @@
 import type http from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -576,4 +576,51 @@ describe('project file version routes', () => {
     expect(rawResponse.status).toBe(200);
     expect(await rawResponse.text()).toBe(currentVersion.content);
   });
+  it('stores real Markdown history and rejects stale conditional edits', async () => {
+    const projectId = await createProject();
+    const initial = '# Report\n\nReady.\n';
+    await writeProjectFile(projectId, 'report.md', initial);
+    const digest = createHash('sha256').update(initial).digest('hex');
+    const content = '# Report\n\nReviewed.\n';
+    const save = () => fetch(`${baseUrl}/api/projects/${projectId}/files`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'report.md', content, versionSource: 'manual', expectedContentSha256: digest }) });
+    const accepted = await save(); expect(accepted.status).toBe(200);
+    const result = await accepted.json() as { version: { id: string } }; expect(result.version.id).toBeTruthy();
+    const replay = await save(); expect(replay.status).toBe(200); expect((await replay.json() as { version: { id: string } }).version.id).toBe(result.version.id);
+    const history = await fetch(`${baseUrl}/api/projects/${projectId}/files/report.md/versions`); expect(history.status).toBe(200);
+    const listing = await history.json() as { versions: { id: string }[] }; expect(listing.versions.some(item => item.id === result.version.id)).toBe(true);
+    const saved = await fetch(`${baseUrl}/api/projects/${projectId}/files/report.md/versions/${result.version.id}`); expect(saved.status).toBe(200);
+    expect((await saved.json() as { content: string }).content).toBe(content);
+    const stale = await fetch(`${baseUrl}/api/projects/${projectId}/files`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'report.md', content: '# Stale overwrite', versionSource: 'manual', expectedContentSha256: digest }) });
+    expect(stale.status).toBe(409);
+    expect(await (await fetch(`${baseUrl}/api/projects/${projectId}/raw/report.md`)).text()).toBe(content);
+  });
+  it('rejects stale document saves and serializes concurrent conditional writers', async () => {
+    const projectId = await createProject();
+    const original = '<html><body><p>Original</p></body></html>';
+    await writeProjectFile(projectId, 'document.html', original);
+    const expectedContentSha256 = createHash('sha256').update(original).digest('hex');
+    const save = (content: string, digest = expectedContentSha256, versionSource = 'manual') => fetch(`${baseUrl}/api/projects/${projectId}/files`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'document.html', content, versionSource, expectedContentSha256: digest }),
+    });
+    const next = ['<html><body><p>Person</p></body></html>', '<html><body><p>Agent</p></body></html>'];
+    const responses = await Promise.all(next.map(content => save(content)));
+    expect(responses.map(response => response.status).sort()).toEqual([200, 409]);
+    const winner = responses.findIndex(response => response.status === 200);
+    const loser = responses.findIndex(response => response.status === 409);
+    const winnerResponse = responses[winner]; const loserResponse = responses[loser]; const winnerContent = next[winner];
+    if (!winnerResponse || !loserResponse || !winnerContent) throw new Error('Expected exactly one accepted and one conflicting writer.');
+    expect(await loserResponse.json()).toMatchObject({ error: { code: 'FILE_CONTENT_CHANGED', message: expect.stringContaining('changed after you opened') } });
+    expect(await (await fetch(`${baseUrl}/api/projects/${projectId}/raw/document.html`)).text()).toBe(next[winner]);
+    const accepted = await winnerResponse.json() as { version: { id: string } };
+    const replay = await save(winnerContent);
+    expect(replay.status).toBe(200);
+    expect((await replay.json() as { version: { id: string } }).version.id).toBe(accepted.version.id);
+    const stale = await save('<html><body>Stale overwrite</body></html>');
+    expect(stale.status).toBe(409);
+    expect(await (await fetch(`${baseUrl}/api/projects/${projectId}/raw/document.html`)).text()).toBe(next[winner]);
+    expect((await save('bad', 'not-a-digest')).status).toBe(400);
+    expect((await save('bad', expectedContentSha256, 'ai')).status).toBe(400);
+  });
+
 });

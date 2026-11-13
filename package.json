@@ -28,7 +28,6 @@
     "typecheck": "pnpm -r --workspace-concurrency=4 --if-present run typecheck && tsc -p scripts/tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "@typescript/native": "npm:typescript@7.0.2",
     "@open-design/components": "workspace:*",
     "@open-design/daemon": "workspace:*",
     "@open-design/tools-dev": "workspace:*",
@@ -36,6 +35,9 @@
     "@open-design/tools-release": "workspace:*",
     "@open-design/tools-serve": "workspace:*",
     "@types/node": "20.19.39",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "exceljs-community": "5.2.2",
+    "jszip": "3.10.1",
     "tsx": "4.22.3",
     "yaml": "2.9.0"
   },

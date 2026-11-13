@@ -277,3 +277,7 @@ Shared DTOs live in `packages/contracts`.
 When a user-facing capability changes, keep its daemon endpoint, shared
 contract, web surface, and `od` CLI surface aligned as required by the root
 `AGENTS.md` dual-track rule.
+
+## Evebot embedded Studio
+
+The paired Evebot runtime uses a dedicated local visual-workspace entry point, without the standalone agent or cloud-service bootstrap. See [the embedded Studio boundary and verification guide](embedded-studio.md) before changing daemon startup or the shared project-file handlers.

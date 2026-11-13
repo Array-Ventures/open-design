@@ -214,3 +214,12 @@
   color: var(--text-faint);
   font-size: 13px;
 }
+
+/* Embedded choices use the installed host Button; standalone retains its skin. */
+:global(:root[data-host-theme='boardui']) .chips { gap: 8px; }
+:global(:root[data-host-theme='boardui']) .chip[aria-pressed='true'],
+:global(:root[data-host-theme='boardui']) .chip[aria-pressed='true']:hover {
+  background: var(--color-background-secondary-default) !important;
+  border-color: var(--color-border-button-hover) !important;
+  color: var(--color-text-primary) !important;
+}

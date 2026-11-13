@@ -1,3 +1,4 @@
+import { embeddedResourceUrl } from '../components/embedded/transport';
 import type { WorkspaceCollabContext } from '@open-design/contracts';
 
 /**
@@ -28,7 +29,7 @@ export function workspaceResourceUrl(
   path: string,
   context: WorkspaceCollabContext | null | undefined,
 ): string {
-  if (!context) return path;
+  if (!context) return embeddedResourceUrl(path);
   const separator = path.includes('?') ? '&' : '?';
   return `${path}${separator}workspaceId=${encodeURIComponent(context.workspaceId)}`
     + `&workspaceMemberId=${encodeURIComponent(context.workspaceMemberId)}`;

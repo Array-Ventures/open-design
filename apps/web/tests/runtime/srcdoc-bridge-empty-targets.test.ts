@@ -381,6 +381,39 @@ describe('selection bridge — empty annotation surface (#890)', () => {
     });
   });
 
+  it('captures annotation clicks before authored document navigation and restores normal clicks when disabled', () => {
+    const { win, parentPostMessage } = setupBridgeDom('<h1 id="headline">Slide content</h1>', 'comment', ['#headline']);
+    let navigations = 0;
+    win.document.addEventListener('click', () => { navigations++; }, true);
+    win.document.querySelector('#headline')!.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(navigations).toBe(0);
+    expect(postedMessages(parentPostMessage, 'od:comment-target')).toHaveLength(1);
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:comment-mode', enabled: false, mode: 'picker' } }));
+    win.document.querySelector('#headline')!.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(navigations).toBe(1);
+  });
+
+  it('uses a click-position pin on deck letterboxing instead of selecting its generated shell', async () => {
+    const { win, parentPostMessage } = setupBridgeDom(
+      '<div class="deck-shell" data-od-id="path-0" data-od-runtime-id="path-0"><div class="deck-stage" data-od-id="path-0-0" data-od-runtime-id="path-0-0"><section><h1 id="headline">Actual slide heading</h1><p>Slide body</p></section></div></div>',
+      'comment', ['.deck-shell', '.deck-stage', '#headline'],
+    );
+    for (const selector of ['.deck-shell', '.deck-stage']) {
+      Object.defineProperty(win.document.querySelector(selector), 'getBoundingClientRect', { configurable: true, value: () => ({ x: 0, y: 0, width: win.innerWidth, height: win.innerHeight, top: 0, right: win.innerWidth, bottom: win.innerHeight, left: 0 }) });
+    }
+    await waitForPostedMessages(win, parentPostMessage, 'od:comment-targets');
+    const targets = postedMessages(parentPostMessage, 'od:comment-targets').at(-1)?.targets;
+    expect(targets).not.toEqual(expect.arrayContaining([expect.objectContaining({ label: 'div.deck-shell' })]));
+    parentPostMessage.mockClear();
+    win.document.querySelector('.deck-shell')!.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true, clientX: 90, clientY: 80 }));
+    const pin = postedMessages(parentPostMessage, 'od:comment-target');
+    expect(pin).toHaveLength(1);
+    expect(pin[0]).toMatchObject({ label: 'pin', freePin: true, position: { x: 78, y: 68, width: 24, height: 24 }, hoverPoint: { x: 90, y: 80 } });
+    parentPostMessage.mockClear();
+    win.document.querySelector('#headline')!.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(postedMessages(parentPostMessage, 'od:comment-target')[0]).toMatchObject({ label: 'h1', text: 'Actual slide heading', position: { width: 120, height: 48 } });
+  });
+
   it('does not broadcast the generated React root as a page-sized Comment target', async () => {
     const { win, parentPostMessage } = setupBridgeDom(
       '<div id="root" data-od-id="path-0"><header><a>Brand</a></header><main><h1 id="headline">Hero</h1></main><footer>Footer</footer></div>',
@@ -577,6 +610,42 @@ describe('selection bridge — empty annotation surface (#890)', () => {
         generation: 'runtime-state-generation',
       }),
     ]);
+  });
+
+  it('does not replay old canvas state after explicit host slide navigation', async () => {
+    const { dom, win, parentPostMessage } = setupBridgeDom('<main id="app">Second slide</main>', 'inspect', [], 'navigation-generation');
+    win.dispatchEvent(new win.MessageEvent('message', { data: {
+      type: 'od:preview-runtime-state-restore', id: 'restore-before-navigation', generation: 'navigation-generation',
+      state: { version: 1, hash: '', roots: [{ path: [0], tag: 'main', id: 'app', html: 'Second slide' }], htmlAttrs: {}, bodyAttrs: {}, entries: [] },
+    } }));
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'go', index: 2, userInitiated: true } }));
+    win.document.getElementById('app')!.textContent = 'Third slide';
+    await new Promise<void>(resolve => win.setTimeout(resolve, 120));
+    expect(win.document.getElementById('app')!.textContent).toBe('Third slide');
+    expect(postedMessages(parentPostMessage, 'od:preview-runtime-state-restored')).toEqual([
+      expect.objectContaining({ id: 'restore-before-navigation', outcome: 'canceled' }),
+    ]);
+    dom.window.close();
+  });
+
+  it.each([
+    { action: 'go', index: 2 },
+    { action: 'go', index: 2, userInitiated: true, protocolVersion: 999 },
+    { action: 'go', index: 'invalid', userInitiated: true },
+  ])('retains restore retries for synchronization or invalid navigation: %j', async navigation => {
+    const { dom, win, parentPostMessage } = setupBridgeDom('<main id="app">Second slide</main>', 'inspect', [], 'sync-generation');
+    win.dispatchEvent(new win.MessageEvent('message', { data: {
+      type: 'od:preview-runtime-state-restore', id: 'restore-sync', generation: 'sync-generation',
+      state: { version: 1, hash: '', roots: [{ path: [0], tag: 'main', id: 'app', html: 'Second slide' }], htmlAttrs: {}, bodyAttrs: {}, entries: [] },
+    } }));
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', ...navigation } }));
+    win.document.getElementById('app')!.textContent = 'Booting placeholder';
+    await new Promise<void>(resolve => win.setTimeout(resolve, 120));
+    expect(win.document.getElementById('app')!.textContent).toBe('Second slide');
+    expect(postedMessages(parentPostMessage, 'od:preview-runtime-state-restored')).toEqual([
+      expect.objectContaining({ id: 'restore-sync', outcome: 'restored' }),
+    ]);
+    dom.window.close();
   });
 
   it('does not copy stale source annotations onto a different runtime-rendered page', async () => {

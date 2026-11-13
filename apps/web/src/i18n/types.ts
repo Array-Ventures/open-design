@@ -5242,6 +5242,11 @@ export interface Dict {
   'questions.uploadFailed': string;
   'manualEdit.sectionImage': string;
   'manualEdit.sectionContent': string;
+  'manualEdit.transition': string;
+  'manualEdit.transitionFade': string;
+  'manualEdit.transitionPush': string;
+  'manualEdit.transitionMagicMove': string;
+  'manualEdit.presentationProperties': string;
   'manualEdit.sectionPage': string;
   'manualEdit.pageBackground': string;
   'manualEdit.pageBaseSize': string;

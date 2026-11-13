@@ -97,6 +97,9 @@ const residualAllowedExactPaths = new Set([
   "apps/desktop/vendor/dom-to-pptx/dom-to-pptx.bundle.js",
   // PostCSS loads Tailwind through a web-local .mjs compatibility config entry.
   "apps/web/postcss.config.mjs",
+  // Next loads custom PostCSS plugins by module path in its Node build worker.
+  // This small CJS entry is the compatibility boundary, covered by stylesheet tests.
+  "apps/web/postcss-embedded-fonts.cjs",
   "scripts/bake-html-ppt-examples.mjs",
   // CI-only plugin-preview renderer. Kept .mjs and run directly by Node so its
   // runtime deps (puppeteer-core + a headless Chrome + ffmpeg) are provided by

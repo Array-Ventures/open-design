@@ -1,4 +1,26 @@
+import { InspectorResizeHandle } from './embedded/InspectorResizeHandle';
+import { uploadProjectImage } from './embedded/project-image-upload';
+import { insertionImageSourceForAsset } from '../edit-mode/insertion';
+import { sha256 } from '@noble/hashes/sha256';
+import { bytesToHex } from '@noble/hashes/utils';
+import { markdownDirectory, markdownRelativeProjectPath, markdownImageSourceUrl } from './markdown-image-path';
+export { markdownImageSourceUrl } from './markdown-image-path';
+import type { CommentSaveResult } from './comment-send-result';
+import { confirmHostFeedbackDiscard, prepareHostFeedback } from './embedded/host-context';
+import { CommentMentions } from './embedded/CommentMentions';
+import { DeckPresentationMenu } from './embedded/DeckPresentationMenu';
+import { commentsInReviewScope } from './embedded/comment-page-scope';
+import { CommentListPopover, CommentReviewPage, ResolveCommentButton, useCommentReview } from './embedded/CommentReview';
+import { CommentThreadMenu } from './embedded/CommentThreadMenu';
+import { ArtifactAnnotationControls } from './embedded/ArtifactAnnotationControls';
+import { ArtifactEditControls } from './embedded/ArtifactEditControls';
+import { manualEditFloatingPanelStyle } from '../edit-mode/panel-placement';
+import { ArtifactInsertionToolbar } from './embedded/ArtifactInsertionToolbar';
+import { SpeakerNotesDrawer } from './embedded/SpeakerNotesDrawer';
+import { DashboardControls } from './embedded/DashboardControls';
+import type { EmbeddedDashboard } from './embedded/dashboards';
 import { validateCommentSaveTarget } from '../comments/validate-save-target';
+import { useEmbeddedViewer } from './embedded/host-viewer';
 import { previewStorageKey, readPreviewStorage, savePreviewStorageMessage } from '../runtime/preview-storage';
 import { commentSelectorsMatch, commentUsesIdentity, ownerCommentNeedsLocation, resolveOwnerCommentAnchor } from '../comments/owner-anchor';
 import { indexCommentTargets } from '../comments/target-index';
@@ -25,7 +47,7 @@ import { ShareMoreMenu } from './share/ShareMoreMenu';
 import shareEntryStyles from './share/ShareEntry.module.css';
 import { AnchoredMenuShell } from './chat/AnchoredMenuShell';
 import { createPortal, flushSync } from 'react-dom';
-import { Button, Input, Select } from '@open-design/components';
+import { Button, Input, ValueSelect, Textarea } from '@open-design/components';
 import {
   getLatestHostPreviewNavigationFailure,
   subscribeHostPreviewNavigationFailure,
@@ -234,9 +256,11 @@ import {
   buildRedirectLoopBlockedDoc,
   buildSrcdoc,
   canActivateSrcDocTransport,
+  htmlNeedsProjectPreviewBase,
   htmlHasAuthoredBase,
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
+import { ThumbnailRailResize } from './embedded/ThumbnailRailResize';
 import { DeckThumbnailRail, type DeckThumbnailViewport } from './DeckThumbnailRail';
 import { parseDeckThumbnails } from '../runtime/deck-thumbnail-parser';
 import {
@@ -347,12 +371,15 @@ import type {
 import { ManualEditPanel, emptyManualEditDraft, type ManualEditDraft } from './ManualEditPanel';
 import {
   applyManualEditPatch,
+  persistedInsertionReplay,
   isManualEditFullHtmlDocument,
   readManualEditAttributes,
   readManualEditFields,
   readManualEditOuterHtml,
   readManualEditStyles,
 } from '../edit-mode/source-patches';
+import { usePreviewSourceHandoff } from '../runtime/use-preview-source-handoff';
+import { verifySavedManualEditPreview } from '../edit-mode/saved-preview';
 import { MANUAL_EDIT_STYLE_PROPS, type ManualEditBridgeMessage, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
 import {
@@ -709,7 +736,6 @@ const MARKDOWN_CODE_LANGUAGE_ATTR = 'data-code-language';
 const MARKDOWN_COPY_BLOCK_ATTR = 'data-copy-code-block';
 const MARKDOWN_COPY_BUTTON_CLASS = 'markdown-code-copy';
 const MARKDOWN_COPY_TOAST_CLASS = 'markdown-code-toast';
-const ABSOLUTE_MARKDOWN_IMAGE_SOURCE_RE = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
 
 const DEPLOY_PROVIDER_OPTIONS: DeployProviderOption[] = [
   {
@@ -965,59 +991,6 @@ function rewriteMarkdownImageSources(
     const loadingAttr = /\sloading=/.test(attrs) ? '' : ' loading="lazy"';
     return `<img${before}src="${escapeHtmlAttribute(resolved)}"${loadingAttr}${after}>`;
   });
-}
-
-export function markdownImageSourceUrl(
-  projectId: string,
-  markdownPath: string,
-  src: string,
-  workspaceContext?: WorkspaceCollabContext | null,
-): string | null {
-  const trimmed = src.trim();
-  if (!trimmed) return null;
-  if (ABSOLUTE_MARKDOWN_IMAGE_SOURCE_RE.test(trimmed)) return trimmed;
-  const relativePath = trimmed.startsWith('/')
-    ? normalizeMarkdownProjectPath(trimmed.slice(1))
-    : normalizeMarkdownProjectPath(`${markdownDirectory(markdownPath)}/${trimmed}`);
-  return relativePath
-    ? projectFileUrl(projectId, relativePath, workspaceContext)
-    : null;
-}
-
-function markdownDirectory(path: string): string {
-  const normalized = normalizeMarkdownProjectPath(path);
-  const slash = normalized.lastIndexOf('/');
-  return slash > 0 ? normalized.slice(0, slash) : '';
-}
-
-function normalizeMarkdownProjectPath(path: string): string {
-  const parts: string[] = [];
-  for (const raw of path.replace(/\\/g, '/').split('/')) {
-    const part = raw.trim();
-    if (!part || part === '.') continue;
-    if (part === '..') {
-      parts.pop();
-      continue;
-    }
-    parts.push(part);
-  }
-  return parts.join('/');
-}
-
-function markdownRelativeProjectPath(fromPath: string, targetPath: string): string {
-  const fromDir = markdownDirectory(fromPath);
-  const target = normalizeMarkdownProjectPath(targetPath);
-  if (!fromDir) return target;
-  if (target.startsWith(`${fromDir}/`)) return target.slice(fromDir.length + 1);
-  const fromParts = fromDir.split('/').filter(Boolean);
-  const targetParts = target.split('/').filter(Boolean);
-  let common = 0;
-  while (common < fromParts.length && common < targetParts.length && fromParts[common] === targetParts[common]) {
-    common += 1;
-  }
-  const up = Array.from({ length: fromParts.length - common }, () => '..');
-  const down = targetParts.slice(common);
-  return [...up, ...down].join('/') || target;
 }
 
 function decodeHtmlAttribute(value: string): string {
@@ -1513,40 +1486,6 @@ function pickLatestShareDeployment(
     .sort(compareDeploymentsByNewest)[0] ?? null;
 }
 
-function manualEditFloatingPanelStyle(
-  target: ManualEditTarget,
-  previewScale: number,
-  canvasSize: PreviewCanvasSize | undefined,
-): CSSProperties {
-  const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
-  const panelWidth = 320;
-  const preferredPanelHeight = 380;
-  const pad = 12;
-  const canvasWidth = canvasSize?.width ?? 1200;
-  const canvasHeight = canvasSize?.height ?? 800;
-  const panelHeight = Math.min(preferredPanelHeight, Math.max(260, canvasHeight - pad * 2));
-  const targetLeft = target.rect.x * scale;
-  const targetTop = target.rect.y * scale;
-  const targetRight = (target.rect.x + target.rect.width) * scale;
-  let left = targetRight + pad;
-  if (left + panelWidth > canvasWidth - pad) {
-    left = Math.max(pad, targetLeft - panelWidth - pad);
-  }
-  const top = Math.max(
-    pad,
-    Math.min(targetTop, Math.max(pad, canvasHeight - panelHeight - pad)),
-  );
-  // Height is left to the content (auto): a short inspector (e.g. typography
-  // only) should be a compact card, not a tall half-empty panel. The cap only
-  // engages for long inspectors, at which point the scroll body takes over.
-  return {
-    left,
-    top,
-    width: panelWidth,
-    maxHeight: panelHeight,
-  };
-}
-
 // Anchors the hover "edit params" affordance to the top-right corner of the
 // hovered element, just inside its bounds so moving the cursor from the
 // element onto the icon does not drop the hover. Uses the same iframe→canvas
@@ -1761,10 +1700,14 @@ function getPreviewDocumentEpoch(key: string): string {
 }
 
 interface Props {
+  embedded?: boolean;
   projectId: string;
   projectKind: TrackingProjectKind;
   file: ProjectFile;
   liveHtml?: string;
+  previewFrameTestId?: string;
+  inlineAnnotations?: boolean;
+  staticSnapshot?: boolean;
   filesRefreshKey?: number;
   isDeck?: boolean;
   streaming?: boolean;
@@ -1775,7 +1718,8 @@ interface Props {
   previewComments?: PreviewComment[];
   previewCommentsState?: 'loading' | 'error' | 'success';
   onRetryPreviewComments?: () => void;
-  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string) => Promise<PreviewComment | null>;
+  onDiscardPreviewCommentWrite?: () => void;
+  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string, baseline?: PreviewComment) => Promise<CommentSaveResult | null>;
   onRemovePreviewComment?: (commentId: string) => Promise<boolean>;
   /**
    * Persist a drag-reorder of the sidebar's display order (recvq5BVsolIxi
@@ -1878,10 +1822,14 @@ type PendingShareUpdateAfterLogin = {
 };
 
 export const FileViewer = memo(function FileViewer({
+  embedded = false,
   projectId,
   projectKind,
   file,
   liveHtml,
+  previewFrameTestId = 'artifact-preview-frame',
+  inlineAnnotations = false,
+  staticSnapshot = false,
   filesRefreshKey = 0,
   isDeck,
   streaming,
@@ -1892,6 +1840,7 @@ export const FileViewer = memo(function FileViewer({
   previewCommentsState = 'success',
   onRetryPreviewComments,
   onSavePreviewComment,
+  onDiscardPreviewCommentWrite,
   onRemovePreviewComment,
   onReorderPreviewComment,
   onSendBoardCommentAttachments,
@@ -1988,6 +1937,7 @@ export const FileViewer = memo(function FileViewer({
   if (rendererMatch?.renderer.id === 'html' || rendererMatch?.renderer.id === 'deck-html') {
     return (
       <HtmlViewer
+        embedded={embedded}
         projectId={projectId}
         projectKind={projectKind}
         file={file}
@@ -2000,6 +1950,9 @@ export const FileViewer = memo(function FileViewer({
         loginUpdateRequest={loginUpdateRequest}
         onLoginUpdateRequestHandled={onLoginUpdateRequestHandled}
         liveHtml={liveHtml}
+        previewFrameTestId={previewFrameTestId}
+        inlineAnnotations={inlineAnnotations}
+        staticSnapshot={staticSnapshot}
         filesRefreshKey={filesRefreshKey}
         isDeck={rendererMatch.renderer.id === 'deck-html'}
         streaming={Boolean(streaming)}
@@ -2010,6 +1963,7 @@ export const FileViewer = memo(function FileViewer({
         previewCommentsState={previewCommentsState}
         onRetryPreviewComments={onRetryPreviewComments}
         onSavePreviewComment={onSavePreviewComment}
+        onDiscardPreviewCommentWrite={onDiscardPreviewCommentWrite}
         onRemovePreviewComment={onRemovePreviewComment}
         onReorderPreviewComment={onReorderPreviewComment}
         onSendBoardCommentAttachments={onSendBoardCommentAttachments}
@@ -2039,6 +1993,7 @@ export const FileViewer = memo(function FileViewer({
   if (rendererMatch?.renderer.id === 'react-component') {
     return (
       <ReactComponentViewer
+        embedded={embedded}
         projectId={projectId}
         projectKind={projectKind}
         file={file}
@@ -2099,6 +2054,8 @@ export const FileViewer = memo(function FileViewer({
 });
 
 export function LiveArtifactViewer({
+  chrome = true,
+  previewRenderer,
   projectId,
   liveArtifact,
   liveArtifactEvents = [],
@@ -2106,6 +2063,8 @@ export function LiveArtifactViewer({
 }: {
   projectId: string;
   liveArtifact: LiveArtifactWorkspaceEntry;
+  chrome?: boolean;
+  previewRenderer?: (input: { url: string; source: { sourceDirectory: string; templateFile: string } }) => ReactNode;
   liveArtifactEvents?: LiveArtifactEventItem[];
   onRefreshArtifacts?: () => Promise<void> | void;
 }) {
@@ -2291,12 +2250,27 @@ export function LiveArtifactViewer({
     };
   }, [projectId, liveArtifact.artifactId, liveArtifact.updatedAt, workspaceContext]);
 
+  useEffect(() => {
+    if (!process.env.NEXT_PUBLIC_OD_STUDIO_BASE_PATH) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const readCurrentSource = async () => {
+      if (document.visibilityState !== 'hidden') {
+        const next = await fetchLiveArtifact(projectId, liveArtifact.artifactId, workspaceContext);
+        if (!cancelled) setDetail(next);
+      }
+      if (!cancelled) timer = setTimeout(() => { void readCurrentSource(); }, 2500);
+    };
+    timer = setTimeout(() => { void readCurrentSource(); }, 2500);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [projectId, liveArtifact.artifactId, workspaceContext]);
+
   const previewUrl = useMemo(
     () => appendResourceQuery(
       liveArtifactPreviewUrl(projectId, liveArtifact.artifactId, 'rendered', workspaceContext),
-      `v=${reloadKey}`,
+      `v=${encodeURIComponent(liveArtifact.updatedAt)}-${reloadKey}`,
     ),
-    [projectId, liveArtifact.artifactId, reloadKey, workspaceContext],
+    [projectId, liveArtifact.artifactId, liveArtifact.updatedAt, reloadKey, workspaceContext],
   );
   const previewScale = zoom / 100;
 
@@ -2356,7 +2330,9 @@ export function LiveArtifactViewer({
     }
   }
 
-  const dataPayload = detail?.document?.dataJson ?? null;
+  const hostSourceState = detail && 'hostSourceState' in detail
+    ? (detail as EmbeddedDashboard).hostSourceState : null;
+  const dataPayload = hostSourceState?.dataAvailable === false ? null : detail?.document?.dataJson ?? null;
   const currentRefreshStatus = detail?.refreshStatus ?? liveArtifact.refreshStatus;
   const isRunning = refreshing || currentRefreshStatus === 'running';
 
@@ -2533,7 +2509,9 @@ export function LiveArtifactViewer({
             <span className="viewer-divider" aria-hidden />
             <a
               className="ghost-link"
-              href={liveArtifactPreviewUrl(
+              aria-disabled={detail?.status === 'archived' || undefined}
+              onClick={(event) => { if (detail?.status === 'archived') event.preventDefault(); }}
+              href={detail?.status === 'archived' ? undefined : liveArtifactPreviewUrl(
                 projectId,
                 liveArtifact.artifactId,
                 'rendered',
@@ -2552,7 +2530,7 @@ export function LiveArtifactViewer({
             className="viewer-action primary"
             data-running={isRunning ? 'true' : 'false'}
             onClick={() => void handleRefresh()}
-            disabled={isRunning}
+            disabled={isRunning || detail?.status === 'archived'}
             aria-busy={isRunning}
             aria-label={isRunning ? t('liveArtifact.refresh.running') : t('liveArtifact.refresh.button')}
             title={
@@ -2566,7 +2544,10 @@ export function LiveArtifactViewer({
           </button>
         </div>
       </div>
+      {chrome && hostSourceState && detail ? <DashboardControls key={`${projectId}:${liveArtifact.artifactId}`} artifact={detail} onSaved={(next) => { setDetail(next); setReloadKey((value) => value + 1); void onRefreshArtifacts?.(); }} /> : null}
       <div className="viewer-body" ref={previewBodyRef}>
+        {detail?.status === 'archived' ? null : hostSourceState?.sourceError ? <div role="alert">{hostSourceState.sourceError} The preview retains the last successful snapshot.</div>
+          : hostSourceState?.sourceChanged ? <div role="status">Local source files have changed. Refresh to update the preview. Data shows the current JSON; preview shows the last successful snapshot.</div> : null}
         {refreshError ? (
           <LiveArtifactRefreshNotice
             tone="error"
@@ -2594,6 +2575,11 @@ export function LiveArtifactViewer({
             action={t('liveArtifact.refresh.failureAction')}
           />
         ) : null}
+        {previewRenderer ? <div className="live-artifact-inline-preview" hidden={mode !== 'preview'}>
+          {detail?.status === 'archived' ? <div className="viewer-empty">This dashboard is archived. Restore it to open the preview.</div>
+            : hostSourceState ? previewRenderer({ url: previewUrl, source: hostSourceState.paths })
+              : <div role="status" className="inline-preview-status">Loading preview…</div>}
+        </div> : <>
         <div
           className={`live-artifact-preview-layer preview-viewport preview-viewport-${previewViewport}`}
           data-active={mode === 'preview' ? 'true' : 'false'}
@@ -2602,7 +2588,7 @@ export function LiveArtifactViewer({
         >
           <div className="preview-frame-clip">
             <div style={previewScaleShellStyle(previewViewport, previewScale)}>
-              <PreviewDrawOverlay>
+              {hostSourceState && detail?.status === 'archived' ? <div className="viewer-empty">This dashboard is archived. Restore it to open the preview.</div> : <PreviewDrawOverlay>
                 <iframe
                   ref={iframeRef}
                   data-testid="live-artifact-preview-frame"
@@ -2610,11 +2596,12 @@ export function LiveArtifactViewer({
                   sandbox="allow-scripts allow-popups allow-downloads"
                   src={previewUrl}
                 />
-              </PreviewDrawOverlay>
+              </PreviewDrawOverlay>}
             </div>
           </div>
         </div>
-        {mode !== 'preview' && loading ? (
+        </>}
+        {mode === 'preview' ? null : loading ? (
           <div className="viewer-empty">{t('fileViewer.loading')}</div>
         ) : mode === 'code' ? (
           <LiveArtifactCodePanel
@@ -2779,6 +2766,7 @@ function JsonPanel({ value, emptyLabel }: { value: unknown; emptyLabel: string }
 }
 
 function liveArtifactMetadataPayload(liveArtifact: LiveArtifact): Record<string, unknown> {
+  const nativePaths = 'hostSourceState' in liveArtifact ? (liveArtifact as EmbeddedDashboard).hostSourceState.paths : null;
   return {
     artifact: {
       id: liveArtifact.id,
@@ -2795,9 +2783,9 @@ function liveArtifactMetadataPayload(liveArtifact: LiveArtifact): Record<string,
     document: liveArtifact.document
       ? {
           format: liveArtifact.document.format,
-          templatePath: liveArtifact.document.templatePath,
-          generatedPreviewPath: liveArtifact.document.generatedPreviewPath,
-          dataPath: liveArtifact.document.dataPath,
+          templatePath: nativePaths?.templateFile ?? liveArtifact.document.templatePath,
+          ...(nativePaths ? { sourceDirectory: nativePaths.sourceDirectory } : { generatedPreviewPath: liveArtifact.document.generatedPreviewPath }),
+          dataPath: nativePaths?.dataFile ?? liveArtifact.document.dataPath,
           dataSchemaJson: liveArtifact.document.dataSchemaJson,
           sourceJson: liveArtifact.document.sourceJson,
         }
@@ -3123,7 +3111,7 @@ export function LiveArtifactRefreshHistoryPanel({
         <header className="live-artifact-refresh-section-header">
           <h4>{t('liveArtifact.refresh.persistedTitle')}</h4>
           <span className="live-artifact-refresh-hint">
-            {t('liveArtifact.refresh.persistedHint')}
+            {process.env.NEXT_PUBLIC_OD_STUDIO_BASE_PATH ? 'Saved refresh attempts' : t('liveArtifact.refresh.persistedHint')}
           </span>
         </header>
         {reversedPersistedEvents.length === 0 ? (
@@ -3393,6 +3381,7 @@ function manualEditPatchKindToTracking(patch: ManualEditPatch): TrackingArtifact
     case 'set-attributes': return 'attributes';
     case 'set-outer-html': return 'html';
     case 'set-full-source': return 'source';
+    case 'insert-element': return 'html';
   }
 }
 
@@ -4788,6 +4777,7 @@ export function CommentSidePanel({
   onSendSelected,
   onCreateComment,
   canSendComment,
+  threadActions,
   currentUser,
   sending,
   queueOnSend = false,
@@ -4820,6 +4810,7 @@ export function CommentSidePanel({
   onToggleSelect: (commentId: string) => void;
   onSelectAll: () => void;
   canSendComment?: (comment: PreviewComment) => boolean;
+  threadActions?: { canEdit(comment: PreviewComment): boolean; canDelete(comment: PreviewComment): boolean; canResolve?(comment: PreviewComment): boolean; remove(comment: PreviewComment): void | Promise<unknown> };
   /** The viewer's own directory entry, so their comments show their avatar +
    *  name even when the member roster is empty (personal workspace / cold
    *  roster window). Supplied from the workspace context the caller already
@@ -4827,7 +4818,7 @@ export function CommentSidePanel({
   currentUser?: CollabCloudMemberDirectoryEntry | null;
   onClearSelection: () => void;
   onReorder?: (orderedIds: string[], draggedId: string) => void;
-  onReply: (comment: PreviewComment) => void;
+  onReply: (comment: PreviewComment, editRoot?: boolean) => void;
   onSendSelected: () => void | Promise<void>;
   onCreateComment?: (note: string) => boolean | Promise<boolean>;
   sending: boolean;
@@ -4841,6 +4832,7 @@ export function CommentSidePanel({
   /** Total deck slides, when the sidebar is attached to a deck preview. */
   deckSlideCount?: number;
 }) {
+  const commentReview = useCommentReview();
   const { workspaceContext } = useProjectCollabContext();
   const [newCommentDraft, setNewCommentDraft] = useState('');
   const [dragState, setDragState] = useState<CommentSideDragState | null>(null);
@@ -5001,8 +4993,13 @@ export function CommentSidePanel({
           <span>{commentsLabel}</span>
         </div>
         <div className="comment-side-header-actions">
-          {/* The header's right slot owns collapse; select all moved below
-              the divider. */}
+          {sendableCount > 0 ? (
+            <button type="button" className="comment-side-select-all" disabled={allSelected}
+              onClick={onSelectAll} aria-label={t('chat.comments.selectAll')} title={t('chat.comments.selectAll')}>
+              <Icon name="check" size={14} />
+            </button>
+          ) : null}
+          {/* Bulk selection shares the header with collapse. */}
           <button
             ref={expandedToggleRef}
             type="button"
@@ -5018,18 +5015,6 @@ export function CommentSidePanel({
         </div>
       </div>
       <CommentSyncBanner projectId={projectId} workspaceContext={workspaceContext} filePath={filePath} includeBackfill={false} />
-      {sendableCount > 0 ? (
-        <div className="comment-side-toolbar">
-          <button
-            type="button"
-            className="comment-side-select-all"
-            disabled={allSelected}
-            onClick={onSelectAll}
-          >
-            {t('chat.comments.selectAll')}
-          </button>
-        </div>
-      ) : null}
       <div
         className="comment-side-list"
         onDragLeave={(event) => {
@@ -5095,15 +5080,7 @@ export function CommentSidePanel({
                   displayNumber={displayCommentNumber(comment, index)}
                   t={t}
                 />
-                {typeof comment.slideIndex === 'number' && deckSlideCount && deckSlideCount > 0 ? (
-                  <span className="comment-side-slide">
-                    {t('fileViewer.speakerNotesSlide', { current: comment.slideIndex + 1, total: deckSlideCount })}
-                  </span>
-                ) : null}
-                <span className="comment-side-time" title={formatAbsoluteDateTime(commentCreatedAt(comment) || undefined) ?? undefined}>
-                  {formatCommentTime(commentCreatedAt(comment), commentClock, t)}
-                </span>
-                {sendable ? (
+                {threadActions ? <><ResolveCommentButton comment={comment} allowed={threadActions.canDelete(comment)} blocked={threadActions.canResolve ? !threadActions.canResolve(comment) : false} /><CommentThreadMenu onReopen={comment.status === 'resolved' && threadActions.canDelete(comment) && commentReview ? () => commentReview.changeStatus(comment.id, 'open') : undefined} canEdit={threadActions.canEdit(comment)} canDelete={threadActions.canDelete(comment)} onEdit={() => onReply(comment, true)} onDelete={() => threadActions.remove(comment)} /></> : sendable ? (
                   <button
                     type="button"
                     className={`comment-side-check${selected ? ' checked' : ''}`}
@@ -5118,6 +5095,17 @@ export function CommentSidePanel({
                   </button>
                 ) : null}
               </div>
+              <div className="comment-side-item-meta">
+                {typeof comment.slideIndex === 'number' && deckSlideCount && deckSlideCount > 0 ? (
+                  <span className="comment-side-slide">
+                    {t('fileViewer.speakerNotesSlide', { current: comment.slideIndex + 1, total: deckSlideCount })}
+                  </span>
+                ) : null}
+                <span className="comment-side-time" title={formatAbsoluteDateTime(commentCreatedAt(comment) || undefined) ?? undefined}>
+                  {formatCommentTime(commentCreatedAt(comment), commentClock, t)}
+                </span>
+              </div>
+              {threadActions && comment.status === 'resolved' ? <span className="text-caption-1-regular text-text-tertiary">Resolved</span> : null}
               <CommentListBody key={comment.note} note={comment.note} t={t} />
               {unavailableCommentId === comment.id ? (
                 <span role="status" data-testid="comment-location-unavailable">
@@ -5163,16 +5151,14 @@ export function CommentSidePanel({
           {allowSendToChat ? (
             <Button
               variant="primary"
+              size="icon"
+              aria-label={sending ? t('chat.comments.sending') : queueOnSend ? t('chat.annotationQueue') : t('chat.comments.sendToChat')}
               data-testid="comment-side-send-claude"
               disabled={sending || sendDisabled}
               title={sendDisabled ? sendDisabledReason : undefined}
               onClick={() => void onSendSelected()}
             >
-              {sending
-                ? t('chat.comments.sending')
-                : queueOnSend
-                  ? t('chat.annotationQueue')
-                  : t('chat.comments.sendToChat')}
+              <Icon name="send" size={16} />
             </Button>
           ) : null}
         </div>
@@ -5189,7 +5175,7 @@ export function CommentSidePanel({
           <div className="composer-shell comment-side-new-comment-shell">
             <div className="composer-input-wrap">
               <div className="composer-textarea-layer">
-                <textarea
+                <CommentMentions value={newCommentDraft} onChange={setNewCommentDraft}><Textarea unstyled
                   value={newCommentDraft}
                   placeholder={t('chat.comments.placeholder')}
                   aria-label={t('chat.comments.placeholder')}
@@ -5200,7 +5186,7 @@ export function CommentSidePanel({
                       void submitNewComment();
                     }
                   }}
-                />
+                /></CommentMentions>
               </div>
             </div>
             <div className="composer-row comment-side-new-comment-actions">
@@ -5216,6 +5202,7 @@ export function CommentSidePanel({
               <span className="composer-spacer" />
               <button
                 type="submit"
+                aria-label={sending ? t('chat.comments.sending') : t('chat.send')}
                 className={`composer-send${sending ? ' is-sending' : ''}`}
                 disabled={!canCreateComment}
               >
@@ -5312,6 +5299,7 @@ function CommentSideDock({
   onSendSelected,
   onCreateComment,
   canSendComment,
+  threadActions,
   currentUser,
   sending,
   queueOnSend = false,
@@ -5339,12 +5327,13 @@ function CommentSideDock({
   onSelectAll: () => void;
   onClearSelection: () => void;
   onReorder?: (orderedIds: string[], draggedId: string) => void;
-  onReply: (comment: PreviewComment) => void;
+  onReply: (comment: PreviewComment, editRoot?: boolean) => void;
   onSendSelected: () => void | Promise<void>;
   onCreateComment?: (note: string) => boolean | Promise<boolean>;
   /** Team-collab gate: which comments the viewer may send to the agent (author
    * OR project owner). Defaults to all-sendable when absent (single-user). */
   canSendComment?: (comment: PreviewComment) => boolean;
+  threadActions?: { canEdit(comment: PreviewComment): boolean; canDelete(comment: PreviewComment): boolean; canResolve?(comment: PreviewComment): boolean; remove(comment: PreviewComment): void | Promise<unknown> };
   /** The viewer's own directory entry — see `CommentSidePanel`. */
   currentUser?: CollabCloudMemberDirectoryEntry | null;
   sending: boolean;
@@ -5383,6 +5372,7 @@ function CommentSideDock({
         onSendSelected={onSendSelected}
         onCreateComment={onCreateComment}
         canSendComment={canSendComment}
+        threadActions={threadActions}
         currentUser={currentUser}
         sending={sending}
         queueOnSend={queueOnSend}
@@ -5593,28 +5583,22 @@ function InspectPanel({
           <span className="inspect-row-value">{Math.round(fontSizeNum)}px</span>
         </div>
         <div className="inspect-row">
-          <label htmlFor="ip-fw">{t('inspect.weight')}</label>
-          <Select
+          <ValueSelect
             id="ip-fw"
+            label={t('inspect.weight')}
             value={fontWeight}
-            onChange={(e) => setVal('font-weight', e.target.value)}
-          >
-            {['100', '300', '400', '500', '600', '700', '800', '900'].map((w) => (
-              <option key={w} value={w}>{w}</option>
-            ))}
-          </Select>
+            onValueChange={value => setVal('font-weight', value)}
+            options={['100', '300', '400', '500', '600', '700', '800', '900'].map(value => ({ value, label: value }))}
+          />
         </div>
         <div className="inspect-row">
-          <label htmlFor="ip-ta">{t('inspect.align')}</label>
-          <Select
+          <ValueSelect
             id="ip-ta"
+            label={t('inspect.align')}
             value={textAlign}
-            onChange={(e) => setVal('text-align', e.target.value)}
-          >
-            {['left', 'center', 'right', 'justify'].map((a) => (
-              <option key={a} value={a}>{a}</option>
-            ))}
-          </Select>
+            onValueChange={value => setVal('text-align', value)}
+            options={['left', 'center', 'right', 'justify'].map(value => ({ value, label: value }))}
+          />
         </div>
       </section>
 
@@ -6760,6 +6744,7 @@ function ReactModulePointer({
 }
 
 function ReactComponentViewer({
+  embedded = false,
   projectId,
   projectKind,
   file,
@@ -6774,6 +6759,7 @@ function ReactComponentViewer({
   viewerOnly = false,
   workspaceActive = true,
 }: {
+  embedded?: boolean;
   projectId: string;
   projectKind: TrackingProjectKind;
   file: ProjectFile;
@@ -7091,7 +7077,7 @@ function ReactComponentViewer({
                   </div>
                 ) : null}
               </div>
-              {viewerOnly ? null : (
+              {embedded || viewerOnly ? null : (
                 <HandoffButton
                   projectId={projectId}
                   projectKind={projectKind}
@@ -7259,11 +7245,15 @@ function srcDocLoadRequiresFreshParseOnReturnToVisible(state: {
 }
 
 function HtmlViewer({
+  embedded = false,
   projectId,
   projectKind,
   file,
   pendingShareUpdateAfterLoginRef,
   liveHtml,
+  previewFrameTestId = 'artifact-preview-frame',
+  inlineAnnotations = false,
+  staticSnapshot = false,
   filesRefreshKey = 0,
   isDeck,
   streaming,
@@ -7274,6 +7264,7 @@ function HtmlViewer({
   previewCommentsState = 'success',
   onRetryPreviewComments,
   onSavePreviewComment,
+  onDiscardPreviewCommentWrite,
   onRemovePreviewComment,
   onReorderPreviewComment,
   onSendBoardCommentAttachments,
@@ -7305,6 +7296,10 @@ function HtmlViewer({
   onManualEditExitHandlerChange,
   manualEditEntryAllowed = true,
 }: {
+  embedded?: boolean;
+  previewFrameTestId?: string;
+  inlineAnnotations?: boolean;
+  staticSnapshot?: boolean;
   projectId: string;
   projectKind: TrackingProjectKind;
   file: ProjectFile;
@@ -7326,7 +7321,8 @@ function HtmlViewer({
   previewComments?: PreviewComment[];
   previewCommentsState?: 'loading' | 'error' | 'success';
   onRetryPreviewComments?: () => void;
-  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string) => Promise<PreviewComment | null>;
+  onDiscardPreviewCommentWrite?: () => void;
+  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string, baseline?: PreviewComment) => Promise<CommentSaveResult | null>;
   onRemovePreviewComment?: (commentId: string) => Promise<boolean>;
   onReorderPreviewComment?: (commentId: string, sortKey: number) => Promise<void>;
   onSendBoardCommentAttachments?: (attachments: ChatCommentAttachment[], images?: File[]) => Promise<CommentSendResult> | CommentSendResult;
@@ -7355,6 +7351,7 @@ function HtmlViewer({
   ) => void;
   manualEditEntryAllowed?: boolean;
 }) {
+  const commentReview = useCommentReview();
   const { locale, t } = useI18n();
   const iframeKeepAlivePool = useIframeKeepAlivePool();
   // Retained viewers prewarm new file revisions behind the active tab. Keeping
@@ -7778,7 +7775,7 @@ function HtmlViewer({
   const [source, setSource] = useState<string | null>(initialSource);
   const [routingSource, setRoutingSource] = useState<string | null>(initialSource);
   const srcDocPreviewBaseIdentity =
-    `${sourceAuthorizationScopeKey ?? 'pending'}\0${projectId}\0${file.name}`;
+    `${sourceAuthorizationScopeKey ?? 'pending'}\0${projectId}\0${file.name}\0${staticSnapshot ? 'snapshot' : 'authored'}`;
   const currentSourceIdentity =
     `${srcDocPreviewBaseIdentity}\0${liveHtml === undefined ? 'raw' : 'live'}`;
   const [routingSourceIdentity, setRoutingSourceIdentity] = useState<string | null>(
@@ -8743,11 +8740,13 @@ function HtmlViewer({
   const manualEditUrlStandbySourceFingerprintRef = useRef<string | null>(null);
   // A successful Manual Edit save mutates the active iframe through the edit
   // bridge before/while the same result is persisted. Remember that exact
-  // source revision while the session is open so watcher echoes do not replace
-  // the live editing DOM. The latch is always retired when Edit closes.
+  // source revision so watcher echoes do not replace the live editing DOM.
+  // Embedded srcDoc may retain confirmed paint after exit; a different source
+  // revision or explicit reload retires the latch.
   const manualEditPersistedDocumentRef = useRef<{
     sourceFingerprint: string;
     reloadKey: number;
+    transportGeneration: string;
   } | null>(null);
   // Source snapshot frozen while a non-edit annotation pass (Mark/Draw,
   // Comment, Inspect) is open. The file-watcher live-reload (chokidar →
@@ -9137,6 +9136,15 @@ function HtmlViewer({
     } | null) => void;
     timeout: number;
   }>());
+  useLayoutEffect(() => {
+    previewScrollRestoreRef.current = null;
+    previewScrollPositionRef.current = { frameLeft: 0, frameTop: 0, canvasLeft: 0, canvasTop: 0 };
+    previewScrollRequestAtRef.current = 0;
+    for (const pending of pendingPreviewScrollCapturesRef.current.values()) {
+      window.clearTimeout(pending.timeout); pending.resolve(null);
+    }
+    pendingPreviewScrollCapturesRef.current.clear();
+  }, [sourceAuthorizationScopeKey, projectId, file.name]);
   const dcViewportRef = useRef({
     x: 0,
     y: 0,
@@ -9224,7 +9232,7 @@ function HtmlViewer({
     const next = target.isConnected ? target : fallback;
     next?.focus();
   }, [commentPanelOpen]);
-  const capturePreviewScrollPosition = useCallback(async (): Promise<void> => {
+  const capturePreviewScrollPosition = useCallback(async (waitForOpaque = false): Promise<void> => {
     const host = previewBodyRef.current;
     const frame = iframeRef.current;
     let position = previewScrollPositionRef.current;
@@ -9305,7 +9313,7 @@ function HtmlViewer({
       || position.canvasLeft !== 0
       || position.canvasTop !== 0
     );
-    if (!hasKnownNonZeroScroll) {
+    if (!hasKnownNonZeroScroll && !waitForOpaque) {
       // At the origin there is no jump-to-top to prevent. Keep the precise
       // capture in flight for subsequent transitions, but do not serialize an
       // otherwise instant save behind a bridge timeout if the iframe is gone.
@@ -9329,6 +9337,7 @@ function HtmlViewer({
       return;
     }
     const apply = () => {
+      if (previewScrollRestoreRef.current !== snapshot) return;
       const previewBody = previewBodyRef.current;
       if (typeof previewBody?.scrollTo === 'function') {
         previewBody.scrollTo(snapshot.hostLeft, snapshot.hostTop);
@@ -9337,18 +9346,18 @@ function HtmlViewer({
         const frameDocument = iframeRef.current?.contentWindow?.document;
         frameDocument?.scrollingElement?.scrollTo(snapshot.frameLeft, snapshot.frameTop);
         frameDocument?.querySelector<HTMLElement>('.design-canvas')?.scrollTo(snapshot.canvasLeft, snapshot.canvasTop);
-        iframeRef.current?.contentWindow?.postMessage({
-          type: 'od:preview-scroll-restore',
-          frameLeft: snapshot.frameLeft,
-          frameTop: snapshot.frameTop,
-          canvasLeft: snapshot.canvasLeft,
-          canvasTop: snapshot.canvasTop,
-        }, '*');
       } catch (error) {
-        // The host still restores its own scroll when the iframe denies DOM access.
-        if (error instanceof DOMException && error.name === 'SecurityError') return;
-        console.warn('Could not restore preview frame scroll', error);
+        // Opaque frames still receive the restore below. Direct DOM access is
+        // only a readable-frame fast path, never a prerequisite for messaging.
+        if (!(error instanceof DOMException && error.name === 'SecurityError')) console.warn('Could not restore preview frame scroll', error);
       }
+      iframeRef.current?.contentWindow?.postMessage({
+        type: 'od:preview-scroll-restore',
+        frameLeft: snapshot.frameLeft,
+        frameTop: snapshot.frameTop,
+        canvasLeft: snapshot.canvasLeft,
+        canvasTop: snapshot.canvasTop,
+      }, '*');
     };
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
@@ -9357,6 +9366,7 @@ function HtmlViewer({
         window.setTimeout(() => {
           if (previewScrollRestoreRef.current === snapshot) {
             apply();
+            previewScrollRestoreRef.current = null;
           }
         }, 260);
       });
@@ -9366,10 +9376,24 @@ function HtmlViewer({
   const [selectedManualEditTarget, setSelectedManualEditTarget] = useState<ManualEditTarget | null>(null);
   const [manualEditHoverTarget, setManualEditHoverTarget] = useState<ManualEditTarget | null>(null);
   const [manualEditPageStylesOpen, setManualEditPageStylesOpen] = useState(false);
+  const [presentationInspectorWidth, setPresentationInspectorWidth] = useState(320);
+  const [manualEditInsertionInset, setManualEditInsertionInset] = useState(64);
   const [manualEditPanelPosition, setManualEditPanelPosition] = useState<{ left: number; top: number } | null>(null);
+  const [manualEditPanelLocked, setManualEditPanelLocked] = useState(false);
+  useEffect(() => {
+    setManualEditPanelLocked(false);
+    setManualEditPanelPosition(null);
+  }, [projectId, file.name, manualEditMode]);
   const [manualEditDraftDirty, setManualEditDraftDirty] = useState(false);
+  const selectManualEditTargetRef = useRef<(target: ManualEditTarget | null) => Promise<void>>(async () => {});
+  const pendingManualInsertSelectionRef = useRef<string | null>(null);
   const selectedManualEditTargetIdRef = useRef<string | null>(null);
   const manualEditSelectionDraftRef = useRef<{ id: string; draft: ManualEditDraft } | null>(null);
+  const manualEditHistoryInspectorRef = useRef<{
+    id: string; source: string; version: number; frame: HTMLIFrameElement | null;
+    generation: string | null; keys: Array<keyof ManualEditStyles>;
+    resolved: Partial<ManualEditStyles> | null;
+  } | null>(null);
   // Tracks the iframe's in-flight inline text edit. `finishManualEditTextSession`
   // posts the explicit finish and resolves only after the iframe acks AND the
   // resulting commit has been applied, so exit/dismiss/cancel never tear down
@@ -9505,6 +9529,8 @@ function HtmlViewer({
     () => (typeof window === 'undefined' ? false : parseForceInline(window.location.search)),
     [],
   );
+  const [commentListInPopover, setCommentListInPopover] = useState(false);
+  const commentListReturnFocus = useRef<(() => void) | null>(null);
   const [activeCommentTarget, setActiveCommentTarget] = useState<PreviewCommentSnapshot | null>(null);
   const [hoveredCommentTarget, setHoveredCommentTarget] = useState<PreviewCommentSnapshot | null>(null);
   // True while the pointer is physically over the floating hover card. The card
@@ -9547,6 +9573,11 @@ function HtmlViewer({
   // Don't let a pending dismiss outlive the component.
   useEffect(() => cancelHoverCardDismiss, [cancelHoverCardDismiss]);
   const [activePreviewCommentId, setActivePreviewCommentId] = useState<string | null>(null);
+  const activeCommentLifetime = useRef({ key: '', revision: 0 });
+  const activeCommentKey = JSON.stringify([projectId, file.name, sourceAuthorizationScopeKey, activePreviewCommentId]);
+  if (activeCommentLifetime.current.key !== activeCommentKey) activeCommentLifetime.current = { key: activeCommentKey, revision: activeCommentLifetime.current.revision + 1 };
+  const [rootEditIntent, setRootEditIntent] = useState(0);
+  const [rootSelectionIntent, setRootSelectionIntent] = useState(0);
   const [commentLocationIntent, setCommentLocationIntent] = useState(0);
   const [missingCommentLocation, setMissingCommentLocation] = useState<{
     commentId: string; previewKey: string; intent: number;
@@ -9554,7 +9585,18 @@ function HtmlViewer({
   const [liveCommentTargets, setLiveCommentTargets] = useState<Map<string, PreviewCommentSnapshot>>(() => new Map());
   const [commentTargetsReadyKey, setCommentTargetsReadyKey] = useState<string | null>(null);
   const liveCommentTargetsRef = useRef(liveCommentTargets);
-  const [commentDraft, setCommentDraft] = useState('');
+  const composerDraftRevision = useRef(0);
+  const composerRetarget = useRef({ active: false, attempt: null as object | null });
+  useLayoutEffect(() => {
+    const life = composerRetarget.current; life.active = true;
+    return () => { life.active = false; life.attempt = null; };
+  }, [projectId, file.name, sourceAuthorizationScopeKey]);
+  const [commentDraft, setCommentDraftState] = useState('');
+  const commentDraftRef = useRef('');
+  const setCommentDraft = useCallback((value: string) => {
+    if (value !== commentDraftRef.current) composerDraftRevision.current++;
+    commentDraftRef.current = value; setCommentDraftState(value);
+  }, []);
   // Inspect mode shares the iframe selection bridge with comment mode but
   // routes the picked element to a side panel that mutates per-element CSS
   // overrides via postMessage. The host owns the authoritative override map:
@@ -9581,12 +9623,21 @@ function HtmlViewer({
   // Images attached to an element comment ("评论此元素"). Kept as raw Files
   // (uploaded on send) with object-URL thumbnails for preview/remove, mirroring
   // the markup overlay's image tray.
-  const [boardImages, setBoardImages] = useState<File[]>([]);
+  const [boardImages, setBoardImagesState] = useState<File[]>([]);
+  const boardImagesRef = useRef<File[]>([]);
+  const setBoardImages = useCallback((update: File[] | ((current: File[]) => File[])) => {
+    const next = typeof update === 'function' ? update(boardImagesRef.current) : update;
+    if (next !== boardImagesRef.current) composerDraftRevision.current++;
+    boardImagesRef.current = next; setBoardImagesState(next);
+  }, []);
+  const rootSaveLock = useRef(false);
   const [activeCommentExistingAttachments, setActiveCommentExistingAttachments] =
     useState<PreviewCommentAttachment[]>([]);
   const [boardImagePreviews, setBoardImagePreviews] = useState<{ file: File; url: string }[]>([]);
   const [boardPreviewIndex, setBoardPreviewIndex] = useState<number | null>(null);
   const [sendingBoardBatch, setSendingBoardBatch] = useState(false);
+  const [markupDraftDirty, setMarkupDraftDirty] = useState(false);
+  const [markupDiscardRevision, setMarkupDiscardRevision] = useState(0);
   useEffect(() => {
     const next = boardImages.map((file) => ({ file, url: URL.createObjectURL(file) }));
     setBoardImagePreviews(next);
@@ -9596,12 +9647,20 @@ function HtmlViewer({
   }, [boardImages]);
   // Read through refs inside the preview message listener, so a keystroke in
   // the draft does not re-subscribe it.
-  const composerHoldsUnsentWork = Boolean(activeCommentTarget) && composerHasUnsentWork({
+  const [threadDraftDirty, setThreadDraftDirty] = useState(false);
+  // SavedCommentThread reports each text/image edit, even while already dirty.
+  const reportThreadDraft = useCallback((dirty: boolean) => { composerDraftRevision.current++; setThreadDraftDirty(dirty); }, []);
+  const draftParts = [activeCommentTarget, queuedBoardNotes, activeCommentExistingAttachments];
+  const previousDraftParts = useRef(draftParts);
+  if (draftParts.some((part, index) => part !== previousDraftParts.current[index])) {
+    composerDraftRevision.current++; previousDraftParts.current = draftParts;
+  }
+  const composerHoldsUnsentWork = Boolean(activeCommentTarget) && (threadDraftDirty || composerHasUnsentWork({
     draft: commentDraft,
     queuedNoteCount: queuedBoardNotes.length,
     freshImageCount: boardImages.length,
     savedNote: currentActiveComposerComment()?.note ?? null,
-  });
+  }));
   const composerHoldsUnsentWorkRef = useRef(composerHoldsUnsentWork);
   composerHoldsUnsentWorkRef.current = composerHoldsUnsentWork;
   const commentReselectPendingRef = useRef(false);
@@ -9617,15 +9676,30 @@ function HtmlViewer({
    * discard, which shows the notice; the next pick confirms it and retargets.
    * Editing the draft disarms. Every pick path retargets through here.
    */
-  const requestComposerRetarget = useCallback((applyRetarget: () => void) => {
+  const requestComposerRetarget = useCallback((applyRetarget: () => void, editRoot = false) => {
+    const life = composerRetarget.current, attempt = {}; life.attempt = attempt;
+    const lifetime = activeCommentLifetime.current, revision = composerDraftRevision.current;
+    const current = () => life.active && life.attempt === attempt && activeCommentLifetime.current === lifetime && composerDraftRevision.current === revision;
+    const apply = () => {
+      if (!current()) return;
+      life.attempt = null; onDiscardPreviewCommentWrite?.();
+      activeCommentLifetime.current = { key: activeCommentLifetime.current.key, revision: activeCommentLifetime.current.revision + 1 };
+      setRootSelectionIntent(intent => intent + 1);
+      if (!editRoot) setRootEditIntent(0);
+      applyRetarget();
+    };
+    if (inlineAnnotations && window.parent !== window && composerHoldsUnsentWorkRef.current) {
+      void confirmHostFeedbackDiscard(projectId, 'comment').then(discard => { if (discard && current()) { disarmComposerDiscard(); apply(); } });
+      return;
+    }
     if (composerHoldsUnsentWorkRef.current && !composerDiscardArmedRef.current) {
       composerDiscardArmedRef.current = true;
       setComposerDiscardPending(true);
       return;
     }
     disarmComposerDiscard();
-    applyRetarget();
-  }, [disarmComposerDiscard]);
+    apply();
+  }, [disarmComposerDiscard, inlineAnnotations, projectId, onDiscardPreviewCommentWrite]);
   const [commentSavedToast, setCommentSavedToast] = useState<string | null>(null);
   const [templateSavedToast, setTemplateSavedToast] = useState<string | null>(null);
   const [deploySavedToast, setDeploySavedToast] = useState<{ message: string; details: string } | null>(null);
@@ -9745,61 +9819,7 @@ function HtmlViewer({
   // before the host DOM node has been resolved. Treating that lookup window as
   // a local dock briefly shrinks the preview and shifts centered desktop or
   // mobile content left before the floating card appears.
-  const localCommentSideDockActive = commentPanelOpen && !commentPortalId;
-  const boardPreviewCanvasSize = commentPreviewCanvasSize(previewBodySize, {
-    boardMode: localCommentSideDockActive,
-    sidePanelCollapsed: commentSidePanelCollapsed,
-    viewport: previewViewport,
-  });
-  const boardSideDockStacked = usesStackedCommentSideDock(previewBodySize, {
-    boardMode: localCommentSideDockActive,
-    sidePanelCollapsed: commentSidePanelCollapsed,
-    viewport: previewViewport,
-  });
-  useEffect(() => {
-    if (
-      previewViewport !== 'desktop' ||
-      zoomMode !== 'auto' ||
-      previewMeasurementInteractionActive
-    ) {
-      return;
-    }
-    const nextWidth = boardPreviewCanvasSize?.width;
-    const previousWidth = lastAutoFitCanvasWidthRef.current;
-    if (typeof nextWidth === 'number' && Number.isFinite(nextWidth)) {
-      // Growing the canvas (e.g. collapsing the chat rail, per rec:recvq6WoJUvRXl)
-      // can otherwise get stuck at the OLD, narrower-canvas zoom forever: the
-      // in-iframe measurement bridge (srcdoc.ts injectPreviewContentSizeBridge)
-      // reads document.documentElement/body scrollWidth/clientWidth, all of
-      // which are bounded below by the iframe's OWN current rendered viewport
-      // width (html/body fill at least 100% of the viewport by default). That
-      // viewport width is itself `canvasWidth / previewScale` from the
-      // PREVIOUS auto-fit pass, so once the previous scale already implies a
-      // viewport wide enough to contain the real content, the measurement
-      // just reports that residual viewport size right back — self-confirming
-      // the stale scale even after the canvas grows and could fit a larger,
-      // more useful zoom. Dropping the cached content width forces a fresh
-      // measurement this pass at zoom=100% (viewport := canvasWidth exactly),
-      // which cannot be contaminated by a previous scale. Only doing this on
-      // GROW avoids an extra flash-to-100% on every manual drag-resize tick
-      // when the canvas shrinks — that direction already self-corrects,
-      // because the previous scale's implied viewport dips below the
-      // content's real width and the measurement naturally reports the
-      // content's true, uncontaminated extent.
-      if (previousWidth !== null && nextWidth > previousWidth) {
-        setDesktopPreviewContentWidth(null);
-      }
-      lastAutoFitCanvasWidthRef.current = nextWidth;
-    }
-    scheduleDesktopPreviewContentMeasure();
-  }, [
-    boardPreviewCanvasSize?.width,
-    boardPreviewCanvasSize?.height,
-    previewMeasurementInteractionActive,
-    previewViewport,
-    scheduleDesktopPreviewContentMeasure,
-    zoomMode,
-  ]);
+  const localCommentSideDockActive = commentPanelOpen && !commentPortalId && !inlineAnnotations;
 
   function deploymentMapForCurrentFile(items: WebDeploymentInfo[]) {
     const next: Partial<Record<WebDeployProviderId, WebDeploymentInfo>> = {};
@@ -9937,7 +9957,16 @@ function HtmlViewer({
   // Brief "Press Esc to exit" hint shown in the main window whenever a
   // presentation (fullscreen stage + presenter popup) starts.
   const [presentEscHint, setPresentEscHint] = useState(false);
-  const [deckThumbnailsCollapsed, setDeckThumbnailsCollapsed] = useState(false);
+  const [deckThumbnailsCollapsedPreference, setDeckThumbnailsCollapsed] = useState<boolean | null>(null);
+  const compactThumbnailRail = embedded && Boolean(previewBodySize && previewBodySize.width < 640);
+  const deckThumbnailsCollapsed = deckThumbnailsCollapsedPreference ?? compactThumbnailRail;
+  const [deckThumbnailWidth, setDeckThumbnailWidth] = useState<number | null>(null);
+  // A compact screen must leave room for the slide. Preserve the person's
+  // wide-screen rail preference while constraining only this rendered layout.
+  const thumbnailRailDefaultWidth = compactThumbnailRail ? 120 : previewViewport === 'desktop' ? 194 : 56;
+  const thumbnailRailLayoutLimit = Math.max(64, (previewBodySize?.width ?? 800) - 160);
+  const thumbnailRailWidth = Math.min(deckThumbnailWidth ?? thumbnailRailDefaultWidth,
+    thumbnailRailDefaultWidth + 24, thumbnailRailLayoutLimit);
   const [speakerNotesEditMode, setSpeakerNotesEditMode] = useState(false);
   const [speakerNotesDraft, setSpeakerNotesDraft] = useState('');
   const [_speakerNotesSaving, setSpeakerNotesSaving] = useState(false);
@@ -10264,6 +10293,7 @@ function HtmlViewer({
     file.name,
     file.mtime,
     liveHtml,
+    staticSnapshot,
     reloadKey,
     filesRefreshKey,
     sourceSnapshotRefreshKey,
@@ -10327,6 +10357,73 @@ function HtmlViewer({
     return sourceLooksLikeDeckPreview(s);
   }, [routingHtmlSource]);
   const effectiveDeck = isDeck || (!passiveLargeHtmlPreview && looksLikeDeck);
+  const dockedPresentationProperties = embedded && effectiveDeck && manualEditMode
+    && !selectedManualEditTarget && manualEditPageStylesOpen && (previewBodySize?.width ?? 0) >= 640;
+  const presentationInspectorMaximum = Math.min(560, Math.max(288, (previewBodySize?.width ?? 800) - 320));
+  const presentationInspectorLayoutWidth = Math.min(presentationInspectorWidth, presentationInspectorMaximum);
+
+  // Thumbnail rails consume real canvas width too. Include them when deciding
+  // whether comments fit beside the slide or need a full-width bottom row.
+  const commentLayoutSize = previewBodySize && dockedPresentationProperties
+    ? { ...previewBodySize, width: Math.max(1, previewBodySize.width - presentationInspectorLayoutWidth) }
+    : previewBodySize && effectiveDeck && !manualEditMode && !deckThumbnailsCollapsed
+      ? { ...previewBodySize, width: Math.max(1, previewBodySize.width - thumbnailRailWidth - 12) }
+      : previewBodySize;
+  const boardPreviewCanvasSize = commentPreviewCanvasSize(commentLayoutSize, {
+    boardMode: localCommentSideDockActive,
+    sidePanelCollapsed: commentSidePanelCollapsed,
+    viewport: previewViewport,
+  });
+  const boardSideDockStacked = usesStackedCommentSideDock(commentLayoutSize, {
+    boardMode: localCommentSideDockActive,
+    sidePanelCollapsed: commentSidePanelCollapsed,
+    viewport: previewViewport,
+  });
+  useEffect(() => {
+    if (
+      previewViewport !== 'desktop' ||
+      zoomMode !== 'auto' ||
+      previewMeasurementInteractionActive
+    ) {
+      return;
+    }
+    const nextWidth = boardPreviewCanvasSize?.width;
+    const previousWidth = lastAutoFitCanvasWidthRef.current;
+    if (typeof nextWidth === 'number' && Number.isFinite(nextWidth)) {
+      // Growing the canvas (e.g. collapsing the chat rail, per rec:recvq6WoJUvRXl)
+      // can otherwise get stuck at the OLD, narrower-canvas zoom forever: the
+      // in-iframe measurement bridge (srcdoc.ts injectPreviewContentSizeBridge)
+      // reads document.documentElement/body scrollWidth/clientWidth, all of
+      // which are bounded below by the iframe's OWN current rendered viewport
+      // width (html/body fill at least 100% of the viewport by default). That
+      // viewport width is itself `canvasWidth / previewScale` from the
+      // PREVIOUS auto-fit pass, so once the previous scale already implies a
+      // viewport wide enough to contain the real content, the measurement
+      // just reports that residual viewport size right back — self-confirming
+      // the stale scale even after the canvas grows and could fit a larger,
+      // more useful zoom. Dropping the cached content width forces a fresh
+      // measurement this pass at zoom=100% (viewport := canvasWidth exactly),
+      // which cannot be contaminated by a previous scale. Only doing this on
+      // GROW avoids an extra flash-to-100% on every manual drag-resize tick
+      // when the canvas shrinks — that direction already self-corrects,
+      // because the previous scale's implied viewport dips below the
+      // content's real width and the measurement naturally reports the
+      // content's true, uncontaminated extent.
+      if (previousWidth !== null && nextWidth > previousWidth) {
+        setDesktopPreviewContentWidth(null);
+      }
+      lastAutoFitCanvasWidthRef.current = nextWidth;
+    }
+    scheduleDesktopPreviewContentMeasure();
+  }, [
+    boardPreviewCanvasSize?.width,
+    boardPreviewCanvasSize?.height,
+    previewMeasurementInteractionActive,
+    previewViewport,
+    scheduleDesktopPreviewContentMeasure,
+    zoomMode,
+  ]);
+
   const previewZoomPercent = resolveDesktopPreviewZoomPercent({
     zoomMode,
     viewport: previewViewport,
@@ -10485,7 +10582,7 @@ function HtmlViewer({
   // Edit is handled by its own freeze just below; these are the non-edit
   // passes (Mark/Draw, Inspect) that also must not be yanked out
   // from under the user by a background file change.
-  const annotationFreezeActive = drawOverlayOpen || inspectMode;
+  const annotationFreezeActive = drawOverlayOpen || inspectMode || (staticSnapshot && boardMode);
   // Freeze the iframe input on the snapshot taken at Edit-mode entry. Any
   // source rewrite during edit (1.5s debounced set-style patches) stays
   // invisible to the iframe — live updates flow through od-edit-preview-style
@@ -10569,7 +10666,7 @@ function HtmlViewer({
     const s = routingHtmlSource;
     return s != null && htmlNeedsRedirectGuard(s);
   }, [passiveLargeHtmlPreview, routingHtmlSource]);
-  const needsPersistentStorage = Boolean(routingHtmlSource && /\blocalStorage\b/.test(routingHtmlSource));
+  const needsPersistentStorage = !staticSnapshot && Boolean(routingHtmlSource && /\blocalStorage\b/.test(routingHtmlSource));
   const urlDocumentGuardsAvailable =
     liveHtml === undefined && file.size <= PREVIEW_URL_GUARD_MAX_HTML_BYTES;
   // Set by the injected guard's `od:redirect-loop-blocked` postMessage. The
@@ -10697,10 +10794,11 @@ function HtmlViewer({
   // tweaks/comment) still win — they require host-injected bridges powered mode
   // can't carry.
   const needsPowered = useMemo(() => {
+    if (staticSnapshot) return false;
     if (serverPoweredPreviewRequired) return true;
     const s = routingHtmlSource;
     return s != null && htmlNeedsPoweredPreview(s);
-  }, [routingHtmlSource, serverPoweredPreviewRequired]);
+  }, [routingHtmlSource, serverPoweredPreviewRequired, staticSnapshot]);
   const previewBridgeQuery = useMemo(() => {
     const query = [BASE_PREVIEW_BRIDGE_QUERY];
     // Preserve the old URL-load behavior for ordinary passive documents. Only
@@ -10724,7 +10822,7 @@ function HtmlViewer({
     urlModeBridge,
     inspectMode,
     drawMode: drawOverlayOpen,
-    forceInline: (forceInline || needsPersistentStorage) && !needsPowered,
+    forceInline: staticSnapshot || ((forceInline || needsPersistentStorage || (embedded && inlineAnnotations)) && !needsPowered),
     needsSandboxShim: needsSandboxShim && !needsPowered,
     needsLocalInteractionBridge: needsLocalInteractionBridge && !needsPowered,
     // Daemon guards wrap the settled on-disk response. Streaming/in-memory
@@ -10780,20 +10878,27 @@ function HtmlViewer({
   // Wait for source discovery before minting. A committed file switch can
   // still carry the previous file's state until the source-loading effect
   // clears/replaces it, so only inspect bytes witnessed for this identity.
-  const authoredSrcDocBase = useMemo(
+  const needsProjectSrcDocBase = useMemo(
     () => (
       routingSourceIdentity !== currentSourceIdentity || routingHtmlSource == null
         ? null
-        : htmlHasAuthoredBase(routingHtmlSource)
+        : htmlNeedsProjectPreviewBase(routingHtmlSource)
     ),
     [currentSourceIdentity, routingHtmlSource, routingSourceIdentity],
   );
+  const hasRelativeAuthoredSrcDocBase = useMemo(
+    () => needsProjectSrcDocBase === true && routingHtmlSource !== null && htmlHasAuthoredBase(routingHtmlSource),
+    [needsProjectSrcDocBase, routingHtmlSource],
+  );
+  // A relative authored base itself needs a scope. A document with no base
+  // and no project resources must not wait for a capability it never uses.
+  const requiresEmbeddedPreviewBase = embedded && !staticSnapshot && (relativeProjectAssetRefs || projectRootAssetRefs || hasRelativeAuthoredSrcDocBase);
   useEffect(() => {
     if (
-      workspaceContext?.workspaceType !== 'team'
+      (workspaceContext?.workspaceType !== 'team' && !requiresEmbeddedPreviewBase)
       ||
       useUrlLoadPreview
-      || authoredSrcDocBase !== false
+      || needsProjectSrcDocBase !== true
       || effectiveScopedSrcDocPreviewBase
       || !workspaceActive
       || projectResourceReadBlocked
@@ -10811,7 +10916,8 @@ function HtmlViewer({
       cancelled = true;
     };
   }, [
-    authoredSrcDocBase,
+    requiresEmbeddedPreviewBase,
+    needsProjectSrcDocBase,
     effectiveScopedSrcDocPreviewBase,
     file.name,
     projectId,
@@ -10879,7 +10985,7 @@ function HtmlViewer({
     let renewableScope: ProjectPreviewBaseScope | null = null;
     if (useUrlLoadPreview) {
       renewableScope = effectiveUrlLoadedPreviewBase;
-    } else if (authoredSrcDocBase === false) {
+    } else if (needsProjectSrcDocBase === true) {
       renewableScope = effectiveScopedSrcDocPreviewBase;
     }
     if (
@@ -10942,7 +11048,7 @@ function HtmlViewer({
       if (timeout !== null) window.clearTimeout(timeout);
     };
   }, [
-    authoredSrcDocBase,
+    needsProjectSrcDocBase,
     effectiveScopedSrcDocPreviewBase,
     effectiveUrlLoadedPreviewBase,
     file.name,
@@ -11354,8 +11460,10 @@ function HtmlViewer({
     srcDocBaseHref,
   ].join('\0');
   const previewStorageScopeKey = previewStorageKey(sourceAuthorizationScopeKey, projectId, file.name);
+  const awaitingEmbeddedPreviewBase = requiresEmbeddedPreviewBase && needsProjectSrcDocBase === true && !effectiveScopedSrcDocPreviewBase;
   const candidateSrcDocTransport = useMemo(
     () => {
+      if (awaitingEmbeddedPreviewBase) return { sourceFingerprint: '', generation: nextPreviewTransportGeneration(), srcDoc: '' };
       const sourceFingerprint = previewSource === null
         ? null
         : previewSourceFingerprint(previewSource);
@@ -11375,7 +11483,9 @@ function HtmlViewer({
         sourceFingerprint: sourceFingerprint ?? '',
         generation,
         srcDoc: previewSource ? buildSrcdoc(previewSource, {
+          staticSnapshot,
           motionPreview: true,
+          legacyMotionVideo: embedded && projectKind === 'hyperframes',
           previewStorage: Boolean(previewStorageScopeKey),
           deck: effectiveDeck,
           baseHref: srcDocBaseHref,
@@ -11407,6 +11517,10 @@ function HtmlViewer({
       return entry;
     },
     [
+      awaitingEmbeddedPreviewBase,
+      embedded,
+      projectKind,
+      staticSnapshot,
       previewSource,
       effectiveDeck,
       srcDocTransportIdentity,
@@ -11425,9 +11539,21 @@ function HtmlViewer({
   const persistedManualEditCandidate = manualEditPersistedDocumentRef.current;
   const candidateRepresentsPersistedManualEditDocument =
     persistedManualEditCandidate?.reloadKey === reloadKey
-    && persistedManualEditCandidate.sourceFingerprint === candidateSrcDocTransport.sourceFingerprint;
-  if (!candidateRepresentsPersistedManualEditDocument) {
+    && (persistedManualEditCandidate.sourceFingerprint === candidateSrcDocTransport.sourceFingerprint
+      // Style saves intentionally keep the edit source frozen. While their
+      // paint proof is pending, retain the exact challenged transport rather
+      // than replacing it with that older frozen candidate.
+      || (embedded && manualEditMode && persistedManualEditCandidate.transportGeneration === committedSrcDocTransportRef.current.generation));
+  const committedSrcDocScopeRef = useRef(srcDocPreviewBaseIdentity);
+  const captureBeforeSourceReplacement = embedded && mode === 'preview' && !useUrlLoadPreview
+    && !interactivePreviewModeActive && !candidateRepresentsPersistedManualEditDocument
+    && committedSrcDocScopeRef.current === srcDocPreviewBaseIdentity
+    && committedSrcDocTransportRef.current !== candidateSrcDocTransport
+    && Boolean(committedSrcDocTransportRef.current.sourceFingerprint && candidateSrcDocTransport.sourceFingerprint);
+  const sourceReplacementReady = usePreviewSourceHandoff(candidateSrcDocTransport, srcDocPreviewBaseIdentity, captureBeforeSourceReplacement, capturePreviewScrollPosition);
+  if (!candidateRepresentsPersistedManualEditDocument && sourceReplacementReady) {
     committedSrcDocTransportRef.current = candidateSrcDocTransport;
+    committedSrcDocScopeRef.current = srcDocPreviewBaseIdentity;
   }
   const srcDocTransport = committedSrcDocTransportRef.current;
   const srcDocTransportGeneration = srcDocTransport.generation;
@@ -11553,7 +11679,7 @@ function HtmlViewer({
       enabled: boardMode,
       mode: boardTool,
     }, '*');
-    win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
+    win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode, commitOnEscape: embedded }, '*');
     win.postMessage({
       type: 'od-edit-selected-target',
       id: manualEditMode ? selectedManualEditTarget?.id ?? null : null,
@@ -12756,9 +12882,10 @@ function HtmlViewer({
     ) {
       postAndConsumePreviewRuntimeState(target);
     }
-    win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode }, '*');
+    win.postMessage({ type: 'od-edit-mode', enabled: manualEditMode, commitOnEscape: embedded }, '*');
     postSelectedManualEditTargetToIframe(manualEditMode ? selectedManualEditTarget?.id ?? null : null);
   }, [
+    embedded,
     manualEditMode,
     selectedManualEditTarget?.id,
     srcDoc,
@@ -12902,6 +13029,7 @@ function HtmlViewer({
     setManualEditTargets([]);
     setSelectedManualEditTarget(null);
     setManualEditPanelPosition(null);
+    setManualEditPanelLocked(false);
     selectedManualEditTargetIdRef.current = null;
     setManualEditDraft(emptyManualEditDraft());
     setManualEditDraftDirty(false);
@@ -13253,6 +13381,7 @@ function HtmlViewer({
 
   useEffect(() => {
     if (!manualEditMode) {
+      pendingManualInsertSelectionRef.current = null;
       setManualEditTargets([]);
       setSelectedManualEditTarget(null);
       setManualEditHoverTarget(null);
@@ -13287,8 +13416,31 @@ function HtmlViewer({
         && data.type !== 'od-edit-text-commit'
         && data.type !== 'od-edit-text-session'
       ) return;
+      if (data.type === 'od-edit-preview-style-applied') {
+        const pending = manualEditHistoryInspectorRef.current;
+        if (!pending || !data.ok || data.id !== pending.id || data.version !== pending.version
+          || ev.source !== pending.frame?.contentWindow || iframeRef.current !== pending.frame
+          || expectedSrcDocTransportGenerationRef.current !== pending.generation
+          || sourceRef.current !== pending.source || selectedManualEditTargetIdRef.current !== pending.id
+          || manualEditLiveStylesRef.current.get(pending.id)?.version !== pending.version
+          || !data.styles || typeof data.styles !== 'object') return;
+        const resolved: Partial<ManualEditStyles> = {};
+        for (const key of pending.keys) {
+          if (typeof data.styles[key] !== 'string') return;
+          resolved[key] = data.styles[key];
+        }
+        pending.resolved = resolved;
+        refreshManualEditInspectorAfterHistory(pending.source);
+        return;
+      }
       if (data.type === 'od-edit-targets' && Array.isArray(data.targets)) {
         setManualEditTargets(data.targets);
+        const insertedId = pendingManualInsertSelectionRef.current;
+        const insertedTarget = insertedId ? data.targets.find(target => target.id === insertedId) : null;
+        if (insertedTarget) {
+          pendingManualInsertSelectionRef.current = null;
+          void selectManualEditTargetRef.current(insertedTarget);
+        }
         // Target broadcasts can be briefly empty while the iframe/save path is
         // settling; keep the user's inspector selection unless a fresh copy is
         // available to update its metadata.
@@ -13301,7 +13453,7 @@ function HtmlViewer({
       }
       if (data.type === 'od-edit-select') {
         setManualEditHoverTarget(null);
-        void selectManualEditTarget(data.target);
+        void selectManualEditTargetRef.current(data.target);
         return;
       }
       if (data.type === 'od-edit-hover') {
@@ -13322,8 +13474,7 @@ function HtmlViewer({
         // card — only meaningful for full HTML documents.
         setManualEditHoverTarget(null);
         if (typeof source === 'string' && isManualEditFullHtmlDocument(source)) {
-          void clearManualEditTargetSelection();
-          setManualEditPageStylesOpen(true);
+          void selectManualEditTargetRef.current(null);
         }
         return;
       }
@@ -13675,6 +13826,9 @@ function HtmlViewer({
   }
 
   async function exitManualEditModeAfterFlush(): Promise<boolean> {
+    // The properties panel has its own content draft, separate from inline
+    // text sessions and debounced styles. A safe exit must persist it too.
+    if (manualEditDraftDirty && !(await flushManualEditPanelDraft())) return false;
     // A failed text commit must keep edit mode open with its error visible,
     // rather than tearing down (which would clear the error) and looking saved.
     if (!(await settlePendingManualEditCommit())) {
@@ -13698,7 +13852,27 @@ function HtmlViewer({
         < manualEditUrlStandbyRequestedRef.current,
     );
     setManualEditSrcDocActive(false);
-    manualEditPersistedDocumentRef.current = null;
+    // The embedded annotated surface remains on srcDoc after Edit. Its live
+    // bridge already shows the acknowledged saved bytes: retain that one
+    // document instead of navigating it again just to remove edit mode.
+    // URL previews still hand off to their canonical warmed document. The
+    // fingerprint latch above retires on an actual external source change.
+    if (!embedded || urlLoadPreviewSupportedWithoutManualEdit) {
+      manualEditPersistedDocumentRef.current = null;
+    } else if (livePreviewSource !== null) {
+      // Structural edits already rebuild the frozen preview from saved bytes.
+      // Retain that exact revision on exit as well as bridge-painted styles;
+      // metadata-only watcher pulses must not replace it during navigation.
+      const rendered = committedSrcDocTransportRef.current;
+      const fingerprint = previewSourceFingerprint(livePreviewSource);
+      if (rendered.sourceFingerprint === fingerprint) {
+        manualEditPersistedDocumentRef.current = {
+          sourceFingerprint: fingerprint,
+          reloadKey,
+          transportGeneration: rendered.generation,
+        };
+      }
+    }
     setManualEditMode(false);
     return true;
   }
@@ -13752,18 +13926,48 @@ function HtmlViewer({
     if (win) win.postMessage({ type: 'od-edit-hover-reset' }, '*');
   }
 
-  async function selectManualEditTarget(target: ManualEditTarget) {
-    setManualEditPageStylesOpen(false);
-    if (manualEditPendingStyleRef.current?.id !== target.id) cancelManualEditStyleDraft();
-    const base = sourceRef.current ?? '';
-    const nextDraft = manualEditDraftForTarget(target, base);
-    selectedManualEditTargetIdRef.current = target.id;
-    manualEditSelectionDraftRef.current = { id: target.id, draft: nextDraft };
-    setSelectedManualEditTarget(target);
-    setManualEditDraft(nextDraft);
-    setManualEditDraftDirty(false);
-    setManualEditError(null);
+  const manualEditSelectionChangingRef = useRef(false);
+  async function selectManualEditTarget(target: ManualEditTarget | null) {
+    // Repeated selection reports must not replace a draft with its saved value.
+    if (target && selectedManualEditTargetIdRef.current === target.id) return;
+    if (manualEditSelectionChangingRef.current) {
+      postSelectedManualEditTargetToIframe(selectedManualEditTargetIdRef.current);
+      return;
+    }
+    manualEditSelectionChangingRef.current = true;
+    try {
+      // Keep the first selection synchronous. A later drag report belongs to
+      // that new object, not to the previous selection's save boundary.
+      const needsFlush = selectedManualEditTargetIdRef.current !== null
+        || manualEditPendingStyleRef.current !== null
+        || manualEditTextCommitInFlightRef.current !== null
+        || manualEditTextSessionIdRef.current !== null
+        || manualEditTextFailedSessionIdsRef.current.size > 0;
+      if (needsFlush && !(await flushManualEditPanelDraft())) {
+        postSelectedManualEditTargetToIframe(selectedManualEditTargetIdRef.current);
+        return;
+      }
+      if (!target) {
+        await clearManualEditTargetSelection();
+        setManualEditPageStylesOpen(true);
+        return;
+      }
+      setManualEditPageStylesOpen(false);
+      if (!manualEditPanelLocked) setManualEditPanelPosition(null);
+      const base = sourceRef.current ?? '';
+      const nextDraft = manualEditDraftForTarget(target, base);
+      selectedManualEditTargetIdRef.current = target.id;
+      manualEditSelectionDraftRef.current = { id: target.id, draft: nextDraft };
+      setSelectedManualEditTarget(target);
+      setManualEditDraft(nextDraft);
+      setManualEditDraftDirty(false);
+      setManualEditError(null);
+    } finally {
+      manualEditSelectionChangingRef.current = false;
+    }
   }
+
+  selectManualEditTargetRef.current = selectManualEditTarget;
 
   function manualEditDraftForTarget(target: ManualEditTarget, base: string): ManualEditDraft {
     const fields = readManualEditFields(base, target.id);
@@ -13803,13 +14007,7 @@ function HtmlViewer({
   // the toolbar toggle's job. Dismiss flushes any in-flight tweak first so
   // nothing is lost; cancel reverts the in-flight unsaved tweak instead.
   async function dismissManualEditPanel() {
-    // Closing the panel must not swallow a failed text commit: keep it open
-    // with the error if the pending edit could not be saved.
-    if (!(await settlePendingManualEditCommit())) {
-      return;
-    }
-    const ok = await flushManualEditStyleSave();
-    if (!ok) return;
+    if (!(await flushManualEditPanelDraft())) return;
     if (selectedManualEditTarget) void clearManualEditTargetSelection();
     else setManualEditPageStylesOpen(false);
   }
@@ -13850,7 +14048,7 @@ function HtmlViewer({
     return null;
   }
 
-  async function saveManualEditPanelDraft() {
+  async function flushManualEditPanelDraft(): Promise<boolean> {
     const selectedTarget = selectedManualEditTarget;
     const contentPatchBeforeText = selectedTarget
       ? manualEditContentPatchForDraft(selectedTarget, manualEditDraft, sourceRef.current ?? '')
@@ -13858,22 +14056,28 @@ function HtmlViewer({
     const panelContentChanged = contentPatchBeforeText !== null;
     const textCommitSequenceBeforeSave = manualEditTextCommitSequenceRef.current;
     const hadTextCommitInFlight = Boolean(manualEditTextCommitInFlightRef.current);
-    if (!(await settlePendingManualEditCommit(!panelContentChanged))) return;
+    if (!(await settlePendingManualEditCommit(!panelContentChanged))) return false;
     const inlineTextCommitted =
       hadTextCommitInFlight ||
       manualEditTextCommitSequenceRef.current !== textCommitSequenceBeforeSave;
     if (selectedTarget && (panelContentChanged || !inlineTextCommitted)) {
       const base = sourceRef.current ?? '';
       const contentPatch = manualEditContentPatchForDraft(selectedTarget, manualEditDraft, base);
-      if (contentPatch && !(await applyManualEdit(contentPatch.patch, contentPatch.label))) return;
+      if (contentPatch && !(await applyManualEdit(contentPatch.patch, contentPatch.label))) return false;
     }
     const ok = await flushManualEditStyleSave();
-    if (!ok) return;
-    if (selectedManualEditTarget) void clearManualEditTargetSelection();
-    else setManualEditPageStylesOpen(false);
+    if (!ok) return false;
+    return true;
   }
 
-  function syncRetainedManualEditDocument(savedSource: string, patch: ManualEditPatch): void {
+  async function saveManualEditPanelDraft(): Promise<boolean> {
+    if (!(await flushManualEditPanelDraft())) return false;
+    if (selectedManualEditTarget) void clearManualEditTargetSelection();
+    else setManualEditPageStylesOpen(false);
+    return true;
+  }
+
+  async function syncRetainedManualEditDocument(savedSource: string, patch: ManualEditPatch): Promise<void> {
     // The write has committed. Refresh the hidden canonical URL exactly once
     // for this persisted revision; keystrokes and live preview messages do not
     // navigate it.
@@ -13901,16 +14105,29 @@ function HtmlViewer({
       manualEditPersistedDocumentRef.current = null;
       return;
     }
-    manualEditPersistedDocumentRef.current = {
-      sourceFingerprint: previewSourceFingerprint(savedSource),
-      reloadKey,
-    };
+    const retained = { sourceFingerprint: previewSourceFingerprint(savedSource), reloadKey, transportGeneration: expectedSrcDocTransportGenerationRef.current };
+    // Hold the still-active document while the asynchronous paint challenge is
+    // pending. Exit awaits this function, so this provisional latch cannot
+    // authorize leaving Edit. A failed challenge releases it for source reload.
+    manualEditPersistedDocumentRef.current = retained;
+    if (embedded && !urlLoadPreviewSupportedWithoutManualEdit) {
+      const frame = iframeRef.current;
+      const generation = expectedSrcDocTransportGenerationRef.current;
+      const painted = await verifySavedManualEditPreview(frame, patch)
+        && iframeRef.current === frame
+        && expectedSrcDocTransportGenerationRef.current === generation
+        && sourceRef.current === savedSource;
+      if (!painted && manualEditPersistedDocumentRef.current === retained) {
+        manualEditPersistedDocumentRef.current = null;
+      }
+    }
   }
 
   function reconcileRetainedManualEditHistoryDocument(
     savedSource: string,
     patch: ManualEditPatch,
   ): ManualEditPatch {
+    manualEditHistoryInspectorRef.current = null;
     const restoredStyles = manualEditHistoryStyleSnapshot(savedSource, patch);
     if (patch.kind !== 'set-style' || !restoredStyles) return patch;
     const version = nextManualEditPreviewVersion();
@@ -13919,6 +14136,13 @@ function HtmlViewer({
       styles: { ...previousPreview?.styles, ...restoredStyles },
       version,
     });
+    if (selectedManualEditTargetIdRef.current === patch.id) {
+      manualEditHistoryInspectorRef.current = {
+        id: patch.id, source: savedSource, version, frame: iframeRef.current,
+        generation: expectedSrcDocTransportGenerationRef.current,
+        keys: Object.keys(restoredStyles) as Array<keyof ManualEditStyles>, resolved: null,
+      };
+    }
     previewStyleToIframe(patch.id, restoredStyles, version);
     if (selectedManualEditTargetIdRef.current === patch.id) {
       setManualEditDraft((current) => ({
@@ -13970,7 +14194,7 @@ function HtmlViewer({
     }
   }
 
-  async function applyManualEdit(patch: ManualEditPatch, label: string): Promise<boolean> {
+  async function applyManualEdit(patch: ManualEditPatch, label: string, expectedInsertionSource?: string): Promise<boolean> {
     const startedAt = performance.now();
     let resultTracked = false;
     const finish = (
@@ -13994,18 +14218,49 @@ function HtmlViewer({
     setManualEditError(null);
     try {
       const baseSource = sourceRef.current;
-      const result = applyManualEditPatch(baseSource, patch);
+      const result = applyManualEditPatch(baseSource, patch, file.name);
       if (!result.ok) {
         setManualEditError(result.error ?? 'Could not apply edit.');
         finish('failed', 'patch_invalid');
         return false;
       }
+      if (patch.kind === 'insert-element' && expectedInsertionSource !== undefined && baseSource !== expectedInsertionSource && !result.unchanged) {
+        setManualEditError('The artifact changed before insertion was confirmed. Review the current content before placing a new object.');
+        finish('failed', 'source_conflict');
+        return false;
+      }
+      const adoptPersistedInsertion = async (storedSource: string): Promise<boolean> => {
+        if(patch.kind !== 'insert-element' || expectedInsertionSource === undefined) return false;
+        const replay=persistedInsertionReplay(expectedInsertionSource,storedSource,patch,file.name);
+        if(!replay) return false;
+        await capturePreviewScrollPosition(true);
+        manualEditPersistedDocumentRef.current=null;
+        setManualEditFrozenSource(storedSource);
+        setManualEditDraft(current => ({...current,fullSource:storedSource}));
+        requestManualEditUrlStandbyRefresh(storedSource);
+        if(replay.beforeSource !== null && !manualEditHistory.some(entry => entry.patch.kind === 'insert-element' && entry.patch.id === patch.id)) {
+          const previous=manualEditHistory[0]?.afterSource === replay.beforeSource ? manualEditHistory : [];
+          setManualEditHistory([{id:`insertion-${patch.id}`,label,patch,beforeSource:replay.beforeSource,afterSource:storedSource,createdAt:Date.now()},...previous]);
+          setManualEditUndone([]);
+        }
+        setManualEditError(null);
+        await onFileSaved?.();
+        finish('success');return true;
+      };
       if (!(await confirmManualEditHistorySource(
         baseSource,
         'The file changed outside manual edit mode. Refreshing before applying manual edits.',
       ))) {
+        // Only a successful fresh read changes sourceRef here. An unreadable
+        // file must not be acknowledged from a stale in-memory snapshot.
+        const stored=sourceRef.current;
+        if(stored !== null && stored !== baseSource && await adoptPersistedInsertion(stored)) return true;
         finish('failed', 'source_conflict');
         return false;
+      }
+      if (result.unchanged) {
+        if(await adoptPersistedInsertion(baseSource)) return true;
+        setManualEditError(null);finish('success');return true;
       }
       const parentVersionId = await resolveManualEditParentVersionId(baseSource);
       // A committed content patch can notify the file watcher as soon as the
@@ -14014,12 +14269,13 @@ function HtmlViewer({
       // rebuild the preview from an initial 0/0 position. Style patches stream
       // live through postMessage and never reload.
       if (patch.kind !== 'set-style') {
-        await capturePreviewScrollPosition();
+        await capturePreviewScrollPosition(patch.kind === 'insert-element');
       }
       const saved = await writeProjectTextFileDetailed(projectId, file.name, result.source, {
         artifactManifest: file.artifactManifest,
         versionSource: 'manual',
         versionLabel: label,
+        expectedContentSha256: bytesToHex(sha256(new TextEncoder().encode(baseSource))),
         ...(parentVersionId ? { parentVersionId } : {}),
       }, workspaceContext);
       if (!saved.ok) {
@@ -14072,6 +14328,8 @@ function HtmlViewer({
         selectedManualEditTargetIdRef.current = null;
         manualEditSelectionDraftRef.current = null;
         setSelectedManualEditTarget(null);
+        setManualEditPanelLocked(false);
+        setManualEditPanelPosition(null);
         setManualEditTargets((current) => current.filter((target) => target.id !== patch.id));
         setManualEditDraft(emptyManualEditDraft(result.source));
         setManualEditDraftDirty(false);
@@ -14095,7 +14353,7 @@ function HtmlViewer({
       // does not navigate an equivalent srcDoc over the visible document.
       // Other content patches still take one normal document refresh because
       // they do not yet have a live bridge equivalent.
-      syncRetainedManualEditDocument(result.source, patch);
+      await syncRetainedManualEditDocument(result.source, patch);
       setManualEditError(null);
       finish('success');
       await onFileSaved?.();
@@ -14115,7 +14373,11 @@ function HtmlViewer({
       cacheBustKey: Date.now(),
       workspaceContext,
     });
-    if (persisted == null || persisted === expectedSource) return true;
+    if (persisted == null) {
+      setManualEditError('Could not check the latest file. Your changes remain open. Try saving again.');
+      return false;
+    }
+    if (persisted === expectedSource) return true;
     setSource(persisted);
     sourceRef.current = persisted;
     setInlinedSource(null);
@@ -14134,6 +14396,28 @@ function HtmlViewer({
   ): string {
     const status = saved.status ? ` (${saved.status}${saved.code ? ` ${saved.code}` : ''})` : '';
     return `${prefix}${status}: ${saved.message}`;
+  }
+
+  function refreshManualEditInspectorAfterHistory(base: string) {
+    const target = selectedManualEditTarget;
+    if (!target || selectedManualEditTargetIdRef.current !== target.id) {
+      setManualEditDraft(current => ({ ...current, fullSource: base }));
+      return;
+    }
+    const pending = manualEditHistoryInspectorRef.current;
+    const resolved = pending?.id === target.id && pending.source === base ? pending.resolved : null;
+    const refreshed = resolved ? { ...target, styles: { ...target.styles, ...resolved } } : target;
+    const nextDraft = manualEditDraftForTarget(refreshed, base);
+    manualEditSelectionDraftRef.current = { id: target.id, draft: nextDraft };
+    setManualEditDraft(nextDraft);
+    setSelectedManualEditTarget(current => current?.id === target.id ? {
+      ...current,
+      text: nextDraft.text,
+      styles: refreshed.styles,
+      fields: { ...current.fields, text: nextDraft.text, href: nextDraft.href, src: nextDraft.src, alt: nextDraft.alt },
+    } : current);
+    setManualEditDraftDirty(false);
+    setManualEditError(null);
   }
 
   async function undoManualEdit() {
@@ -14168,6 +14452,7 @@ function HtmlViewer({
         artifactManifest: file.artifactManifest,
         versionSource: 'manual',
         versionLabel: `Undo ${latest.label}`,
+        expectedContentSha256: bytesToHex(sha256(new TextEncoder().encode(latest.afterSource))),
         ...(parentVersionId ? { parentVersionId } : {}),
       }, workspaceContext);
       if (!saved.ok) {
@@ -14181,14 +14466,14 @@ function HtmlViewer({
       setSource(latest.beforeSource);
       sourceRef.current = latest.beforeSource;
       setInlinedSource(null);
-      syncRetainedManualEditDocument(
+      await syncRetainedManualEditDocument(
         latest.beforeSource,
         reconcileRetainedManualEditHistoryDocument(latest.beforeSource, latest.patch),
       );
       setManualEditFrozenSource(latest.beforeSource);
       setManualEditHistory(rest);
       setManualEditUndone((current) => [latest, ...current]);
-      setManualEditDraft((current) => ({ ...current, fullSource: latest.beforeSource }));
+      refreshManualEditInspectorAfterHistory(latest.beforeSource);
       finish('success');
       await onFileSaved?.();
     } catch (error) {
@@ -14232,6 +14517,7 @@ function HtmlViewer({
         artifactManifest: file.artifactManifest,
         versionSource: 'manual',
         versionLabel: `Redo ${latest.label}`,
+        expectedContentSha256: bytesToHex(sha256(new TextEncoder().encode(latest.beforeSource))),
         ...(parentVersionId ? { parentVersionId } : {}),
       }, workspaceContext);
       if (!saved.ok) {
@@ -14245,14 +14531,14 @@ function HtmlViewer({
       setSource(latest.afterSource);
       sourceRef.current = latest.afterSource;
       setInlinedSource(null);
-      syncRetainedManualEditDocument(
+      await syncRetainedManualEditDocument(
         latest.afterSource,
         reconcileRetainedManualEditHistoryDocument(latest.afterSource, latest.patch),
       );
       setManualEditFrozenSource(latest.afterSource);
       setManualEditUndone(rest);
       setManualEditHistory((current) => [latest, ...current]);
-      setManualEditDraft((current) => ({ ...current, fullSource: latest.afterSource }));
+      refreshManualEditInspectorAfterHistory(latest.afterSource);
       finish('success');
       await onFileSaved?.();
     } catch (error) {
@@ -14316,10 +14602,23 @@ function HtmlViewer({
         slide_count: deckSlideTotal,
       });
     }
-    const win = iframeRef.current?.contentWindow;
+    const activeFrame = useUrlLoadPreview ? urlPreviewIframeRef.current : srcDocPreviewIframeRef.current;
+    const win = activeFrame?.contentWindow;
     if (!win) return;
+    // Absolute targets are idempotent when an authored deck and its fallback
+    // bridge both observe the command. Cache intent for consecutive clicks.
+    if (action === 'next' || action === 'prev') {
+      const count = Math.max(deckSlideTotal, 1);
+      const current = htmlPreviewSlideState.get(previewStateKey)?.active ?? activeDeckSlideIndex;
+      const target = Math.max(0, Math.min(count - 1, current + (action === 'next' ? 1 : -1)));
+      setSlideStateCached(previewStateKey, { active: target, count });
+      setSlideState({ active: target, count });
+      win.postMessage({ type: 'od:slide', action: 'go', index: target, userInitiated: true }, '*');
+      return;
+    }
     win.postMessage({
       type: 'od:slide',
+      userInitiated: true,
       action,
       ...(action === 'go' && typeof index === 'number' ? { index } : {}),
     }, '*');
@@ -14564,17 +14863,16 @@ function HtmlViewer({
     }
   }
 
-  // Keyboard nav on the host, so the user can press ←/→ even when focus
-  // is on the chat composer or any other host control.
+  // Host shortcuts use the current active transport and reported slide count.
+  const hostDeckNavigation = useRef({ postSlide, goToSlide, activeDeckSlideIndex, deckSlideTotal });
+  hostDeckNavigation.current = { postSlide, goToSlide, activeDeckSlideIndex, deckSlideTotal };
   useEffect(() => {
     if (!workspaceActive || !effectiveDeck || mode !== 'preview') return;
     function onKey(e: KeyboardEvent) {
-      if (document.activeElement === iframeRef.current) return;
-      const target = e.target as HTMLElement | null;
-      if (target) {
-        const tag = target.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
-      }
+      if (e.defaultPrevented || document.activeElement === iframeRef.current) return;
+      const target = e.target;
+      if (target instanceof Element && target.closest('input, textarea, select, button, a[href], [role="separator"], [role="slider"], [role="combobox"], [role="listbox"], [role="textbox"], [contenteditable]:not([contenteditable="false"])')) return;
+      const { postSlide, goToSlide, activeDeckSlideIndex, deckSlideTotal } = hostDeckNavigation.current;
       const shortcut = deckKeyboardShortcutForEvent(e);
       if (shortcut === 'next') {
         e.preventDefault();
@@ -14658,7 +14956,7 @@ function HtmlViewer({
     if (!workspaceActive || !inTabPresent || !effectiveDeck) return;
     const frame = presentOverlayRef.current?.querySelector('iframe');
     frame?.contentWindow?.postMessage(
-      { type: 'od:slide', action: 'go', index: activeDeckSlideIndex },
+      { type: 'od:slide', action: 'go', index: activeDeckSlideIndex, userInitiated: true },
       '*',
     );
   }, [inTabPresent, effectiveDeck, activeDeckSlideIndex, workspaceActive]);
@@ -14679,13 +14977,16 @@ function HtmlViewer({
       const data = ev.data as { type?: string; active?: number; count?: number } | null;
       if (!data || data.type !== 'od:slide-state') return;
       if (typeof data.active !== 'number' || typeof data.count !== 'number') return;
+      const previousActive = htmlPreviewSlideState.get(previewStateKey)?.active;
       const next = { active: data.active, count: data.count };
       setSlideStateCached(previewStateKey, next);
       setSlideState(next);
+      // Keep the retained preview on the last presented slide when the overlay closes.
+      if (previousActive !== next.active) postSlide('go', next.active);
     }
     window.addEventListener('message', onOverlaySlideState);
     return () => window.removeEventListener('message', onOverlaySlideState);
-  }, [inTabPresent, effectiveDeck, previewStateKey, workspaceActive]);
+  }, [inTabPresent, effectiveDeck, previewStateKey, workspaceActive, useUrlLoadPreview]);
 
   // The Esc hint is a momentary confirmation, not a persistent chrome: fade it
   // out a few seconds after the presentation starts. (closeInTabPresentation
@@ -15243,18 +15544,18 @@ function HtmlViewer({
     return ok;
   }
 
-  function presentInThisTab() {
+  function presentInThisTab(withNotes = true) {
     setPresentMenuOpen(false);
     presentFullscreenRequestedRef.current = false;
     setMode('preview');
-    if (effectiveDeck) openPresenterWindow();
+    if (effectiveDeck && withNotes) openPresenterWindow();
     setInTabPresent(true);
     setPresentEscHint(true);
   }
 
-  function presentFullscreen() {
+  function presentFullscreen(withNotes = true) {
     setPresentMenuOpen(false);
-    if (effectiveDeck) openPresenterWindow();
+    if (effectiveDeck && withNotes) openPresenterWindow();
     setMode('preview');
     presentFullscreenRequestedRef.current = true;
     setPresentFullscreenPending(true);
@@ -15390,7 +15691,11 @@ function HtmlViewer({
   }
 
   function clearBoardComposer() {
+    onDiscardPreviewCommentWrite?.();
+    setThreadDraftDirty(false);
+    setRootEditIntent(0);
     commentReselectPendingRef.current = false;
+    setCommentListInPopover(false);
     disarmComposerDiscard();
     setActiveCommentTarget(null);
     setHoveredCommentTarget(null);
@@ -15418,12 +15723,21 @@ function HtmlViewer({
     setAgentToolsOpen(false);
   }
 
+  async function requestMarkupClose(): Promise<boolean> {
+    if (embedded && window.parent !== window && markupDraftDirty) {
+      if (!await confirmHostFeedbackDiscard(projectId, 'markup')) return false;
+      setMarkupDiscardRevision(value => value + 1);
+    }
+    setDrawOverlayOpen(false);
+    return true;
+  }
+
   function activateDrawTool() {
     if (viewerOnly) return; // read-only viewer: mark (annotate) is an edit action
     fireArtifactToolbarClick('mark');
     const next = !drawOverlayOpen;
     if (!next) {
-      setDrawOverlayOpen(false);
+      void requestMarkupClose();
       setAgentToolsOpen(false);
       return;
     }
@@ -15447,19 +15761,19 @@ function HtmlViewer({
     activateDraw();
   }
 
-  function activateCommentTool() {
+  function activateCommentTool(createMode = false) {
     fireArtifactToolbarClick('comment');
     void capturePreviewScrollPosition();
     if (boardMode && !commentCreateMode && boardTool === 'inspect') {
       setBoardMode(false);
-      setCommentCreateMode(false);
+      setCommentCreateMode(createMode);
       clearBoardComposer();
       setAgentToolsOpen(false);
       return;
     }
     const activateComment = () => {
       setCommentPanelOpen(false);
-      setCommentCreateMode(false);
+      setCommentCreateMode(createMode);
       clearBoardComposer();
       setInspectMode(false);
       setDrawOverlayOpen(false);
@@ -15523,12 +15837,12 @@ function HtmlViewer({
     clearBoardComposer();
   }
 
-  function activateManualEditTool() {
-    if (viewerOnly || (!manualEditMode && !manualEditEntryAllowed)) return;
+  async function activateManualEditTool(): Promise<boolean> {
+    if (viewerOnly || (!manualEditMode && !manualEditEntryAllowed)) return false;
     fireArtifactToolbarClick('edit');
     void capturePreviewScrollPosition();
     if (!manualEditMode) {
-      if (manualEditActivationPendingRef.current) return;
+      if (manualEditActivationPendingRef.current) return false;
       const enterManualEditMode = () => {
         const srcDocFrame = srcDocPreviewIframeRef.current;
         const srcDocGeneration = expectedSrcDocTransportGenerationRef.current;
@@ -15562,26 +15876,25 @@ function HtmlViewer({
         previewRuntimeStateRef.current = null;
         previewRuntimeStateRestoreIdRef.current = null;
         enterManualEditMode();
-        return;
+        return true;
       }
       const activationFileIdentity = previewFileIdentityRef.current;
       manualEditActivationPendingRef.current = true;
-      void capturePreviewRuntimeState(urlPreviewIframeRef.current)
-        .then((state) => {
-          if (previewFileIdentityRef.current !== activationFileIdentity) return;
-          if (state) {
-            previewRuntimeStateRef.current = state;
-            previewRuntimeStateRestoreIdRef.current = null;
-          }
-          enterManualEditMode();
-        })
-        .finally(() => {
-          manualEditActivationPendingRef.current = false;
-        });
-      return;
+      try {
+        const state = await capturePreviewRuntimeState(urlPreviewIframeRef.current);
+        if (previewFileIdentityRef.current !== activationFileIdentity) return false;
+        if (state) {
+          previewRuntimeStateRef.current = state;
+          previewRuntimeStateRestoreIdRef.current = null;
+        }
+        enterManualEditMode();
+        return true;
+      } finally {
+        manualEditActivationPendingRef.current = false;
+      }
     }
     closeArtifactToolMenus();
-    void exitManualEditModeAfterFlush();
+    return requestManualEditSafeExitRef.current();
   }
 
   function queueCurrentDraft() {
@@ -15596,7 +15909,7 @@ function HtmlViewer({
     return previewComments.find((comment) => (
       comment.id === activePreviewCommentId &&
       comment.filePath === file.name &&
-      comment.status === 'open'
+      (comment.status === 'open' || inlineAnnotations && comment.status === 'resolved')
     )) ?? null;
   }
 
@@ -15688,34 +16001,43 @@ function HtmlViewer({
     return checked;
   }
 
-  async function savePersistentComment() {
-    if (!activeCommentTarget || !onSavePreviewComment) return;
-    // Allow saving when there is text OR an attached image (image-only notes).
-    if (!commentDraft.trim() && boardImages.length === 0 && currentActiveComposerAttachments().length === 0) return;
-    const isFreePin = activeCommentTarget.elementId.startsWith('pin-');
-    setSendingBoardBatch(true);
-    try {
-      const checked = await currentCommentSaveTarget(activeCommentTarget);
-      if (!checked) return;
-      const target = withDeckSlideIndex(targetFromSnapshot(checked));
-      const saved = await onSavePreviewComment(
-        target,
-        commentDraft.trim(),
-        false,
-        boardImages,
-        activeComposerComment?.id,
-      );
-      if (saved) {
-        clearBoardComposer();
-        setActiveCommentExistingAttachments(saved.attachments ?? []);
-        setBoardMode(true);
-        setCommentCreateMode(true);
-        setActivePreviewCommentId(saved.id);
-        setCommentSavedToast(isFreePin ? t('chat.comments.pinSavedToast') : t('chat.comments.savedToast'));
-      }
-    } finally {
-      setSendingBoardBatch(false);
+  async function savePersistentComment(addToChat = false, baseline?: PreviewComment) {
+    if (!activeCommentTarget || !onSavePreviewComment || rootSaveLock.current || sendingBoardBatch) return;
+    if (inlineAnnotations && activePreviewCommentId && !activeComposerComment) {
+      setCommentSavedToast('This comment is no longer available. Your draft is retained.'); return;
     }
+    if (!commentDraftRef.current.trim() && boardImagesRef.current.length === 0 && currentActiveComposerAttachments().length === 0) return;
+    const lifetime = activeCommentLifetime.current;
+    const submittedNote = commentDraftRef.current.trim();
+    const submittedImages = [...boardImagesRef.current];
+    const submittedTarget = activeCommentTarget;
+    const submittedId = activeComposerComment?.id;
+    const isFreePin = submittedTarget.elementId.startsWith('pin-');
+    rootSaveLock.current = true; setSendingBoardBatch(true);
+    try {
+      const checked = await currentCommentSaveTarget(submittedTarget);
+      if (!checked || activeCommentLifetime.current !== lifetime) return;
+      const target = withDeckSlideIndex(targetFromSnapshot(checked));
+      const saved = baseline
+        ? await onSavePreviewComment(target, submittedNote, addToChat, submittedImages, submittedId, baseline)
+        : await onSavePreviewComment(target, submittedNote, addToChat, submittedImages, submittedId);
+      if (activeCommentLifetime.current !== lifetime) return;
+      if (!saved) return null;
+      const unchanged = commentDraftRef.current.trim() === submittedNote
+        && boardImagesRef.current.length === submittedImages.length
+        && boardImagesRef.current.every((image, index) => image === submittedImages[index]);
+      if (saved.keepDraft || saved.handoffPending || !unchanged) {
+        setActivePreviewCommentId(saved.id);
+        setActiveCommentExistingAttachments(saved.attachments ?? []);
+        setBoardImages(current => current.filter(image => !(saved.consumedImages ?? submittedImages).includes(image)));
+        return saved;
+      }
+      clearBoardComposer();
+      setActiveCommentExistingAttachments(saved.attachments ?? []);
+      setBoardMode(true); setCommentCreateMode(true); setActivePreviewCommentId(saved.id);
+      setCommentSavedToast(isFreePin ? t('chat.comments.pinSavedToast') : t('chat.comments.savedToast'));
+      return saved;
+    } finally { rootSaveLock.current = false; setSendingBoardBatch(false); }
   }
 
   async function savePanelComment(note: string) {
@@ -15776,7 +16098,7 @@ function HtmlViewer({
   // guards the actual export/publish handlers.
   // Preview memory policy does not determine publication eligibility. The share
   // plan and POST validate the original file, never the routing-only preview.
-  const rawCanShare = isShareableArtifact;
+  const rawCanShare = !embedded && isShareableArtifact;
   const shareGuideAppUserId = useShareGuideAppUserId();
   const projectShareHistoryState = useProjectShareHistoryState(projectId, workspaceContext, JSON.stringify([file.name, publishedFileSlug, publishedFileUrl]));
   const projectShareHistory = projectShareHistoryState.history;
@@ -15792,7 +16114,9 @@ function HtmlViewer({
   const rawCanDownload = source !== null && (isShareableArtifact || isMarkdownArtifact);
   const canShare = rawCanShare && !viewerOnly;
   const canDownload = rawCanDownload && !viewerOnly;
-  const canExportHtml = canShare && source !== null;
+  // Embedded hosting disables upstream publication, but its native render
+  // carrier still exports the same authorized artifact.
+  const canExportHtml = isShareableArtifact && !viewerOnly && source !== null;
   // PPTX export is slide-based, so show it only for explicit decks plus
   // structured deck runtimes. Do not key this off plain `.slide`: ordinary
   // parallax/long pages may use that class but must remain page-mode exports.
@@ -16069,7 +16393,7 @@ function HtmlViewer({
       // tracked `.slide` decks still render off-screen.
       const trackedActive = slideState?.active ?? htmlPreviewSlideState.get(previewStateKey)?.active ?? null;
       const plan = planDeckImageCapture({ deck: imageDeckSignal, wholeDeck, trackedActive });
-      if (plan.useOffscreen) {
+      if (!staticSnapshot && !inlineAnnotations && plan.useOffscreen) {
         const exportViewport = !imageDeckSignal && previewViewport !== 'desktop'
           ? PREVIEW_VIEWPORT_PRESETS.find((preset) => preset.id === previewViewport)
           : null;
@@ -16156,6 +16480,7 @@ function HtmlViewer({
       restoreVisibility();
     }
   }, [
+    staticSnapshot,
     activateSrcDocSnapshotTransport,
     srcDocShellReady,
     useLazySrcDocTransport,
@@ -16489,12 +16814,17 @@ function HtmlViewer({
   // which reproduces the exact same "newest first" default. Persisted
   // server-side (see the `/reorder` route) instead of living only in React
   // state, so a drag survives a refresh/tab-switch/device-switch.
+  // Reviewing saved comments does not require enabling element selection.
+  const reviewPageAvailable = !effectiveDeck || typeof slideState?.active === 'number';
   const visibleSideComments = useMemo(
     () =>
-      [...creationSortedSideComments].sort(
+      commentsInReviewScope(commentReview?.showResolved ? previewComments : creationSortedSideComments, {
+        fileName: file.name, showResolved: Boolean(commentReview?.showResolved), pageScope: commentReview?.pageScope ?? 'all',
+        pageAvailable: reviewPageAvailable, slideIndex: effectiveDeck ? slideState?.active ?? null : null,
+      }).sort(
         (a, b) => commentEffectiveSortKey(b) - commentEffectiveSortKey(a),
       ),
-    [creationSortedSideComments],
+    [creationSortedSideComments, commentReview?.showResolved, commentReview?.pageScope, previewComments, file.name, reviewPageAvailable, effectiveDeck, slideState?.active],
   );
   // A member id is a trusted current identity only when the workspace context
   // supplies one. Never let two absent ids compare equal and accidentally
@@ -16532,7 +16862,8 @@ function HtmlViewer({
     return () => { cancelled = true; };
   }, [commentReadScopeKey, mergeReadState, projectId, file.name, workspaceContext]);
   useEffect(() => {
-    if (!commentPanelOpen || commentSidePanelCollapsed || previewCommentsState !== 'success') return;
+    const listVisible = commentListInPopover || (commentPanelOpen && !commentSidePanelCollapsed);
+    if (!listVisible || previewCommentsState !== 'success') return;
     const scopeKey = commentReadScopeKey;
     let cancelled = false;
     // A committed visible list, not opening the panel or the client's clock,
@@ -16551,7 +16882,7 @@ function HtmlViewer({
       }).catch(() => undefined);
     });
     return () => { cancelled = true; cancelAnimationFrame(frame); };
-  }, [unreadSideComments, commentReadState, file.name, previewCommentsState, commentPanelOpen, commentReadScopeKey, commentSidePanelCollapsed, latestVisibleSideCommentCreatedAt, mergeReadState, projectId, workspaceContext]);
+  }, [unreadSideComments, commentReadState, file.name, previewCommentsState, commentPanelOpen, commentListInPopover, commentReadScopeKey, commentSidePanelCollapsed, latestVisibleSideCommentCreatedAt, mergeReadState, projectId, workspaceContext]);
   // Trusted current member/app-account identities are filtered above. Never
   // fabricate an authorKey from names, colors, or either identity namespace.
   const hasUnreadSideComments = hasUnreadComments({
@@ -16571,18 +16902,20 @@ function HtmlViewer({
     previewBodySize,
   );
   useEffect(() => {
-    if (!boardMode || !activePreviewCommentId) return;
+    // A review filter is not a dismissal. Retain the selected thread and its draft.
+    if (inlineAnnotations || !boardMode || !activePreviewCommentId) return;
     const stillOpen = visibleSideComments.some((comment) => comment.id === activePreviewCommentId);
     if (!stillOpen) clearBoardComposer();
-  }, [activePreviewCommentId, boardMode, visibleSideComments]);
+  }, [activePreviewCommentId, boardMode, inlineAnnotations, visibleSideComments]);
   useEffect(() => {
     if (!effectiveDeck || slideState == null || !boardMode) return;
     if (!activePreviewCommentId) return;
-    const activeComment = visibleSideComments.find((comment) => comment.id === activePreviewCommentId);
+    const activeComment = (inlineAnnotations && commentReview ? previewComments : visibleSideComments).find((comment) => comment.id === activePreviewCommentId && comment.filePath === file.name);
     if (activeComment && !commentVisibleOnDeckSlide(activeComment, slideState.active)) {
+      if (inlineAnnotations && composerHoldsUnsentWork) return;
       clearBoardComposer();
     }
-  }, [activePreviewCommentId, boardMode, effectiveDeck, slideState?.active, visibleSideComments]);
+  }, [activePreviewCommentId, boardMode, effectiveDeck, slideState?.active, visibleSideComments, inlineAnnotations, commentReview, previewComments, file.name, composerHoldsUnsentWork]);
   const activeDeployment = deployResult || deployment;
   const activeDeployedUrl = activeDeployment?.url?.trim() || '';
   const activeDeploymentDelayed = activeDeployment?.status === 'link-delayed';
@@ -16809,6 +17142,23 @@ function HtmlViewer({
   const showDeckThumbnailRail = effectiveDeck && source !== null && deckSlideTotal > 0 && !manualEditMode;
   const showDeckFloatingNav = effectiveDeck && deckSlideTotal > 0 && !manualEditMode && !inTabPresent;
   const deckNavTotal = Math.max(deckSlideTotal, activeDeckSlideIndex + 1, 1);
+  const deckThumbnailRailNode = showDeckThumbnailRail && !deckThumbnailsCollapsed ? (
+    <DeckThumbnailRail
+      count={deckSlideTotal}
+      activeIndex={activeDeckSlideIndex}
+      labelTotal={deckNavTotal}
+      buildThumbSrcDoc={buildDeckThumbnailSrcDoc}
+      parsedDeck={parsedDeckThumbnails}
+      previewViewport={deckThumbnailRenderViewport}
+      onSelect={(index) => {
+        fireDeckViewerClick('thumbnail_select', {
+          slide_index: index,
+          slide_count: deckSlideTotal,
+        });
+        handleDeckThumbnailSelect(index);
+      }}
+    />
+  ) : null;
   const versioningAvailable = isHtmlVersionableFile(file);
   const commentPreviewLayoutClass = [
     'comment-preview-layer',
@@ -16827,7 +17177,8 @@ function HtmlViewer({
     manualEditMode && (!!selectedManualEditTarget || manualEditPageCardActive);
   const manualEditResetAvailable = selectedManualEditTarget ? manualEditDraftDirty : false;
   const manualEditPanel = manualEditPanelActive ? (
-    <ManualEditPanel
+    <ManualEditPanel key={`properties:${projectId}:${file.name}`}
+      sourceControls={!embedded}
       targets={manualEditTargets}
       selectedTarget={selectedManualEditTarget}
       draft={manualEditDraft}
@@ -16837,11 +17188,13 @@ function HtmlViewer({
       canRedo={manualEditUndone.length > 0}
       busy={manualEditSaving}
       resetAvailable={manualEditResetAvailable}
+      presentationSource={effectiveDeck ? source ?? undefined : undefined}
       pageStylesEnabled={manualEditPageStylesEnabled}
       onSelectTarget={(target) => {
         void selectManualEditTarget(target);
       }}
       onDraftChange={(draft) => {
+        manualEditHistoryInspectorRef.current = null;
         setManualEditDraft(draft);
         setManualEditDraftDirty(Boolean(selectedManualEditTarget));
       }}
@@ -16874,27 +17227,40 @@ function HtmlViewer({
       onRedo={() => {
         void redoManualEdit();
       }}
-      floatingClassName={manualEditPageCardActive ? 'manual-edit-page-card' : undefined}
+      floatingClassName={dockedPresentationProperties ? 'manual-edit-presentation-dock' : manualEditPageCardActive ? 'manual-edit-page-card' : undefined}
+      resizeHandle={dockedPresentationProperties ? <InspectorResizeHandle width={presentationInspectorLayoutWidth} maximum={presentationInspectorMaximum} onResize={setPresentationInspectorWidth} label={`${t('manualEdit.presentationProperties')}: ${t('entry.resizeAria')}`} /> : undefined}
       floatingStyle={selectedManualEditTarget
         ? {
             ...manualEditFloatingPanelStyle(
               selectedManualEditTarget,
               overlayPreviewScale,
               previewBodySize,
+              {bottomInset:embedded ? manualEditInsertionInset : 0,position:manualEditPanelPosition},
             ),
-            ...(manualEditPanelPosition ?? {}),
           }
-        : { top: 12, right: 12, width: 320 }}
-      onFloatingPositionChange={selectedManualEditTarget ? setManualEditPanelPosition : undefined}
-      onPickImage={async (pickedFile) => {
-        const result = await uploadProjectFiles(projectId, [pickedFile], undefined, workspaceContext);
-        const uploaded = result.uploaded[0];
-        if (!uploaded?.path) {
-          setManualEditError(result.error ?? t('manualEdit.uploadImageFailed'));
-          return null;
+        : dockedPresentationProperties ? { top: 0, insetInlineEnd: 0, width: presentationInspectorLayoutWidth, height: '100%', maxHeight: '100%' }
+        : { top: 12, right: 12, width: 320, maxHeight: Math.max(0,(previewBodySize?.height ?? 800) - (embedded ? manualEditInsertionInset : 0) - 24) }}
+      reservedBottom={embedded ? manualEditInsertionInset : 0}
+      locked={manualEditPanelLocked}
+      onToggleLock={selectedManualEditTarget ? () => {
+        if (!manualEditPanelLocked) {
+          const panel = viewerRootRef.current?.querySelector<HTMLElement>('.manual-edit-right');
+          if (!panel) return;
+          setManualEditPanelPosition({ left: panel.offsetLeft, top: panel.offsetTop });
         }
-        setManualEditError(null);
-        return toOwnerRelativePath(file.name, uploaded.path);
+        setManualEditPanelLocked(!manualEditPanelLocked);
+      } : undefined}
+      onFloatingPositionChange={selectedManualEditTarget ? setManualEditPanelPosition : undefined}
+      onPickImage={async (pickedFile, signal = new AbortController().signal) => {
+        const beforeSource = sourceRef.current;
+        if (beforeSource == null) throw new Error('Wait for the current artifact before replacing its image.');
+        const receipt = await uploadProjectImage(projectId, pickedFile, signal);
+        if (signal?.aborted) return null;
+        if (sourceRef.current !== beforeSource) throw new Error('The artifact changed during upload. Select the image again before replacing it.');
+        const base = new DOMParser().parseFromString(beforeSource, 'text/html').querySelector('base[href]')?.getAttribute('href') ?? null;
+        const src = insertionImageSourceForAsset(receipt.name, file.name, base);
+        if (!src) throw new Error('This artifact base does not support project image replacement.');
+        return src;
       }}
     />
   ) : null;
@@ -16923,7 +17289,7 @@ function HtmlViewer({
       </button>
     ) : null;
   const activeComposerComment = activePreviewCommentId
-    ? visibleSideComments.find((comment) => comment.id === activePreviewCommentId) ?? null
+    ? (inlineAnnotations && commentReview ? previewComments : visibleSideComments).find(comment => comment.id === activePreviewCommentId && comment.filePath === file.name) ?? null
     : null;
   const activeComposerAttachments =
     activeComposerComment?.attachments ?? activeCommentExistingAttachments;
@@ -16936,11 +17302,12 @@ function HtmlViewer({
   // current user's to act on, so it reads as "mine". Only the author may EDIT
   // their own note; the author OR the project owner may delete it or send it to
   // the agent. The B lane enforces the same rules server-side.
-  const myMemberId = collab.member?.memberId ?? null;
+  const embeddedViewer = useEmbeddedViewer();
+  const myMemberId = embedded ? embeddedViewer?.memberId ?? null : collab.member?.memberId ?? null;
   const commentAuthority: CommentAuthorityContext = {
     viewerMemberId: myMemberId,
-    collabEnabled: collab.enabled,
-    isProjectOwner: collab.isOwner,
+    collabEnabled: embedded || collab.enabled,
+    isProjectOwner: !embedded && collab.isOwner,
   };
   const canSendCommentToAgent = (comment: PreviewComment | null | undefined): boolean =>
     canSendCommentToAgentPure(comment, commentAuthority);
@@ -16953,10 +17320,10 @@ function HtmlViewer({
   // on a personal workspace and on an unshared project, i.e. exactly the cases
   // where a comment lost its avatar and name.
   const commentAuthorSelf = useMemo(
-    () => currentUserDirectoryEntry(
+    () => embedded ? embeddedViewer : currentUserDirectoryEntry(
       projectResourceReadBlocked ? null : workspaceContext,
     ),
-    [workspaceContext, projectResourceReadBlocked],
+    [workspaceContext, projectResourceReadBlocked, embedded, embeddedViewer],
   );
   const commentComposerPortalMetrics = (() => {
     if (!commentComposerHost || !commentPreviewCanvasNode) return null;
@@ -16966,8 +17333,9 @@ function HtmlViewer({
     return {
       host: commentComposerHost,
       bounds: {
-        width: hostRect.width,
-        height: hostRect.height,
+        // Keep an annotation popup clear of the local comments list.
+        width: localCommentSideDockActive ? Math.max(1, canvasRect.right - hostRect.left) : hostRect.width,
+        height: localCommentSideDockActive ? Math.max(1, canvasRect.bottom - hostRect.top) : hostRect.height,
         scrollLeft: commentComposerHost.scrollLeft,
         scrollTop: commentComposerHost.scrollTop,
       },
@@ -16977,93 +17345,6 @@ function HtmlViewer({
       },
     };
   })();
-  const commentComposerNode = boardMode && activeCommentTarget && activeCommentTargetVisible ? (
-    <BoardComposerPopover
-      target={activeCommentTarget}
-      existing={activeComposerComment}
-      canEditComment={canEditActiveComment}
-      canDeleteComment={canDeleteActiveComment}
-      canSendToAgent={canSendActiveComment}
-      draft={commentDraft}
-      notes={queuedBoardNotes}
-      discardPending={composerDiscardPending && composerHoldsUnsentWork}
-      onDraft={(value) => {
-        disarmComposerDiscard();
-        setCommentDraft(value);
-      }}
-      onAddDraft={queueCurrentDraft}
-      onRemoveQueuedNote={(index) =>
-        setQueuedBoardNotes((current) => current.filter((_, currentIndex) => currentIndex !== index))
-      }
-      onClose={clearBoardComposer}
-      onSaveComment={() => { fireCommentPopoverClick('save_comment'); return savePersistentComment(); }}
-      onSendBatch={() => {
-        observeAnalytics(() => {
-          const saved = currentActiveComposerComment();
-          // Observe the same saved-comment branch as sendBoardBatch, without changing its submission.
-          const unchanged = saved && queuedBoardNotes.length === 0 && boardImages.length === 0
-            && commentDraft.trim() === saved.note.trim();
-          fireCommentPopoverClick('send_to_chat', unchanged ? [saved] : undefined);
-        });
-        return sendBoardBatch();
-      }}
-      images={boardImagePreviews}
-      existingImages={
-        activeComposerAttachments.map((attachment) => ({
-          url: projectRawUrl(projectId, attachment.path, workspaceContext),
-          name: attachment.name,
-        }))
-      }
-      onAttachImages={addBoardImages}
-      onRemoveImage={removeBoardImage}
-      onPreviewImage={setBoardPreviewIndex}
-      onRemoveMember={(elementId) => {
-        setActiveCommentTarget((current) => {
-          const { next, shouldClose } = applyPodMemberRemoval(current, elementId);
-          if (shouldClose) clearBoardComposer();
-          return next;
-        });
-        setHoveredPodMemberId((current) => (current === elementId ? null : current));
-      }}
-      onHoverMember={setHoveredPodMemberId}
-      onViewAllComments={(returnFocusTarget) => {
-        commentPanelReturnFocusRef.current = returnFocusTarget ?? null;
-        setCommentPanelOpen(true);
-        setCommentSidePanelCollapsed(false);
-      }}
-      onDeleteComment={onRemovePreviewComment ? async (commentId) => {
-        const removed = await onRemovePreviewComment(commentId);
-        if (!removed) return;
-        clearBoardComposer();
-        setSelectedSideCommentIds((current) => {
-          if (!current.has(commentId)) return current;
-          const next = new Set(current);
-          next.delete(commentId);
-          return next;
-        });
-        setActivePreviewCommentId((current) => (current === commentId ? null : current));
-      } : undefined}
-      sending={sendingBoardBatch}
-      queueOnSend={commentQueueOnSend}
-      sendDisabled={commentSendDisabled || viewerOnly}
-      sendDisabledReason={viewerOnly ? viewerOnlyDisabledTitle : undefined}
-      allowSendToChat={!viewerOnly}
-      t={t}
-      scale={overlayPreviewScale}
-      offset={
-        commentComposerPortalMetrics?.offset ?? {
-          x: overlayPreviewTransform.offsetX,
-          y: overlayPreviewTransform.offsetY,
-        }
-      }
-      bounds={commentComposerPortalMetrics?.bounds ?? previewBodySize}
-      docked={false}
-      commenting
-    />
-  ) : null;
-  const commentComposer = workspaceActive && commentComposerNode && commentComposerPortalMetrics
-    ? createPortal(commentComposerNode, commentComposerPortalMetrics.host)
-    : workspaceActive ? commentComposerNode : null;
   const boardPreviewImage =
     boardPreviewIndex !== null ? boardImagePreviews[boardPreviewIndex] ?? null : null;
   const boardImagePreviewModal = workspaceActive && boardPreviewImage
@@ -17098,9 +17379,22 @@ function HtmlViewer({
       )
     : null;
   const unavailableCommentId = boardMode ? lostSelectedCommentId : null;
-  const commentSidePanel = workspaceActive && commentPanelOpen ? (
+  const removeComment = onRemovePreviewComment ? async (commentId: string) => {
+    const lifetime = activeCommentLifetime.current;
+    if (!await onRemovePreviewComment(commentId)) return;
+    if (activeCommentLifetime.current === lifetime) clearBoardComposer();
+    setSelectedSideCommentIds(current => { const next = new Set(current); next.delete(commentId); return next; });
+    setActivePreviewCommentId(current => current === commentId ? null : current);
+  } : undefined;
+  const commentSidePanel = workspaceActive && ((!inlineAnnotations && commentPanelOpen) || commentListInPopover) ? (
     <CommentSideDock
       comments={visibleSideComments}
+      threadActions={inlineAnnotations && onRemovePreviewComment ? {
+        canEdit: comment => canEditComment(comment, commentAuthority),
+        canDelete: comment => canDeleteComment(comment, commentAuthority),
+        canResolve: comment => comment.id !== activePreviewCommentId || !composerHoldsUnsentWork,
+        remove: comment => removeComment?.(comment.id),
+      } : undefined}
       loadState={previewCommentsState}
       onRetry={onRetryPreviewComments}
       projectId={projectId}
@@ -17113,7 +17407,7 @@ function HtmlViewer({
       // into a full-height column, where a collapsed rail made no sense). It
       // now always floats as a card, so its collapse control has to actually
       // collapse — forcing `false` here made every click a no-op.
-      collapsed={commentSidePanelCollapsed}
+      collapsed={commentListInPopover ? false : commentSidePanelCollapsed}
       hasUnread={hasUnreadSideComments}
       onCollapsedChange={setCommentSidePanelCollapsed}
       // Escape remains the explicit floating-card close path. The header
@@ -17141,12 +17435,8 @@ function HtmlViewer({
         const sortKey = computeReorderedSortKey(visibleSideComments, orderedIds, draggedId);
         void onReorderPreviewComment?.(draggedId, sortKey);
       }}
-      onReply={(comment) => {
-        // Reply == edit on a flat-thread model: prefill the
-        // popover with the existing note so the user sees and
-        // mutates the current text. Save runs through the
-        // same upsert path; matching project/conv/file/element
-        // updates note in place rather than creating a new row.
+      onReply={(comment, editRoot) => {
+        // Normal selection opens the saved thread; Edit explicitly opens the root editor.
         const snapshot = liveSnapshotForComment(comment, liveCommentTargets) ?? {
           filePath: comment.filePath,
           elementId: comment.elementId,
@@ -17162,19 +17452,23 @@ function HtmlViewer({
           ...(typeof comment.slideIndex === 'number' ? { slideIndex: comment.slideIndex } : {}),
         };
         requestComposerRetarget(() => {
+          const page = comment.slideIndex;
+          if (effectiveDeck && typeof page === 'number' && Number.isSafeInteger(page) && page >= 0 && page < (slideState?.count ?? deckSlideCount)) goToSlide(page);
           const needsLocation = ownerCommentNeedsLocation(comment, collab.enabled);
           if (needsLocation) setCommentLocationIntent(intent => intent + 1);
           setActiveCommentTarget(needsLocation ? null : snapshot);
           setHoveredCommentTarget(needsLocation ? null : snapshot);
           setActivePreviewCommentId(comment.id);
+          if (editRoot) setRootEditIntent(intent => intent + 1);
           setCommentDraft(comment.note);
           setQueuedBoardNotes([]);
           setActiveCommentExistingAttachments(comment.attachments ?? []);
           setBoardMode(true);
           setCommentCreateMode(true);
-          setCommentPanelOpen(true);
+          if (!commentListInPopover) setCommentPanelOpen(!inlineAnnotations);
+          setCommentListInPopover(false);
           setCommentSidePanelCollapsed(false);
-        });
+        }, Boolean(editRoot));
       }}
       onSendSelected={async () => {
         if (!onSendBoardCommentAttachments) return;
@@ -17213,11 +17507,98 @@ function HtmlViewer({
       sendDisabled={commentSendDisabled || viewerOnly}
       sendDisabledReason={viewerOnly ? viewerOnlyDisabledTitle : undefined}
       allowSendToChat={!viewerOnly}
-      renderCreateForm={!commentPortalHost}
+      renderCreateForm={!inlineAnnotations && !commentPortalHost && !activeCommentTarget}
       t={t}
       composer={null}
     />
   ) : null;
+  const commentComposerNode = inlineAnnotations && commentListInPopover && !activeCommentTarget ? (
+    <CommentListPopover onClose={() => { setCommentListInPopover(false); commentListReturnFocus.current?.(); commentListReturnFocus.current = null; }}>{commentSidePanel}</CommentListPopover>
+  ) : boardMode && activeCommentTarget && activeCommentTargetVisible ? (
+    <BoardComposerPopover
+      compact={inlineAnnotations}
+      target={activeCommentTarget}
+      existing={activeComposerComment}
+      canEditComment={canEditActiveComment}
+      canDeleteComment={canDeleteActiveComment}
+      canSendToAgent={canSendActiveComment}
+      draft={commentDraft}
+      onThreadDirty={reportThreadDraft}
+      rootEditIntent={rootEditIntent}
+      rootSelectionIntent={rootSelectionIntent}
+      notes={queuedBoardNotes}
+      discardPending={composerDiscardPending && composerHoldsUnsentWork}
+      onDraft={(value) => {
+        disarmComposerDiscard();
+        setCommentDraft(value);
+      }}
+      onAddDraft={queueCurrentDraft}
+      onRemoveQueuedNote={(index) =>
+        setQueuedBoardNotes((current) => current.filter((_, currentIndex) => currentIndex !== index))
+      }
+      onClose={() => requestComposerRetarget(clearBoardComposer)}
+      onSaveComment={(addToChat, baseline) => { fireCommentPopoverClick('save_comment'); return savePersistentComment(addToChat, baseline); }}
+      onSendBatch={() => {
+        observeAnalytics(() => {
+          const saved = currentActiveComposerComment();
+          // Observe the same saved-comment branch as sendBoardBatch, without changing its submission.
+          const unchanged = saved && queuedBoardNotes.length === 0 && boardImages.length === 0
+            && commentDraft.trim() === saved.note.trim();
+          fireCommentPopoverClick('send_to_chat', unchanged ? [saved] : undefined);
+        });
+        return sendBoardBatch();
+      }}
+      images={boardImagePreviews}
+      existingImages={
+        activeComposerAttachments.map((attachment) => ({
+          url: projectRawUrl(projectId, attachment.path, workspaceContext),
+          name: attachment.name,
+        }))
+      }
+      onAttachImages={addBoardImages}
+      onRemoveImage={removeBoardImage}
+      onPreviewImage={setBoardPreviewIndex}
+      onRemoveMember={(elementId) => {
+        setActiveCommentTarget((current) => {
+          const { next, shouldClose } = applyPodMemberRemoval(current, elementId);
+          if (shouldClose) clearBoardComposer();
+          return next;
+        });
+        setHoveredPodMemberId((current) => (current === elementId ? null : current));
+      }}
+      onHoverMember={setHoveredPodMemberId}
+      commentsView={commentListInPopover ? commentSidePanel : undefined}
+      onBackToComment={() => setCommentListInPopover(false)}
+      onViewAllComments={(returnFocusTarget) => {
+        commentPanelReturnFocusRef.current = returnFocusTarget ?? null;
+        setCommentPanelOpen(false);
+        setCommentListInPopover(true);
+      }}
+      onDeleteComment={removeComment}
+      onResolveComplete={() => { if (!composerHoldsUnsentWorkRef.current) clearBoardComposer(); }}
+      sending={sendingBoardBatch}
+      queueOnSend={commentQueueOnSend}
+      sendDisabled={commentSendDisabled || viewerOnly}
+      sendDisabledReason={viewerOnly ? viewerOnlyDisabledTitle : undefined}
+      allowSendToChat={!viewerOnly}
+      t={t}
+      scale={overlayPreviewScale}
+      offset={
+        commentComposerPortalMetrics?.offset ?? {
+          x: overlayPreviewTransform.offsetX,
+          y: overlayPreviewTransform.offsetY,
+        }
+      }
+      bounds={commentComposerPortalMetrics?.bounds ?? previewBodySize}
+      docked={false}
+      commenting
+    />
+  ) : null;
+  // Layout can collapse to zero while native mobile chat hides this iframe.
+  // Portal ownership follows the actual host, never its transient measurements.
+  const commentComposer = workspaceActive && commentComposerNode && commentComposerHost
+    ? createPortal(<CommentReviewPage value={reviewPageAvailable}>{commentComposerNode}</CommentReviewPage>, commentComposerHost)
+    : workspaceActive ? <CommentReviewPage value={reviewPageAvailable}>{commentComposerNode}</CommentReviewPage> : null;
   const speakerNotesFeedback = speakerNotesStatus === 'saved'
       ? { className: 'saved', label: t('fileViewer.speakerNotesSaved') }
       : speakerNotesStatus === 'error'
@@ -17246,7 +17627,7 @@ function HtmlViewer({
       </div>
       {speakerNotesEditMode ? (
         <div className="speaker-notes-editor">
-          <textarea
+          <Textarea unstyled
             ref={speakerNotesTextareaRef}
             value={speakerNotesDraft}
             onChange={(event) => setSpeakerNotesDraft(event.currentTarget.value)}
@@ -17299,7 +17680,7 @@ function HtmlViewer({
                   slide_index: activeDeckSlideIndex,
                   slide_count: deckSlideTotal,
                 });
-                setDeckThumbnailsCollapsed((value) => !value);
+                setDeckThumbnailsCollapsed(!deckThumbnailsCollapsed);
               }}
             >
               <Icon name="panel-left" size={15} />
@@ -17397,7 +17778,7 @@ function HtmlViewer({
         <div className="viewer-toolbar-actions">
           {showPreviewToolbarControls ? (
             <div className="viewer-toolbar-inline-actions">
-              {mode === 'preview' ? (
+              {mode === 'preview' && !embedded ? (
                 <button
                   type="button"
                   className="viewer-action viewer-action-icon od-tooltip"
@@ -17422,7 +17803,7 @@ function HtmlViewer({
                   title={t('fileViewer.comment')}
                   aria-label={t('fileViewer.comment')}
                   aria-pressed={boardMode && !commentCreateMode && boardTool === 'inspect'}
-                  onClick={activateCommentTool}
+                  onClick={() => activateCommentTool()}
                 >
                   <RemixIcon name="chat-new-line" size={15} />
                 </button>
@@ -17699,7 +18080,12 @@ function HtmlViewer({
             ? filePrimaryActions
             : null
       ))(<>
-          {showPresent ? (
+          {showPresent && embedded && effectiveDeck ? <DeckPresentationMenu projectId={projectId} hosted={inlineAnnotations} onPresent={withNotes => {
+            const present = () => { if (withNotes) presentInThisTab(true); else presentFullscreen(false); };
+            if (manualEditMode) {
+              void requestManualEditSafeExitRef.current().then(saved => { if (saved) present(); });
+            } else present();
+          }} /> : showPresent ? (
             <div className="present-wrap chrome-present-wrap">
               <button
                 className="chrome-action chrome-action-secondary chrome-action-icon present-trigger od-tooltip"
@@ -18056,7 +18442,7 @@ function HtmlViewer({
                   </AnchoredMenuShell>
                 ) : null}
               </div>
-              {viewerOnly || !(rawCanShare || rawCanDownload) ? null : (
+              {embedded || viewerOnly || !(rawCanShare || rawCanDownload) ? null : (
                 <HandoffButton
                   projectId={projectId}
                   projectKind={projectKind}
@@ -18072,6 +18458,48 @@ function HtmlViewer({
             </div>
       </>)}
       <div className="viewer-body" ref={previewBodyRef}>
+        {embedded && workspaceActive && manualEditMode && !viewerOnly ? <ArtifactInsertionToolbar key={`insertion:${projectId}:${file.name}`} projectId={projectId} fileName={file.name} source={source} busy={manualEditSaving || manualEditEntryHandoffPending || manualEditExitHandoffPending} onHeightChange={setManualEditInsertionInset} reservedInlineEnd={dockedPresentationProperties ? presentationInspectorLayoutWidth : undefined}
+          onProperties={effectiveDeck ? async () => { await selectManualEditTarget(null); } : undefined}
+          getFrame={() => iframeRef.current} getSource={() => sourceRef.current}
+          onPrepare={async () => {
+            if (!(await flushManualEditPanelDraft())) return false;
+            await clearManualEditTargetSelection();
+            setManualEditPageStylesOpen(false);
+            return true;
+          }}
+          onInsert={async (patch, label, expectedSource) => {
+            pendingManualInsertSelectionRef.current = patch.id;
+            const saved = await applyManualEdit(patch, label, expectedSource);
+            if (!saved && pendingManualInsertSelectionRef.current === patch.id) pendingManualInsertSelectionRef.current = null;
+            if(saved && pendingManualInsertSelectionRef.current === patch.id) {
+              const existing=manualEditTargets.find(target => target.id === patch.id);
+              if(existing) {pendingManualInsertSelectionRef.current=null;void selectManualEditTargetRef.current(existing);}
+            }
+            return saved;
+          }} /> : null}
+        {embedded && !viewerOnly && manualEditEntryAllowed && /\.html?$/i.test(file.name) ? <ArtifactEditControls key={file.name} projectId={projectId} active={manualEditMode} busy={manualEditSaving}
+          onEnter={async () => {
+            if (composerHoldsUnsentWorkRef.current && !(await confirmHostFeedbackDiscard(projectId, 'comment'))) return 'cancelled';
+            if (markupDraftDirty && !(await confirmHostFeedbackDiscard(projectId, 'markup'))) return 'cancelled';
+            return activateManualEditTool();
+          }}
+          onExit={() => requestManualEditSafeExitRef.current()} /> : null}
+        {inlineAnnotations ? <ArtifactAnnotationControls projectId={projectId} commenting={boardMode} marking={drawOverlayOpen} dirty={composerHoldsUnsentWork || markupDraftDirty} disabled={sendingBoardBatch}
+          onDiscard={() => { clearBoardComposer(); setMarkupDiscardRevision(value => value + 1); setDrawOverlayOpen(false); }}
+          onComment={() => {
+            if (drawOverlayOpen && markupDraftDirty) { void requestMarkupClose().then(closed => { if (closed) activateCommentTool(true); }); return; }
+            if (!boardMode) { activateCommentTool(true); return; }
+            requestComposerRetarget(() => { setCommentPanelOpen(false); setCommentCreateMode(false); setBoardMode(false); clearBoardComposer(); });
+          }}
+          onComments={returnFocus => {
+            const open = () => requestComposerRetarget(() => {
+              setDrawOverlayOpen(false); clearBoardComposer();
+              commentListReturnFocus.current = returnFocus; setCommentListInPopover(true);
+            });
+            if (drawOverlayOpen && markupDraftDirty) { void requestMarkupClose().then(closed => { if (closed) open(); }); }
+            else open();
+          }}
+          onMark={() => { requestComposerRetarget(activateDrawTool); }} /> : null}
         {initialPreviewLoading ? (
           <FileViewerLoadingSkeleton />
         ) : (
@@ -18083,6 +18511,7 @@ function HtmlViewer({
             data-testid={manualEditMode ? undefined : 'comment-preview-layout'}
             ref={manualEditMode ? undefined : setCommentComposerHostRef}
             style={{
+              ...(embedded ? { '--deck-rail-width': `${thumbnailRailWidth}px`, '--deck-compact-rail-width': `${thumbnailRailWidth}px` } as CSSProperties : {}),
               ...previewViewportStyle(
                 previewViewport,
                 previewScale,
@@ -18095,25 +18524,15 @@ function HtmlViewer({
           >
             {manualEditPanel}
             {manualEditHoverAffordance}
-            {showDeckThumbnailRail && !deckThumbnailsCollapsed ? (
-              <DeckThumbnailRail
-                count={deckSlideTotal}
-                activeIndex={activeDeckSlideIndex}
-                labelTotal={deckNavTotal}
-                buildThumbSrcDoc={buildDeckThumbnailSrcDoc}
-                parsedDeck={parsedDeckThumbnails}
-                previewViewport={deckThumbnailRenderViewport}
-                onSelect={(index) => {
-                  fireDeckViewerClick('thumbnail_select', {
-                    slide_index: index,
-                    slide_count: deckSlideTotal,
-                  });
-                  handleDeckThumbnailSelect(index);
-                }}
-              />
-            ) : null}
+            {showDeckThumbnailRail && embedded ? (
+              <ThumbnailRailResize collapsed={deckThumbnailsCollapsed} width={thumbnailRailWidth} defaultWidth={thumbnailRailDefaultWidth}
+                onResize={next => { setDeckThumbnailsCollapsed(next === 0); if (next > 0) setDeckThumbnailWidth(next); }}>
+                {deckThumbnailRailNode}
+              </ThumbnailRailResize>
+            ) : deckThumbnailRailNode}
             <div
               className={manualEditMode ? 'manual-edit-canvas' : 'comment-preview-canvas'}
+              style={dockedPresentationProperties ? { insetInlineEnd: presentationInspectorLayoutWidth } : undefined}
               data-testid={manualEditMode ? undefined : 'comment-preview-canvas'}
               ref={manualEditMode ? undefined : setCommentPreviewCanvasRef}
             >
@@ -18121,21 +18540,27 @@ function HtmlViewer({
                 <div
                   style={
                     manualEditMode
-                      ? manualEditPreviewShellStyle(previewViewport, previewScale, manualEditViewportWidth)
+                      ? manualEditPreviewShellStyle(previewViewport, previewScale, dockedPresentationProperties ? boardPreviewCanvasSize?.width ?? manualEditViewportWidth : manualEditViewportWidth)
                       : previewScaleShellStyle(previewViewport, previewScale)
                   }
                 >
                   <PreviewDrawOverlay
                     active={drawOverlayOpen}
-                    onActiveChange={setDrawOverlayOpen}
+                    draftOnly={embedded}
+                    onDirtyChange={setMarkupDraftDirty}
+                    discardRevision={markupDiscardRevision}
+                    onPrepareDraft={embedded ? () => prepareHostFeedback(projectId) : undefined}
+                    onActiveChange={value => { if (value) setDrawOverlayOpen(true); else void requestMarkupClose(); }}
                     captureViewport
                     captureSnapshot={captureExportImageSnapshot}
                     captureTarget={null}
                     filePath={file.name}
+                    slideIndex={effectiveDeck ? slideState?.active : undefined}
                     sendDisabled={streaming}
                     sendDisabledReason={t('chat.annotationSendDisabledReason')}
                     onToolbarClick={fireDrawToolbarClick}
                     toolbarHost={manualEditMode ? null : commentComposerHost}
+                    toolbarBottomInset={embedded && showDeckFloatingNav ? 72 : undefined}
                   >
                     <div className="artifact-preview-transport-stack">
                       {OD_PREVIEW_KEEP_ALIVE ? (
@@ -18143,7 +18568,7 @@ function HtmlViewer({
                           ref={urlPreviewIframeRef}
                           cacheKey={urlPreviewKeepAliveKey}
                           data-testid={workspaceActive
-                            ? (useUrlLoadPreview ? 'artifact-preview-frame' : 'artifact-preview-frame-url-load')
+                            ? (useUrlLoadPreview ? previewFrameTestId : 'artifact-preview-frame-url-load')
                             : `artifact-preview-frame-retained-${file.name}`}
                           data-od-render-mode="url-load"
                           data-od-active={mode === 'preview' && useUrlLoadPreview ? 'true' : 'false'}
@@ -18195,7 +18620,7 @@ function HtmlViewer({
                         <iframe
                           ref={setUnpooledUrlPreviewIframe}
                           data-testid={workspaceActive
-                            ? (useUrlLoadPreview ? 'artifact-preview-frame' : 'artifact-preview-frame-url-load')
+                            ? (useUrlLoadPreview ? previewFrameTestId : 'artifact-preview-frame-url-load')
                             : `artifact-preview-frame-retained-${file.name}`}
                           data-od-render-mode="url-load"
                           data-od-active={mode === 'preview' && useUrlLoadPreview ? 'true' : 'false'}
@@ -18251,7 +18676,7 @@ function HtmlViewer({
                         ref={setSrcDocPreviewIframe}
                         name={srcDocPreviewFrameName}
                         data-testid={workspaceActive
-                          ? (useUrlLoadPreview ? 'artifact-preview-frame-srcdoc' : 'artifact-preview-frame')
+                          ? (useUrlLoadPreview ? 'artifact-preview-frame-srcdoc' : previewFrameTestId)
                           : `artifact-preview-frame-srcdoc-retained-${file.name}`}
                         data-od-render-mode="srcdoc"
                         data-od-active={mode === 'preview' && !useUrlLoadPreview ? 'true' : 'false'}
@@ -18262,7 +18687,7 @@ function HtmlViewer({
                         aria-hidden={workspaceActive && mode === 'preview' && !useUrlLoadPreview ? undefined : true}
                         tabIndex={workspaceActive && mode === 'preview' && !useUrlLoadPreview ? 0 : -1}
                         title={file.name}
-                        sandbox={HTML_PREVIEW_SANDBOX}
+                        sandbox={staticSnapshot ? 'allow-scripts' : HTML_PREVIEW_SANDBOX}
                         src={srcDocTransportUrl ?? 'about:blank'}
                         srcDoc={srcDocTransportUrl ? undefined : srcDocTransportContent}
                         onLoad={() => {
@@ -18381,7 +18806,7 @@ function HtmlViewer({
                   liveTargets={liveCommentTargets}
                   hoveredTarget={hoveredCommentTarget}
                   hoveredPodMemberId={hoveredPodMemberId}
-                  activeTarget={activeCommentTarget}
+                  activeTarget={inlineAnnotations && activeComposerComment?.status === 'resolved' ? null : activeCommentTarget}
                   activeExistingCommentId={activeComposerComment?.id ?? null}
                   boardTool={boardTool}
                   showActivePin={commentCreateMode}
@@ -18392,7 +18817,7 @@ function HtmlViewer({
                   activeSlideIndex={effectiveDeck ? slideState?.active ?? null : null}
                   onOpenComment={(comment, snapshot) => {
                     requestComposerRetarget(() => {
-                      setCommentPanelOpen(true);
+                      setCommentPanelOpen(!inlineAnnotations);
                       setCommentSidePanelCollapsed(false);
                       setCommentCreateMode(true);
                       setBoardMode(true);
@@ -18575,9 +19000,9 @@ function HtmlViewer({
               ) : null}
             </div>
             {boardImagePreviewModal}
-            {commentPortalHost && commentSidePanel
+            {!commentListInPopover && commentPortalHost && commentSidePanel
               ? createPortal(commentSidePanel, commentPortalHost)
-              : commentPortalId
+              : commentPortalId || commentListInPopover
                 ? null
                 : commentSidePanel}
             {inspectMode && activeInspectTarget ? (
@@ -18628,7 +19053,7 @@ function HtmlViewer({
           </>
         )}
       </div>
-      {speakerNotesPanel}
+      {embedded && speakerNotesPanel ? <SpeakerNotesDrawer>{speakerNotesPanel}</SpeakerNotesDrawer> : speakerNotesPanel}
       {workspaceActive && inTabPresent && source && typeof document !== 'undefined' ? createPortal(
         <div
           ref={presentOverlayRef}
@@ -18757,14 +19182,14 @@ function HtmlViewer({
               </fieldset>
             </div>
             <div className="modal-foot">
-              <button
+              <Button unstyled variant="secondary" size="sm"
                 type="button"
                 className="ghost-link button-like"
                 onClick={() => setPptxExportModalOpen(false)}
               >
                 {t('common.cancel')}
-              </button>
-              <button
+              </Button>
+              <Button unstyled variant="primary" size="sm"
                 type="button"
                 className="viewer-action primary"
                 disabled={!canPptx}
@@ -18801,7 +19226,7 @@ function HtmlViewer({
                 }}
               >
                 {t('fileViewer.exportPptxConfirm')}
-              </button>
+              </Button>
             </div>
           </div>
         </div>,
@@ -18853,7 +19278,7 @@ function HtmlViewer({
               ) : null}
             </div>
             <div className="modal-foot">
-              <button
+              <Button unstyled variant="secondary" size="sm"
                 type="button"
                 className="ghost-link button-like"
                 onClick={() => {
@@ -18865,8 +19290,8 @@ function HtmlViewer({
                 }}
               >
                 {t('common.cancel')}
-              </button>
-              <button
+              </Button>
+              <Button unstyled variant="primary" size="sm"
                 type="button"
                 className="viewer-action primary"
                 onClick={() => {
@@ -18874,7 +19299,7 @@ function HtmlViewer({
                 }}
               >
                 {t('common.save')}
-              </button>
+              </Button>
             </div>
           </div>
         </div>,
@@ -18902,7 +19327,7 @@ function HtmlViewer({
               </label>
               <label className="field" htmlFor={templateDescriptionId}>
                 <span className="field-label">{t('fileViewer.templateDescPrompt')}</span>
-                <textarea
+                <Textarea unstyled
                   id={templateDescriptionId}
                   rows={3}
                   value={templateDescription}
@@ -18913,7 +19338,7 @@ function HtmlViewer({
               {templateSaveError ? <p className="deploy-error">{templateSaveError}</p> : null}
             </div>
             <div className="modal-foot">
-              <button
+              <Button unstyled variant="secondary" size="sm"
                 type="button"
                 className="ghost-link button-like"
                 disabled={savingTemplate}
@@ -18926,8 +19351,8 @@ function HtmlViewer({
                 }}
               >
                 {t('common.cancel')}
-              </button>
-              <button
+              </Button>
+              <Button unstyled variant="primary" size="sm"
                 type="button"
                 className="viewer-action primary"
                 disabled={savingTemplate || !templateName.trim()}
@@ -18936,7 +19361,7 @@ function HtmlViewer({
                 }}
               >
                 {savingTemplate ? t('fileViewer.savingTemplate') : t('common.save')}
-              </button>
+              </Button>
             </div>
           </div>
         </div>,
@@ -20667,7 +21092,7 @@ function MarkdownViewer({
           <>
             {showEditor ? (
               <section className="markdown-editor-pane" aria-label={t('fileViewer.markdownEditor')}>
-                <textarea
+                <Textarea unstyled
                   ref={editorRef}
                   className="markdown-editor"
                   value={text}

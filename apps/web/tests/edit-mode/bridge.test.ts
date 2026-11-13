@@ -265,6 +265,21 @@ describe('manual edit bridge target normalization', () => {
     expect(bridge).not.toContain('if (isPrimaryTarget(el)) return el;');
   });
 
+  it('selects explicitly editable authored SVG roots from their polygon children', () => {
+    const dom = new JSDOM(
+      `<main data-od-id="canvas"><svg data-od-id="triangle" data-od-edit="container" role="img" aria-label="Triangle"><polygon points="50,0 100,100 0,100" /></svg><svg data-od-id="decoration"><path /></svg></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const shape = dom.window.document.querySelector('svg')!;
+    shape.getBoundingClientRect = () => ({ x: 0, y: 0, width: 160, height: 96, top: 0, right: 160, bottom: 96, left: 0, toJSON: () => ({}) } as DOMRect);
+    const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
+    expect(isMeaningfulManualEditElement(shape, { width: 160, height: 96 })).toBe(true);
+    expect(isMeaningfulManualEditElement(dom.window.document.querySelectorAll('svg')[1]!, { width: 160, height: 96 })).toBe(false);
+    shape.querySelector('polygon')!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(postMessage).toHaveBeenCalledWith({ type: 'od-edit-select', target: expect.objectContaining({ id: 'triangle', kind: 'container' }) }, '*');
+    dom.window.close();
+  });
+
   it('selects and announces ordinary HTML elements after srcdoc source-path annotation', () => {
     const dom = new JSDOM(
       `<main data-od-source-path="path-0"><section data-od-source-path="path-0-0"><h1 data-od-source-path="path-0-0-0">Plain title</h1><p data-od-source-path="path-0-0-1">Plain body</p></section></main>${buildManualEditBridge(true)}`,
@@ -865,6 +880,21 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 
+  it('reports resolved styles after clearing an inline override', () => {
+    const posts: Array<{ type?: string; id?: string; version?: number; ok?: boolean; styles?: { color?: string } }> = [];
+    const dom = new JSDOM(`<html><body style="color:#111111"><div data-od-id="shape" style="color:#2368c4">Shape</div>${buildManualEditBridge(true)}</body></html>`, { runScripts: 'dangerously', url: 'http://localhost', pretendToBeVisual: true });
+    dom.window.parent.postMessage = ((message: unknown) => { posts.push(message as typeof posts[number]); }) as typeof dom.window.parent.postMessage;
+    const element = dom.window.document.querySelector('[data-od-id="shape"]')!;
+    const before = dom.window.getComputedStyle(element).color;
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', { source: dom.window.parent, data: { type: 'od-edit-preview-style', id: 'shape', version: 7, styles: { color: '' } } }));
+    const ack = posts.find(message => message.type === 'od-edit-preview-style-applied');
+    expect(ack).toMatchObject({ id: 'shape', version: 7, ok: true });
+    expect(ack?.styles?.color).toBe('rgb(17, 17, 17)');
+    expect(ack?.styles?.color).toBe(dom.window.getComputedStyle(element).color);
+    expect(ack?.styles?.color).not.toBe(before);
+    dom.window.close();
+  });
+
   it('acks live preview style patches by id and version', () => {
     const bridge = buildManualEditBridge(true);
 
@@ -1074,6 +1104,19 @@ describe('manual edit bridge target normalization', () => {
     expect(postMessage).toHaveBeenCalledWith({ type: 'od-edit-background' }, '*');
     expect(title.hasAttribute('contenteditable')).toBe(false);
 
+    dom.window.close();
+  });
+
+  it('keeps inline edits on Escape when the embedded host requests commit semantics', () => {
+    const dom = new JSDOM(`<main><p data-od-id="body">Original body</p></main>${buildManualEditBridge(true)}`, { runScripts: 'dangerously', url: 'http://localhost' });
+    const body = dom.window.document.querySelector('[data-od-id="body"]') as HTMLElement;
+    const post = vi.spyOn(dom.window.parent, 'postMessage');
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', { data: { type: 'od-edit-mode', enabled: true, commitOnEscape: true } }));
+    body.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    body.textContent = 'Kept body';
+    body.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(body.textContent).toBe('Kept body'); expect(body.hasAttribute('contenteditable')).toBe(false);
+    expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'od-edit-text-commit', id: 'body', value: 'Kept body' }), '*');
     dom.window.close();
   });
 
@@ -1293,6 +1336,26 @@ describe('manual edit bridge target normalization', () => {
     expect(event.defaultPrevented).toBe(true);
     expect(clicked).not.toHaveBeenCalled();
 
+    dom.window.close();
+  });
+});
+
+describe('saved preview paint verification', () => {
+  it('verifies actual text and normalized styles, rejecting missing or structurally different targets', async () => {
+    const dom = new JSDOM(`<main><h1 data-od-id="hero" style="color:rgb(255, 0, 0);font-size:24px">Saved heading</h1><p data-od-id="rich"><b>Saved heading</b></p></main>${buildManualEditBridge(true)}`, { runScripts: 'dangerously', url: 'http://localhost' });
+    const post = vi.spyOn(dom.window.parent, 'postMessage');
+    const verify = (patch: unknown, source: Window | null = dom.window as unknown as Window) => {
+      post.mockClear();
+      dom.window.dispatchEvent(new dom.window.MessageEvent('message', { source, data: { type: 'od-edit-verify-saved-preview', requestId: 'paint-proof', patch } }));
+      return post.mock.calls.map(([message]) => message).find(message => message.type === 'od-edit-saved-preview-result');
+    };
+    expect(verify({ kind: 'set-text', id: 'hero', value: 'Saved heading' })?.ok).toBe(true);
+    expect(verify({ kind: 'set-text', id: 'hero', value: 'Different text' })?.ok).toBe(false);
+    expect(verify({ kind: 'set-text', id: 'rich', value: 'Saved heading' })?.ok).toBe(false);
+    expect(verify({ kind: 'set-text', id: 'missing', value: 'Saved heading' })?.ok).toBe(false);
+    expect(verify({ kind: 'set-style', id: 'hero', styles: { color: '#ff0000', fontSize: '24px' } })?.ok).toBe(true);
+    expect(verify({ kind: 'set-style', id: 'hero', styles: { color: '#0000ff' } })?.ok).toBe(false);
+    expect(verify({ kind: 'set-text', id: 'hero', value: 'Saved heading' }, null)).toBeUndefined();
     dom.window.close();
   });
 });

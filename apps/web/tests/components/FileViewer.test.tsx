@@ -1016,7 +1016,7 @@ describe('FileViewer preview scale', () => {
       '.preview-viewport:not(.preview-viewport-desktop).comment-preview-layer-with-deck-rail',
     );
     expect(css).toContain('--deck-device-frame-radius: 18px;');
-    expect(css).toContain('--deck-compact-rail-width: 56px;');
+    expect(css).toContain('--deck-compact-rail-width: var(--deck-rail-width, 56px);');
     expect(css).toContain('.preview-viewport-mobile.comment-preview-layer-with-deck-rail');
     expect(css).toMatch(
       /\.preview-viewport:not\(\.preview-viewport-desktop\)\.comment-preview-layer-with-deck-rail \.deck-thumbnail-rail\s*\{[\s\S]*width: var\(--deck-compact-rail-width\);[\s\S]*height: calc\(var\(--preview-viewport-height\) \* var\(--preview-scale, 1\)\);[\s\S]*border-radius: var\(--deck-device-frame-radius\) 0 0 var\(--deck-device-frame-radius\);/,
@@ -3302,7 +3302,7 @@ describe('FileViewer SVG artifacts', () => {
       }));
     });
     expect(srcDocPostSpy).toHaveBeenCalledWith(
-      { type: 'od-edit-mode', enabled: true },
+      { type: 'od-edit-mode', enabled: true, commitOnEscape: false },
       '*',
     );
     fireEvent.load(srcDocFrameAfter!);
@@ -3967,16 +3967,19 @@ describe('FileViewer SVG artifacts', () => {
       isLayoutContainer: false,
       outerHtml: '<div data-od-id="card-title">Pricing that scales</div>',
     };
+    const failedSave = vi.fn();
     vi.stubGlobal('fetch', vi.fn(async (url: unknown, opts?: { method?: string }) => {
       const u = String(url);
       if (u.includes('/files') && opts?.method === 'POST') {
+        failedSave();
         return new Response(JSON.stringify({ error: { message: 'disk full' } }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      // The pre-save history check re-fetches the source; treat it as absent so
-      // the commit proceeds to the (failing) save.
+      // The conditional writer must verify its existing source before it can
+      // reach the injected disk failure. A 404 tests a failed preflight instead.
+      if (u.includes('/raw/page.html')) return new Response('<html><body><div data-od-id="card-title">Pricing that scales</div></body></html>', { status: 200 });
       return new Response('', { status: 404 });
     }));
     render(
@@ -4031,6 +4034,7 @@ describe('FileViewer SVG artifacts', () => {
 
     // The save error is surfaced and edit mode stays open instead of tearing down.
     expect(await screen.findByText(/Could not save the edited file/)).toBeTruthy();
+    expect(failedSave).toHaveBeenCalledTimes(1);
     expect(toggle.getAttribute('aria-pressed')).toBe('true');
     expect(analyticsTrackMock).toHaveBeenCalledWith(
       'artifact_edit_result',
@@ -4747,6 +4751,29 @@ describe('FileViewer SVG artifacts', () => {
     await waitFor(() => expect(frame.srcdoc).toContain('Saved A'));
   });
 
+  it('captures an opaque outgoing document before an external source replacement and restores through messaging', async () => {
+    const file = baseFile({ name: 'external.html', path: 'external.html', mime: 'text/html', kind: 'html' });
+    const props = { projectId: 'project-1', projectKind: 'prototype' as const, embedded: true, inlineAnnotations: true, file };
+    const { rerender } = render(<FileViewer {...props} liveHtml='<html><body><p>Original external source</p></body></html>' />);
+    const frame = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;
+    const sourceBefore = frame.srcdoc;
+    const opaque = installSandboxedPreviewWindow(frame), post = vi.mocked(opaque.postMessage);
+    rerender(<FileViewer {...props} liveHtml='<html><body><p>Next external source</p></body></html>' />);
+    await waitFor(() => expect(post.mock.calls.some(([value]) => value.type === 'od:preview-scroll-capture')).toBe(true));
+    expect(frame.srcdoc).toBe(sourceBefore);
+    const capture = post.mock.calls.map(([value]) => value).find(value => value.type === 'od:preview-scroll-capture');
+    act(() => window.dispatchEvent(new MessageEvent('message', { source: opaque, data: { type: 'od:preview-scroll', requestId: capture.requestId, frameLeft: 0, frameTop: 817, canvasLeft: 0, canvasTop: 817 } })));
+    await waitFor(() => expect(frame.srcdoc).toContain('Next external source'));
+    fireEvent.load(frame);
+    await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: 'od:preview-scroll-restore', frameTop: 817, canvasTop: 817 }), '*'));
+    rerender(<FileViewer {...props} projectId="other-project" file={{ ...file, name: 'other.html', path: 'other.html' }} liveHtml='<html><body><p>Other source scope</p></body></html>' />);
+    await waitFor(() => expect((screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement).srcdoc).toContain('Other source scope'));
+    const otherFrame = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;
+    const otherWindow = installSandboxedPreviewWindow(otherFrame), otherPost = vi.mocked(otherWindow.postMessage);
+    act(() => window.dispatchEvent(new MessageEvent('message', { source: otherWindow, data: { type: 'od:preview-scroll-request' } })));
+    expect(otherPost).toHaveBeenCalledWith(expect.objectContaining({ type: 'od:preview-scroll-restore', frameTop: 0, canvasTop: 0 }), '*');
+  });
+
   it('waits for the opaque preview scroll snapshot before committing a content edit', async () => {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       callback(0);
@@ -4905,15 +4932,18 @@ describe('FileViewer SVG artifacts', () => {
     };
     let releaseSave!: () => void;
     const savePending = new Promise<void>((resolve) => { releaseSave = resolve; });
+    const failedSave = vi.fn();
     vi.stubGlobal('fetch', vi.fn(async (url: unknown, opts?: { method?: string }) => {
       const u = String(url);
       if (u.includes('/files') && opts?.method === 'POST') {
+        failedSave();
         await savePending; // hold the save in flight until the test releases it
         return new Response(JSON.stringify({ error: { message: 'disk full' } }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' },
         });
       }
+      if (u.includes('/raw/page.html')) return new Response('<html><body><div data-od-id="card-title">Pricing that scales</div></body></html>', { status: 200 });
       return new Response('', { status: 404 });
     }));
     render(
@@ -4971,6 +5001,7 @@ describe('FileViewer SVG artifacts', () => {
     releaseSave();
 
     expect(await screen.findByText(/Could not save the edited file/)).toBeTruthy();
+    expect(failedSave).toHaveBeenCalledTimes(1);
     expect(toggle.getAttribute('aria-pressed')).toBe('true');
   });
 
@@ -5276,7 +5307,7 @@ describe('FileViewer SVG artifacts', () => {
     workspaceShell.remove();
   });
 
-  it('closes deck in-tab presentation when the present iframe forwards Escape', async () => {
+  it('mirrors deck presentation navigation and closes on forwarded Escape', async () => {
     const file = baseFile({
       name: 'deck.html',
       path: 'deck.html',
@@ -5302,6 +5333,9 @@ describe('FileViewer SVG artifacts', () => {
       />,
     );
 
+    const preview = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;
+    act(() => window.dispatchEvent(new MessageEvent('message', {source:preview.contentWindow,data:{type:'od:slide-state',active:0,count:2}})));
+
     fireEvent.click(screen.getByRole('button', { name: /present/i }));
     fireEvent.click(screen.getByRole('menuitem', { name: /in this tab/i }));
 
@@ -5311,6 +5345,14 @@ describe('FileViewer SVG artifacts', () => {
       return nextFrame!;
     });
     expect(container.querySelector('.html-viewer.is-tab-present')).toBeTruthy();
+    const previewPost = vi.spyOn(preview.contentWindow!, 'postMessage'), overlayPost = vi.spyOn(frame.contentWindow!, 'postMessage');
+    act(() => window.dispatchEvent(new MessageEvent('message', {source:frame.contentWindow,data:{type:'od:slide-state',active:1,count:2}})));
+    expect(previewPost).toHaveBeenCalledWith({type:'od:slide',action:'go',index:1,userInitiated:true}, '*');
+    expect(overlayPost).toHaveBeenCalledWith({type:'od:slide',action:'go',index:1,userInitiated:true}, '*');
+    const navigationCount = () => previewPost.mock.calls.filter(([data]) => data?.type === 'od:slide').length;
+    const count = navigationCount();
+    act(() => window.dispatchEvent(new MessageEvent('message', {source:frame.contentWindow,data:{type:'od:slide-state',active:1,count:2}})));
+    expect(navigationCount()).toBe(count);
 
     window.dispatchEvent(new MessageEvent('message', {
       data: { type: 'od:present-escape' },
@@ -5730,15 +5772,15 @@ describe('FileViewer SVG artifacts', () => {
 
   it('shows speaker notes panel with existing real notes', () => {
     const file = baseFile({
-      name: 'deck.html',
-      path: 'deck.html',
+      name: 'existing-real-notes.html',
+      path: 'existing-real-notes.html',
       mime: 'text/html',
       kind: 'html',
       artifactManifest: {
         version: 1,
         kind: 'html',
         title: 'Deck',
-        entry: 'deck.html',
+        entry: 'existing-real-notes.html',
         renderer: 'html',
         exports: ['html'],
       },
@@ -6009,6 +6051,28 @@ describe('FileViewer SVG artifacts', () => {
         project_kind: 'prototype',
       });
       expect(typeof nexts[0].slide_index).toBe('number');
+    });
+
+    it('uses current slide state for host keyboard navigation', () => {
+      render(<FileViewer projectId="project-1" projectKind="prototype" file={deckFile()} isDeck liveHtml={twoSlideDeck} />);
+      const frame = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;
+      const post = vi.spyOn(frame.contentWindow!, 'postMessage');
+      act(() => { window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: { type: 'od:slide-state', active: 0, count: 2 } })); });
+      post.mockClear();
+      fireEvent.keyDown(window, { key: 'ArrowRight' });
+      expect(post).toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 1, userInitiated: true }, '*');
+    });
+
+    it('leaves consumed resize keys and focused controls to their owner', () => {
+      render(<FileViewer projectId="project-1" projectKind="prototype" file={deckFile()} isDeck liveHtml={twoSlideDeck} />);
+      const frame = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;
+      const post = vi.spyOn(frame.contentWindow!, 'postMessage');
+      post.mockClear();
+      const consumed = new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true });
+      consumed.preventDefault(); window.dispatchEvent(consumed);
+      const button = document.createElement('button'); document.body.append(button);
+      fireEvent.keyDown(button, { key: 'ArrowRight' }); button.remove();
+      expect(post.mock.calls.filter(([message]) => message?.type === 'od:slide')).toHaveLength(0);
     });
 
     it('tracks opening speaker notes for edit', () => {
@@ -9720,7 +9784,7 @@ describe('FileViewer tweaks toolbar', () => {
       const replacementPostMessage = vi.spyOn(replacementFrame.contentWindow!, 'postMessage');
 
       fireEvent.click(screen.getByTestId('manual-edit-mode-toggle'));
-      act(() => {
+      await act(async () => {
         window.dispatchEvent(new MessageEvent('message', {
           source: replacementFrame.contentWindow,
           data: { type: 'od-edit-background' },
@@ -11030,7 +11094,7 @@ describe('FileViewer tweaks toolbar', () => {
     expect(await screen.findByTestId('comment-side-panel')).toBeTruthy();
   });
 
-  it('keeps the comment popover open and restores focus when View all comments closes', async () => {
+  it('switches View all comments inside the same popover without docking or losing the draft', async () => {
     const portalId = 'project-comments-view-all';
     render(
       <>
@@ -11061,26 +11125,22 @@ describe('FileViewer tweaks toolbar', () => {
       },
     }));
 
-    const viewAll = await screen.findByTestId('comment-popover-view-all');
-    fireEvent.click(viewAll);
+    const input = await screen.findByTestId('comment-popover-input');
+    fireEvent.change(input, { target: { value: 'Keep my unfinished review' } });
+    const layout = screen.getByTestId('comment-preview-layout');
+    const originalLayout = layout.className;
+    fireEvent.click(screen.getByTestId('comment-popover-view-all'));
 
+    const popover = screen.getByTestId('comment-popover');
     const panel = await screen.findByTestId('comment-side-panel');
-    const dismiss = within(panel).getByRole('button', { name: /hide comments/i });
-    dismiss.focus();
-    fireEvent.click(dismiss);
-
-    const rail = await screen.findByTestId('comment-side-collapsed-rail');
-    expect(screen.getByTestId('comment-popover')).toBeTruthy();
-    await waitFor(() => expect(document.activeElement).toBe(rail));
-
-    fireEvent.click(rail);
-    const reopened = await screen.findByTestId('comment-side-panel');
-    fireEvent.keyDown(reopened, { key: 'Escape' });
-    await waitFor(() => {
-      expect(screen.queryByTestId('comment-side-panel')).toBeNull();
-      expect(screen.getByTestId('comment-popover')).toBeTruthy();
-      expect(document.activeElement).toBe(viewAll);
-    });
+    expect(popover).toContainElement(panel);
+    expect(screen.getByTestId('comment-float-host')).toBeEmptyDOMElement();
+    expect(layout.className).toBe(originalLayout);
+    expect(screen.queryByTestId('comment-popover-input')).toBeNull();
+    fireEvent.click(within(popover).getByRole('button', { name: /go back/i }));
+    expect(screen.getByTestId('comment-popover-input')).toHaveValue('Keep my unfinished review');
+    expect(screen.queryByTestId('comment-side-panel')).toBeNull();
+    expect(layout.className).toBe(originalLayout);
   });
 
   it('shows the open comment count beside the comments icon', () => {
@@ -11834,7 +11894,9 @@ describe('FileViewer tweaks toolbar', () => {
     fireEvent.change(input, { target: { value: 'Please tighten this heading.' } });
 
     expect(input).not.toHaveAttribute('readonly');
-    expect(screen.getByTestId('comment-popover-save')).toHaveTextContent('Comment');
+    // Compact icon controls retain a full accessible action name.
+    expect(screen.getByTestId('comment-popover-save')).toHaveAccessibleName('Comment');
+    expect(screen.getByTestId('comment-popover-save')).toHaveAttribute('title', 'Comment');
     expect(screen.queryByTestId('comment-add-send')).toBeNull();
   });
 
@@ -12302,18 +12364,20 @@ describe('FileViewer tweaks toolbar', () => {
     expect(rows).toHaveLength(3);
     const firstSlideRow = rows.find((row) => row.dataset.commentId === 'comment-slide-one')!;
     const fourthSlideRow = rows.find((row) => row.dataset.commentId === 'comment-slide-four')!;
-    expect(within(firstSlideRow).getByText('Slide 1 / 18').closest('.comment-side-item-head')).not.toBeNull();
-    expect(within(fourthSlideRow).getByText('Slide 4 / 18').closest('.comment-side-item-head')).not.toBeNull();
+    expect(within(firstSlideRow).getByText('Slide 1 / 18').closest('.comment-side-item-meta')).not.toBeNull();
+    expect(within(firstSlideRow).getByText('Slide 1 / 18').closest('.comment-side-item-head')).toBeNull();
+    expect(within(fourthSlideRow).getByText('Slide 4 / 18').closest('.comment-side-item-meta')).not.toBeNull();
+    expect(within(fourthSlideRow).getByText('Slide 4 / 18').closest('.comment-side-item-head')).toBeNull();
     expect(within(rows.find((row) => row.dataset.commentId === 'comment-without-slide')!).queryByText(/Slide \d+ \/ 18/)).toBeNull();
 
     const postMessage = vi.spyOn(frame.contentWindow!, 'postMessage');
     postMessage.mockClear();
     fireEvent.click(rows.find((row) => row.dataset.commentId === 'comment-slide-one')!);
 
-    // Cross-slide sidebar selection edits the comment, never the deck state.
-    expect(postMessage).not.toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 0 }, '*');
+    // Accepted cross-slide selection locates that comment on its own slide.
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'od:slide', action: 'go', index: 0, userInitiated: true }), '*');
     expect(rows.find((row) => row.dataset.commentId === 'comment-slide-one')!.textContent).toContain('First slide note');
-    expect(screen.getByTestId('comment-saved-marker-shared-title').getAttribute('data-pin-number')).toBe('2');
+    expect(screen.getByTestId('comment-saved-marker-shared-title').getAttribute('data-pin-number')).toBe('1');
   });
 
   it('orders side comments by creation time (newest first) and displays creation age', () => {

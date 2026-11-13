@@ -1,4 +1,6 @@
+import { embeddedMotionPreview } from '../../embedded-files/motion-preview.js';
 import { withCommentFileDeletion, type CommentFileDeletion } from '../../collab/comment-file-deletion.js';
+import { openProjectFileAccess, streamProjectFileAccess, statProjectDeleteAccess, type ProjectFileAccess } from '../../project-file-access.js';
 import { injectMotionSourcePlayer, isMotionVideoComposition, markMotionHostedPreview, MOTION_PREVIEW_OUTPUT_HEADER } from '@open-design/contracts/runtime/motion-source-player';
 import { createHash, randomUUID } from 'node:crypto';
 import { trackedCommentFilePaths } from '../../collab/local-comment-files.js';
@@ -76,6 +78,7 @@ import { ArtifactRegressionError } from '../../artifacts/stub-guard.js';
 import {
   ensureCurrentProjectFileVersion,
   isProjectFileVersionPath,
+  isVersionedDocumentFile,
   listProjectFileVersions,
   markProjectFileVersionStoreDeleted,
   readProjectFileVersion,
@@ -111,7 +114,7 @@ import {
   type ResolveSnapshotOk,
 } from '../../plugins/index.js';
 import { connectorService } from '../../connectors/service.js';
-import type { RouteDeps } from '../../server-context.js';
+import type { RouteDeps, PathDeps, HttpDeps } from '../../server-context.js';
 import { listSkills } from '../../skills.js';
 import { isSafeId, validateProjectPath } from '../../projects.js';
 import {
@@ -5950,7 +5953,9 @@ export function registerProjectArtifactRoutes(app: Express, ctx: RegisterProject
 
 }
 
-export interface RegisterProjectFileRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'uploads' | 'node' | 'projectStore' | 'projectFiles' | 'documents' | 'artifacts' | 'projectPreviewScopes'> {
+export interface RegisterProjectFileRoutesDeps extends Omit<RouteDeps<'db' | 'http' | 'paths' | 'uploads' | 'node' | 'projectStore' | 'projectFiles' | 'documents' | 'artifacts' | 'projectPreviewScopes'>, 'paths' | 'http'> {
+  paths: Pick<PathDeps, 'PROJECTS_DIR' | 'DESIGN_SYSTEMS_DIR' | 'USER_DESIGN_SYSTEMS_DIR'>;
+  http: Pick<HttpDeps, 'sendApiError' | 'sendMulterError'>;
   isProjectEditingBusy?: (projectId: string) => boolean;
   publicFileMutations?: PublicFileMutations;
   stopPublicFilesBeforeDelete?: CommentFileDeletion;
@@ -6226,7 +6231,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     ensureCurrentVersion: HtmlVersionLock['ensureCurrentVersion'],
     override?: HtmlVersionOverride,
   ): Promise<{ version: ProjectFileVersion | null; versionWarning?: ProjectFileVersionWarning }> {
-    if (!/\.html?$/i.test(fileName)) return { version: null };
+    if (!isVersionedDocumentFile(fileName)) return { version: null };
     try {
       return { version: await ensureCurrentVersion(content, htmlVersionOptions(project, override)) };
     } catch (err) {
@@ -6322,8 +6327,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     return false;
   }
 
-  async function detectPoweredPreviewHint(meta: {
-    filePath: string;
+  async function detectPoweredPreviewHint(meta: ProjectFileAccess & {
     mime: string;
     size: number;
   }): Promise<ProjectFileTextPreviewResponse['poweredPreview']> {
@@ -6337,7 +6341,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
 
     let scannedBytes = 0;
     let tail = '';
-    for await (const chunk of fs.createReadStream(meta.filePath, {
+    for await (const chunk of await streamProjectFileAccess(meta, {
       start: 0,
       end: scanLimit - 1,
       highWaterMark: 256 * 1024,
@@ -6436,7 +6440,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       }
 
       res.status(statusCode);
-      const stream = fs.createReadStream(meta.filePath, { start, end });
+      const stream = await streamProjectFileAccess(meta, { start, end });
+      res.once('close', () => stream.destroy());
       stream.on('error', (streamErr: any) => {
         if (!res.headersSent) {
           sendApiError(res, 500, 'STREAM_ERROR', String(streamErr));
@@ -6511,6 +6516,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     ownerFilePath: string,
     scope: string,
     expiresAt: number,
+    externalApiBase?: string,
   ): string {
     // Respect an artifact-authored base URL. Only generated documents without
     // one need the containment base that keeps runtime-created relative URLs
@@ -6532,9 +6538,13 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
     const dirSuffix = ownerDir === '.'
       ? ''
       : `${encodeProjectPathForUrl(ownerDir)}/`;
-    const baseTag = `<base href="/api/projects/${encodeURIComponent(projectId)}`
+    const gateway = process.env.OD_STUDIO_BASE_PATH ? `/api/studio/bridge/${encodeURIComponent(projectId)}` : '';
+    const trustedExternalBase = process.env.OD_EMBEDDED_STUDIO === '1' && typeof externalApiBase === 'string' && /^\/api\/studio\/preview\/[A-Za-z0-9_.-]+\/[0-9a-f-]+\/projects$/.test(externalApiBase)
+      ? externalApiBase : null;
+    const apiBase = trustedExternalBase ?? (gateway ? `${gateway}/projects` : '/api/projects');
+    const baseTag = `<base href="${apiBase}/${encodeURIComponent(projectId)}`
       + `/preview/${encodeURIComponent(scope)}/${dirSuffix}" data-od-project-preview-base>`;
-    const baseHref = `/api/projects/${encodeURIComponent(projectId)}`
+    const baseHref = `${apiBase}/${encodeURIComponent(projectId)}`
       + `/preview/${encodeURIComponent(scope)}/${dirSuffix}`;
     const bridge = buildPreviewBaseHrefBridge({ href: baseHref, expiresAt });
     // Same structural rule as the bridge injectors above: a `<head>` inside a
@@ -6868,7 +6878,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         return sendApiError(res, 400, 'BAD_REQUEST', 'target must be a non-root folder');
       }
       await withCommentFileDeletion(ctx.stopPublicFilesBeforeDelete, project.id, { folderPath: target.name }, async () => {
-        if (!(await ctx.node.fs.promises.stat(target.filePath)).isDirectory()) throw new Error('target must be a non-root folder');
+        if (!(await statProjectDeleteAccess(target)).isDirectory()) throw new Error('target must be a non-root folder');
         await deleteProjectFolder(PROJECTS_DIR, req.params.id, folderPath, project.metadata);
       });
       deleteWorkspaceArtifactsInFolder(db, project.id, target.name);
@@ -7034,7 +7044,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       );
       const bytesToRead = Math.min(meta.size, limit);
       const buffer = Buffer.allocUnsafe(bytesToRead);
-      const opened = await fs.promises.open(meta.filePath, 'r');
+      const opened = await openProjectFileAccess(meta);
       handle = opened;
       const result = bytesToRead > 0
         ? await opened.read(buffer, 0, bytesToRead, 0)
@@ -7193,7 +7203,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         project?.metadata,
         undefined,
         skipHtmlPreviewBridge ? undefined : async (file) => {
-          const transformed = await maybeResolveVitePreviewHtml({
+          let transformed = await maybeResolveVitePreviewHtml({
             file,
             projectId,
             relPath,
@@ -7202,7 +7212,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             readProjectFile,
           });
           if (/^text\/html(?:;|$)/i.test(file.mime)) {
-            const html = Buffer.isBuffer(transformed) ? transformed.toString('utf8') : String(transformed);
+            transformed = embeddedMotionPreview(Buffer.isBuffer(transformed) ? transformed.toString('utf8') : String(transformed), project?.metadata, req.query.odMotionPreview);
+            const html = String(transformed);
             res.setHeader(MOTION_PREVIEW_OUTPUT_HEADER, isMotionVideoComposition(html) ? 'video' : 'html');
           }
           const bridged = applyUrlPreviewBridgesToHtml(
@@ -7255,6 +7266,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             relPath,
             scope,
             expiresAt,
+            req.get('x-od-preview-base'),
           );
         },
         true, // revalidate: emit ETag/Last-Modified so covers/preview/export reuse cached assets
@@ -7442,16 +7454,16 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
       if (!await authorizeProjectRequest(req, res, project.id, { mode: 'read' })) return;
-      if (!/\.html?$/i.test(fileName)) {
-        return sendApiError(res, 400, 'BAD_REQUEST', 'versions are only available for HTML files');
+      if (!isVersionedDocumentFile(fileName)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'versions are only available for HTML or Markdown documents');
       }
       let file: ProjectFile | null = null;
       let historyFileName = fileName;
       let workingFileContent: string | null = null;
       try {
         const workingFile = await readProjectFile(PROJECTS_DIR, project.id, fileName, project.metadata);
-        if (!/\.html?$/i.test(workingFile.name)) {
-          return sendApiError(res, 400, 'BAD_REQUEST', 'versions are only available for HTML files');
+        if (!isVersionedDocumentFile(workingFile.name)) {
+          return sendApiError(res, 400, 'BAD_REQUEST', 'versions are only available for HTML or Markdown documents');
         }
         file = workingFile;
         historyFileName = workingFile.name;
@@ -7530,8 +7542,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         'writeFiles',
       )) return;
       const requestedFile = await readProjectFile(PROJECTS_DIR, project.id, fileName, project.metadata);
-      if (!/\.html?$/i.test(requestedFile.name)) {
-        return sendApiError(res, 400, 'BAD_REQUEST', 'versions are only available for HTML files');
+      if (!isVersionedDocumentFile(requestedFile.name)) {
+        return sendApiError(res, 400, 'BAD_REQUEST', 'versions are only available for HTML or Markdown documents');
       }
       const manualPrompt = typeof req.body?.prompt === 'string' && req.body.prompt.trim()
         ? req.body.prompt.trim()
@@ -7823,7 +7835,8 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         await ensureProject(PROJECTS_DIR, projectId, uploadProject?.metadata);
         if (req.file) {
           try {
-            const buf = await fs.promises.readFile(req.file.path);
+            if (rejectInternalVersionPath(res, req.body?.name ?? req.file.originalname)) return;
+            const buf = req.file.buffer ?? await fs.promises.readFile(req.file.path);
             // A caller-supplied `name` may carry an intentional subdirectory
             // (e.g. "imagery/hero.png" from the design-kit uploader). Preserve it
             // with sanitizePath (sanitizes each segment, keeps the slashes) so the
@@ -7834,7 +7847,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
               ? sanitizePath(req.body.name)
               : sanitizeName(req.file.originalname);
             if (rejectInternalVersionPath(res, desiredName)) return;
-            const requestedSource = uploadProject && /\.html?$/i.test(desiredName)
+            const requestedSource = uploadProject && isVersionedDocumentFile(desiredName)
               ? requestProjectFileVersionUploadSource(req.body)
               : null;
             const writeAndCapture = async (versionLock?: HtmlVersionLock) => {
@@ -7854,7 +7867,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
                 {},
                 uploadProject?.metadata,
               );
-              const versionCapture = uploadProject && requestedSource && /\.html?$/i.test(meta.name) && versionLock
+              const versionCapture = uploadProject && requestedSource && isVersionedDocumentFile(meta.name) && versionLock
                 ? await (async () => {
                   const savedFile = await readProjectFile(PROJECTS_DIR, uploadProject.id, meta.name, uploadProject.metadata);
                   return tryEnsureLockedHtmlCurrentVersion(
@@ -7891,7 +7904,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             };
             return res.json(body);
           } finally {
-            fs.promises.unlink(req.file.path).catch(() => {});
+            if (req.file.path) fs.promises.unlink(req.file.path).catch(() => {});
           }
         }
         const {
@@ -7916,9 +7929,13 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
         if (rejectInternalVersionPath(res, name)) return;
         const desiredName = sanitizePath(name);
         if (rejectInternalVersionPath(res, desiredName)) return;
-        const requestedSource = uploadProject && /\.html?$/i.test(desiredName)
+        const requestedSource = uploadProject && isVersionedDocumentFile(desiredName)
           ? requestProjectFileVersionUploadSource(req.body)
           : null;
+        const expectedDigest = req.body?.expectedContentSha256;
+        if (expectedDigest !== undefined && (typeof expectedDigest !== 'string' || !/^[0-9a-f]{64}$/.test(expectedDigest) || requestedSource !== 'manual')) {
+          return sendApiError(res, 400, 'BAD_REQUEST', 'expectedContentSha256 requires a SHA-256 digest and a manual document save');
+        }
         if (artifactManifest !== undefined && artifactManifest !== null) {
           const validated = validateArtifactManifestInput(
             artifactManifest,
@@ -7938,6 +7955,17 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             ? Buffer.from(content, 'base64')
             : Buffer.from(content, 'utf8');
         const writeAndCapture = async (versionLock?: HtmlVersionLock) => {
+          if (expectedDigest !== undefined) {
+            let observed;
+            try { observed = await readProjectFile(PROJECTS_DIR, projectId, desiredName, uploadProject?.metadata); }
+            catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+            }
+            const actualDigest = observed ? createHash('sha256').update(observed.buffer).digest('hex') : null;
+            if (actualDigest !== expectedDigest && actualDigest !== createHash('sha256').update(buf).digest('hex')) {
+              throw Object.assign(new Error('This file changed after you opened it. Reload the latest document before saving.'), { code: 'FILE_CONTENT_CHANGED' });
+            }
+          }
           const parentVersionId = uploadProject && requestedSource === 'manual' && versionLock
             ? await matchedHtmlParentVersionId(
               uploadProject,
@@ -7965,7 +7993,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
               },
               uploadProject?.metadata,
             );
-          const versionCapture = uploadProject && requestedSource && /\.html?$/i.test(meta.name) && versionLock
+          const versionCapture = uploadProject && requestedSource && isVersionedDocumentFile(meta.name) && versionLock
             ? await (async () => {
               const savedFile = await readProjectFile(PROJECTS_DIR, uploadProject.id, meta.name, uploadProject.metadata);
               const versionOverride: HtmlVersionOverride = {
@@ -8028,6 +8056,7 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
             details: { placeholders: err.placeholders },
           });
         }
+        if (err?.code === 'FILE_CONTENT_CHANGED') return sendApiError(res, 409, err.code, err.message);
         if (err?.code === 'EEXIST') {
           return sendApiError(res, 409, 'FILE_EXISTS', 'file already exists');
         }
@@ -8158,7 +8187,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
 
 }
 
-export interface RegisterProjectUploadRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'paths' | 'projectStore' | 'projectFiles'> {
+export interface RegisterProjectUploadRoutesDeps extends Omit<RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'paths' | 'projectStore' | 'projectFiles'>, 'paths' | 'http'> {
+  paths: Pick<PathDeps, 'PROJECTS_DIR' | 'DESIGN_SYSTEMS_DIR' | 'USER_DESIGN_SYSTEMS_DIR'>;
+  http: Pick<HttpDeps, 'sendApiError' | 'sendMulterError'>;
   verifyWorkspaceRequestAuthority?: VerifyWorkspaceRequestAuthority;
   authorizeProjectRequest?: AuthorizeProjectRequest;
   /** Durable first-open placeholder stamp lookup. */
@@ -8200,7 +8231,8 @@ export function registerProjectUploadRoutes(app: Express, ctx: RegisterProjectUp
         const incoming = Array.isArray(req.files) ? req.files : [];
         const cleanupRejectedUpload = () => {
           for (const f of incoming) {
-            if (f?.path) fs.promises.unlink(f.path).catch(() => {});
+            if (f?.embeddedRemove) f.embeddedRemove().catch(() => {});
+            else if (f?.path) fs.promises.unlink(f.path).catch(() => {});
           }
         };
         if (!await enforceWorkspaceProjectMutation(
@@ -8224,7 +8256,7 @@ export function registerProjectUploadRoutes(app: Express, ctx: RegisterProjectUp
         const out = [];
         for (const f of incoming) {
           try {
-            const stat = await fs.promises.stat(f.path);
+            const stat = f.embeddedStat ?? await fs.promises.stat(f.path);
             const rel = relDir ? `${relDir}/${f.filename}` : f.filename;
             out.push({
               name: rel,
@@ -8233,7 +8265,7 @@ export function registerProjectUploadRoutes(app: Express, ctx: RegisterProjectUp
               mtime: stat.mtimeMs,
               originalName: f.originalname,
             });
-            if (project && /\.html?$/i.test(rel)) {
+            if (project && isVersionedDocumentFile(rel)) {
               const savedFile = await readProjectFile(PROJECTS_DIR, req.params.id, rel, project.metadata);
               await ensureCurrentProjectFileVersion(
                 PROJECTS_DIR,

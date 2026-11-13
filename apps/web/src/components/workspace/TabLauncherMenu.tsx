@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Button } from '@open-design/components';
 import { createPortal } from 'react-dom';
 import { useT } from '../../i18n';
 import type { Dict } from '../../i18n/types';
@@ -234,28 +235,30 @@ export function TabLauncherMenu({
 
       {presentKinds.length > 0 ? (
         <div className={styles.chips}>
-          <button
+          <Button unstyled variant="secondary" size="sm"
             type="button"
             className={`${styles.chip} ${kindFilter === 'all' ? styles.chipActive : ''}`}
+            aria-pressed={kindFilter === 'all'}
             onClick={() => {
               onTrack?.({ element: 'filter', kind_filter: 'all' });
               setKindFilter('all');
             }}
           >
             {t('workspace.allFiles')}
-          </button>
+          </Button>
           {presentKinds.map((kind) => (
-            <button
+            <Button unstyled variant="secondary" size="sm"
               key={kind}
               type="button"
               className={`${styles.chip} ${kindFilter === kind ? styles.chipActive : ''}`}
+              aria-pressed={kindFilter === kind}
               onClick={() => {
                 onTrack?.({ element: 'filter', kind_filter: kind });
                 setKindFilter(kind);
               }}
             >
               {kindLabel(kind, t)}
-            </button>
+            </Button>
           ))}
         </div>
       ) : null}

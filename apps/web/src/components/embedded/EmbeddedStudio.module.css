@@ -1,0 +1,468 @@
+@font-face {
+  font-family: "Evebot Studio latin";
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Evebot Studio latin-ext";
+  src: url("/fonts/inter-latin-ext.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Evebot Studio cyrillic";
+  src: url("/fonts/inter-cyrillic.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Evebot Studio greek";
+  src: url("/fonts/inter-greek.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+.hostTypography {
+  font-family: "Evebot Studio latin", "Evebot Studio latin-ext", "Evebot Studio cyrillic", "Evebot Studio greek", ui-sans-serif, system-ui, sans-serif;
+  font-size: var(--text-body-regular);
+  line-height: var(--text-body-regular--line-height);
+  letter-spacing: var(--text-body-regular--letter-spacing);
+  font-weight: var(--text-body-regular--font-weight);
+}
+.workspace {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg-panel);
+  color: var(--text-strong);
+}
+.status {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  color: var(--text-muted);
+}
+/* Authored HTML with a transparent body needs a paper canvas independent of
+   workspace dark mode. The document can still paint its own background. */
+.workspace :global(.artifact-preview-transport-stack iframe) {
+  background-color: var(--color-white);
+  color-scheme: light;
+}
+
+/* The embedded Select supplies its own chevron; standalone keeps its native row marker. */
+.hostTypography :global(.cc-select > .cc-chevron) {
+  display: none;
+}
+
+/* Compact paired fields need their own label line at the editor's 320px width. */
+.hostTypography :global(.cc-pair .cc-row) {
+  height: auto;
+  min-height: 64px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 8px;
+}
+.hostTypography :global(.cc-pair .cc-label) {
+  max-width: none;
+  padding-inline-end: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+.hostTypography :global(.cc-pair .cc-value) {
+  flex: 1;
+  width: 100%;
+}
+/* Embedded properties use icon actions; keep history and draft controls in
+   one compact row without allowing scrolled fields to paint through it. */
+.hostTypography :global(.manual-edit-footer-actions) {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.hostTypography :global(.manual-edit-footer-left) {
+  flex: none;
+  gap: 8px;
+}
+.hostTypography :global(.manual-edit-footer-right) {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hostTypography :global(.manual-edit-floating .manual-edit-modal.cc-panel),
+.hostTypography :global(.manual-edit-footer) {
+  background: var(--color-background-primary-default);
+}
+
+.hostTypography :global(.manual-edit-modal) {
+  --manual-edit-field-bg: var(--color-background-tertiary-default);
+  --manual-edit-field-bg-hover: var(--color-background-tertiary-hover);
+  --manual-edit-field-border: var(--color-border-button-default);
+  --manual-edit-field-text: var(--color-text-primary);
+  --manual-edit-field-muted: var(--color-text-secondary);
+  --blue: var(--color-border-focus-ring);
+}
+
+.hostTypography :global(.cc-label) {
+  font-size: var(--text-caption-1-medium);
+  line-height: var(--text-caption-1-medium--line-height);
+  letter-spacing: var(--text-caption-1-medium--letter-spacing);
+  font-weight: var(--text-caption-1-medium--font-weight);
+}
+
+/* Export dialogs retain upstream form semantics; their heading uses the host ramp. */
+.hostTypography :global(.modal-head h2) {
+  font-size: var(--text-title-3-semibold);
+  line-height: var(--text-title-3-semibold--line-height);
+  letter-spacing: var(--text-title-3-semibold--letter-spacing);
+  font-weight: var(--text-title-3-semibold--font-weight);
+  color: var(--color-text-primary);
+}
+.hostTypography :global(.modal-head .subtitle) {
+  color: var(--color-text-secondary);
+}
+
+/* The upstream category strip assumes a body inset, but df-body has padding 0.
+   Inset the strip itself so Sketches and the other pills clear the panel edge. */
+.workspace :global(.df-tabs) {
+  padding: 8px 16px;
+  gap: 8px;
+}
+
+.workspace :global(.ws-tabs-bar) { gap: 8px; }
+.workspace :global(.ws-tab),
+.workspace :global(.df-tab) {
+  box-sizing: border-box;
+  min-height: 32px;
+  border-radius: 8px;
+}
+.workspace :global(.df-tab) {
+  padding: 6px 10px;
+  font-size: var(--text-caption-1-medium);
+  line-height: var(--text-caption-1-medium--line-height);
+  font-weight: var(--text-caption-1-medium--font-weight);
+  letter-spacing: var(--text-caption-1-medium--letter-spacing);
+}
+.workspace :global(.df-tab.active) {
+  color: var(--color-text-primary);
+  background: var(--color-background-secondary-default);
+  outline-color: var(--color-border-button-default);
+}
+
+.hostTypography :global(.page-creator-subcat) { border-radius: 8px; }
+.hostTypography :global(.page-creator-subcat.active),
+.hostTypography :global(.page-creator-subcat.active:hover),
+.hostTypography :global(.page-creator-sidebar button.active) {
+  background: var(--color-background-secondary-default);
+  border-color: var(--color-border-button-hover);
+  color: var(--color-text-primary);
+}
+.hostTypography :global(.page-creator-sidebar button.active .page-creator-sidebar-count) {
+  background: var(--color-background-tertiary-default);
+  color: var(--color-text-secondary);
+}
+
+/* Live artifact entries are whole-row targets, with one shared hover surface. */
+.workspace :global(.df-row-live-artifact) {
+  height: auto;
+  min-height: 64px;
+  box-sizing: border-box;
+  width: calc(100% - 16px);
+  margin-inline: 8px;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+.workspace :global(.df-row-live-artifact:hover) {
+  background: var(--color-background-secondary-hover);
+}
+
+.workspace :global(.viewer-tabs) { gap: 4px; border-radius: 12px; }
+.workspace :global(.viewer-tab) { min-height: 32px; border-radius: 8px; }
+.workspace :global(.viewer-tab.active) {
+  background: var(--color-background-primary-default);
+  color: var(--color-text-primary);
+}
+.workspace :global(.viewer-tab:hover:not(:disabled):not(.active)) {
+  background: var(--color-background-secondary-hover);
+  color: var(--color-text-primary);
+}
+
+.artifactSurface { display: flex; flex: 1; min-height: 0; width: 100%; overflow: hidden; }
+.artifactSurface :global(.viewer-toolbar),
+.artifactSurface :global(.live-artifact-toolbar) { display: none; }
+.artifactSurface :global(.viewer) { border: 0; border-radius: 0; }
+.artifactSurface :global(.chrome-action),
+.artifactSurface :global(.chrome-present-wrap),
+.artifactSurface :global(.chrome-file-action-menus) { display: none; }
+
+.cooking {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 32px;
+  text-align: center;
+}
+.cookingPreview { position: relative; width: 112px; height: 112px; }
+.cookingSheet {
+  position: absolute;
+  inset: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 12px 12px;
+  border: 1px solid var(--color-border-button-default);
+  border-radius: 12px;
+  background: var(--color-background-primary-default);
+  transform: rotate(-6deg);
+  overflow: hidden;
+}
+.cookingSheet > span { height: 4px; border-radius: 4px; background: var(--color-background-tertiary-default); }
+.cookingSheet > span:nth-child(1) { width: 60%; }
+.cookingSheet > span:nth-child(3) { width: 80%; }
+.cookingSheet > div { flex: 1; border-radius: 4px; background: var(--color-background-secondary-default); }
+.cookingSheet::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 25%, var(--color-background-primary-default) 50%, transparent 75%);
+  opacity: .7;
+  transform: translateX(-120%);
+  animation: cookingShimmer 3s ease-in-out infinite;
+}
+.cookingSpark {
+  position: absolute;
+  inset-inline-end: 4px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--color-border-button-default);
+  border-radius: 12px;
+  background: var(--color-background-secondary-default);
+  color: var(--color-foreground-icon-secondary);
+  animation: cookingSpark 3s ease-in-out infinite;
+}
+.cookingCopy { display: flex; flex-direction: column; gap: 8px; }
+.cookingCopy h3 { margin: 0; font-size: var(--text-body-medium); line-height: var(--text-body-medium--line-height); font-weight: var(--text-body-medium--font-weight); color: var(--color-text-primary); }
+.cookingCopy p { margin: 0; font-size: var(--text-caption-1-regular); line-height: var(--text-caption-1-regular--line-height); color: var(--color-text-tertiary); }
+@keyframes cookingShimmer { 0%, 20% { transform: translateX(-120%); } 80%, 100% { transform: translateX(120%); } }
+@keyframes cookingSpark { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) {
+  .cookingSheet::after { animation: none; opacity: 0; }
+  .cookingSpark { animation: none; }
+}
+
+/* Comments share the host's compact controls and semantic surfaces. */
+.workspace :global(.comment-side-panel) { background: var(--color-background-primary-default); color: var(--color-text-primary); border-color: var(--color-separator-border); border-radius: 12px; }
+.workspace :global(.comment-side-header) { height: 40px; min-height: 40px; padding: 0 12px; background: var(--color-background-primary-default); border-color: var(--color-separator-border); }
+.workspace :global(.comment-side-selectbar) { gap: 8px; padding: 8px 12px; }
+.workspace :global(.comment-popover-view-all) { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; border-radius: 8px; }
+.workspace :global(.comment-popover-actions) { gap: 8px; padding: 8px 12px; }
+.workspace :global(.comment-popover-actions-start), .workspace :global(.comment-popover-actions-end) { gap: 8px; }
+.workspace :global(.comment-popover-close) { width: 32px; height: 32px; border-radius: 8px; }
+/* A comment is a compact message field, not the main chat composer. */
+.workspace :global(.comment-popover textarea) { height: 48px; min-height: 48px; max-height: 48px; overflow-y: auto; resize: none; }
+.workspace :global(.comment-side-new-comment) { padding: 8px 12px; }
+.workspace :global(.comment-side-new-comment-shell) { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 8px; padding: 0; align-items: center; }
+.workspace :global(.comment-side-new-comment .composer-input-wrap) { min-width: 0; }
+.workspace :global(.comment-side-new-comment textarea) { height: 20px; min-height: 20px; max-height: 20px; overflow-y: auto; resize: none; }
+.workspace :global(.comment-side-new-comment textarea:focus) { height: 40px; min-height: 40px; max-height: 40px; }
+.workspace :global(.comment-side-new-comment .composer-row) { padding: 0; gap: 0; }
+.workspace :global(.comment-side-new-comment .composer-row .icon-btn), .workspace :global(.comment-side-new-comment .composer-spacer) { display: none; }
+.workspace :global(.comment-side-new-comment .composer-send) { width: 32px; height: 32px; padding: 0; }
+
+/* Target metrics belong to the inspector; comments keep the message in view. */
+.workspace :global(.comment-popover-section-params) { display: none; }
+
+.workspace :global(.comment-popover-list .comment-side-dock) { width: 100%; height: 280px; max-height: 40vh; }
+.workspace :global(.comment-popover-list .comment-side-panel) { width: 100%; border: 0; border-radius: 0; }
+.workspace :global(.comment-popover-list .comment-side-header) { display: none; }
+.workspace :global(.comment-popover-list .comment-side-list) { padding: 8px; }
+
+.workspace :global(.comment-side-select-all) { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; }
+.workspace :global(.comment-popover-list .comment-side-header:has(.comment-side-select-all)) { display: flex; justify-content: flex-end; height: 32px; min-height: 32px; padding: 0; }
+.workspace :global(.comment-popover-list .comment-side-title), .workspace :global(.comment-popover-list .comment-side-collapse) { display: none; }
+
+/* One content inset aligns category navigation, cards and file rows. */
+.workspace :global(.df-panel) { background: var(--color-background-primary-default); }
+.workspace :global(.df-body) { padding: 12px 16px 16px; }
+.workspace :global(.df-panel[data-root='true'] .df-topbar:not(:has(button, input))) { display: none; }
+.workspace :global(.df-topbar) { margin: 8px 16px 0; padding: 0; }
+.workspace :global(.df-breadcrumbs) { padding: 0; }
+.workspace :global(.df-category-tabs) { gap: 12px; min-width: 0; }
+.workspace :global(.df-category-strip) { overflow-x: auto; scrollbar-width: thin; padding: 2px; }
+.workspace :global(.df-category-strip [role='tablist']) { flex-wrap: nowrap; }
+.workspace :global(.df-category-strip [role='tab']) { flex: 0 0 auto; }
+.workspace :global(.df-category-content) { min-width: 0; }
+.workspace :global(.df-card-grid), .workspace :global(.df-image-masonry) { padding: 0 0 12px; gap: 16px; }
+
+.workspace :global(.df-panel[data-root='true'] .df-topbar-left) { display: none; }
+.workspace :global(.df-topbar-right) { margin-inline-start: auto; }
+.workspace :global(.ws-tab.design-files-tab) { width: auto; max-width: none; flex: 0 0 auto; }
+.workspace :global(.ws-tab.design-files-tab .ws-tab-label) { max-width: none; }
+.workspace :global(.df-card) { background: var(--color-background-secondary-default); border-color: var(--color-separator-border); }
+.workspace :global(.df-card-meta) { background: var(--color-background-secondary-default); color: var(--color-text-primary); }
+.workspace :global(.df-card-name-btn), .workspace :global(.df-card-name) { color: var(--color-text-primary); }
+.workspace :global(.df-card-sub) { color: var(--color-text-secondary); }
+.workspace :global(.df-card:hover) { border-color: var(--color-border-button-hover); }
+.workspace :global(.df-card:is(.selected, .active)) { border-color: var(--color-accent-600); }
+/* Full BoardUI line boxes leave room for descenders inside ellipsis labels. */
+.workspace :global(.ws-tab-label) {
+  font-size: var(--text-body-medium);
+  line-height: var(--text-body-medium--line-height);
+  font-weight: var(--text-body-medium--font-weight);
+  letter-spacing: var(--text-body-medium--letter-spacing);
+}
+
+/* Feedback belongs to the canvas, with no editor chrome or layout shift. */
+.workspace :global(.live-artifact-inline-preview) { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; width: 100%; }
+.workspace :global(.live-artifact-inline-preview[hidden]) { display: none; }
+.workspace :global(.live-artifact-inline-preview > .viewer) { flex: 1; min-height: 0; width: 100%; }
+.workspace :global(.inline-preview-status) { padding: 12px 16px; color: var(--color-text-secondary); }
+.workspace :global(.live-artifact-inline-preview .viewer-toolbar) { display: none; }
+
+.workspace :global(.comment-popover-quote) { color: var(--color-text-secondary); font-size: var(--text-caption-1-regular); line-height: var(--text-caption-1-regular--line-height); font-weight: var(--text-caption-1-regular--font-weight); letter-spacing: var(--text-caption-1-regular--letter-spacing); }
+/* The outer live viewer's body must give the nested canvas a real flex height. */
+.workspace :global(.viewer-body:has(> .live-artifact-inline-preview)) { display: flex; flex-direction: column; overflow: hidden; }
+
+.feedbackNotice {
+  position: absolute;
+  z-index: 60;
+  top: 12px;
+  inset-inline-start: 12px;
+  max-width: calc(100% - 116px);
+  padding: 8px 12px;
+  border: 1px solid var(--color-separator-border);
+  border-radius: 12px;
+  background: var(--color-background-primary-default);
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption-1-regular);
+  line-height: var(--text-caption-1-regular--line-height);
+  font-weight: var(--text-caption-1-regular--font-weight);
+  letter-spacing: var(--text-caption-1-regular--letter-spacing);
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+}
+
+/* The selected text, note and one submit action mirror a compact comment card. */
+.hostTypography :global(.comment-popover-compact .comment-popover-drag-handle) { display: none; }
+.hostTypography :global(.comment-popover-compact .comment-popover-titlebar) { border: 0; padding: 8px 12px 0; gap: 4px; }
+.hostTypography :global(.comment-popover-compact .comment-popover-quote) { color: var(--color-text-tertiary); }
+.hostTypography :global(.comment-popover-compact .comment-popover-actions) { border: 0; padding: 4px 12px 12px; justify-content: space-between; }
+.hostTypography :global(.comment-popover-compact .annotation-input-shell) { border: 0 !important; background: transparent !important; box-shadow: none !important; outline: none !important; }
+
+.hostTypography :global(.comment-popover-compact .comment-popover-section + .comment-popover-section) { border: 0; margin: 0; padding: 0; }
+.hostTypography :global(.comment-popover-compact .annotation-input-shell textarea) { height: 48px; min-height: 48px; max-height: 96px; resize: none; }
+.hostTypography :global(.comment-popover-compact .comment-side-dock) { height: auto; min-height: 0; }
+.hostTypography :global(.comment-popover-compact .comment-side-panel) { height: auto; min-height: 0; }
+.hostTypography :global(.comment-popover-compact .comment-side-header:has(.comment-side-select-all)) { display: none; }
+.hostTypography :global(.comment-popover-compact .comment-side-list) { flex: 0 1 auto; max-height: 32vh; padding: 8px 4px; gap: 8px; }
+.hostTypography :global(.comment-popover-compact .comment-side-item) { padding: 12px; gap: 8px; border-radius: 12px; background: var(--color-background-secondary-default); color: var(--color-text-primary); }
+.hostTypography :global(.comment-popover-compact .comment-side-drag-handle) { display: none; }
+.hostTypography :global(.comment-popover-compact .comment-side-author strong) { color: var(--color-text-secondary); font-size: var(--text-caption-1-regular); line-height: var(--text-caption-1-regular--line-height); font-weight: var(--text-caption-1-regular--font-weight); }
+.hostTypography :global(.comment-popover-compact .comment-side-author small) { order: -1; color: var(--color-text-primary); font-size: var(--text-caption-1-semibold); line-height: var(--text-caption-1-semibold--line-height); font-weight: var(--text-caption-1-semibold--font-weight); }
+.hostTypography :global(.comment-popover-compact .comment-side-body) { padding-inline-start: 0; color: var(--color-text-primary); }
+.hostTypography :global(.comment-popover-compact .comment-side-item-meta) { margin: 0; }
+
+/* Cross-frame hover must not be required to reach essential deck navigation. */
+.workspace :global(.deck-floating-nav) {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+  background: var(--color-background-primary-default);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-button-default);
+}
+
+/* The presentation is portalled outside workspace; reset inherited button padding. */
+.hostTypography :global(.present-overlay .present-exit-btn) { padding: 0; }
+.hostTypography :global(.present-overlay .present-exit-btn svg) { flex-shrink: 0; }
+
+/* The complete control, including children, follows the host's light/dark surface. */
+.workspace :global(.deck-floating-count strong) { color: var(--color-text-primary); }
+.workspace :global(.deck-floating-count span),
+.workspace :global(.deck-floating-reset) { color: var(--color-text-secondary); }
+.workspace :global(.deck-floating-divider) { background: var(--color-separator-border); }
+.workspace :global(.deck-floating-reset kbd) { color: var(--color-text-secondary); background: var(--color-background-tertiary-default); }
+.workspace :global(.deck-floating-button:hover:not(:disabled)),
+.workspace :global(.deck-floating-reset:hover:not(:disabled)) { color: var(--color-text-primary); background: var(--color-background-secondary-hover); }
+
+/* Comment cards may be portalled; constrain the actual icon hit areas there too. */
+.hostTypography :global(.comment-popover-compact .comment-popover-titlebar > button) { flex: 0 0 32px; width: 32px; height: 32px; padding: 0; }
+.hostTypography :global(.comment-popover-compact .comment-popover-titlebar > button svg) { flex-shrink: 0; }
+.hostTypography :global(.comment-popover-compact .comment-popover-title) { min-width: 0; }
+.workspace :global(.comment-target-overlay) { background: transparent; box-shadow: none; border-color: var(--color-border-focus-ring); }
+@media (max-width: 560px) {
+  .workspace :global(.deck-floating-nav) { gap: 4px; padding: 4px; max-width: calc(100% - 16px); }
+  .workspace :global(.deck-floating-count) { min-width: 40px; }
+  .workspace :global(.deck-floating-button) { width: 32px; flex: 0 0 32px; }
+  .workspace :global(.deck-floating-reset) { padding: 0 4px; }
+  .workspace :global(.deck-floating-reset kbd) { display: none; }
+}
+
+/* The slide rail is shell chrome; authored thumbnail colors stay inside it. */
+.workspace :global(.deck-thumbnail-rail) {
+  background: var(--color-background-secondary-default);
+  box-shadow: inset -1px 0 0 var(--color-separator-border);
+}
+.workspace :global(.deck-thumbnail-list) {
+  scrollbar-color: var(--color-foreground-icon-quaternary) transparent;
+}
+.workspace :global(.deck-thumbnail-list::-webkit-scrollbar-thumb) {
+  background-color: var(--color-foreground-icon-quaternary);
+}
+.workspace :global(.deck-thumbnail-list::-webkit-scrollbar-thumb:hover) {
+  background-color: var(--color-foreground-icon-tertiary);
+}
+.workspace :global(.deck-thumbnail-button) { color: var(--color-text-secondary); }
+.workspace :global(.deck-thumbnail-button:hover:not(:disabled)),
+.workspace :global(.deck-thumbnail-button.active) { color: var(--color-text-primary); }
+.workspace :global(.deck-thumbnail-frame) {
+  background: var(--color-background-primary-default);
+  box-shadow: inset 0 0 0 1px var(--color-separator-border);
+}
+.workspace :global(.deck-thumbnail-button:hover .deck-thumbnail-frame) {
+  box-shadow: inset 0 0 0 1px var(--color-border-button-default);
+}
+.workspace :global(.deck-thumbnail-button.active .deck-thumbnail-frame) {
+  box-shadow: inset 0 0 0 1.5px var(--color-border-focus-ring),
+    0 0 0 2px var(--color-border-focus-ring);
+}
+.workspace :global(.preview-viewport:not(.preview-viewport-desktop).comment-preview-layer-with-deck-rail .deck-thumbnail-button:hover:not(:disabled) .deck-thumbnail-number) {
+  background: var(--color-background-secondary-hover);
+}
+.workspace :global(.preview-viewport:not(.preview-viewport-desktop).comment-preview-layer-with-deck-rail .deck-thumbnail-button.active .deck-thumbnail-number) {
+  color: var(--color-text-primary);
+  background: var(--color-background-secondary-hover);
+  border-color: var(--color-border-focus-ring);
+  box-shadow: none;
+}
+
+.workspace :global(.manual-edit-workspace > .manual-edit-right.manual-edit-presentation-dock) {
+  border-inline-start: 1px solid var(--color-separator-border);
+  max-width: none;
+  overflow: visible;
+}
+.workspace :global(.manual-edit-presentation-dock .manual-edit-modal.cc-panel) {
+  height: 100%;
+  max-height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}

@@ -55,7 +55,7 @@ describe('deck-stage fallback runtime injection', () => {
     expect(out).toContain('type: "od:slide-state"');
     expect(out).toContain('protocolVersion: 1');
     expect(out).toContain('get index()');
-    expect(out).toContain('goTo(index)');
+    expect(out).toContain('goTo(index, options)');
     expect(out).toContain("this.go('next')");
     expect(out.indexOf('data-od-deck-stage-fallback')).toBeLessThan(out.indexOf('</body>'));
   });
@@ -86,7 +86,7 @@ describe('deck-stage fallback runtime injection', () => {
     expect(handlerBody).toBeTruthy();
 
     const onMessage = new Function('ev', handlerBody ?? '') as (
-      this: { go: (action: unknown, index: unknown) => void },
+      this: { go: (action: unknown, index: unknown, animate: boolean) => void },
       ev: { data: Record<string, unknown> },
     ) => void;
     const go = vi.fn();
@@ -100,9 +100,31 @@ describe('deck-stage fallback runtime injection', () => {
       data: { type: 'od:slide', action: 'prev', protocolVersion: DECK_PROTOCOL_VERSION + 1 },
     });
 
-    expect(go).toHaveBeenCalledTimes(2);
-    expect(go).toHaveBeenNthCalledWith(1, 'next', undefined);
-    expect(go).toHaveBeenNthCalledWith(2, 'go', 1);
+    onMessage.call(receiver, {
+      data: { type: 'od:slide', action: 'go', index: 2, protocolVersion: DECK_PROTOCOL_VERSION, userInitiated: true },
+    });
+    expect(go).toHaveBeenCalledTimes(3);
+    expect(go).toHaveBeenNthCalledWith(1, 'next', undefined, false);
+    expect(go).toHaveBeenNthCalledWith(2, 'go', 1, false);
+    expect(go).toHaveBeenNthCalledWith(3, 'go', 2, true);
+  });
+
+  it('collects nested slides without treating their prototype annotations as pages', () => {
+    const out = injectDeckStageFallback('<deck-stage><div></div></deck-stage>');
+    const body = /_collectSlides\(\) \{([\s\S]*?)\n    \}\n\n    _initialIndex/.exec(out)?.[1];
+    expect(body).toBeTruthy();
+    type Node = { parentElement: Node | null; matches: () => boolean };
+    const stage = { parentElement: null, matches: () => false, querySelectorAll: () => nodes, _slides: [] as Node[] };
+    const wrapper: Node = { parentElement: stage, matches: () => false };
+    const first: Node = { parentElement: wrapper, matches: () => true };
+    const annotation: Node = { parentElement: first, matches: () => true };
+    const second: Node = { parentElement: wrapper, matches: () => true };
+    const nodes = [first, annotation, second];
+    const collect = new Function('SLIDE_SELECTOR', body ?? '');
+    expect(collect.call(stage, DECK_SLIDE_SELECTOR)).toEqual([first, second]);
+    first.parentElement = stage;
+    second.parentElement = stage;
+    expect(collect.call(stage, DECK_SLIDE_SELECTOR)).toEqual([first, second]);
   });
 
   it('keeps the injected script body free of a literal script close tag', () => {

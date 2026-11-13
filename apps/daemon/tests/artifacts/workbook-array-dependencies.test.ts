@@ -1,0 +1,51 @@
+import { expect, it } from 'vitest';
+import ExcelJS from 'exceljs-community';
+import JSZip from 'jszip';
+import { readXlsxWorkbook } from '../../src/artifacts/workbook/reader.js';
+import { calculateWorkbookCellEdits } from '../../src/artifacts/workbook/calculated-patch.js';
+
+it.each(['SUM(Inputs!4:4)', 'SUM(Inputs!E:E)'])('retains the original cache for follower-only whole-axis dependency %s', async formula => {
+  const book = new ExcelJS.Workbook(), inputs = book.addWorksheet('Inputs'), summary = book.addWorksheet('Summary');
+  inputs.getCell('A1').value = 1;
+  inputs.getCell('D3').value = { formula: 'MISSING(A1)', result: 10 };
+  inputs.getCell('E3').value = 11; inputs.getCell('D4').value = 12; inputs.getCell('E4').value = 13;
+  summary.getCell('A1').value = { formula, result: 4321 };
+  summary.getCell('B1').value = { formula: 'IFERROR(A1,999)+1', result: 4322 };
+  const zip = await JSZip.loadAsync(await book.xlsx.writeBuffer()), path = 'xl/worksheets/sheet1.xml';
+  zip.file(path, (await zip.file(path)!.async('string')).replace('<f>', '<f t="array" ref="D3:E4">'));
+  const source = await readXlsxWorkbook(await zip.generateAsync({ type: 'nodebuffer' }));
+  const { bytes } = await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 0, column: 0, kind: 'number', value: 2 } }]);
+  const reopened = new ExcelJS.Workbook(); await reopened.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(reopened.worksheets[1]!.getCell('A1').result).toBe(4321);
+  expect(reopened.worksheets[1]!.getCell('B1').result).toBe(4322);
+});
+it('calculates reverse-sheet, reverse-row follower chains through multiple source owners', async () => {
+  const book = new ExcelJS.Workbook(), summary = book.addWorksheet('Summary'), inputs = book.addWorksheet('Inputs');
+  summary.getCell('A1').value = { formula: 'D5+100', result: 109 };
+  summary.getCell('D3').value = { formula: 'Inputs!D4*SEQUENCE(3)', result: 3 };
+  summary.getCell('D4').value = 6; summary.getCell('D5').value = 9;
+  inputs.getCell('A1').value = 2;
+  inputs.getCell('D3').value = { formula: 'SEQUENCE(3,1,A1)', result: 2 };
+  inputs.getCell('D4').value = 3; inputs.getCell('D5').value = 4;
+  const zip = await JSZip.loadAsync(await book.xlsx.writeBuffer());
+  for (const path of ['xl/worksheets/sheet1.xml', 'xl/worksheets/sheet2.xml']) zip.file(path, (await zip.file(path)!.async('string')).replace(/(<c r="D3"[^>]*>)<f>/, '$1<f t="array" ref="D3:D5">'));
+  const source = await readXlsxWorkbook(await zip.generateAsync({ type: 'nodebuffer' }));
+  const { bytes } = await calculateWorkbookCellEdits(source, [{ sheetId: '2', cell: { row: 0, column: 0, kind: 'number', value: 20 } }]);
+  const reopened = new ExcelJS.Workbook(); await reopened.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(reopened.getWorksheet('Inputs')!.getCell('D4').value).toBe(21);
+  expect(reopened.getWorksheet('Summary')!.getCell('D3').result).toBe(21);
+  expect(reopened.getWorksheet('Summary')!.getCell('D5').value).toBe(63);
+  expect(reopened.getWorksheet('Summary')!.getCell('A1').result).toBe(163);
+});
+it('invalidates a row span hint when creating an absent follower in an existing row', async () => {
+  const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('Inputs');
+  sheet.getCell('A1').value = 1; sheet.getCell('D3').value = { formula: 'SEQUENCE(1,2,A1)', result: 1 };
+  const zip = await JSZip.loadAsync(await book.xlsx.writeBuffer()), path = 'xl/worksheets/sheet1.xml';
+  zip.file(path, (await zip.file(path)!.async('string')).replace(/<row r="3"[^>]*>/, '<row r="3" spans="4:4">').replace('<f>', '<f t="array" ref="D3:E3">'));
+  const source = await readXlsxWorkbook(await zip.generateAsync({ type: 'nodebuffer' }));
+  const { bytes } = await calculateWorkbookCellEdits(source, [{ sheetId: '1', cell: { row: 0, column: 0, kind: 'number', value: 10 } }]);
+  const saved = await JSZip.loadAsync(bytes), xml = await saved.file(path)!.async('string');
+  expect(xml.match(/<row r="3"[^>]*>/)?.[0]).not.toContain('spans=');
+  const reopened = new ExcelJS.Workbook(); await reopened.xlsx.load(Uint8Array.from(bytes).buffer);
+  expect(reopened.worksheets[0]!.getCell('E3').value).toBe(11);
+});

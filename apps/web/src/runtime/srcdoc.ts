@@ -1,3 +1,5 @@
+import { parse, type DefaultTreeAdapterTypes } from 'parse5';
+import { prepareLegacyMotionPreview } from "@open-design/contracts/runtime/motion-source-player";
 import { buildPreviewStorageBridge } from './preview-storage';
 import { injectMotionSourcePlayer, markMotionHostedPreview } from '@open-design/contracts/runtime/motion-source-player';
 /**
@@ -74,11 +76,15 @@ import { ANNOTATED_SELECTOR_HELPERS } from './annotated-selector';
 import { COMMENT_IDENTITY_HELPERS } from '@open-design/contracts';
 
 export type SrcdocOptions = {
+  /** Frozen dashboard: allow only app-owned preview bridge scripts. */
+  staticSnapshot?: boolean;
   /** Host-scoped local progress, seeded before authored scripts by the lazy shell. */
   previewStorage?: boolean;
   previewStorageSeed?: { generation: string; values: Record<string, string> };
   /** Live embedded motion preview only; do not enable for exports/captures. */
   motionPreview?: boolean;
+  /** Explicit embedded motion project whose source predates the output marker. */
+  legacyMotionVideo?: boolean;
   deck?: boolean;
   baseHref?: string;
   initialSlideIndex?: number;
@@ -358,6 +364,7 @@ export function buildSrcdoc(
   html: string,
   options: SrcdocOptions = {}
 ): string {
+  if (options.staticSnapshot) return buildStaticSnapshotSrcdoc(html, options);
   const head = html.trimStart().slice(0, 64).toLowerCase();
   const isFullDoc = head.startsWith("<!doctype") || head.startsWith("<html");
   const wrapped = isFullDoc
@@ -367,7 +374,8 @@ export function buildSrcdoc(
   // user prints the preview iframe (Cmd+P → Save as PDF), Chromium uses the
   // sanitized title as the default filename — one that Microsoft Teams will
   // accept. Only the title text changes; visible page content is untouched.
-  const motionSource = options.motionPreview && !options.freezeMotion ? markMotionHostedPreview(wrapped) : wrapped;
+  const previewInput = options.legacyMotionVideo && options.motionPreview && !options.freezeMotion ? prepareLegacyMotionPreview(wrapped) : wrapped;
+  const motionSource = options.motionPreview && !options.freezeMotion ? markMotionHostedPreview(previewInput) : previewInput;
   const withSafeTitle = sanitizeTitleInDoc(options.freezeMotion ? motionSource : injectMotionSourcePlayer(motionSource));
   const withVisibilityGuard = injectAfterHeadOpen(withSafeTitle, buildPreviewVisibilityGuard());
   const withOdIds = annotateMissingOdIds(withVisibilityGuard);
@@ -397,7 +405,7 @@ export function buildSrcdoc(
     : withKeydownRegistry;
   const withMotionFreeze = options.freezeMotion ? injectMotionFreeze(withFocusGuard) : withFocusGuard;
   const withDeckStageFallback = options.deck
-    ? injectDeckStageFallback(withMotionFreeze)
+    ? injectDeckStageFallback(withMotionFreeze, options.initialSlideIndex)
     : withMotionFreeze;
   const withDeckChrome = options.deck && options.hideDeckChrome
     ? injectDeckStageShadowChromeHiding(injectDeckChromeHiding(withDeckStageFallback))
@@ -446,6 +454,39 @@ export function buildSrcdoc(
   return options.reloadKey !== undefined
     ? withTransport.replace(/(<html\b)([^>]*>)/i, `$1 data-od-reload-key="${options.reloadKey}"$2`)
     : withTransport;
+}
+
+/** Preserve the snapshot's no-author-script policy while enabling our bridges.
+ * Only code generated from an EMPTY document receives the fresh nonce. Original
+ * scripts and nonce attributes are removed; CSP also blocks inline event
+ * handlers, network access and parser-created script mutations.
+ */
+function buildStaticSnapshotSrcdoc(html: string, options: SrcdocOptions): string {
+  if (typeof DOMParser === 'undefined') throw new Error('Static snapshot previews require a browser.');
+  const settings = { ...options, staticSnapshot: false, editBridge: false, paletteBridge: false,
+    previewStorage: false, baseHref: undefined, deferFontStylesheets: false, motionPreview: false, freezeMotion: true };
+  const parser = new DOMParser();
+  const bridges = parser.parseFromString(buildSrcdoc('', settings), 'text/html');
+  const allowed = new Set(Array.from(bridges.querySelectorAll('script:not([src])'), script => script.textContent));
+  const document = parser.parseFromString(buildSrcdoc(html, settings), 'text/html');
+  const nonce = crypto.randomUUID().replaceAll('-', '');
+  for (const element of Array.from(document.querySelectorAll('[nonce]'))) element.removeAttribute('nonce');
+  for (const script of Array.from(document.querySelectorAll('script'))) {
+    if (!script.hasAttribute('src') && allowed.has(script.textContent)) script.setAttribute('nonce', nonce);
+    else script.remove();
+  }
+  for (const meta of Array.from(document.querySelectorAll('meta[http-equiv]'))) {
+    if (['refresh', 'content-security-policy'].includes(meta.getAttribute('http-equiv')!.trim().toLowerCase())) meta.remove();
+  }
+  const policy = document.createElement('meta');
+  policy.httpEquiv = 'Content-Security-Policy';
+  policy.content = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; connect-src 'none'`;
+  const navigationGuard = document.createElement('script');
+  navigationGuard.setAttribute('nonce', nonce);
+  navigationGuard.textContent = "document.addEventListener('click',function(event){var target=event.target;if(target&&target.closest&&target.closest('a[href],area[href]'))event.preventDefault();},true);document.addEventListener('submit',function(event){event.preventDefault();},true);";
+  document.head.prepend(navigationGuard);
+  document.head.prepend(policy);
+  return '<!doctype html>' + document.documentElement.outerHTML;
 }
 
 /**
@@ -1511,14 +1552,51 @@ function injectBeforeBodyEnd(doc: string, payload: string): string {
   return doc + payload;
 }
 
+/** Inspect real HTML base elements with the HTML tokenizer, including entities. */
+function authoredBase(doc: string) {
+  const root = parse(doc, { sourceCodeLocationInfo: true });
+  function visit(node: DefaultTreeAdapterTypes.Node): DefaultTreeAdapterTypes.Element | null {
+    if ('tagName' in node && node.tagName === 'base' && node.attrs.some(attr => attr.name === 'href')) return node;
+    if ('childNodes' in node) for (const child of node.childNodes) {
+      const found = visit(child);
+      if (found) return found;
+    }
+    return null;
+  }
+  return visit(root);
+}
+
 export function htmlHasAuthoredBase(doc: string): boolean {
-  return findRealTagOffset(doc, HTML_TAG_PATTERNS.baseOpen) >= 0;
+  return authoredBase(doc) !== null;
+}
+
+/** Relative authored bases belong to the project and need its renewable scope. */
+export function htmlNeedsProjectPreviewBase(doc: string): boolean {
+  const base = authoredBase(doc);
+  const href = base?.attrs.find(attr => attr.name === 'href')?.value.trim() ?? '';
+  return !/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(href);
 }
 
 function injectBaseHref(doc: string, baseHref: string): string {
-  if (htmlHasAuthoredBase(doc)) return doc;
-  const safeHref = escapeAttr(baseHref);
-  const tag = `<base href="${safeHref}" data-od-project-preview-base>`;
+  const base = authoredBase(doc);
+  if (base) {
+    const relative = base.attrs.find(attr => attr.name === 'href')!.value;
+    if (!htmlNeedsProjectPreviewBase(doc)) return doc;
+    const location = base.sourceCodeLocation;
+    if (!location) return doc;
+    // Store only the authored offset on the transient preview. Renewal applies
+    // it to the new scope; neither scope nor bridge is saved into the artifact.
+    const attrs = base.attrs.filter(attr => !['href', 'data-od-project-preview-base', 'data-od-project-preview-relative-base'].includes(attr.name));
+    let resolved: string;
+    try {
+      const sentinel = 'https://preview.invalid';
+      const url = new URL(relative, new URL(baseHref, sentinel));
+      resolved = /^[a-z][a-z0-9+.-]*:/i.test(baseHref) ? url.href : url.pathname + url.search + url.hash;
+    } catch { return doc; }
+    const tag = `<base href="${escapeAttr(resolved)}" data-od-project-preview-base data-od-project-preview-relative-base="${escapeAttr(relative)}"${attrs.map(attr => ` ${attr.name}="${escapeAttr(attr.value)}"`).join('')}>`;
+    return doc.slice(0, location.startOffset) + tag + doc.slice(location.endOffset);
+  }
+  const tag = `<base href="${escapeAttr(baseHref)}" data-od-project-preview-base>`;
   const headEnd = findRealTagEnd(doc, HTML_TAG_PATTERNS.headOpen);
   if (headEnd >= 0) return doc.slice(0, headEnd) + tag + doc.slice(headEnd);
   const htmlEnd = findRealTagEnd(doc, HTML_TAG_PATTERNS.htmlOpen);
@@ -2067,10 +2145,24 @@ function meaningfulDomFallbackTarget(el) {
     }
   }
 
+  // A layout wrapper's descendant text does not make the wrapper a leaf.
+  // In particular, a deck shell often has just one stage child but spans the
+  // entire viewport. Only its own text can make such a generic node a target.
+  var containerRect = el.getBoundingClientRect();
+  var viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+  var viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+  if (meaningfulChildren > 0 && containerRect.width >= viewportWidth * 0.98 && containerRect.height >= viewportHeight * 0.98) {
+    for (var textNode = el.firstChild; textNode; textNode = textNode.nextSibling) {
+      if (textNode.nodeType === 3 && (textNode.textContent || '').trim()) return true;
+    }
+    return false;
+  }
   return true;
 }
   function generatedRootAnnotation(el, id){
-    return id === 'path-0' && el && el.parentElement === document.body && el.id === 'root';
+    if (!el || el.hasAttribute('data-od-comment-id')) return false;
+    if (id === 'path-0' && el.parentElement === document.body && el.id === 'root') return true;
+    return el.getAttribute('data-od-runtime-id') === id && !meaningfulDomFallbackTarget(el);
   }
   function targetFrom(el, allowDomFallback, clickedEl, clickPoint, validateForSave){
     var id = annotatedElementIdFor(el);
@@ -2627,6 +2719,16 @@ function meaningfulDomFallbackTarget(el) {
   window.addEventListener('message', function(ev){
     var data = ev && ev.data;
     if (!data || !data.type) return;
+    // Toolbar/thumbnail navigation originates outside this document, so no
+    // trusted pointer event can cancel a pending state replay for it. Only
+    // explicit intent cancels; load-time index synchronization must not.
+    if (data.type === 'od:slide' && data.userInitiated === true &&
+        (data.protocolVersion == null || data.protocolVersion === ${DECK_PROTOCOL_VERSION}) &&
+        ((data.action === 'go' && Number.isFinite(data.index)) ||
+         ['next','prev','first','last'].indexOf(data.action) >= 0)) {
+      runtimeStateRestoreSequence += 1;
+      return;
+    }
     if (data.type === 'od:preview-runtime-state-restore') {
       var currentGeneration = runtimeStateRestoreGeneration();
       if (
@@ -2800,12 +2902,12 @@ function meaningfulDomFallbackTarget(el) {
     hoveredId = null;
     window.parent.postMessage({ type: 'od:comment-leave' }, '*');
   }, true);
-  document.addEventListener('click', function(ev){
+  window.addEventListener('click', function(ev){
     if (!pickerActive()) return;
     var result = closestTarget(ev);
     if (result) {
       ev.preventDefault();
-      ev.stopPropagation();
+      ev.stopImmediatePropagation();
       var commentPickerClick = commentEnabled && mode === 'picker' && !inspectEnabled;
       var clickPoint = commentPickerClick ? { x: ev.clientX, y: ev.clientY } : null;
       var payload = targetFrom(result.target, commentPickerClick, result.clicked, clickPoint);
@@ -2832,7 +2934,7 @@ function meaningfulDomFallbackTarget(el) {
       walk = walk.parentElement;
     }
     ev.preventDefault();
-    ev.stopPropagation();
+    ev.stopImmediatePropagation();
     // Store viewport coordinates to match regular getBoundingClientRect()
     // element targets; the host overlay renders this position directly.
     var pinX = Math.round(ev.clientX);
@@ -3281,13 +3383,13 @@ function injectDeckBridge(
     index = Math.floor(index);
     return index >= 0 && index < list.length ? index : -1;
   }
-  function navigateViaDeckStage(list, action, index){
+  function navigateViaDeckStage(list, action, index, options){
     if (!list.length) return false;
     var stage = deckStageForSlides(list);
     if (!stage) return false;
     try {
       if (action === 'go' && typeof index === 'number' && typeof stage.goTo === 'function') {
-        stage.goTo(index);
+        stage.goTo(index, options);
       } else if (action === 'next' && typeof stage.next === 'function') {
         stage.next();
       } else if (action === 'prev' && typeof stage.prev === 'function') {
@@ -3991,6 +4093,7 @@ function injectDeckBridge(
     attempt();
   }
   function go(action){
+    didRestoreInitialSlide = true;
     var navigationSequence = ++odNavigationSequence;
     var list = slides();
     if (!list.length) return;
@@ -4012,12 +4115,13 @@ function injectDeckBridge(
       setTimeout(report, 280);
     }, function(){ return navigationSequence === odNavigationSequence; });
   }
-  function gotoIndex(i){
+  function gotoIndex(i, options){
+    didRestoreInitialSlide = true;
     var navigationSequence = ++odNavigationSequence;
     var list = slides();
     if (!list.length) return;
     var target = Math.max(0, Math.min(list.length - 1, i));
-    if (navigateViaDeckStage(list, 'go', target)) return;
+    if (navigateViaDeckStage(list, 'go', target, options)) return;
     if (isScrollDeck(list)) { scrollGo(target); return; }
     if (activeIndex(list) === target) { report(); return; }
     // A thumbnail selection and the footer prev/next controls must enter the
@@ -4064,7 +4168,7 @@ function injectDeckBridge(
   }
   if (${JSON.stringify(clickNavigation)}) {
     document.addEventListener('click', function(ev){
-      if (ev.defaultPrevented) return;
+      if (ev.defaultPrevented || document.documentElement.hasAttribute('data-od-comment-mode')) return;
       if (ev.button !== undefined && ev.button !== 0) return;
       if (ev.metaKey || ev.ctrlKey || ev.altKey || ev.shiftKey) return;
       if (isInteractiveClickTarget(ev.target)) return;
@@ -4129,8 +4233,13 @@ function injectDeckBridge(
     var list = slides();
     if (!list.length) return;
     didRestoreInitialSlide = true;
-    gotoIndex(initialSlideIndex);
+    gotoIndex(initialSlideIndex, { animate: false });
   }
+  function cancelInitialSlideRestoreForInteraction(ev){
+    if (ev && ev.isTrusted === true) didRestoreInitialSlide = true;
+  }
+  document.addEventListener('pointerdown', cancelInitialSlideRestoreForInteraction, true);
+  document.addEventListener('keydown', cancelInitialSlideRestoreForInteraction, true);
   var odSlideMessageBeforeIndex = -1;
   var odDeckBridgeInstallingMessageListener = false;
   var odDeckProtocolVersion = ${artifactDeckProtocolVersion};
@@ -4187,11 +4296,14 @@ function injectDeckBridge(
   function odIsSupportedSlideMessage(data) {
     return !!data &&
       data.type === 'od:slide' &&
-      (data.protocolVersion == null || data.protocolVersion === ${DECK_PROTOCOL_VERSION});
+      (data.protocolVersion == null || data.protocolVersion === ${DECK_PROTOCOL_VERSION}) &&
+      (data.action === 'go' ? Number.isFinite(data.index) : ['next','prev','first','last'].indexOf(data.action) >= 0);
   }
   addOdSlideMessageListener(function(ev){
     var data = ev && ev.data;
     if (!odIsSupportedSlideMessage(data)) return;
+    // A newer host target is authoritative even while the boot timer is pending.
+    didRestoreInitialSlide = true;
     var before = activeIndex(slides());
     odSlideMessageBeforeIndex = before;
     setTimeout(function(){

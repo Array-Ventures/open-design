@@ -1,3 +1,4 @@
+import { ManualEditInsertionPatch, createInsertedElement, insertionImageSourceAllowed, insertionParentAllowed } from './insertion';
 import { emptyManualEditStyles, MANUAL_EDIT_STYLE_PROPS, type ManualEditFields, type ManualEditPatch, type ManualEditStyles } from './types';
 
 const MANUAL_EDIT_RUNTIME_OVERRIDES_ID = 'od-manual-edit-runtime-overrides';
@@ -104,13 +105,44 @@ export interface ManualEditPatchResult {
   ok: boolean;
   source: string;
   error?: string;
+  unchanged?: true;
 }
 
-export function applyManualEditPatch(source: string, patch: ManualEditPatch): ManualEditPatchResult {
+/** Decide replay from authenticated persisted bytes. The caller owns freshness
+ * and access admission; this pure check never authorizes a write. Undo can be
+ * recovered only when the whole file is exactly the original insertion result. */
+export function persistedInsertionReplay(expectedSource: string,storedSource: string,patch: ManualEditInsertionPatch,ownerFileName = 'index.html'): {source:string;beforeSource:string|null}|null {
+  const replay=applyManualEditPatch(storedSource,patch,ownerFileName);
+  if(!replay.ok || !replay.unchanged) return null;
+  const expected=applyManualEditPatch(expectedSource,patch,ownerFileName);
+  return {source:storedSource,beforeSource:expected.ok && !expected.unchanged && expected.source === storedSource ? expectedSource : null};
+}
+
+export function applyManualEditPatch(source: string, patch: ManualEditPatch, ownerFileName = 'index.html'): ManualEditPatchResult {
   if (patch.kind === 'set-full-source') return { ok: true, source: patch.source };
 
   const doc = parseSource(source);
   if (!doc) return { ok: false, source, error: 'Could not parse source.' };
+
+  if (patch.kind === 'insert-element') {
+    const parsed = ManualEditInsertionPatch.safeParse(patch);
+    if (!parsed.success) return { ok: false, source, error: 'Invalid insertion content or placement.' };
+    const insertion = parsed.data;
+    let parent: Element | null;
+    try { parent = findEditableElement(doc, insertion.parentId); }
+    catch { return { ok: false, source, error: 'Choose an existing content container for insertion.' }; }
+    if (!parent || !insertionParentAllowed(parent)) return { ok: false, source, error: 'Choose an existing content container for insertion.' };
+    if (insertion.element.kind === 'image' && !insertionImageSourceAllowed(insertion.element.src, ownerFileName, doc.querySelector('base[href]')?.getAttribute('href') ?? null)) return { ok: false, source, error: 'Choose an uploaded project image.' };
+    const created = createInsertedElement(doc, insertion);
+    const matches = doc.querySelectorAll(`[data-od-id="${insertion.id}"]`);
+    if (matches.length) {
+      const existing = matches.item(0);
+      if (matches.length === 1 && existing.parentElement === parent && existing.isEqualNode(created)) return { ok: true, source, unchanged: true };
+      return { ok: false, source, error: 'This insertion already exists with different content. Review the current artifact before trying again.' };
+    }
+    parent.append(created);
+    return { ok: true, source: serializeSource(doc, source) };
+  }
 
   if (patch.kind === 'set-token') {
     const changed = setCssToken(doc, patch.token, patch.value);

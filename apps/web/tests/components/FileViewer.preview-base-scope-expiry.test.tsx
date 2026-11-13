@@ -218,8 +218,9 @@ function verifySrcDocTransport(frame: HTMLIFrameElement) {
 }
 
 describe('FileViewer srcDoc preview base expiry', () => {
-  it('renews the active scope without changing the iframe node or srcdoc bytes', async () => {
+  it.each(['', 'assets/'])('renews the active scope with authored offset %s without changing the iframe node or srcdoc bytes', async (offset) => {
     let body = deckHtml('version-one');
+    if (offset) body = body.replace('<html>', `<html><head><base href="${offset}"></head>`);
     const fetchState = stubFetch(() => body);
 
     renderTeamViewer(
@@ -227,7 +228,7 @@ describe('FileViewer srcDoc preview base expiry', () => {
     );
 
     await waitFor(() => {
-      expect(srcDocBaseHref()).toBe('http://localhost:3000/api/projects/project-1/preview/scope-0001/');
+      expect(srcDocBaseHref()).toBe(`http://localhost:3000/api/projects/project-1/preview/scope-0001/${offset}`);
     });
     expect(fetchState.mintCount).toBe(1);
     const frame = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;

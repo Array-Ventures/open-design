@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@open-design/contracts": "workspace:*",
+    "@open-design/deck-export": "workspace:*",
     "@open-design/diagnostics": "workspace:*",
     "@open-design/download": "workspace:*",
     "@open-design/host": "workspace:*",

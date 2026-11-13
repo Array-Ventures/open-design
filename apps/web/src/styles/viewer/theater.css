@@ -808,7 +808,7 @@
 }
 .comment-preview-layer-with-deck-rail {
   display: grid;
-  grid-template-columns: 194px minmax(0, 1fr);
+  grid-template-columns: var(--deck-rail-width, 194px) minmax(0, 1fr);
   gap: 0;
   padding: 0;
   overflow: hidden;
@@ -836,7 +836,7 @@
 }
 .preview-viewport:not(.preview-viewport-desktop).comment-preview-layer-with-deck-rail {
   --deck-device-frame-radius: 18px;
-  --deck-compact-rail-width: 56px;
+  --deck-compact-rail-width: var(--deck-rail-width, 56px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -1781,3 +1781,37 @@ body.desktop-pet-shell .pet-task-item {
 .assistant-footer[data-canceled="true"] .assistant-label {
   color: var(--text-muted);
 }
+
+/* A deck rail and local comments dock share a single explicit grid. Without
+   these combined rules the rail's two columns auto-place comments under it. */
+.comment-preview-layer-with-deck-rail.comment-preview-layer-with-side-dock {
+  grid-template-columns: var(--deck-rail-width, 194px) minmax(0, 1fr) var(--comment-side-dock-width);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 12px;
+}
+.comment-preview-layer-with-deck-rail.comment-preview-layer-with-side-dock.comment-preview-layer-dock-collapsed {
+  grid-template-columns: var(--deck-rail-width, 194px) minmax(0, 1fr) var(--comment-side-dock-rail-width);
+}
+.comment-preview-layer-with-deck-rail.comment-preview-layer-with-side-dock.comment-preview-layer-deck-rail-collapsed {
+  grid-template-columns: minmax(0, 1fr) var(--comment-side-dock-width);
+}
+.comment-preview-layer-with-deck-rail.comment-preview-layer-with-side-dock.comment-preview-layer-deck-rail-collapsed.comment-preview-layer-dock-collapsed {
+  grid-template-columns: minmax(0, 1fr) var(--comment-side-dock-rail-width);
+}
+.comment-preview-layer-with-deck-rail.comment-preview-layer-with-side-dock.comment-preview-layer-side-dock-stacked {
+  display: grid;
+  grid-template-columns: var(--deck-rail-width, 194px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) var(--comment-side-dock-stacked-height);
+}
+.comment-preview-layer-with-deck-rail.comment-preview-layer-with-side-dock.comment-preview-layer-side-dock-stacked.comment-preview-layer-deck-rail-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+.comment-preview-layer-with-deck-rail.comment-preview-layer-with-side-dock.comment-preview-layer-side-dock-stacked.comment-preview-layer-dock-collapsed {
+  grid-template-rows: minmax(0, 1fr) var(--comment-side-dock-stacked-rail-height);
+}
+.comment-preview-layer-with-deck-rail.comment-preview-layer-side-dock-stacked > .comment-side-dock {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.preview-viewport:not(.preview-viewport-desktop).comment-preview-layer-with-deck-rail.comment-preview-layer-with-side-dock.comment-preview-layer-side-dock-stacked:not(.comment-preview-layer-deck-rail-collapsed) { grid-template-columns: var(--deck-compact-rail-width, 56px) minmax(0, 1fr); }

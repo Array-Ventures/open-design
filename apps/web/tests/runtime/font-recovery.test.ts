@@ -50,6 +50,7 @@ describe('installFontRecovery', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it('re-registers an errored recoverable family from fetched bytes', async () => {
@@ -66,6 +67,18 @@ describe('installFontRecovery', () => {
     cancel();
   });
 
+  it('recovers embedded fonts from the Studio mount instead of the host application root', async () => {
+    vi.stubEnv('NEXT_PUBLIC_OD_STUDIO_BASE_PATH', '/studio');
+    const { doc } = fakeDocument([{ family: 'Albert Sans', status: 'error' }, { family: 'remixicon', status: 'error' }]);
+    const cancel = installFontRecovery(doc);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock.mock.calls.map(call => call[0]).sort()).toEqual([
+      '/studio/fonts/AlbertSans-Italic-VariableFont_wght.ttf',
+      '/studio/fonts/AlbertSans-VariableFont_wght.ttf',
+      '/studio/remixicon.ttf',
+    ]);
+    cancel();
+  });
   it('leaves healthy fonts alone', async () => {
     const { doc, added } = fakeDocument([{ family: 'remixicon', status: 'loaded' }]);
     const cancel = installFontRecovery(doc);

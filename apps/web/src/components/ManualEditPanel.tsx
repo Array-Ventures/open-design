@@ -1,8 +1,14 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { DeckProperties } from './embedded/DeckProperties';
+import { RiImageEditLine } from '@remixicon/react';
+import { Button as BoardUIButton } from './embedded/boardui/button';
+import { ARTIFACT_ICON_BUTTON } from './embedded/artifact-controls';
+import { Button, Input, Textarea, ValueSelect } from '@open-design/components';
+import { useEffect, useLayoutEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import type { ProjectDesignTokenSuggestion, ProjectDesignTokenSuggestionProp } from '../providers/registry';
 import { useT } from '../i18n';
 import { emptyManualEditStyles, type ManualEditHistoryEntry, type ManualEditPatch, type ManualEditStyles, type ManualEditTarget } from '../edit-mode/types';
 import { Icon } from './Icon';
+import { ScrollFade, useScrollFade } from './embedded/boardui/scroll-fade';
 
 export interface ManualEditDraft {
   text: string;
@@ -47,9 +53,13 @@ export function ManualEditPanel({
   tokenSuggestionsLoading = false,
   onApplyTokenSuggestion,
   onInspectValueSelect,
+  presentationSource,
   pageStylesEnabled = true,
+  sourceControls = true,
   floatingStyle,
+  reservedBottom = 0,
   floatingClassName,
+  resizeHandle,
   onFloatingPositionChange,
   locked = false,
   onToggleLock,
@@ -63,19 +73,24 @@ export function ManualEditPanel({
   canRedo: boolean;
   busy?: boolean;
   resetAvailable?: boolean;
+  presentationSource?: string;
   pageStylesEnabled?: boolean;
+  /** Embedded artifacts expose visual properties, never raw source editing. */
+  sourceControls?: boolean;
   onSelectTarget: (target: ManualEditTarget) => void;
   onDraftChange: (draft: ManualEditDraft) => void;
   onStyleChange?: (id: string, styles: Partial<ManualEditStyles>, label: string) => void;
   onInvalidStyle?: (id: string, keys: Array<keyof ManualEditStyles>) => void;
   onApplyPatch: (patch: ManualEditPatch, label: string) => void;
-  onPickImage?: (file: File) => Promise<string | null>;
+  onPickImage?: (file: File, signal?: AbortSignal) => Promise<string | null>;
   tokenSuggestions?: ProjectDesignTokenSuggestion[];
   tokenSuggestionsLoading?: boolean;
   onApplyTokenSuggestion?: (prop: keyof ManualEditStyles, value: string) => void;
   onInspectValueSelect?: (prop: ProjectDesignTokenSuggestionProp, value: string) => void;
   floatingStyle?: CSSProperties;
+  reservedBottom?: number;
   floatingClassName?: string;
+  resizeHandle?: ReactNode;
   onFloatingPositionChange?: (position: { left: number; top: number }) => void;
   /** When true the panel is pinned: no dragging, and it does not reposition
    *  when a different element is selected. Owned by the parent. */
@@ -91,6 +106,11 @@ export function ManualEditPanel({
   onRedo: () => void;
 }) {
   const t = useT();
+  const scroll = useRef<HTMLDivElement>(null), fade = useScrollFade();
+  useLayoutEffect(() => {
+    if (scroll.current) scroll.current.scrollTop = 0;
+    fade.reset();
+  },[selectedTarget?.id,fade.reset]);
   const [uploadingImage, setUploadingImage] = useState(false);
   // Pin toggle: draggable (pin pulled out) vs locked/fixed (pin pushed in).
   // The lock lives in the parent so it can ALSO freeze the panel's position —
@@ -98,8 +118,15 @@ export function ManualEditPanel({
   const dragEnabled = !locked;
   const selectedTargetRef = useRef<ManualEditTarget | null>(selectedTarget);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageUpload = useRef<AbortController | null>(null);
+  useLayoutEffect(() => {
+    imageUpload.current?.abort();
+    imageUpload.current = null;
+    setUploadingImage(false);
+    return () => { imageUpload.current?.abort(); imageUpload.current = null; };
+  }, [selectedTarget?.id]);
   const targetForInspector = selectedTarget;
-  const panelTitle = targetForInspector ? readableManualEditTargetName(targetForInspector) : t('manualEdit.fallbackTitle');
+  const panelTitle = targetForInspector ? readableManualEditTargetName(targetForInspector) : t(presentationSource ? 'manualEdit.presentationProperties' : 'manualEdit.fallbackTitle');
   useEffect(() => {
     selectedTargetRef.current = selectedTarget;
   }, [selectedTarget]);
@@ -159,7 +186,7 @@ export function ManualEditPanel({
     const panelRect = panel.getBoundingClientRect();
     const pad = 8;
     const maxLeft = Math.max(pad, parentRect.width - panelRect.width - pad);
-    const maxTop = Math.max(pad, parentRect.height - panelRect.height - pad);
+    const maxTop = Math.max(pad, parentRect.height - panelRect.height - pad - Math.max(0,reservedBottom));
     const ownerDocument = panel.ownerDocument;
     const prevCursor = ownerDocument.body.style.cursor;
     const prevUserSelect = ownerDocument.body.style.userSelect;
@@ -188,12 +215,13 @@ export function ManualEditPanel({
       className={`manual-edit-right${floatingStyle ? ' manual-edit-floating' : ''}${floatingClassName ? ` ${floatingClassName}` : ''}`}
       style={floatingStyle}
     >
+      {resizeHandle}
       <section
         className={`manual-edit-modal cc-panel${floatingStyle && !dragEnabled ? ' is-drag-locked' : ''}`}
         onPointerDown={floatingStyle ? startPanelDrag : undefined}
       >
         <div className="manual-edit-titlebar">
-          {floatingStyle ? (
+          {floatingStyle && onFloatingPositionChange && onToggleLock ? (
             <button
               type="button"
               className={`manual-edit-drag-handle${dragEnabled ? ' is-draggable' : ' is-locked'}`}
@@ -226,13 +254,18 @@ export function ManualEditPanel({
             </button>
           ) : null}
         </div>
-        <div className="manual-edit-scroll">
+        <div className="relative flex min-h-0 flex-1 flex-col"><ScrollFade progress={fade.progress} /><div ref={scroll} onScroll={fade.onScroll} className="manual-edit-scroll"><fieldset className="manual-edit-fields" disabled={busy || uploadingImage} aria-busy={Boolean(busy || uploadingImage)}>
           {targetForInspector ? (
             <>
               <ContentInspector
+                sourceControls={sourceControls}
                 target={targetForInspector}
                 draft={draft}
                 onDraftChange={onDraftChange}
+                imageAction={onPickImage ? <BoardUIButton iconOnly leadingIcon={RiImageEditLine} size="xs" variant="ghost" className={ARTIFACT_ICON_BUTTON}
+                  aria-label={uploadingImage ? t('manualEdit.uploadingImage') : t('manualEdit.uploadImage')}
+                  title={uploadingImage ? t('manualEdit.uploadingImage') : t('manualEdit.uploadImage')}
+                  disabled={Boolean(busy || uploadingImage)} onClick={() => fileInputRef.current?.click()} /> : null}
               />
               <StyleInspector
                 target={targetForInspector}
@@ -246,6 +279,8 @@ export function ManualEditPanel({
               />
             </>
           ) : !targetForInspector ? (
+            <>
+            {presentationSource ? <DeckProperties source={presentationSource} busy={busy} onChange={(source, label) => onApplyPatch({ kind: 'set-full-source', source }, label)} /> : null}
             <PageInspector
               enabled={pageStylesEnabled}
               onStyleChange={(styles) => {
@@ -259,20 +294,10 @@ export function ManualEditPanel({
                 onStyleChange?.('__body__', normalized.styles, 'Page styles');
               }}
             />
+            </>
           ) : null}
 
           {targetForInspector?.kind === 'image' && onPickImage ? (
-            <div className="cc-section">
-              <header className="cc-section-head">{t('manualEdit.sectionImage')}</header>
-              <div className="cc-section-body">
-                <button
-                  type="button"
-                  className="cc-action-btn"
-                  disabled={uploadingImage}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  {uploadingImage ? t('manualEdit.uploadingImage') : t('manualEdit.uploadImage')}
-                </button>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -282,32 +307,36 @@ export function ManualEditPanel({
                     const file = e.currentTarget.files?.[0];
                     if (!file) return;
                     e.currentTarget.value = '';
+                    imageUpload.current?.abort();
+                    const controller = new AbortController();
+                    imageUpload.current = controller;
+                    const targetId = targetForInspector.id, alt = draft.alt;
                     setUploadingImage(true);
                     try {
-                      const src = await onPickImage(file);
+                      const src = await onPickImage(file, controller.signal);
+                      if (controller.signal.aborted || selectedTargetRef.current?.id !== targetId) return;
                       if (src) {
-                        const activeTargetId = selectedTargetRef.current?.id ?? targetForInspector.id;
-                        onApplyPatch(
-                          { id: activeTargetId, kind: 'set-image', src, alt: draft.alt },
-                          t('manualEdit.uploadImage'),
-                        );
+                        onApplyPatch({ id: targetId, kind: 'set-image', src, alt }, t('manualEdit.uploadImage'));
                       } else {
                         onError(t('manualEdit.uploadImageFailed'));
                       }
+                    } catch (error) {
+                      if (!controller.signal.aborted) onError(error instanceof Error ? error.message : t('manualEdit.uploadImageFailed'));
                     } finally {
-                      setUploadingImage(false);
+                      if (imageUpload.current === controller) {
+                        imageUpload.current = null;
+                        setUploadingImage(false);
+                      }
                     }
                   }}
                 />
-              </div>
-            </div>
           ) : null}
-        </div>
+        </fieldset></div></div>
 
         <div className="manual-edit-footer">
           <div className="manual-edit-footer-actions">
             <div className="manual-edit-footer-left">
-              <button
+              <Button unstyled variant="ghost" size="icon"
                 type="button"
                 className="manual-edit-history-btn"
                 aria-label={t('manualEdit.undo')}
@@ -316,8 +345,8 @@ export function ManualEditPanel({
                 onClick={onUndo}
               >
                 <Icon name="undo" size={15} />
-              </button>
-              <button
+              </Button>
+              <Button unstyled variant="ghost" size="icon"
                 type="button"
                 className="manual-edit-history-btn"
                 aria-label={t('manualEdit.redo')}
@@ -326,9 +355,9 @@ export function ManualEditPanel({
                 onClick={onRedo}
               >
                 <Icon name="redo" size={15} />
-              </button>
+              </Button>
               {targetForInspector ? (
-                <button
+                <Button unstyled variant="ghost" size="icon"
                   type="button"
                   className="manual-edit-delete-btn"
                   aria-label={t('manualEdit.deleteElement')}
@@ -342,36 +371,39 @@ export function ManualEditPanel({
                   }}
                 >
                   <Icon name="trash" size={15} />
-                </button>
+                </Button>
               ) : null}
             </div>
             <div className="manual-edit-footer-right">
               {resetAvailable ? (
-                <button
+                <Button unstyled variant={sourceControls ? 'secondary' : 'ghost'} size={sourceControls ? 'sm' : 'icon'}
                   type="button"
-                  className="manual-edit-footer-btn subtle"
+                  className={sourceControls ? "manual-edit-footer-btn subtle" : "manual-edit-history-btn"}
+                  aria-label={t('ds.reset')} title={t('ds.reset')}
                   disabled={busy}
                   onClick={onResetDraft}
                 >
-                  {t('ds.reset')}
-                </button>
+                  {sourceControls ? t('ds.reset') : <Icon name="refresh" size={15} />}
+                </Button>
               ) : null}
-              <button
+              <Button unstyled variant={sourceControls ? 'secondary' : 'ghost'} size={sourceControls ? 'sm' : 'icon'}
                 type="button"
-                className="manual-edit-footer-btn subtle"
+                className={sourceControls ? "manual-edit-footer-btn subtle" : "manual-edit-history-btn"}
+                aria-label={t('common.cancel')} title={t('common.cancel')}
                 disabled={busy}
                 onClick={onCancelDraft}
               >
-                {t('common.cancel')}
-              </button>
-              <button
+                {sourceControls ? t('common.cancel') : <Icon name="close" size={15} />}
+              </Button>
+              <Button unstyled variant={sourceControls ? 'primary' : 'ghost'} size={sourceControls ? 'sm' : 'icon'}
                 type="button"
-                className="manual-edit-footer-btn primary"
+                className={sourceControls ? "manual-edit-footer-btn primary" : "manual-edit-history-btn"}
+                aria-label={t('common.save')} title={t('common.save')}
                 disabled={busy}
                 onClick={onSaveDraft}
               >
-                {t('common.save')}
-              </button>
+                {sourceControls ? t('common.save') : <Icon name="check" size={15} />}
+              </Button>
             </div>
           </div>
 
@@ -383,27 +415,31 @@ export function ManualEditPanel({
 }
 
 function ContentInspector({
+  sourceControls,
   target,
   draft,
   onDraftChange,
+  imageAction,
 }: {
+  sourceControls: boolean;
   target: ManualEditTarget;
   draft: ManualEditDraft;
   onDraftChange: (draft: ManualEditDraft) => void;
+  imageAction?: ReactNode;
 }) {
   const t = useT();
   const update = (patch: Partial<ManualEditDraft>) => onDraftChange({ ...draft, ...patch });
   if (target.kind === 'image') {
     return (
       <div className="cc-inspector manual-edit-content-inspector">
-        <Section title={t('manualEdit.sectionContent')}>
+        <Section title={t('manualEdit.sectionImage')} action={imageAction}>
           <label className="manual-edit-field compact">
             <span>{t('manualEdit.imageUrl')}</span>
-            <input value={draft.src} onChange={(event) => update({ src: event.currentTarget.value })} />
+            <Input value={draft.src} onChange={(event) => update({ src: event.currentTarget.value })} />
           </label>
           <label className="manual-edit-field compact">
             <span>{t('manualEdit.altText')}</span>
-            <input value={draft.alt} onChange={(event) => update({ alt: event.currentTarget.value })} />
+            <Input value={draft.alt} onChange={(event) => update({ alt: event.currentTarget.value })} />
           </label>
         </Section>
       </div>
@@ -415,11 +451,11 @@ function ContentInspector({
         <Section title={t('manualEdit.sectionContent')}>
           <label className="manual-edit-field">
             <span>{t('manualEdit.text')}</span>
-            <textarea value={draft.text} rows={3} onChange={(event) => update({ text: event.currentTarget.value })} />
+            <Textarea unstyled value={draft.text} rows={3} onChange={(event) => update({ text: event.currentTarget.value })} />
           </label>
           <label className="manual-edit-field compact">
             <span>{t('manualEdit.href')}</span>
-            <input value={draft.href} onChange={(event) => update({ href: event.currentTarget.value })} />
+            <Input value={draft.href} onChange={(event) => update({ href: event.currentTarget.value })} />
           </label>
         </Section>
       </div>
@@ -431,18 +467,19 @@ function ContentInspector({
         <Section title={t('manualEdit.sectionContent')}>
           <label className="manual-edit-field">
             <span>{t('manualEdit.text')}</span>
-            <textarea value={draft.text} rows={4} onChange={(event) => update({ text: event.currentTarget.value })} />
+            <Textarea unstyled value={draft.text} rows={4} onChange={(event) => update({ text: event.currentTarget.value })} />
           </label>
         </Section>
       </div>
     );
   }
+  if (!sourceControls) return null;
   return (
     <div className="cc-inspector manual-edit-content-inspector">
       <Section title={t('manualEdit.sectionContent')}>
         <label className="manual-edit-field">
           <span>{t('manualEdit.selectedHtml')}</span>
-          <textarea
+          <Textarea unstyled
             className="manual-edit-code"
             value={draft.outerHtml}
             onChange={(event) => update({ outerHtml: event.currentTarget.value })}
@@ -797,6 +834,8 @@ function StyleInspector({
   const u = (key: keyof ManualEditStyles, value: string) => onChange(key, value);
   const summary = target.computedSummary;
   const layoutDisabled = !target.isLayoutContainer;
+  const typography = target.kind !== 'image' && target.attributes.role !== 'img' && !['svg', 'path', 'rect', 'circle', 'ellipse', 'polygon', 'polyline', 'line', 'video', 'canvas'].includes(target.tagName.toLowerCase());
+  const colorLabel = typography ? t('manualEdit.textColor') : t('sketch.color');
   const widthPlaceholder = styles.width ? '' : `${Math.round(target.rect.width)}px`;
   const heightPlaceholder = styles.height ? '' : `${Math.round(target.rect.height)}px`;
 
@@ -821,9 +860,10 @@ function StyleInspector({
   return (
     <div className="cc-inspector">
       <Section title={t('manualEdit.parameters')}>
-        <ColorRow label={t('manualEdit.textColor')} value={styles.color} placeholder={summary?.color} onChange={(v) => u('color', v)} onFocus={() => activate('color', t('manualEdit.textColor'))} />
+        {target.kind !== 'image' ? <ColorRow label={colorLabel} value={styles.color} placeholder={summary?.color} onChange={(v) => u('color', v)} onFocus={() => activate('color', colorLabel)} /> : null}
         <ColorRow label={t('manualEdit.background')} value={styles.backgroundColor} placeholder={summary?.backgroundColor} onChange={(v) => u('backgroundColor', v)} onFocus={() => activate('backgroundColor', t('manualEdit.background'))} />
         <UnitRow label={t('manualEdit.opacity')} value={styles.opacity} placeholder="1" onChange={(v) => u('opacity', v)} unit="" onFocus={() => activate('opacity', t('manualEdit.opacity'))} />
+        {typography ? <>
         <FontRow label={t('manualEdit.fontFamily')} value={styles.fontFamily} placeholder={summary?.fontFamily} onChange={(v) => u('fontFamily', v)} onFocus={() => activate('fontFamily', t('manualEdit.fontFamily'))} />
         <PairRow>
           <UnitRow label={t('manualEdit.fontSize')} value={styles.fontSize} placeholder={summary?.fontSize} onChange={(v) => u('fontSize', v)} unit="px" autoUnit onFocus={() => activate('fontSize', t('manualEdit.fontSize'))} />
@@ -836,6 +876,7 @@ function StyleInspector({
           <UnitRow label={t('manualEdit.lineHeight')} value={styles.lineHeight} placeholder={summary?.lineHeight} onChange={(v) => u('lineHeight', v)} unit="" onFocus={() => activate('lineHeight', t('manualEdit.lineHeight'))} />
           <UnitRow label={t('manualEdit.letterSpacing')} value={styles.letterSpacing} placeholder={summary?.letterSpacing} onChange={(v) => u('letterSpacing', v)} unit="px" autoUnit onFocus={() => activate('letterSpacing', t('manualEdit.letterSpacing'))} />
         </PairRow>
+        </> : null}
         <UnitRow label={t('manualEdit.radius')} value={styles.borderRadius} placeholder={summary?.borderRadius} onChange={(v) => u('borderRadius', v)} unit="px" autoUnit onFocus={() => activate('borderRadius', t('manualEdit.radius'))} />
         <PairRow>
           <ColorRow label={t('manualEdit.borderColor')} value={styles.borderColor} placeholder={summary?.borderColor} onChange={(v) => u('borderColor', v)} onFocus={() => activate('borderColor', t('manualEdit.borderColor'))} />
@@ -866,22 +907,18 @@ function StyleInspector({
           t: styles.marginTop, r: styles.marginRight, b: styles.marginBottom, l: styles.marginLeft,
         }} onChange={(side, value) => u(sideToProp('margin', side), value)} onFocus={() => activate('margin', t('manualEdit.margin'))} />
 
-        <PairRow>
-          <DropdownRow label={t('manualEdit.layoutDirection')} value={styles.flexDirection} onChange={(v) => u('flexDirection', v)} options={layoutDirectionOptions(t)} disabled={layoutDisabled} />
-          <DropdownRow label={t('manualEdit.distribution')} value={styles.justifyContent} onChange={(v) => u('justifyContent', v)} options={justifyOptions(t)} disabled={layoutDisabled} />
-        </PairRow>
-        <PairRow>
-          <UnitRow label={t('manualEdit.gap')} value={styles.gap} onChange={(v) => u('gap', v)} unit="px" autoUnit disabled={layoutDisabled} onFocus={() => activate('gap', t('manualEdit.gap'))} />
-          {layoutDisabled ? (
-            // Non-flex/grid targets still get a live alignment dropdown — it
-            // drives text-align (left / center / right) instead of the flex
-            // cross-axis, so the control is never a dead grey box.
-            <DropdownRow label={t('manualEdit.align')} value={styles.textAlign} onChange={(v) => u('textAlign', v)} options={textAlignOptions(t)} />
-          ) : (
+        {!layoutDisabled ? <>
+          <PairRow>
+            <DropdownRow label={t('manualEdit.layoutDirection')} value={styles.flexDirection} onChange={(v) => u('flexDirection', v)} options={layoutDirectionOptions(t)} />
+            <DropdownRow label={t('manualEdit.distribution')} value={styles.justifyContent} onChange={(v) => u('justifyContent', v)} options={justifyOptions(t)} />
+          </PairRow>
+          <PairRow>
+            <UnitRow label={t('manualEdit.gap')} value={styles.gap} onChange={(v) => u('gap', v)} unit="px" autoUnit onFocus={() => activate('gap', t('manualEdit.gap'))} />
             <DropdownRow label={t('manualEdit.align')} value={styles.alignItems} onChange={(v) => u('alignItems', v)} options={itemAlignOptions(t)} />
-          )}
-        </PairRow>
-        {layoutDisabled ? <p className="cc-section-hint">{t('manualEdit.layoutUnavailable')}</p> : null}
+          </PairRow>
+        </> : typography ? (
+          <DropdownRow label={t('manualEdit.align')} value={styles.textAlign} onChange={(v) => u('textAlign', v)} options={textAlignOptions(t)} />
+        ) : null}
       </Section>
 
       {activeField && activeProp ? (
@@ -975,10 +1012,10 @@ function borderStyleOptions(t: ManualEditTranslator): DropdownOption[] {
   ];
 }
 
-function Section({ title, children, inactive }: { title: string; children: ReactNode; inactive?: boolean }) {
+function Section({ title, children, inactive, action }: { title: string; children: ReactNode; inactive?: boolean; action?: ReactNode }) {
   return (
     <section className={`cc-section${inactive ? ' cc-section-inactive' : ''}`}>
-      <header className="cc-section-head">{title}</header>
+      <header className="cc-section-head flex items-center justify-between gap-2"><span>{title}</span>{action}</header>
       <div className="cc-section-body">{children}</div>
     </section>
   );
@@ -1015,7 +1052,7 @@ function UnitRow({ label, value, onChange, unit, autoUnit, disabled, placeholder
       <span className="cc-label">{label}</span>
       <span className="cc-value">
         <button type="button" className="cc-step" disabled={!canStep} aria-label={`${label} decrease`} onClick={() => stepBy(-1)}>−</button>
-        <input value={display} placeholder={placeholder ? stripPxUnit(placeholder) : ''} disabled={disabled} onFocus={onFocus} onChange={(e) => onChange(valueFromDisplay(e.currentTarget.value))} onBlur={(e) => handle(e.currentTarget.value)} />
+        <input aria-label={label} value={display} placeholder={placeholder ? stripPxUnit(placeholder) : ''} disabled={disabled} onFocus={onFocus} onChange={(e) => onChange(valueFromDisplay(e.currentTarget.value))} onBlur={(e) => handle(e.currentTarget.value)} />
         <button type="button" className="cc-step" disabled={!canStep} aria-label={`${label} increase`} onClick={() => stepBy(1)}>+</button>
         {/* px is implied for length fields — the unit is stored internally but
             not shown as a trailing label. Any non-px unit still renders. */}
@@ -1029,21 +1066,21 @@ function DropdownRow({ label, value, onChange, options, placeholder, disabled, o
   label: string; value: string; onChange: (v: string) => void;
   options: ReadonlyArray<DropdownOption>; placeholder?: string; disabled?: boolean; onFocus?: () => void;
 }) {
+  const id = useId();
   const optionValues = options.map(dropdownOptionValue);
   return (
-    <label className="cc-row">
+    <div className="cc-row">
       <span className="cc-label">{label}</span>
       <span className="cc-value cc-select">
-        <select value={value} disabled={disabled} onFocus={onFocus} onChange={(e) => onChange(e.currentTarget.value)}>
-          {!optionValues.includes(value) && value ? <option value={value}>{value}</option> : null}
-          {options.map((opt) => {
-            const optionValue = dropdownOptionValue(opt);
-            return <option key={optionValue || '__'} value={optionValue}>{dropdownOptionLabel(opt, placeholder)}</option>;
-          })}
-        </select>
+        <ValueSelect id={id} label={label} hideLabel value={value} disabled={disabled} onFocus={onFocus} onValueChange={onChange}
+          options={[
+            ...(!optionValues.includes(value) && value ? [{ value, label: value }] : []),
+            ...options.map(option => ({ value: dropdownOptionValue(option), label: dropdownOptionLabel(option, placeholder) })),
+          ]}
+        />
         <em className="cc-chevron">▾</em>
       </span>
-    </label>
+    </div>
   );
 }
 
@@ -1063,24 +1100,23 @@ function FontRow({ label, value, placeholder, onChange, onFocus }: {
   onChange: (v: string) => void;
   onFocus?: () => void;
 }) {
+  const id = useId();
   const normalizedValue = normalizeFontFamilyForSelect(value);
   const customValue = normalizedValue === value ? value : '';
   return (
-    <label className="cc-row">
+    <div className="cc-row">
       <span className="cc-label">{label}</span>
       <span className="cc-value cc-select">
-        <select value={normalizedValue} onFocus={onFocus} onChange={(event) => onChange(event.currentTarget.value)}>
-          {!normalizedValue && placeholder ? <option value="">{fontFamilyLabel(placeholder)}</option> : null}
-          {customValue && !FONT_OPTS.some((option) => option.value === customValue) ? (
-            <option value={customValue}>{fontFamilyLabel(customValue)}</option>
-          ) : null}
-          {FONT_OPTS.map((option) => (
-            <option key={option.label} value={option.value}>{option.label}</option>
-          ))}
-        </select>
+        <ValueSelect id={id} label={label} hideLabel value={normalizedValue} onFocus={onFocus} onValueChange={onChange}
+          options={[
+            ...(!normalizedValue && placeholder ? [{ value: '', label: fontFamilyLabel(placeholder) }] : []),
+            ...(customValue && !FONT_OPTS.some(option => option.value === customValue) ? [{ value: customValue, label: fontFamilyLabel(customValue) }] : []),
+            ...FONT_OPTS,
+          ]}
+        />
         <em className="cc-chevron">▾</em>
       </span>
-    </label>
+    </div>
   );
 }
 
@@ -1131,7 +1167,7 @@ function ColorRow({ label, value, placeholder, onChange, compact, onFocus }: {
       <span className={`cc-value cc-color ${compact ? 'cc-color-compact' : ''}`} ref={ref}>
         <button type="button" className="cc-swatch" style={{ background: value || 'transparent' }}
           onClick={() => setOpen((v) => !v)} aria-label={`Pick ${label}`} />
-        <input value={value} placeholder={placeholder || '#000000'}
+        <input aria-label={label} value={value} placeholder={placeholder || '#000000'}
           onChange={(e) => onChange(e.currentTarget.value)} onFocus={() => { setOpen(true); onFocus?.(); }} />
         {open ? (
           <div className="cc-color-popover">
@@ -1141,7 +1177,7 @@ function ColorRow({ label, value, placeholder, onChange, compact, onFocus }: {
                   onClick={() => { onChange(hex); setOpen(false); }} aria-label={hex} />
               ))}
             </div>
-            <input type="color" className="cc-color-native" value={normalizeColorForPicker(value)}
+            <input type="color" aria-label={label} className="cc-color-native" value={normalizeColorForPicker(value)}
               onChange={(e) => onChange(e.currentTarget.value)} />
           </div>
         ) : null}
@@ -1170,17 +1206,17 @@ function QuadRow({ label, axes, values, onChange, onFocus }: {
       </button>
       {open ? (
         <div className="cc-quad-grid">
-          <QuadCell axis={axes?.t ?? 'T'} value={values.t} onChange={(v) => onChange('t', v)} />
-          <QuadCell axis={axes?.r ?? 'R'} value={values.r} onChange={(v) => onChange('r', v)} />
-          <QuadCell axis={axes?.b ?? 'B'} value={values.b} onChange={(v) => onChange('b', v)} />
-          <QuadCell axis={axes?.l ?? 'L'} value={values.l} onChange={(v) => onChange('l', v)} />
+          <QuadCell label={`${label} ${axes?.t ?? 'T'}`} axis={axes?.t ?? 'T'} value={values.t} onChange={(v) => onChange('t', v)} />
+          <QuadCell label={`${label} ${axes?.r ?? 'R'}`} axis={axes?.r ?? 'R'} value={values.r} onChange={(v) => onChange('r', v)} />
+          <QuadCell label={`${label} ${axes?.b ?? 'B'}`} axis={axes?.b ?? 'B'} value={values.b} onChange={(v) => onChange('b', v)} />
+          <QuadCell label={`${label} ${axes?.l ?? 'L'}`} axis={axes?.l ?? 'L'} value={values.l} onChange={(v) => onChange('l', v)} />
         </div>
       ) : null}
     </div>
   );
 }
 
-function QuadCell({ axis, value, onChange }: { axis: string; value: string; onChange: (v: string) => void }) {
+function QuadCell({ label, axis, value, onChange }: { label: string; axis: string; value: string; onChange: (v: string) => void }) {
   const display = stripPxUnit(value);
   const canStep = isNumericInput(display);
   const stepBy = (direction: -1 | 1) => {
@@ -1191,7 +1227,7 @@ function QuadCell({ axis, value, onChange }: { axis: string; value: string; onCh
     <span className="cc-quad-cell">
       <em className="cc-quad-axis">{axis}</em>
       <button type="button" className="cc-step cc-step-quad" disabled={!canStep} aria-label={`${axis} decrease`} onClick={() => stepBy(-1)}>−</button>
-      <input value={display} placeholder="0"
+      <input aria-label={label} value={display} placeholder="0"
         onChange={(e) => {
           const raw = e.currentTarget.value.trim();
           if (raw === '') onChange('');

@@ -1,5 +1,5 @@
-import { forwardRef } from 'react';
-import type { ButtonHTMLAttributes } from 'react';
+import { createContext, forwardRef, useContext } from 'react';
+import type { ButtonHTMLAttributes, ForwardedRef, ReactElement } from 'react';
 
 import { joinClassNames } from './class-names';
 import styles from './button.module.css';
@@ -8,9 +8,16 @@ export type ButtonVariant = 'default' | 'primary' | 'primary-ghost' | 'ghost' | 
 export type ButtonSize = 'default' | 'icon' | 'sm';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  /** Keep native caller classes outside a host presentation provider. */
+  unstyled?: boolean;
   variant?: ButtonVariant;
   size?: ButtonSize;
 }
+
+/** Host presentation seam; handlers, refs and native button semantics remain owned by callers. */
+export type ButtonRenderer = (props: ButtonProps, ref: ForwardedRef<HTMLButtonElement>) => ReactElement;
+const ButtonRendererContext = createContext<ButtonRenderer | null>(null);
+export const ButtonRendererProvider = ButtonRendererContext.Provider;
 
 const variantClassNames: Record<ButtonVariant, string | undefined> = {
   default: undefined,
@@ -32,14 +39,16 @@ const sizeClassNames: Record<ButtonSize, string | undefined> = {
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { className, type = 'button', variant = 'default', size = 'default', ...props },
+  { className, type = 'button', variant = 'default', size = 'default', unstyled = false, ...props },
   ref,
 ) {
+  const render = useContext(ButtonRendererContext);
+  if (render) return render({ ...props, className, type, variant, size }, ref);
   return (
     <button
       ref={ref}
       type={type}
-      className={joinClassNames(
+      className={unstyled ? className : joinClassNames(
         styles.button,
         variantClassNames[variant],
         sizeClassNames[size],

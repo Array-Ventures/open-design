@@ -45,7 +45,10 @@ const injectedDeckFonts = new WeakSet<ParsedDeckThumbnails>();
 function getDeckCss(parsed: ParsedDeckThumbnails): DeckCssEntry {
   let entry = deckCssCache.get(parsed);
   if (!entry) {
-    const css = `${parsed.styleText}\n${THUMB_OVERRIDE_CSS}\n${DECK_CHROME_HIDE_CSS}\n${DECK_MOTION_FREEZE_CSS}`;
+    // Each thumbnail represents an independent HTML document. App text/font
+    // inheritance must not replace browser defaults; authored html/body CSS
+    // follows this baseline and keeps its own cascade.
+    const css = `:host{color:#000;font:16px serif;line-height:normal;white-space:normal;text-align:start;letter-spacing:normal;word-spacing:normal;text-transform:none;}\n${parsed.styleText}\n${THUMB_OVERRIDE_CSS}\n${DECK_CHROME_HIDE_CSS}\n${DECK_MOTION_FREEZE_CSS}`;
     let sheet: CSSStyleSheet | null = null;
     try {
       if (typeof CSSStyleSheet !== 'undefined' && 'replaceSync' in CSSStyleSheet.prototype) {

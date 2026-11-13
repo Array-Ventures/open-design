@@ -1,4 +1,8 @@
+import { normalizeDocumentCommentHint } from '@open-design/contracts';
 import { pendingCommentFileRetirements } from './collab/comment-file-retirements.js';
+import { migratePreviewCommentReplies } from './storage/preview-comment-replies.js';
+import { migratePreviewCommentWrites, previewCommentEditToken } from './storage/preview-comment-writes.js';
+import { migrateWorkbookWrites } from './storage/workbook-writes.js';
 // SQLite-backed persistence for projects, conversations, messages, and the
 // per-project set of open workspace tabs. The on-disk project folder under
 // .od/projects/<id>/ is still the single owner of the user's actual files
@@ -90,6 +94,9 @@ export function openDatabase(projectRoot: string, { dataDir }: { dataDir?: strin
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   migrate(db);
+  migratePreviewCommentReplies(db);
+  migratePreviewCommentWrites(db);
+  migrateWorkbookWrites(db);
   dbInstance = db;
   dbFile = file;
   return db;
@@ -3945,6 +3952,8 @@ export function listProjectPreviewComments(db: SqliteDb, projectId: string) {
 }
 
 export interface UpsertPreviewCommentOptions {
+  /** Embedded human content edits do not implicitly reopen resolved threads. */
+  preserveStatus?: boolean;
   /**
    * True when this project currently syncs comments to the collab cloud (see
    * `shouldSyncProjectComments`), so a genuinely NEW comment's `pin_seq`
@@ -3972,7 +3981,7 @@ export function upsertPreviewComment(
   const selector = cleanRequiredString(target.selector, 'selector');
   const label = cleanRequiredString(target.label, 'label');
   const text = typeof target.text === 'string' ? compactWhitespace(target.text).slice(0, 160) : '';
-  const htmlHint = typeof target.htmlHint === 'string' ? compactWhitespace(target.htmlHint).slice(0, 180) : '';
+  const htmlHint = normalizeDocumentCommentHint(target.htmlHint);
   const position = normalizePosition(target.position);
   const selectionKind = target.selectionKind === 'pod' ? 'pod' : 'element';
   const podMembers = selectionKind === 'pod' ? normalizePodMembers(target.podMembers) : [];
@@ -4066,7 +4075,7 @@ export function upsertPreviewComment(
        attachments_json = excluded.attachments_json,
        slide_index = excluded.slide_index,
        note = excluded.note,
-       status = 'open',
+       status = ${options.preserveStatus ? 'preview_comments.status' : "'open'"},
        anchored_version = excluded.anchored_version,
        author_member_id = excluded.author_member_id,
        updated_at = excluded.updated_at
@@ -5003,6 +5012,7 @@ function normalizePreviewComment(row: DbRow): PreviewComment {
     status: row.status,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    editToken: undefined,
     anchorState: asPreviewCommentAnchorState(row.anchorState),
     anchoredVersion: Number.isFinite(row.anchoredVersion) ? row.anchoredVersion : undefined,
     authorMemberId: typeof row.authorMemberId === 'string' ? row.authorMemberId : undefined,
@@ -5021,7 +5031,7 @@ function normalizePreviewComment(row: DbRow): PreviewComment {
   // Sound at runtime: an optional property holding `undefined` is what an
   // absent property reads as. The cast only relaxes the explicit-undefined
   // rule, never the key set or the value types.
-  return normalized as PreviewComment;
+  return { ...normalized, editToken: previewCommentEditToken(normalized as PreviewComment) } as PreviewComment;
 }
 
 function normalizePreviewCommentAttachments(input: unknown): PreviewCommentAttachment[] {

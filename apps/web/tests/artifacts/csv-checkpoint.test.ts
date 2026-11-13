@@ -1,0 +1,26 @@
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
+import { CellValueType, type IWorkbookData } from '@univerjs/presets';
+import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import { WorkbookWriter, type WorkbookWriteIntent } from '../../src/components/embedded/workbook/workbook-writer';
+import { saveWorkbookDraft, readWorkbookDraft } from '../../src/components/embedded/workbook/draft-store';
+import { decodeWorkbookDraft, encodeWorkbookDraft } from '../../src/components/embedded/workbook/workbook-checkpoint';
+import { gridWorkbook } from '../../src/components/embedded/workbook/grid-model';
+const scope = { viewerId: 'person', projectId: '18a8301a-b6e1-4001-8000-c967b1eab222', fileName: 'literal.csv', draftId: '18a8301a-b6e1-4001-8000-c967b1eab224' };
+const model: WorkbookDocument = { version: 1, sourceFormat: 'csv', date1904: false, activeSheetId: 'csv', styles: [{ numberFormat: '@' }], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 'csv', name: 'Data', visibility: 'visible', rowCount: 1, columnCount: 1, cells: [{ row: 0, column: 0, kind: 'string', value: '001', style: 0 }], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
+beforeEach(() => { vi.stubGlobal('indexedDB', new IDBFactory()); vi.stubGlobal('IDBKeyRange', IDBKeyRange); });
+afterEach(() => vi.unstubAllGlobals());
+it('protects a resized CSV literal save, roundtrips its pending identity, and retries it unchanged after restart', async () => {
+  const source = { sourceSha256: 'a'.repeat(64), model }, initial = gridWorkbook(model, `${scope.projectId}:${scope.fileName}`, 'CSV').data as IWorkbookData;
+  const observed: WorkbookWriteIntent[] = [], renderId = '18a8301a-b6e1-4001-8000-c967b1eab225';
+  const writer = new WorkbookWriter(source, initial, async (intent, protect) => { observed.push(structuredClone(intent)); intent.renderId = renderId; await protect(); throw Error('Lost acknowledgement'); }, () => {}, undefined, { save: state => saveWorkbookDraft(scope, state) });
+  const changed = structuredClone(initial); changed.sheets.csv!.rowData = { 0: { h: 40 } }; changed.sheets.csv!.cellData![0]![0] = { v: '002', t: CellValueType.FORCE_STRING, s: '0' };
+  writer.update(changed); await writer.flush();
+  expect(observed).toHaveLength(1); expect(writer.state().error).toBe('Lost acknowledgement'); await writer.close();
+  const stored = await readWorkbookDraft(scope); expect(stored?.pending?.intent.renderId).toBe(renderId);
+  expect(stored?.pending?.intent.plan.dimensions).toBeUndefined(); expect(stored?.pending?.snapshot.sheets.csv!.rowData![0]!.h).toBe(40);
+  expect(decodeWorkbookDraft(encodeWorkbookDraft(scope, stored!), scope)).toEqual(stored);
+  const resumed = new WorkbookWriter(source, initial, async intent => { observed.push(structuredClone(intent)); return { ...source, sourceSha256: 'b'.repeat(64) }; }, () => {}, undefined, { save: state => saveWorkbookDraft(scope, state), restored: stored! });
+  await resumed.flush(); expect(resumed.state()).toEqual({ dirty: false, saving: false, error: null });
+  expect(observed[1]).toEqual({ ...observed[0], renderId }); expect(await readWorkbookDraft(scope)).toBeNull(); await resumed.close();
+});

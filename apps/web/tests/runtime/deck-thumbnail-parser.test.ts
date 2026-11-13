@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { parseDeckThumbnails } from '../../src/runtime/deck-thumbnail-parser';
+import { resizeDeckSource } from '../../src/edit-mode/deck-properties';
 
 // Canonical OD framework deck: `.deck-shell > .deck-stage#deck-stage >
 // section.slide`, styles in a <head> <style>, `:root` vars, chrome outside the
@@ -584,4 +585,15 @@ describe('parseDeckThumbnails', () => {
     expect(parsed.renderable).toBe(false);
     expect(parsed.reason).toBe('external-stylesheet');
   });
+});
+
+it('uses the persisted aspect-ratio edit for thumbnail dimensions and viewport units', () => {
+  const source = '<!doctype html><html><head><style>.slide {width:100vw;height:100vh}</style></head><body><deck-stage width="800" height="450"><section class="slide">A</section><section class="slide">B</section></deck-stage></body></html>';
+  const resized = resizeDeckSource(source, '4:3')!;
+  const parsed = parseDeckThumbnails(resized);
+  expect(parsed.renderable).toBe(true);
+  expect(parsed.designWidth).toBe(800);
+  expect(parsed.designHeight).toBe(600);
+  expect(parsed.styleText).toContain('height:calc(100 * 6px)');
+  expect(parseDeckThumbnails(source).designHeight).toBe(450);
 });

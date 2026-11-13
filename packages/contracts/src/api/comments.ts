@@ -138,6 +138,45 @@ export interface CommentFileMutation {
   }>;
 }
 
+export interface PreviewCommentReply {
+  id: string;
+  commentId: string;
+  authorMemberId: string;
+  authorDisplayName?: string;
+  note: string;
+  attachments?: PreviewCommentAttachment[];
+  createdAt: number;
+  updatedAt: number;
+  /** Monotonic edit revision; required for edits/deletion to reject stale writes. */
+  revision: number;
+}
+
+export interface PreviewCommentReplyCreateRequest {
+  /** Stable for one submission and its retries; a changed draft gets a new UUID. */
+  operationId: string;
+  note: string;
+  attachments?: PreviewCommentAttachment[];
+}
+
+export interface PreviewCommentReplyEditRequest {
+  expectedRevision: number;
+  note: string;
+  /** Omit to preserve existing attachments; an empty array removes them. */
+  attachments?: PreviewCommentAttachment[];
+}
+
+export interface PreviewCommentReplyDeleteRequest {
+  expectedRevision: number;
+}
+
+export interface PreviewCommentRepliesResponse {
+  replies: PreviewCommentReply[];
+}
+
+export interface PreviewCommentReplyResponse {
+  reply: PreviewCommentReply;
+}
+
 export interface PreviewComment {
   /** Creator workspace_artifacts UUID, scoped to this project; never inferred for historical rows. */
   sourceFileId?: string;
@@ -160,6 +199,8 @@ export interface PreviewComment {
   note: string;
   attachments?: PreviewCommentAttachment[];
   status: PreviewCommentStatus;
+  /** Opaque human-content baseline; excludes background anchor and ordering writes. */
+  editToken?: string;
   /** Epoch milliseconds; 0 means an older sync payload supplied no known creation time.
    * Display unknown rather than borrowing updatedAt or the receiving device's clock. */
   createdAt: number;
@@ -235,6 +276,10 @@ export interface PreviewComment {
 }
 
 export interface PreviewCommentUpsertRequest {
+  /** Embedded writes reuse this UUID until acknowledged; changing payload requires a new UUID. */
+  operationId?: string;
+  /** Embedded edits compare this baseline inside the root/receipt transaction. */
+  expectedEditToken?: string;
   /**
    * Existing comment id when editing a comment. Omit to create a new comment,
    * even if the same author comments on the same element again.

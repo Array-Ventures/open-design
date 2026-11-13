@@ -1,0 +1,4 @@
+.grid :global(.univerjs-icon-reduce-icon),
+.grid :global(.univerjs-icon-increase-icon) {
+  color: var(--color-foreground-icon-secondary);
+}

@@ -109,6 +109,22 @@
     "./runtime/motion-source-player": {
       "types": "./dist/runtime/motion-source-player.d.ts",
       "default": "./dist/runtime/motion-source-player.mjs"
+    },
+    "./runtime/document": {
+      "types": "./dist/runtime/document.d.ts",
+      "default": "./dist/runtime/document.mjs"
+    },
+    "./runtime/delimited-text": {
+      "types": "./dist/runtime/delimited-text.d.ts",
+      "default": "./dist/runtime/delimited-text.mjs"
+    },
+    "./runtime/workbook": {
+      "types": "./dist/runtime/workbook.d.ts",
+      "default": "./dist/runtime/workbook.mjs"
+    },
+    "./runtime/speaker-notes": {
+      "types": "./dist/runtime/speaker-notes.d.ts",
+      "default": "./dist/runtime/speaker-notes.mjs"
     }
   },
   "scripts": {

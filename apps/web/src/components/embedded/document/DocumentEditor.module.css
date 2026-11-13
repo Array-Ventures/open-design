@@ -1,0 +1,41 @@
+.editor { display: flex; flex: 1; flex-direction: column; min-height: 0; background: var(--color-background-primary-default); color: var(--color-text-primary); }
+.scroll { height: 100%; overflow: auto; min-height: 0; flex: 1; }
+.page { position: relative; box-sizing: border-box; max-width: 824px; margin-inline: auto; padding: 16px 52px 80px; }
+.content { outline: none; min-height: 50vh; font-size: var(--text-headline-regular); line-height: 1.5; font-weight: var(--text-headline-regular--font-weight); letter-spacing: var(--text-headline-regular--letter-spacing); overflow-wrap: anywhere; }
+.content p { margin: 0 0 16px; }
+.content h1 { font-size: var(--text-display-4-medium); line-height: var(--text-display-4-medium--line-height); font-weight: var(--text-display-4-medium--font-weight); margin: 24px 0 16px; }
+.content h2 { font-size: var(--text-title-1-medium); line-height: var(--text-title-1-medium--line-height); font-weight: var(--text-title-1-medium--font-weight); margin: 24px 0 12px; }
+.content h3 { font-size: var(--text-title-2-medium); line-height: var(--text-title-2-medium--line-height); font-weight: var(--text-title-2-medium--font-weight); margin: 24px 0 12px; }
+.content :is(h1,h2,h3,h4,h5,h6) { font-family: var(--document-heading-font, inherit); }
+.content > :first-child { margin-block-start: 0; }
+.content ul, .content ol { padding-inline-start: 24px; margin-block: 16px; }
+.content ul { list-style: disc; }
+.content ol { list-style: decimal; }
+.content blockquote { border-inline-start: 3px solid var(--color-border-button-default); padding-inline-start: 16px; margin-inline: 0; color: var(--color-text-secondary); }
+.content table { border-collapse: collapse; width: 100%; margin-block: 16px; table-layout: fixed; }
+.content td, .content th { border: 1px solid var(--color-border-button-default); min-width: 48px; padding: 8px; vertical-align: top; }
+.content td p, .content th p { margin: 0; }
+.content th { background: var(--color-background-secondary-default); }
+.content a { color: var(--color-text-link-default); text-decoration: underline; }
+.placeholder { position: absolute; inset-block-start: 16px; inset-inline-start: 52px; pointer-events: none; color: var(--color-text-placeholder); }
+
+
+.tableScroll { overflow-x: auto; max-width: 100%; }
+
+.code { display: block; margin-block: 16px; min-height: 56px; box-sizing: border-box; overflow-x: auto; white-space: pre; border-radius: 12px; padding: 16px; background: var(--color-background-secondary-default); color: var(--color-text-primary); font-family: var(--font-mono, monospace); font-size: var(--text-body-regular); line-height: 1.5; }
+.inlineCode { border-radius: 4px; padding-inline: 4px; background: var(--color-background-secondary-default); font-family: var(--font-mono, monospace); }
+.content .checklist { color: var(--color-text-primary); list-style: none; padding-inline-start: 0; }
+.checklist .checklist { margin-inline-start: 24px; }
+.checked, .unchecked { position: relative; padding-inline-start: 24px; }
+.checked::before, .unchecked::before { content: ''; position: absolute; box-sizing: border-box; inset-inline-start: 0; inset-block-start: 4px; width: 16px; height: 16px; border: 1px solid var(--color-foreground-icon-secondary); border-radius: 4px; cursor: pointer; }
+.checked > :not(ul,ol) { color: var(--color-text-tertiary); text-decoration: line-through; }
+.checked::before { border-color: var(--color-accent-600); background: var(--color-accent-600); }
+.checked::after { content: ''; position: absolute; inset-inline-start: 5px; inset-block-start: 7px; width: 6px; height: 8px; border: solid var(--color-text-on-accent); border-width: 0 2px 2px 0; transform: rotate(45deg); pointer-events: none; }
+.checked:focus-visible, .unchecked:focus-visible { outline: 2px solid var(--color-border-focus-ring); outline-offset: 2px; border-radius: 4px; }
+
+.underline { text-decoration: underline; }
+.strikethrough { text-decoration: line-through; }
+.underlineStrikethrough { text-decoration: underline line-through; }
+
+.content :is(h1, h2, h3, h4, h5, h6) { scroll-margin-block-start: 16px; }
+.content :is(h1, h2, h3, h4, h5, h6)[tabindex="-1"]:focus-visible { outline: 2px solid var(--color-border-focus-ring); outline-offset: 4px; }

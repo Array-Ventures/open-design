@@ -15,6 +15,8 @@ interface DeckNavigateMessageBase {
   type: typeof DECK_NAVIGATE_MESSAGE_TYPE;
   /** Omitted by legacy hosts; v1 runtimes intentionally accept both forms. */
   protocolVersion?: typeof DECK_PROTOCOL_VERSION;
+  /** Explicit toolbar/thumbnail intent cancels stale runtime-state replay. Load synchronization omits this. */
+  userInitiated?: boolean;
 }
 
 export type DeckNavigateMessage = DeckNavigateMessageBase & (

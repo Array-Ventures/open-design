@@ -1,3 +1,5 @@
+import { embeddedPreviewBaseScope, embeddedResourceUrl } from '../components/embedded/transport';
+import { RootCommentWriteError } from './comment-write-error';
 import { prepareAmrWebUrl } from "./amr-web-intent";
 import {
   PUBLIC_FILE_MANUAL_REVOKE_REQUIRED,
@@ -2266,7 +2268,7 @@ export async function fetchProjectFiles(
             : {}),
         });
         if (!resp.ok) {
-          throw new Error(`Project files request failed (${resp.status})`);
+          throw Object.assign(new Error(`Project files request failed (${resp.status})`), { status: resp.status });
         }
         const json = (await resp.json()) as { files?: unknown };
         if (!Array.isArray(json.files)) {
@@ -2631,6 +2633,9 @@ export function liveArtifactPreviewUrl(
   variant: LiveArtifactPreviewVariant = 'rendered',
   workspaceContext?: WorkspaceCollabContext | null,
 ): string {
+  if (process.env.NEXT_PUBLIC_OD_STUDIO_BASE_PATH && variant !== 'template') {
+    return `/api/studio/dashboards/${encodeURIComponent(projectId)}/${encodeURIComponent(artifactId)}/preview`;
+  }
   const baseUrl = workspaceResourceUrl(
     `/api/live-artifacts/${encodeURIComponent(artifactId)}/preview?projectId=${encodeURIComponent(projectId)}`,
     workspaceContext,
@@ -2691,7 +2696,7 @@ function previewCapabilityHref(pathname: string): string {
   const runtimeHref = typeof globalThis.location?.href === 'string'
     ? globalThis.location.href
     : 'http://open-design.local/';
-  return new URL(pathname, runtimeHref).href;
+  return new URL(embeddedResourceUrl(pathname), runtimeHref).href;
 }
 
 export async function fetchProjectPreviewBaseHref(
@@ -2712,6 +2717,9 @@ export async function fetchProjectPreviewBaseHref(
     const parsed = new URL(body.url, 'http://open-design.local');
     const expectedPrefix = `/api/projects/${encodeURIComponent(projectId)}/preview/`;
     if (!parsed.pathname.startsWith(expectedPrefix)) return null;
+    const hostScope = embeddedPreviewBaseScope(response, projectId);
+    if (hostScope) return hostScope;
+    if (process.env.NEXT_PUBLIC_OD_STUDIO_BASE_PATH) return null;
     const directoryEnd = parsed.pathname.lastIndexOf('/') + 1;
     if (directoryEnd <= expectedPrefix.length) return null;
     const expiresAt = typeof body.expiresAt === 'number' && Number.isFinite(body.expiresAt)
@@ -3029,12 +3037,14 @@ export async function upsertPreviewComment(
   conversationId: string,
   input: PreviewCommentUpsertRequest,
   workspaceContext?: WorkspaceCollabContext | null,
+  signal?: AbortSignal,
 ): Promise<PreviewComment | null> {
   try {
     const resp = await fetch(
       `/api/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(conversationId)}/comments`,
       {
         method: 'POST',
+        ...(signal ? { signal } : {}),
         headers: {
           'Content-Type': 'application/json',
           ...(workspaceContext ? workspaceProjectHeaders(workspaceContext) : {}),
@@ -3042,10 +3052,17 @@ export async function upsertPreviewComment(
         body: JSON.stringify(input),
       },
     );
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      if (input.operationId) {
+        const error = await resp.json().catch(() => ({})) as { code?: unknown };
+        throw new RootCommentWriteError(resp.status, typeof error.code === 'string' ? error.code : undefined);
+      }
+      return null;
+    }
     const json = (await resp.json()) as { comment: PreviewComment };
     return json.comment ?? null;
-  } catch {
+  } catch (error) {
+    if (input.operationId) throw error instanceof RootCommentWriteError ? error : new RootCommentWriteError(0);
     return null;
   }
 }
@@ -3147,6 +3164,7 @@ export async function writeProjectTextFile(
     versionLabel?: string;
     versionPrompt?: string | null;
     parentVersionId?: string;
+    expectedContentSha256?: string;
   },
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<ProjectFile | null> {
@@ -3168,6 +3186,7 @@ export async function writeProjectTextFileDetailed(
     versionLabel?: string;
     versionPrompt?: string | null;
     parentVersionId?: string;
+    expectedContentSha256?: string;
   },
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<WriteProjectTextFileResult> {
@@ -3186,6 +3205,7 @@ export async function writeProjectTextFileDetailed(
         versionLabel: options?.versionLabel,
         versionPrompt: options?.versionPrompt,
         parentVersionId: options?.parentVersionId,
+        expectedContentSha256: options?.expectedContentSha256,
       }),
     });
     if (!resp.ok) {
@@ -3214,6 +3234,7 @@ export async function writeProjectBase64File(
   name: string,
   base64: string,
   workspaceContext?: WorkspaceCollabContext | null,
+  options?: { overwrite?: boolean; signal?: AbortSignal },
 ): Promise<ProjectFile | null> {
   try {
     const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files`, {
@@ -3222,7 +3243,8 @@ export async function writeProjectBase64File(
         'Content-Type': 'application/json',
         ...(workspaceContext ? workspaceProjectHeaders(workspaceContext) : {}),
       },
-      body: JSON.stringify({ name, content: base64, encoding: 'base64' }),
+      body: JSON.stringify({ name, content: base64, encoding: 'base64', ...(options?.overwrite !== undefined ? {overwrite:options.overwrite} : {}) }),
+      ...(options?.signal ? {signal:options.signal} : {}),
     });
     if (!resp.ok) return null;
     invalidateProjectFilesCache(projectId, workspaceContext);
@@ -3321,6 +3343,7 @@ export async function uploadProjectFiles(
   files: File[],
   dir?: string,
   workspaceContext?: WorkspaceCollabContext | null,
+  signal?: AbortSignal,
 ): Promise<UploadProjectFilesResult> {
   if (files.length === 0) return { uploaded: [], failed: [] };
 
@@ -3344,6 +3367,7 @@ export async function uploadProjectFiles(
         `/api/projects/${encodeURIComponent(projectId)}/upload`,
         {
           method: 'POST',
+          ...(signal ? { signal } : {}),
           ...(workspaceContext ? { headers: workspaceProjectHeaders(workspaceContext) } : {}),
           body: form,
         },

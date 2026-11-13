@@ -1,4 +1,7 @@
 import { jsonBodyByteLength } from '../../http/json-body-size.js';
+import { registerEmbeddedCommentReplyRoutes } from './comment-replies.js';
+import { CommentWriteError, replayPreviewCommentWrite, writePreviewCommentOnce } from '../../storage/preview-comment-writes.js';
+import { CommentImageError, validateCommentImages } from './comment-images.js';
 import type { Express, Request } from 'express';
 import type { CommentSyncStateService } from '../../collab/comment-sync-state.js';
 import type {
@@ -405,6 +408,14 @@ export function registerProjectCommentRoutes(app: Express, ctx: RegisterProjectC
     req: Request,
     context: WorkspaceCollabContext | null,
   ): Promise<string | undefined> {
+    // Embedded requests have already passed the mandatory service credential
+    // gate. The host replaces this header with its authenticated human; an
+    // author supplied in a request body is still stripped below.
+    if (process.env.OD_EMBEDDED_STUDIO === '1') {
+      const human = req.get('x-od-host-human');
+      if (!human || human.length > 200 || /[\r\n\0]/.test(human)) throw new Error('Host identity required');
+      return `evebot:${human}`;
+    }
     if (ctx.resolveWorkspaceContext) {
       return context?.workspaceMemberId || undefined;
     }
@@ -494,6 +505,26 @@ export function registerProjectCommentRoutes(app: Express, ctx: RegisterProjectC
     const memberId = context?.workspaceMemberId?.trim();
     return workspaceId && memberId ? `${workspaceId}:${memberId}` : 'local';
   };
+
+  registerEmbeddedCommentReplyRoutes(app, db, async (req, res, write) => {
+    if (!getRoutableConversation(req.params.id, req.params.cid)) {
+      res.status(404).json({ error: 'conversation not found' }); return null;
+    }
+    if (write && !await enforceCommentWorkspaceMutation(req, res, req.params.id)) return null;
+    const resolution = await (write ? resolveRequestWorkspaceContext : resolveReadRequestWorkspaceContext)(req, req.params.id);
+    if (!resolution.ok) { sendWorkspaceResolutionError(res, resolution); return null; }
+    const comment = getRequestPreviewComment(req.params.id, req.params.cid, req.params.commentId, resolution.context);
+    if (!comment) { res.status(404).json({ error: 'comment not found' }); return null; }
+    const human = req.get('x-od-host-human');
+    if (!human || human.length > 200 || /[\r\n\0]/.test(human)) {
+      res.status(401).json({ error: 'host identity required' }); return null;
+    }
+    const encodedName = req.get('x-od-host-human-name');
+    let displayName: string | undefined;
+    try { displayName = encodedName ? decodeURIComponent(encodedName).trim() : undefined; }
+    catch { res.status(400).json({ error: 'invalid host display name' }); return null; }
+    return { comment: comment as PreviewComment, author: await resolveCaller(req, resolution.context), displayName };
+  });
 
   app.get('/api/projects/:id/comments/read', async (req, res) => {
     if (!getProject(db, req.params.id)) return res.status(404).json({ error: 'project not found' });
@@ -622,7 +653,25 @@ export function registerProjectCommentRoutes(app: Express, ctx: RegisterProjectC
         return sendCommentPayloadTooLarge(res);
       }
       const authorMemberId = await resolveCaller(req, workspaceContext);
+      const embedded = process.env.OD_EMBEDDED_STUDIO === '1';
+      const operationId = embedded ? body.operationId : undefined;
+      if (operationId !== undefined && (typeof operationId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(operationId))) {
+        return res.status(400).json({ code: 'COMMENT_OPERATION_REQUIRED', error: 'A comment operation UUID is required.' });
+      }
+      if (operationId && !authorMemberId) return res.status(401).json({ error: 'identity required' });
       const requestedId = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : '';
+      // Retain the exact requested attachment intent for retry identity. Byte
+      // validation below may normalize display names before the first write.
+      const operation = operationId ? {
+        projectId: req.params.id, conversationId: req.params.cid, author: authorMemberId!, operationId,
+        ...(requestedId ? { id: requestedId, expectedEditToken: body.expectedEditToken } : {}),
+        target: body.target, note: body.note, ...(body.attachments !== undefined ? { attachments: body.attachments } : {}),
+      } : null;
+      const readOperationComment = (id: string) => getRequestPreviewComment(req.params.id, req.params.cid, id, workspaceContext);
+      if (operation) {
+        const replay = replayPreviewCommentWrite(db, operation, readOperationComment);
+        if (replay) return res.json({ comment: replay });
+      }
       let existing: PreviewComment | null = null;
       if (requestedId) {
         existing = getRequestPreviewComment(
@@ -648,7 +697,9 @@ export function registerProjectCommentRoutes(app: Express, ctx: RegisterProjectC
         }
       } else if (authorMemberId) {
         body.authorMemberId = authorMemberId;
-        const authorDisplayName = ctx.resolveCurrentAuthorDisplayName?.();
+        const authorDisplayName = process.env.OD_EMBEDDED_STUDIO === '1'
+          ? decodeURIComponent(req.get('x-od-host-human-name') ?? '')
+          : ctx.resolveCurrentAuthorDisplayName?.();
         if (authorDisplayName?.trim()) body.authorDisplayName = authorDisplayName.trim();
       }
       if (existing?.sourceFileId) body.sourceFileId = existing.sourceFileId;
@@ -669,12 +720,20 @@ export function registerProjectCommentRoutes(app: Express, ctx: RegisterProjectC
       const targetConversationId = requestedId
         ? existing?.conversationId ?? req.params.cid
         : req.params.cid;
+      if (operationId && requestedId && (typeof body.expectedEditToken !== 'string' || !/^[a-f0-9]{64}$/.test(body.expectedEditToken))) {
+        return res.status(400).json({ code: 'COMMENT_BASELINE_REQUIRED', error: 'Reload the comment before editing.' });
+      }
+      if (operationId && body.attachments !== undefined) body.attachments = await validateCommentImages(db, req.params.id, body.attachments);
       // Local row + durable relay intent commit atomically. Network delivery is
       // still asynchronous, so a Vela outage never delays this transaction.
-      const comment = db.transaction(() => {
+      let mutated = false;
+      const mutate = () => {
         const saved = upsertPreviewComment(db, req.params.id, targetConversationId, body, {
           pinPendingCloudConfirm: syncEnabled,
+          preserveStatus: embedded,
         });
+        if (!saved) throw new Error('Comment could not be saved.');
+        mutated = true;
         updateProject(db, req.params.id, {});
         if (saved && syncEnabled) {
           // SAFETY: the DB normalizer returns the PreviewComment fields consumed by the relay.
@@ -683,11 +742,12 @@ export function registerProjectCommentRoutes(app: Express, ctx: RegisterProjectC
             workspaceContext,
           ));
         }
-        return saved;
-      })();
+        return saved as unknown as PreviewComment;
+      };
+      const comment = operation ? writePreviewCommentOnce(db, operation, readOperationComment, mutate) : db.transaction(mutate)();
       // Only a genuinely new, successfully persisted comment is counted.
       // Edits reuse this POST route with an id and must not inflate creation.
-      if (comment && !requestedId) {
+      if (comment && !requestedId && mutated) {
         const project = getProject(db, req.params.id);
         const localBinding = typeof getWorkspaceProjectByProjectId === 'function'
           ? getWorkspaceProjectByProjectId(db, req.params.id) as
@@ -742,6 +802,9 @@ export function registerProjectCommentRoutes(app: Express, ctx: RegisterProjectC
       }
       res.json({ comment });
     } catch (err: any) {
+      if (err instanceof CommentWriteError && err.code === 'COMMENT_FORBIDDEN') return res.status(403).json({ code: err.code, error: 'Only the comment author can edit it.' });
+      if (err instanceof CommentWriteError) return res.status(err.code === 'COMMENT_DELETED' ? 410 : 409).json({ code: err.code, error: err.code === 'COMMENT_DELETED' ? 'This comment was deleted. Your draft is preserved.' : 'This comment changed. Your draft is preserved; reload before saving.' });
+      if (err instanceof CommentImageError) return res.status(400).json({ code: 'COMMENT_IMAGES_INVALID', error: 'Comment images must be valid images saved in this artifact workspace.' });
       res.status(400).json({ error: String(err?.message || err) });
     }
   });
@@ -892,6 +955,7 @@ export function registerProjectCommentRoutes(app: Express, ctx: RegisterProjectC
           workspaceContext,
         );
         if (!existing) return res.status(404).json({ error: 'comment not found' });
+        if (process.env.OD_EMBEDDED_STUDIO === '1' && !await callerMayMutate(req, req.params.id, existing, workspaceContext)) return res.status(403).json({ error: 'not permitted' });
         const comment = reorderPreviewComment(
           db,
           req.params.id,

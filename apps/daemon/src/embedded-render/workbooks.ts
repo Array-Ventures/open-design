@@ -1,0 +1,53 @@
+import { selectedWorksheetCsv } from '../artifacts/workbook/selected-sheet-csv.js';
+import { renderCsv } from './csv.js';
+import { createHash } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { workbookEditPlanSchema, workbookPreviewSchema } from '@open-design/contracts/runtime/workbook';
+import { readXlsxWorkbook } from '../artifacts/workbook/reader.js';
+import { calculateWorkbookCellEdits } from '../artifacts/workbook/calculated-patch.js';
+import { WorkbookFormatError } from '../artifacts/workbook/package.js';
+
+/** Called only by the existing networkless, memory-limited render container.
+ * Input is the host's immutable source snapshot; workspace files are not mounted
+ * writable and this worker never persists a live edit. */
+export async function renderWorkbook(output: string, input: { fileName: string; format: 'workbook' | 'xlsx' | 'csv'; dataFile?: string; sheetId?: string; workbookSourceSha256?: string; restore?: { fileName: string; sourceSha256: string; targetSha256: string } }, asset: (name: string) => Promise<Buffer>): Promise<{ file: string; mime: string }> {
+  if (/\.csv$/i.test(input.fileName)) return renderCsv(output, input, asset);
+  if (input.format === 'csv' && (!input.sheetId || !input.workbookSourceSha256 || input.dataFile || input.restore)) throw new WorkbookFormatError('XLSX CSV output requires a selected worksheet and acknowledged source digest without edits or restore.');
+  const bytes = await asset(input.fileName), sourceSha256 = createHash('sha256').update(bytes).digest('hex');
+  if (input.restore) {
+    if (input.format !== 'xlsx' || input.dataFile || input.restore.sourceSha256 !== sourceSha256) throw new WorkbookFormatError('The workbook changed after this restore was selected.');
+    const retained = await asset(input.restore.fileName);
+    if (retained.length > 25 * 1024 * 1024 || createHash('sha256').update(retained).digest('hex') !== input.restore.targetSha256) throw new WorkbookFormatError('The retained workbook revision does not match this restore.');
+    const restored = await readXlsxWorkbook(retained);
+    if (restored.model.features.macros) throw new WorkbookFormatError('Macro-enabled workbooks cannot be restored as XLSX.', 'WORKBOOK_UNSUPPORTED');
+    // Restoration is binary identity, not a recalculated/reserialized export.
+    await writeFile(path.join(output, 'artifact.xlsx'), retained, { flag: 'wx', mode: 0o600 });
+    return { file: 'artifact.xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+  }
+  const source = await readXlsxWorkbook(bytes);
+  if (input.format === 'csv') {
+    if (!input.sheetId || input.workbookSourceSha256 !== sourceSha256 || input.dataFile || input.restore) throw new WorkbookFormatError('Choose the worksheet again after saving or refreshing this workbook.');
+    const csv = selectedWorksheetCsv(source.model, input.sheetId);
+    await writeFile(path.join(output, 'artifact.csv'), csv, { flag: 'wx', mode: 0o600 });
+    return { file: 'artifact.csv', mime: 'text/csv' };
+  }
+  let prepared: Awaited<ReturnType<typeof calculateWorkbookCellEdits>> | undefined;
+  if (input.dataFile) {
+    const plan = await asset(input.dataFile);
+    if (plan.length > 16 * 1024 * 1024) throw new WorkbookFormatError('Workbook edit plan exceeds its byte limit.', 'WORKBOOK_LIMIT');
+    const parsed = workbookEditPlanSchema.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(plan)));
+    if (parsed.sourceSha256 !== sourceSha256) throw new WorkbookFormatError('The workbook changed after these edits were prepared. Reload it before exporting these edits.');
+    prepared = await calculateWorkbookCellEdits(source, parsed.edits, parsed.dimensions, parsed.styles);
+  }
+  if (input.format === 'workbook') {
+    const body = Buffer.from(JSON.stringify(workbookPreviewSchema.parse({ sourceSha256, model: prepared?.model ?? source.model })));
+    if (body.length > 32 * 1024 * 1024) throw new WorkbookFormatError('Workbook preview exceeds its byte limit.', 'WORKBOOK_LIMIT');
+    await writeFile(path.join(output, 'artifact.json'), body, { flag: 'wx', mode: 0o600 });
+    return { file: 'artifact.json', mime: 'application/json' };
+  }
+  if (source.model.features.macros) throw new WorkbookFormatError('Macro-enabled workbooks cannot be exported as XLSX.', 'WORKBOOK_UNSUPPORTED');
+  prepared ??= await calculateWorkbookCellEdits(source, []);
+  await writeFile(path.join(output, 'artifact.xlsx'), prepared.bytes, { flag: 'wx', mode: 0o600 });
+  return { file: 'artifact.xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+}

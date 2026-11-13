@@ -1,3 +1,4 @@
+import { LiveArtifactFeedbackPreview } from './embedded/LiveArtifactFeedbackPreview';
 import { useExperienceError } from '../observability/use-experience-error';
 import type { RecoveryActionBlockReason } from '../runtime/chat/recovery-gating';
 import {
@@ -12,7 +13,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react';
-import { Button } from '@open-design/components';
+import { Button, Textarea } from '@open-design/components';
 import { createPortal } from 'react-dom';
 import type { DesignSystemEditClickProps, TrackingArtifactKind, TrackingProjectKind } from '@open-design/contracts/analytics';
 import { isObservedShareFileSwitch, type ObservedPublicShareLink, type ObservedShareUpdateRequest } from './share/observed-public-share-link';
@@ -210,6 +211,8 @@ export async function settleManualEditFiles(
 }
 
 interface Props {
+  /** Host integration supplies agent/chat/browser capabilities outside Studio. */
+  embedded?: boolean;
   projectId: string;
   projectKind: TrackingProjectKind;
   projectName?: string;
@@ -285,7 +288,8 @@ interface Props {
   previewComments?: PreviewComment[];
   previewCommentsState?: 'loading' | 'error' | 'success';
   onRetryPreviewComments?: () => void;
-  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string) => Promise<PreviewComment | null>;
+  onDiscardPreviewCommentWrite?: () => void;
+  onSavePreviewComment?: (target: PreviewCommentTarget, note: string, attachAfterSave: boolean, images?: File[], commentId?: string, baseline?: PreviewComment) => Promise<PreviewComment | null>;
   onRemovePreviewComment?: (commentId: string) => Promise<boolean>;
   onReorderPreviewComment?: (commentId: string, sortKey: number) => Promise<void>;
   onSendBoardCommentAttachments?: (attachments: ChatCommentAttachment[], images?: File[]) => Promise<CommentSendResult> | CommentSendResult;
@@ -1335,6 +1339,7 @@ interface WorkspaceActionToast {
 }
 
 export function FileWorkspace({
+  embedded = false,
   projectId,
   projectKind,
   projectName,
@@ -1373,6 +1378,7 @@ export function FileWorkspace({
   previewCommentsState = 'success',
   onRetryPreviewComments,
   onSavePreviewComment,
+  onDiscardPreviewCommentWrite,
   onRemovePreviewComment,
   onReorderPreviewComment,
   onSendBoardCommentAttachments,
@@ -1992,6 +1998,7 @@ export function FileWorkspace({
   }
 
   function openBrowserTab() {
+    if (embedded) return;
     afterActiveManualEditSettles(() => {
       setUploadError(null);
       const nextIndex = browserTabSequenceRef.current + 1;
@@ -3515,6 +3522,7 @@ export function FileWorkspace({
   const stableOpenFileReplacing = useStableHandler(openFileReplacing);
   const renderFileViewer = (file: ProjectFile, workspaceActive: boolean) => (
     <FileViewer
+      embedded={embedded}
       projectId={projectId}
       projectKind={projectKind}
       file={file}
@@ -3528,6 +3536,7 @@ export function FileWorkspace({
       previewCommentsState={previewCommentsState}
       onRetryPreviewComments={onRetryPreviewComments}
       onSavePreviewComment={onSavePreviewComment}
+      onDiscardPreviewCommentWrite={onDiscardPreviewCommentWrite}
       onRemovePreviewComment={onRemovePreviewComment}
       onReorderPreviewComment={onReorderPreviewComment}
       onSendBoardCommentAttachments={onSendBoardCommentAttachments}
@@ -3998,7 +4007,7 @@ export function FileWorkspace({
     openTab: openFile,
     // Browser is owned by this branch's DesignBrowserPanel: spin up a browser
     // tab synchronously (no daemon round-trip) and let the launcher close.
-    createBrowser: () => openBrowserTab(),
+    createBrowser: embedded ? undefined : () => openBrowserTab(),
     // "New blank page" lives in the "+" launcher: the tab strip's Design Files
     // entry is a plain tab, so this is the only entry point to the page
     // creator. The dialog itself still owns the actual write (createBlankPage).
@@ -4010,7 +4019,7 @@ export function FileWorkspace({
     // resulting session id back so the launcher opens a terminal:<id> tab.
     // Surface a toast when the daemon can't start one (e.g. node-pty not
     // compiled) instead of silently no-opping the launcher action.
-    createTerminal: async () => {
+    createTerminal: embedded ? undefined : async () => {
       const term = await createTerminal(projectId, undefined, workspaceContext);
       if (!term) {
         setLauncherToast({ message: t('workspace.terminalStartFailed'), tone: 'error' });
@@ -4424,6 +4433,7 @@ export function FileWorkspace({
         )) : null}
         {initialMaterializationPending ? (
           <DesignFilesPanel
+            embedded={embedded}
             projectId={projectId}
             projectKind={projectKind}
             viewerOnly
@@ -4469,6 +4479,7 @@ export function FileWorkspace({
           />
         ) : designFilesTabActive ? (
           <DesignFilesPanel
+            embedded={embedded}
             key={projectId}
             projectId={projectId}
             projectKind={projectKind}
@@ -4556,7 +4567,7 @@ export function FileWorkspace({
               });
               void startNewSketch();
             }}
-            onOpenBrowser={() => {
+            onOpenBrowser={embedded ? undefined : () => {
               trackFileManagerClick(analytics.track, {
                 page_name: 'file_manager',
                 area: 'file_manager',
@@ -4677,6 +4688,10 @@ export function FileWorkspace({
           />
         ) : activeLiveArtifact ? (
           <LiveArtifactViewer
+            previewRenderer={embedded ? ({ url, source }) => <LiveArtifactFeedbackPreview projectId={projectId} previewUrl={url} source={source} files={files} feedback={{
+              previewComments, previewCommentsState, onRetryPreviewComments, onSavePreviewComment, onDiscardPreviewCommentWrite,
+              onRemovePreviewComment, onReorderPreviewComment, onSendBoardCommentAttachments,
+            }} /> : undefined}
             projectId={projectId}
             liveArtifact={activeLiveArtifact}
             liveArtifactEvents={liveArtifactEvents}
@@ -5504,7 +5519,7 @@ function DesignSystemProjectPanel({
                 <label htmlFor={`ds-feedback-${slugForTestId(section.title)}`}>
                   {t('ds.reviewFeedbackLabel')}
                 </label>
-                <textarea
+                <Textarea unstyled
                   id={`ds-feedback-${slugForTestId(section.title)}`}
                   value={feedbackText}
                   rows={3}

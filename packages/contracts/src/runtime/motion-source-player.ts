@@ -54,7 +54,7 @@ function createMotionAudioSync(audio) {
 // Shared by URL previews, srcdoc previews and the persisted editable source.
 // The renderer installs its flag before author scripts; it never sees chrome,
 // layout scaling, poster seeking, or wall-clock playback from this runtime.
-const PLAYER = `<script data-od-motion-source-player="11">
+const PLAYER = `<script data-od-motion-source-player="13">
 ${MOTION_TIMELINE_CHECK_SCRIPT}
 (function () {
 ${MOTION_AUDIO_SYNC_RUNTIME}
@@ -70,7 +70,18 @@ ${MOTION_AUDIO_SYNC_RUNTIME}
     hint.setAttribute('data-od-motion-status', ''); hint.setAttribute('role', 'status');
     hint.style.cssText = 'position:fixed;bottom:12px;right:12px;z-index:2147483647;padding:6px 10px;border-radius:6px;background:#17191d;color:white;font:13px system-ui;display:none';
     document.body.appendChild(hint);
-    function notice(text) { hint.textContent = text; hint.style.display = text ? 'block' : 'none'; }
+    function notice(text, action) {
+      hint.textContent = text;
+      hint.style.display = text ? 'block' : 'none';
+      if (text && action) {
+        hint.textContent = '';
+        var enable = document.createElement('button');
+        enable.type = 'button'; enable.textContent = 'Enable sound';
+        enable.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-height:32px;border:0;border-radius:4px;padding:4px 8px;background:transparent;color:inherit;font:inherit;cursor:pointer;user-select:none';
+        enable.addEventListener('click', function () { root.click(); });
+        hint.appendChild(enable);
+      }
+    }
     var hosted = window.__odMotionPreview === true || new URL(location.href).searchParams.get('odMotionPreview') === '1';
     var thumbnail = window.__odMotionThumbnail === true || new URL(location.href).searchParams.get('odMotionThumbnail') === '1';
     var instance = Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -81,6 +92,15 @@ ${MOTION_AUDIO_SYNC_RUNTIME}
     function onActivity(event) {
       var data = event.data;
       if (!hosted || event.source !== window.parent || !data) return;
+      if (data.type === 'od:motion-control' && data.id === instance && window.__odMotionPlayer) {
+        var player = window.__odMotionPlayer;
+        if (data.action === 'play') player.play();
+        else if (data.action === 'pause') player.pause();
+        else if (data.action === 'replay') player.replay();
+        else if (data.action === 'seek' && typeof data.time === 'number' && Number.isFinite(data.time)) player.seek(data.time);
+        else if (data.action === 'mute' && typeof data.muted === 'boolean') player.setMuted(data.muted);
+        return;
+      }
       if (data.type === '${MOTION_PREVIEW_PROBE}') { requestActivity(); return; }
       if (data.type !== '${MOTION_PREVIEW_ACTIVITY}' || typeof data.active !== 'boolean' || (data.active && data.id !== instance)) return;
       hostMuted = data.muted === true;
@@ -107,7 +127,7 @@ ${MOTION_AUDIO_SYNC_RUNTIME}
           if (promise) promise.catch(function (error) {
             if (error && error.name === 'AbortError') return;
             track.blocked = true;
-            notice(error && error.name === 'NotAllowedError' ? '点击画面开启声音' : '音频无法播放，请检查素材');
+            notice(error && error.name === 'NotAllowedError' ? 'Click the preview to enable sound' : 'Audio could not play. Check the audio file.', error && error.name === 'NotAllowedError');
           }).finally(function () {
             track.pending = false;
             if (hostMuted || !active || !pageActive || !playing || !wantsPlay) audio.pause();
@@ -139,7 +159,7 @@ ${MOTION_AUDIO_SYNC_RUNTIME}
       var tl = window.__timelines && window.__timelines[root.dataset.compositionId];
       if (!tl || typeof tl.seek !== 'function' || typeof tl.play !== 'function' || !(tl.duration() > 0)) {
         if (Date.now()-started < 15000) { setTimeout(connect, 100); return; }
-        notice('动效未就绪，请检查时间轴或依赖文件');
+        notice('Animation is not ready. Check its timeline and local assets.');
         // Late fonts/images may still register the timeline after the notice.
         // Keep watching while mounted, so a slow load can recover by itself.
         setTimeout(connect, 1000); return;
@@ -169,6 +189,15 @@ ${MOTION_AUDIO_SYNC_RUNTIME}
         state: function () { return { playing: playing, active: active, time: tl.time(), duration: duration, muted: muted || hostMuted,
           audio: tracks.map(function (track) { return { paused: track.audio.paused, time: track.audio.currentTime, muted: track.audio.muted, volume: track.audio.volume, blocked: track.blocked }; }) }; }
       };
+      function reportState() {
+        var state = window.__odMotionPlayer.state();
+        window.parent.postMessage({type:'od:motion-state', id:instance, playing:state.playing, time:state.time, duration:state.duration, muted:state.muted, hasAudio:tracks.length > 0}, '*');
+      }
+      var stateTimer = setInterval(function () {
+        if (!stage.isConnected) { clearInterval(stateTimer); return; }
+        reportState();
+      }, 250);
+      reportState();
       root.addEventListener('click', function () {
         var blocked = tracks.some(function (track) { return track.blocked; });
         if (blocked) { tracks.forEach(function (track) { track.blocked = false; }); notice(''); if (playing) syncAudio(tl.time(), true, true); else play(); }
@@ -210,7 +239,7 @@ export function injectMotionSourcePlayer(html: string): string {
   const existing = findRealTagOffset(html, /<script\b[^>]*\bdata-od-motion-source-player\b/i);
   if (existing >= 0) {
     const script = /^<script\b[^>]*>[\s\S]*?<\/script\s*>/i.exec(html.slice(existing));
-    if (!script || /data-od-motion-source-player="11"/.test(script[0])) return html;
+    if (!script || /data-od-motion-source-player="13"/.test(script[0])) return html;
     return html.slice(0, existing) + PLAYER + html.slice(existing + script[0].length);
   }
   const end = findRealTagOffset(html, HTML_TAG_PATTERNS.bodyClose);
@@ -227,4 +256,22 @@ export function markMotionHostedPreview(html: string): string {
   return isMotionVideoComposition(html)
     ? prependAfterDoctype(html, '<script>window.__odMotionPreview=true;</script>')
     : html;
+}
+
+/** Only called for an embedded project explicitly registered as motion video.
+ * Old editable compositions predate od-motion-output. Adapt the preview bytes,
+ * never the source file, and honor any explicit video/interactive declaration.
+ */
+export function prepareLegacyMotionPreview(html: string): string {
+  if (findRealTagOffset(html, /<meta\b[^>]*\bname\s*=\s*["']od-motion-output["']/i) >= 0) return html;
+  const offset = findRealTagOffset(html, /<[^/!][^>]*\bdata-composition-id\s*=/i);
+  if (offset < 0) return html;
+  const tag = /^<[^>]+>/.exec(html.slice(offset))?.[0] ?? '';
+  // A complete authored canvas contract distinguishes a composition from a
+  // code sample or an unrelated data attribute on an ordinary page.
+  if (!['duration', 'width', 'height'].every(key => {
+    const value = new RegExp(`\\bdata-${key}\\s*=\\s*["']([^"']+)["']`, 'i').exec(tag)?.[1];
+    return value !== undefined && Number.isFinite(Number(value)) && Number(value) > 0;
+  })) return html;
+  return prependAfterDoctype(html, '<meta name="od-motion-output" content="video">');
 }

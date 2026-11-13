@@ -49,6 +49,7 @@ describe('ManualEditPanel', () => {
     globalThis.window = dom.window as unknown as Window & typeof globalThis;
     globalThis.document = dom.window.document;
     globalThis.HTMLElement = dom.window.HTMLElement;
+    globalThis.SVGElement = dom.window.SVGElement;
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     host = dom.window.document.querySelector('#root') as HTMLDivElement;
     root = createRoot(host);
@@ -60,7 +61,123 @@ describe('ManualEditPanel', () => {
     Reflect.deleteProperty(globalThis, 'window');
     Reflect.deleteProperty(globalThis, 'document');
     Reflect.deleteProperty(globalThis, 'HTMLElement');
+    Reflect.deleteProperty(globalThis, 'SVGElement');
     Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT');
+  });
+
+  it('persists the selected transition with its own history label', () => {
+    const source = '<deck-stage width="800" height="450"><section>Slide</section></deck-stage>';
+    const onApplyPatch = vi.fn<OnApplyPatch>();
+    renderPanel({ selectedTarget: null, presentationSource: source, onApplyPatch });
+    const select = host.querySelectorAll('select')[1]!;
+    expect(select.value).toBe('none');
+    act(() => { select.value = 'magic-move'; Simulate.change(select); });
+    expect(onApplyPatch).toHaveBeenCalledWith({ kind: 'set-full-source', source: source.replace('height="450"', 'height="450" transition="magic-move"') }, 'Transition');
+  });
+
+  it('saves a presentation aspect change through history and rereads restored source', () => {
+    const source = '<deck-stage width="1600" height="900"><section data-slide><h1>Keep me</h1></section></deck-stage>';
+    const onApplyPatch = vi.fn<OnApplyPatch>();
+    renderPanel({ selectedTarget: null, presentationSource: source, onApplyPatch });
+    const select = host.querySelector('select')!;
+    expect(select).not.toBeNull();
+    expect(select.value).toBe('16:9');
+    act(() => { select.value = '4:3'; Simulate.change(select); });
+    expect(onApplyPatch).toHaveBeenCalledWith({ kind: 'set-full-source', source: source.replace('height="900"', 'height="1200"') }, 'Size');
+    renderPanel({ selectedTarget: null, presentationSource: source.replace('height="900"', 'height="1200"'), onApplyPatch });
+    expect(host.querySelector('select')?.value).toBe('4:3');
+    renderPanel({ selectedTarget: null, presentationSource: source, onApplyPatch });
+    expect(host.querySelector('select')?.value).toBe('16:9');
+  });
+
+  it('keeps raw source out of embedded properties while retaining visual controls', () => {
+    renderPanel({ sourceControls: false, selectedTarget: { ...target, kind: 'container' } });
+    expect(host.querySelector('.manual-edit-code')).toBeNull();
+    expect(host.querySelector('textarea')).toBeNull();
+    const actions = host.querySelector('.manual-edit-footer-right')!;
+    expect(actions.textContent?.trim()).toBe('');
+    expect(actions.querySelector('button[aria-label="Save"]')).not.toBeNull();
+    expect(actions.querySelector('button[aria-label="Cancel"]')).not.toBeNull();
+    expect(sectionByTitle(PARAMETERS).textContent).toContain('Font size');
+    renderPanel({ sourceControls: true, selectedTarget: { ...target, kind: 'container' } });
+    expect(host.querySelector('.manual-edit-code')).not.toBeNull();
+  });
+
+  it('shows image properties without inherited typography or irrelevant alignment controls', () => {
+    const image = { ...target, kind: 'image' as const, tagName: 'img', fields: { src: 'image.png', alt: 'Figure' } };
+    renderPanel({ selectedTarget: image, sourceControls: false });
+    for (const label of ['Font', 'Font size', 'Text color', 'Weight', 'Line height', 'Letter spacing', 'Align', 'Direction', 'Distribution', 'Gap']) {
+      expect(host.querySelector(`[aria-label="${label}"]`)).toBeNull();
+    }
+    for (const label of ['Width', 'Height', 'Radius', 'Opacity']) expect(rowInput(label)).not.toBeNull();
+    expect(host.textContent).toContain('Alt text');
+    renderPanel({ selectedTarget: target, sourceControls: false });
+    expect(rowInput('Font size')).not.toBeNull();
+    expect(rowSelect('Align')).not.toBeNull();
+  });
+
+  it.each(['svg', 'div'])('keeps currentColor editing on %s shapes without typography controls', (tagName) => {
+    const onStyleChange = vi.fn();
+    renderPanel({ selectedTarget: { ...target, kind: 'container', tagName, attributes: { ...target.attributes, role: 'img' } }, onStyleChange });
+    expect(host.querySelector('[aria-label="Font size"]')).toBeNull();
+    const color = rowInput('Color');
+    act(() => { color.value = '#2368c4'; Simulate.change(color); });
+    expect(onStyleChange).toHaveBeenCalledWith(target.id, { color: '#2368c4' }, 'Style: Hero Title');
+  });
+
+  it('cancels a pending image replacement when selection changes and never applies it to the new image', async () => {
+    let resolve!: (src: string) => void;
+    const onPickImage = vi.fn((_file: File, _signal?: AbortSignal) => new Promise<string>(done => { resolve = done; }));
+    const onApplyPatch = vi.fn(), onError = vi.fn();
+    const image = { ...target, id: 'first-image', kind: 'image' as const, tagName: 'img' };
+    renderPanel({ selectedTarget: image, onPickImage, onApplyPatch, onError });
+    const input = host.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [new dom.window.File(['fixture'], 'figure.png', { type: 'image/png' })] });
+    await act(async () => { Simulate.change(input); });
+    const signal = onPickImage.mock.calls[0]![1]!;
+    expect(signal.aborted).toBe(false);
+    expect((host.querySelector('input[aria-label="Alt text"]') ?? host.querySelector('.manual-edit-content-inspector input'))?.matches(':disabled')).toBe(true);
+    expect(host.querySelector('fieldset')?.getAttribute('aria-busy')).toBe('true');
+    renderPanel({ selectedTarget: { ...image, id: 'second-image' }, onPickImage, onApplyPatch, onError });
+    expect(signal.aborted).toBe(true);
+    await act(async () => { resolve('_studio-image-assets/confirmed.png'); });
+    expect(onApplyPatch).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('applies a confirmed replacement only to its original image and reports upload errors', async () => {
+    const onApplyPatch = vi.fn(), onError = vi.fn();
+    const onPickImage = vi.fn().mockResolvedValueOnce('_studio-image-assets/confirmed.png').mockRejectedValueOnce(new Error('Image could not be confirmed.'));
+    const image = { ...target, id: 'first-image', kind: 'image' as const, tagName: 'img' };
+    renderPanel({ selectedTarget: image, onPickImage, onApplyPatch, onError });
+    const input = host.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [new dom.window.File(['fixture'], 'figure.png', { type: 'image/png' })] });
+    await act(async () => { Simulate.change(input); });
+    expect(onApplyPatch).toHaveBeenCalledTimes(1);
+    expect(onApplyPatch).toHaveBeenCalledWith({ id: 'first-image', kind: 'set-image', src: '_studio-image-assets/confirmed.png', alt: '' }, 'Upload image');
+    await act(async () => { Simulate.change(input); });
+    expect(onApplyPatch).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith('Image could not be confirmed.');
+  });
+
+  it('disables properties and content controls during a source write', () => {
+    renderPanel({ busy: true });
+    const text = host.querySelector('textarea')!;
+    const number = host.querySelector('input')!;
+    expect(text.matches(':disabled')).toBe(true);
+    expect(number.matches(':disabled')).toBe(true);
+    expect((host.querySelector('button[aria-label="Undo"]') as HTMLButtonElement).disabled).toBe(true);
+    renderPanel({ busy: false });
+    expect(host.querySelector('textarea')!.matches(':disabled')).toBe(false);
+    expect(host.querySelector('input')!.matches(':disabled')).toBe(false);
+  });
+
+  it('names numeric, color and box-side inputs independently of their current values', () => {
+    renderPanel();
+    expect(host.querySelector('input[aria-label="Font size"]')).not.toBeNull();
+    expect(host.querySelector('input[aria-label="Text color"]')).not.toBeNull();
+    expect(host.querySelector('input[aria-label="Padding Top"]')).not.toBeNull();
+    expect(host.querySelector('input[aria-label="Margin Top"]')).not.toBeNull();
   });
 
   it('renders the style inspector without the advanced editor entry', () => {
@@ -95,11 +212,16 @@ describe('ManualEditPanel', () => {
     expect(host.querySelector('.manual-edit-titlebar')?.textContent).not.toContain('div.container');
   });
 
-  it('shows a drag handle for floating edit panels', () => {
-    renderPanel({ floatingStyle: { left: 20, top: 24, width: 320, height: 380 } });
+  it('shows a working pin control only when floating position and lock actions are available', () => {
+    const onToggleLock=vi.fn();
+    renderPanel({ floatingStyle: { left: 20, top: 24, width: 320, height: 380 },onFloatingPositionChange:vi.fn(),onToggleLock });
 
     expect(host.querySelector('.manual-edit-drag-handle')).not.toBeNull();
     expect(host.querySelector('.manual-edit-drag-handle')?.getAttribute('aria-label')).toBe('Move edit panel');
+    act(() => { (host.querySelector('.manual-edit-drag-handle') as HTMLButtonElement).click(); });
+    expect(onToggleLock).toHaveBeenCalledTimes(1);
+    renderPanel({floatingStyle:{left:20,top:24,width:320,height:380}});
+    expect(host.querySelector('.manual-edit-drag-handle')).toBeNull();
   });
 
   it('does not show page-level controls inside an element inspector', () => {
@@ -109,6 +231,22 @@ describe('ManualEditPanel', () => {
     expect(host.querySelector('button[aria-label="Show page inspector"]')).toBeNull();
     expect(host.textContent).not.toContain('PAGE');
     expect(onClearSelection).not.toHaveBeenCalled();
+  });
+
+  it('fades only scrolled content and resets the fade when selecting another object', () => {
+    renderPanel();
+    const scroll=host.querySelector<HTMLDivElement>('.manual-edit-scroll')!;
+    const fade=scroll.parentElement!.firstElementChild as HTMLElement;
+    expect(fade.getAttribute('aria-hidden')).toBe('true');
+    const opacities=() => Array.from(fade.children).map(node => (node as HTMLElement).style.opacity);
+    expect(opacities()).toEqual(['0','0','0']);
+    scroll.scrollTop=12; act(() => Simulate.scroll(scroll)); expect(opacities()).toEqual(['0.5','0.5','0.5']);
+    scroll.scrollTop=48; act(() => Simulate.scroll(scroll)); expect(opacities()).toEqual(['1','1','1']);
+    scroll.scrollTop=0; act(() => Simulate.scroll(scroll)); expect(opacities()).toEqual(['0','0','0']);
+    scroll.scrollTop=48; act(() => Simulate.scroll(scroll));
+    renderPanel({selectedTarget:{...target,id:'next-object'}});
+    expect(scroll.scrollTop).toBe(0); expect(opacities()).toEqual(['0','0','0']);
+    expect(scroll.contains(host.querySelector('.manual-edit-footer'))).toBe(false);
   });
 
   it('keeps inspector controls scrollable separately from footer actions', () => {
@@ -487,7 +625,7 @@ describe('ManualEditPanel', () => {
     );
   });
 
-  it('disables layout controls for non-layout single targets', () => {
+  it('omits inapplicable layout controls while retaining text alignment and rejecting layout styles', () => {
     const onStyleChange = vi.fn();
     renderPanel({
       onStyleChange,
@@ -498,14 +636,13 @@ describe('ManualEditPanel', () => {
       },
     });
 
-    // Layout rows now live in the shared parameters list rather than their own
-    // group, so "not editable" has to be asserted as disabled controls plus the
-    // explanatory hint — not as a missing section.
+    // A non-layout target has no flex/grid controls, including disabled ones.
+    // The normalization boundary still rejects those style writes below.
     const parameters = sectionByTitle(PARAMETERS);
-    expect(rowSelect('Direction').disabled).toBe(true);
-    expect(rowSelect('Distribution').disabled).toBe(true);
-    expect(rowInput('Gap').disabled).toBe(true);
-    expect(parameters.textContent).toContain('Layout controls are available for flex or grid containers.');
+    for (const label of ['Direction', 'Distribution', 'Gap']) {
+      expect(parameters.querySelector(`[aria-label="${label}"]`)).toBeNull();
+    }
+    expect(parameters.textContent).not.toContain('Layout controls are available for flex or grid containers.');
     // The alignment slot degrades to text-align so it is never a dead control.
     const align = rowSelect('Align');
     expect(align.disabled).toBe(false);
@@ -852,6 +989,7 @@ describe('ManualEditPanel', () => {
   function renderPanel({
     onDraftChange = vi.fn<OnDraftChange>(),
     onApplyPatch = vi.fn<OnApplyPatch>(),
+    onPickImage,
     onError = vi.fn<OnError>(),
     onStyleChange = vi.fn<OnStyleChange>(),
     onInvalidStyle = vi.fn<OnInvalidStyle>(),
@@ -867,9 +1005,14 @@ describe('ManualEditPanel', () => {
     selectedTarget = target,
     styles = emptyManualEditStyles(),
     resetAvailable = false,
+    presentationSource,
     pageStylesEnabled = true,
+    sourceControls = true,
+    busy = false,
     floatingStyle,
     onFloatingPositionChange,
+    onToggleLock,
+    locked,
     tokenSuggestions,
     tokenSuggestionsLoading,
     onApplyTokenSuggestion,
@@ -877,6 +1020,7 @@ describe('ManualEditPanel', () => {
   }: {
     onDraftChange?: OnDraftChange;
     onApplyPatch?: OnApplyPatch;
+    onPickImage?: (file: File, signal?: AbortSignal) => Promise<string | null>;
     onError?: OnError;
     onStyleChange?: OnStyleChange;
     onInvalidStyle?: OnInvalidStyle;
@@ -892,9 +1036,14 @@ describe('ManualEditPanel', () => {
     selectedTarget?: ManualEditTarget | null;
     styles?: ReturnType<typeof emptyManualEditStyles>;
     resetAvailable?: boolean;
+    presentationSource?: string;
     pageStylesEnabled?: boolean;
+    sourceControls?: boolean;
+    busy?: boolean;
     floatingStyle?: CSSProperties;
     onFloatingPositionChange?: (position: { left: number; top: number }) => void;
+    onToggleLock?: () => void;
+    locked?: boolean;
     tokenSuggestions?: ProjectDesignTokenSuggestion[];
     tokenSuggestionsLoading?: boolean;
     onApplyTokenSuggestion?: (prop: keyof ManualEditStyles, value: string) => void;
@@ -918,12 +1067,16 @@ describe('ManualEditPanel', () => {
           canUndo={canUndo}
           canRedo={canRedo}
           resetAvailable={resetAvailable}
+          presentationSource={presentationSource}
           pageStylesEnabled={pageStylesEnabled}
+          sourceControls={sourceControls}
+          busy={busy}
           onSelectTarget={vi.fn<(target: ManualEditTarget) => void>()}
           onDraftChange={onDraftChange}
           onStyleChange={onStyleChange}
           onInvalidStyle={onInvalidStyle}
           onApplyPatch={onApplyPatch}
+          onPickImage={onPickImage}
           onError={onError}
           onClearSelection={onClearSelection}
           onCancelDraft={onCancelDraft}
@@ -933,6 +1086,8 @@ describe('ManualEditPanel', () => {
           onRedo={onRedo}
           floatingStyle={floatingStyle}
           onFloatingPositionChange={onFloatingPositionChange}
+          onToggleLock={onToggleLock}
+          locked={locked}
           tokenSuggestions={tokenSuggestions}
           tokenSuggestionsLoading={tokenSuggestionsLoading}
           onApplyTokenSuggestion={onApplyTokenSuggestion}

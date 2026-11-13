@@ -66,6 +66,11 @@ The build recipe explicitly sets `OD_WEB_TYPECHECK=external`; this recipe is
 part of the workspace node key. Local ordinary `next build` still checks its
 production-only tsconfig. Declaration outputs remain part of the cache contract.
 
+The workspace node also hashes `packages/deck-export` and retains its JavaScript
+and declaration outputs, because desktop and embedded editable deck capture share
+that browser-only runtime. Standalone materialization applies the shared dangling
+link cleanup and Next peer dependency hoisting before copying runtime files.
+
 ## Determinant rules
 
 **R1 — A node key must cover every input that determines the node's output.**

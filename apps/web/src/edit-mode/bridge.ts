@@ -1,5 +1,6 @@
+import { buildInsertionBridge } from './insertion-bridge';
 export const MANUAL_EDIT_DISCOVERY_SELECTOR =
-  'main, nav, section, article, aside, header, footer, div, h1, h2, h3, h4, h5, h6, p, a, button, img, ul, ol, li, dl, dt, dd, table, thead, tbody, tfoot, tr, td, th, caption, blockquote, figure, figcaption, label, summary, pre, code, strong, em, b, i, small, mark, span';
+  'svg[data-od-id^="eve-"], svg[data-od-edit="container"], main, nav, section, article, aside, header, footer, div, h1, h2, h3, h4, h5, h6, p, a, button, img, ul, ol, li, dl, dt, dd, table, thead, tbody, tfoot, tr, td, th, caption, blockquote, figure, figcaption, label, summary, pre, code, strong, em, b, i, small, mark, span';
 export const MANUAL_EDIT_SOURCE_PATH_ATTR = 'data-od-source-path';
 export const MANUAL_EDIT_HOST_NODE_SELECTOR = [
   '[data-od-sandbox-shim]',
@@ -39,7 +40,9 @@ export function manualEditStableIdForElement(el: Element): string {
 }
 
 export function isMeaningfulManualEditElement(el: Element, rect: Pick<DOMRect, 'width' | 'height'>): boolean {
-  return isSourceMappableManualEditElement(el) && el.matches(MANUAL_EDIT_DISCOVERY_SELECTOR) && rect.width >= 4 && rect.height >= 4;
+  const thinShape = el.localName === 'svg' && el.getAttribute('data-od-id')?.startsWith('eve-') && el.querySelector('line');
+  return isSourceMappableManualEditElement(el) && el.matches(MANUAL_EDIT_DISCOVERY_SELECTOR)
+    && (thinShape ? rect.width >= 1 && rect.height >= 1 && Math.max(rect.width, rect.height) >= 4 : rect.width >= 4 && rect.height >= 4);
 }
 
 export function isSourceMappableManualEditElement(el: Element): boolean {
@@ -169,8 +172,9 @@ export function buildManualEditKeyboardGuard(): string {
 }
 
 export function buildManualEditBridge(enabled: boolean): string {
-  return `<script data-od-edit-bridge>(function(){
+  return `${buildInsertionBridge()}<script data-od-edit-bridge>(function(){
   var enabled = ${JSON.stringify(enabled)};
+  var commitOnEscape = false;
   var discoverySelector = ${JSON.stringify(MANUAL_EDIT_DISCOVERY_SELECTOR)};
   var hostNodeSelector = ${JSON.stringify(MANUAL_EDIT_HOST_NODE_SELECTOR)};
   var sourcePathAttr = ${JSON.stringify(MANUAL_EDIT_SOURCE_PATH_ATTR)};
@@ -487,7 +491,8 @@ export function buildManualEditBridge(enabled: boolean): string {
     for (var i = 0; i < nodes.length; i++) {
       var rect = nodes[i].getBoundingClientRect();
       if (!isSourceMappable(nodes[i])) continue;
-      if (!isHiddenTarget(nodes[i], rect) && (rect.width < 4 || rect.height < 4)) continue;
+      var thinShape = nodes[i].localName === 'svg' && (nodes[i].getAttribute('data-od-id') || '').indexOf('eve-') === 0 && nodes[i].querySelector('line');
+      if (!isHiddenTarget(nodes[i], rect) && (thinShape ? rect.width < 1 || rect.height < 1 || Math.max(rect.width, rect.height) < 4 : rect.width < 4 || rect.height < 4)) continue;
       targets.push(targetFrom(nodes[i], false));
     }
     return targets;
@@ -853,7 +858,7 @@ export function buildManualEditBridge(enabled: boolean): string {
       }
       if (ev.key === 'Escape') {
         ev.preventDefault();
-        finishActiveTextEdit(false);
+        finishActiveTextEdit(commitOnEscape);
       }
     }
     activeTextEdit = { el: el, originalText: originalText, onKey: onKey };
@@ -898,7 +903,7 @@ export function buildManualEditBridge(enabled: boolean): string {
         if (typeof value !== 'string' || value.trim() === '') el.style.removeProperty(cssName);
         else el.style.setProperty(cssName, value.trim());
       }
-      window.parent.postMessage({ type: 'od-edit-preview-style-applied', id: id, version: Number(version) || 0, ok: true }, '*');
+      window.parent.postMessage({ type: 'od-edit-preview-style-applied', id: id, version: Number(version) || 0, ok: true, styles: stylesFor(el) }, '*');
     } catch (e) {
       window.parent.postMessage({ type: 'od-edit-preview-style-applied', id: id, version: Number(version) || 0, ok: false, error: e && e.message ? String(e.message) : 'Could not apply preview styles' }, '*');
     }
@@ -907,6 +912,7 @@ export function buildManualEditBridge(enabled: boolean): string {
     if (!ev.data) return;
     if (ev.data.type === 'od-edit-mode') {
       enabled = !!ev.data.enabled;
+      commitOnEscape = ev.data.commitOnEscape === true;
       document.documentElement.toggleAttribute('data-od-edit-mode', enabled);
       if (!enabled) {
         // Leaving edit mode commits the pending inline edit rather than
@@ -986,6 +992,29 @@ export function buildManualEditBridge(enabled: boolean): string {
     }
     if (ev.data.type === 'od-edit-preview-style') {
       applyPreviewStyles(ev.data.id, ev.data.styles || {}, ev.data.version);
+      return;
+    }
+    if (ev.data.type === 'od-edit-verify-saved-preview') {
+      if (ev.source !== window.parent || typeof ev.data.requestId !== 'string') return;
+      var proofPatch = ev.data.patch || {};
+      var proofEl = findById(proofPatch.id || '');
+      var proofOk = false;
+      if (proofEl && proofPatch.kind === 'set-text') {
+        proofOk = proofEl !== document.body && proofEl.children.length === 0
+          && typeof proofPatch.value === 'string' && proofEl.textContent === proofPatch.value;
+      } else if (proofEl && proofPatch.kind === 'set-style' && proofPatch.styles && typeof proofPatch.styles === 'object') {
+        var expectedStyle = document.createElement('span').style;
+        var proofKeys = Object.keys(proofPatch.styles);
+        proofOk = proofKeys.every(function(key){
+          var value = proofPatch.styles[key];
+          if (typeof value !== 'string') return false;
+          var cssName = camelToKebab(key);
+          expectedStyle.setProperty(cssName, value.trim());
+          return proofEl.style.getPropertyValue(cssName) === expectedStyle.getPropertyValue(cssName)
+            && proofEl.style.getPropertyPriority(cssName) === expectedStyle.getPropertyPriority(cssName);
+        });
+      }
+      window.parent.postMessage({ type: 'od-edit-saved-preview-result', requestId: ev.data.requestId, ok: proofOk }, '*');
       return;
     }
     if (ev.data.type === 'od-edit-preview-text') {
@@ -1297,6 +1326,7 @@ export function buildManualEditBridge(enabled: boolean): string {
 export function buildManualEditBridgeStyle(): string {
   return `<style data-od-edit-bridge-style>
 html[data-od-edit-mode] body * { cursor: pointer !important; }
+html[data-od-edit-mode][data-od-inserting] body * { cursor: crosshair !important; }
 html[data-od-edit-mode] [data-od-edit-selected] {
   outline: none !important;
 }

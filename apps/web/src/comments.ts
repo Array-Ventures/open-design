@@ -1,3 +1,4 @@
+import { readDocumentCommentAnchorHint } from '@open-design/contracts';
 import type {
   ChatCommentAttachment,
   ChatCommentSelectionKind,
@@ -261,7 +262,7 @@ export function commentToAttachment(
     selector: comment.selector,
     label: comment.label,
     comment: comment.note.trim() || imageOnlyCommentFallback(imageAttachments.length),
-    currentText: trimContextText(comment.text),
+    currentText: readDocumentCommentAnchorHint(comment.htmlHint)?.quote ?? trimContextText(comment.text),
     pagePosition: normalizePosition(comment.position),
     htmlHint: trimHtmlHint(comment.htmlHint),
     style: normalizeStyle(comment.style),

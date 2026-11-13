@@ -18,6 +18,7 @@ const localDevelopment = Object.freeze({
   targets: Object.freeze([
     "packages/release",
     "packages/contracts",
+    "packages/deck-export",
     "packages/standalone",
     "packages/components",
     "packages/platform",

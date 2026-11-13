@@ -1,3 +1,5 @@
+import { DECK_TRANSITION_RUNTIME, DECK_TRANSITION_CSS } from './deck-transitions';
+export { DECK_TRANSITIONS, type DeckTransition } from './deck-transitions';
 import { findRealTagOffset, HTML_TAG_PATTERNS } from './html-injection-points';
 import {
   DECK_PROTOCOL_V1_CAPABILITIES,
@@ -66,12 +68,22 @@ export const DECK_STRUCTURED_SLIDE_SELECTOR = DECK_SLIDE_CONTAINERS
   .flatMap((container) => DECK_SLIDE_MARKERS.map((marker) => `${container} > ${marker}`))
   .join(', ');
 
+// Center the fixed design canvas in the actual viewport. An implicit grid
+// track can grow to the design width and put scaled slides offscreen.
 const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(function(){
   if (window.__odDeckStageFallbackInstalled) return;
   window.__odDeckStageFallbackInstalled = true;
   if (!window.customElements || window.customElements.get('deck-stage')) return;
 
+  var requestedInitialIndex = null;
   var ACTIVE_ATTR = 'data-od-deck-active';
+  var SLIDE_ATTR = 'data-od-deck-fallback-slide';
+  var defaults = document.createElement('style');
+  defaults.setAttribute('data-od-deck-stage-fallback', '');
+  defaults.textContent = '@layer od-deck-fallback { deck-stage [' + SLIDE_ATTR + ']{position:absolute;inset:0;width:100%;height:100%;} }' +
+    'deck-stage [' + SLIDE_ATTR + ']{visibility:hidden!important;pointer-events:none!important;}' +
+    'deck-stage [' + SLIDE_ATTR + '][' + ACTIVE_ATTR + ']{visibility:visible!important;pointer-events:auto!important;}';
+  (document.head || document.documentElement).prepend(defaults);
   var SLIDE_SELECTOR = ${JSON.stringify(DECK_SLIDE_SELECTOR)};
 
   function numeric(value, fallback) {
@@ -118,30 +130,45 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
     } catch (_) {}
   }
 
+  ${DECK_TRANSITION_RUNTIME}
+  var transitionStyle = document.createElement('style');
+  transitionStyle.textContent = ${JSON.stringify(DECK_TRANSITION_CSS)};
+  (document.head || document.documentElement).appendChild(transitionStyle);
+
   class OdDeckStageFallback extends HTMLElement {
     constructor() {
       super();
       this._index = 0;
+      this._initialIndexConsumed = false;
       this._slides = [];
+      this._transition = null;
+      this._transitionGeneration = 0;
+      this._transitionCleanup = null;
       this._onMessage = this._onMessage.bind(this);
       this._onKeydown = this._onKeydown.bind(this);
       this._onResize = this.fit.bind(this);
       this._onSlotChange = this._refresh.bind(this);
+      this._observer = new MutationObserver((records) => {
+        var changed = records.some((record) =>
+          Array.prototype.slice.call(record.addedNodes).concat(Array.prototype.slice.call(record.removedNodes))
+            .some((node) => node.nodeType === 1 && (node.matches(SLIDE_SELECTOR) || node.querySelector(SLIDE_SELECTOR)))
+        );
+        if (changed) this._refresh();
+      });
       var root = this.attachShadow({ mode: 'open' });
       root.innerHTML =
         '<style>' +
         ':host{position:fixed;inset:0;display:block;overflow:hidden;background:#0a0a0a;}' +
-        '.stage{position:absolute;inset:0;display:grid;place-items:center;overflow:hidden;}' +
+        '.stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;}' +
         '.canvas{position:relative;flex:none;width:var(--od-deck-stage-width,1920px);height:var(--od-deck-stage-height,1080px);transform-origin:center center;}' +
         ':host([noscale]) .canvas{transform:none!important;}' +
-        '::slotted(*){visibility:hidden!important;pointer-events:none!important;}' +
-        '::slotted([' + ACTIVE_ATTR + ']){visibility:visible!important;pointer-events:auto!important;}' +
         '</style><div class="stage"><div class="canvas"><slot></slot></div></div>';
       this._slot = root.querySelector('slot');
       this._canvas = root.querySelector('.canvas');
     }
 
     connectedCallback() {
+      this._observer.observe(this, { childList: true, subtree: true });
       this._syncSize();
       postDeckReady();
       this._refresh();
@@ -155,6 +182,8 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
     }
 
     disconnectedCallback() {
+      this._cancelTransition();
+      this._observer.disconnect();
       window.removeEventListener('message', this._onMessage);
       window.removeEventListener('resize', this._onResize);
       document.removeEventListener('keydown', this._onKeydown, true);
@@ -197,11 +226,26 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
       for (var i = 0; i < nested.length; i++) {
         if (nested[i].parentElement === this) direct.push(nested[i]);
       }
-      this._slides = direct.length ? direct : nested;
+      this._slides = direct.length ? direct : nested.filter((slide) => {
+        var parent = slide.parentElement;
+        while (parent && parent !== this) {
+          if (parent.matches(SLIDE_SELECTOR)) return false;
+          parent = parent.parentElement;
+        }
+        return true;
+      });
       return this._slides;
     }
 
     _initialIndex(slides) {
+      if (!this._initialIndexConsumed && slides.length) {
+        this._initialIndexConsumed = true;
+        if (requestedInitialIndex !== null) {
+          var initial = requestedInitialIndex;
+          requestedInitialIndex = null;
+          return initial;
+        }
+      }
       for (var i = 0; i < slides.length; i++) {
         var cl = slides[i].classList;
         if (cl && (cl.contains('active') || cl.contains('is-active') || cl.contains('current'))) return i;
@@ -211,6 +255,7 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
     }
 
     _refresh() {
+      this._cancelTransition();
       var slides = this._collectSlides();
       this._index = Math.max(0, Math.min(slides.length - 1, this._initialIndex(slides)));
       this._apply();
@@ -227,6 +272,7 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
       for (var i = 0; i < slides.length; i++) {
         var on = i === this._index;
         var slide = slides[i];
+        slide.setAttribute(SLIDE_ATTR, '');
         slide.toggleAttribute(ACTIVE_ATTR, on);
         slide.toggleAttribute('hidden', false);
         slide.setAttribute('aria-hidden', on ? 'false' : 'true');
@@ -261,11 +307,20 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
       this._canvas.style.transform = 'scale(' + scale + ')';
     }
 
-    go(action, index) {
+    _cancelTransition() {
+      this._transitionGeneration += 1;
+      if (this._transition) this._transition.skipTransition();
+      this._transition = null;
+      if (this._transitionCleanup) this._transitionCleanup();
+      this._transitionCleanup = null;
+    }
+
+    go(action, index, animate) {
+      var previousIndex = this._index;
       var slides = this._collectSlides();
       if (!slides.length) return;
-      if (action === 'go' && typeof index === 'number') {
-        this._index = index;
+      if (action === 'go' && Number.isFinite(index)) {
+        this._index = Math.floor(index);
       } else if (action === 'next') {
         this._index += 1;
       } else if (action === 'prev') {
@@ -275,11 +330,16 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
       } else if (action === 'last') {
         this._index = slides.length - 1;
       }
-      this._apply();
+      this._index = Math.max(0, Math.min(slides.length - 1, this._index));
+      // Host echoes must not cancel a transition to the same logical target.
+      if (this._transition && this._index === previousIndex) return;
+      if (animate === false) { this._cancelTransition(); this._apply(); return; }
+      var previous = slides.find(function(slide) { return slide.hasAttribute(ACTIVE_ATTR); });
+      runDeckTransition(this, previous, slides[this._index], this._apply.bind(this));
     }
 
-    goTo(index) {
-      this.go('go', index);
+    goTo(index, options) {
+      this.go('go', index, options && options.animate);
     }
 
     next() {
@@ -296,9 +356,10 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
 
     _onMessage(ev) {
       var data = ev && ev.data;
+      if (data && data.type === 'od-edit-mode' && data.enabled) { this._cancelTransition(); this._apply(); return; }
       if (!data || data.type !== 'od:slide') return;
       if (data.protocolVersion != null && data.protocolVersion !== ${DECK_PROTOCOL_VERSION}) return;
-      this.go(data.action, data.index);
+      this.go(data.action, data.index, data.userInitiated === true);
     }
 
     _onKeydown(ev) {
@@ -331,10 +392,13 @@ export function htmlUsesDeckStageElement(html: string): boolean {
   return DECK_STAGE_OPEN_TAG_RE.test(html);
 }
 
-export function injectDeckStageFallback(html: string): string {
+export function injectDeckStageFallback(html: string, initialSlideIndex?: number): string {
   if (!htmlUsesDeckStageElement(html)) return html;
   if (html.includes(DECK_STAGE_FALLBACK_MARKER)) return html;
-  return injectBeforeBodyEnd(html, DECK_STAGE_FALLBACK_SCRIPT);
+  const initial = typeof initialSlideIndex === 'number' && Number.isFinite(initialSlideIndex)
+    ? Math.max(0, Math.floor(initialSlideIndex)) : null;
+  const script = DECK_STAGE_FALLBACK_SCRIPT.replace('var requestedInitialIndex = null;', `var requestedInitialIndex = ${JSON.stringify(initial)};`);
+  return injectBeforeBodyEnd(html, script);
 }
 
 function injectBeforeBodyEnd(html: string, injection: string): string {

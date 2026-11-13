@@ -1,0 +1,44 @@
+@import "tailwindcss/theme.css";
+@import "./theme.css";
+@import "./typography.css";
+@import "tailwindcss/utilities.css" important;
+@source "./button.tsx";
+@source "./input.tsx";
+@source "./label.tsx";
+@source "./hint-text.tsx";
+@source "./textarea.tsx";
+@source "./select.tsx";
+@source "./menu-styles.ts";
+
+@source "./dropdown.tsx";
+
+/* Keep standalone global button rules out of portalled BoardUI menu rows. */
+:root[data-host-theme="boardui"] button[data-boardui-menu-item] {
+  display: flex !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 8px 10px !important;
+  height: auto !important;
+  min-height: 32px;
+}
+:root[data-host-theme="boardui"] button[data-boardui-menu-item]:hover {
+  background: var(--color-background-secondary-hover) !important;
+}
+
+@source "../DeckPresentationMenu.tsx";
+@source "../SavedCommentThread.tsx";
+
+@source "./scroll-fade.tsx";
+@source "../document/DocumentEditor.tsx";
+@source "../document/DocumentSurface.tsx";
+@source "../document/DocumentToolbar.tsx";
+@source "../document/document-controls.ts";
+
+@source "../ReplyImages.tsx";
+
+@source "../RootCommentRecovery.tsx";
+
+@source "../comment-button-style.ts";

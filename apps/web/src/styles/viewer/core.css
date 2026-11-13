@@ -1741,6 +1741,11 @@
   min-height: 0;
   overflow: auto;
 }
+.comment-popover-thread-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 .comment-popover-composer .comment-popover-actions {
   flex: 0 0 auto;
 }
@@ -2171,8 +2176,7 @@
   gap: 6px;
   flex: 0 0 auto;
 }
-/* Select-all sits on its own row UNDER the header divider (per product), so
-   the header keeps just the title and the close control. */
+/* Legacy standalone toolbar spacing; bulk selection now lives in the header. */
 .comment-side-toolbar {
   display: flex;
   align-items: center;
@@ -3202,4 +3206,17 @@ button.ghost.mcp-copy-btn:hover:not(:disabled) {
   color: var(--text);
   background: var(--bg-panel);
   min-height: 100%;
+}
+
+/* Metadata sits below the target title, leaving its row free to read. */
+.comment-side-item-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-inline-start: 30px;
+  margin-block: 4px;
+  color: var(--color-text-tertiary, var(--text-muted));
+  font-size: var(--text-caption-1-regular, 12px);
+  line-height: var(--text-caption-1-regular--line-height, 16px);
 }

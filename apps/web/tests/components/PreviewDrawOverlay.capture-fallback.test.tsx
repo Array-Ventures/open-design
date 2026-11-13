@@ -103,6 +103,46 @@ describe('PreviewDrawOverlay capture fallback (issue #4064)', () => {
     }
   });
 
+  it('retains embedded drawing and note across a reversible host hide', () => {
+    const dirty = vi.fn();
+    const { container, rerender, getByRole } = render(<PreviewDrawOverlay active draftOnly onDirtyChange={dirty}><iframe title="srcdoc" /></PreviewDrawOverlay>);
+    drawSelectionBox(container.querySelector('canvas')!);
+    fireEvent.change(container.querySelector('.preview-draw-note-input')!, { target: { value: 'Unsent drawing note' } });
+    rerender(<PreviewDrawOverlay active={false} draftOnly onDirtyChange={dirty}><iframe title="srcdoc" /></PreviewDrawOverlay>);
+    rerender(<PreviewDrawOverlay active draftOnly onDirtyChange={dirty}><iframe title="srcdoc" /></PreviewDrawOverlay>);
+    expect((container.querySelector('.preview-draw-note-input') as HTMLInputElement).value).toBe('Unsent drawing note');
+    expect(getByRole('button', { name: 'Undo' })).not.toBeDisabled();
+    expect(dirty).toHaveBeenLastCalledWith(true);
+  });
+
+  it('does not intercept Escape or text undo while markup is inactive', () => {
+    const changed = vi.fn();
+    render(<PreviewDrawOverlay active={false} onActiveChange={changed}><iframe title="srcdoc" /></PreviewDrawOverlay>);
+    const undo = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, cancelable: true });
+    window.dispatchEvent(undo);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(undo.defaultPrevented).toBe(false);
+    expect(changed).not.toHaveBeenCalled();
+  });
+
+  it('retains embedded ink and note if capture fails, even after chat preparation succeeds', async () => {
+    const annotation = vi.fn();
+    window.addEventListener('opendesign:annotation', annotation);
+    try {
+      const prepare = vi.fn(async () => '11111111-1111-4111-8111-111111111111');
+      const { container, getByRole } = render(<PreviewDrawOverlay active draftOnly onPrepareDraft={prepare}><iframe title="srcdoc" data-od-render-mode="srcdoc" /></PreviewDrawOverlay>);
+      drawSelectionBox(container.querySelector('canvas')!);
+      const input = container.querySelector<HTMLInputElement>('.preview-draw-note-input')!;
+      fireEvent.change(input, { target: { value: 'Keep this marked change' } });
+      fireEvent.click(getByRole('button', { name: 'Add to chat' }));
+      await waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(getByRole('button', { name: 'Add to chat' })).not.toBeDisabled());
+      expect(annotation).not.toHaveBeenCalled();
+      expect(input.value).toBe('Keep this marked change');
+      expect(getByRole('button', { name: 'Undo' })).not.toBeDisabled();
+    } finally { window.removeEventListener('opendesign:annotation', annotation); }
+  });
+
   it('still blocks a box-only annotation with no note when the snapshot fails', async () => {
     const annotation = vi.fn();
     window.addEventListener('opendesign:annotation', annotation);
