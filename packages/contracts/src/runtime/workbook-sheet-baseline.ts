@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { canonicalCommentJson } from './comment-write-json';
+export { canonicalCommentJson } from './comment-write-json';
 import { WORKBOOK_MODEL_LIMITS, workbookDocumentSchema, workbookSheetSchema, workbookStyleSchema, type WorkbookDocument } from './workbook';
 
 import { WORKBOOK_SHEET_BASELINE_VERSION } from './workbook-sheet-baseline-identity.js';

@@ -1,4 +1,4 @@
-import { workbookSourceDeleteContextSchema, type WorkbookSourceDeleteContext } from './sheet-delete-context';
+import { associateWorkbookSourceDeletion, workbookSourceDeleteContextSchema, type WorkbookSourceDeleteContext } from './sheet-delete-context';
 import { workbookSaveAcknowledgementSchema, type WorkbookSaveAcknowledgement } from './save-provenance';
 import { workbookGridPlan, workbookPlanHasChanges } from './grid-plan';
 import type { IWorkbookData } from '@univerjs/presets';
@@ -47,7 +47,7 @@ export class WorkbookWriter {
       }
     }
   }
-  private plan() { return workbookGridPlan(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired); }
+  private plan() { return workbookGridPlan(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired, this.sheetDeletions); }
   state(): WorkbookWriteState {
     let dirty = Boolean(this.pending || this.running);
     try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
@@ -119,7 +119,10 @@ export class WorkbookWriter {
         if (pending.acknowledgement && JSON.stringify(pending.acknowledgement) !== JSON.stringify(acknowledgement)) throw Error('The workbook acknowledgement changed while protecting its save.');
         // Protect the checked pre-save history association together with the
         // original intent before retiring any source or SDK baseline.
+        const bound = this.sheetDeletions.map(context => context.sourceSha256 === this.source.sourceSha256 && !pending.snapshot.sheets[context.descriptor.sheetId]
+          ? associateWorkbookSourceDeletion(context, acknowledgement) : context);
         pending.acknowledgement = structuredClone(acknowledgement);
+        this.sheetDeletions = bound;
         await this.persist(); if (!this.active) return;
         const previous = { source: this.source, acknowledged: this.acknowledged, sourceAcknowledgement: this.sourceAcknowledgement };
         this.source = source; this.acknowledged = pending.snapshot; this.pending = null; this.sourceAcknowledgement = acknowledgement;

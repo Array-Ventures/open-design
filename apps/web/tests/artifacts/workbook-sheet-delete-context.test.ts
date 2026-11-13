@@ -1,6 +1,8 @@
 import { afterEach, expect, it } from 'vitest';
 import { Univer, LocaleType, ICommandService, IUndoRedoService, IUniverInstanceService, UniverInstanceType, type Workbook, type IWorkbookData } from '@univerjs/core';
 import { UniverSheetsPlugin, RemoveSheetCommand, InsertSheetMutation } from '@univerjs/sheets';
+import { UniverFormulaEnginePlugin } from '@univerjs/engine-formula';
+import { CalculationMode, UniverSheetsFormulaPlugin } from '@univerjs/sheets-formula';
 import { FUniver } from '@univerjs/core/facade';
 import '@univerjs/sheets/facade';
 import English from '@univerjs/sheets/locale/en-US';
@@ -8,6 +10,7 @@ import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookWriter, type WorkbookCheckpoint } from '../../src/components/embedded/workbook/workbook-writer';
 import { serializeWorkbookDraft } from '../../src/components/embedded/workbook/draft-store';
 import { decodeWorkbookDraft } from '../../src/components/embedded/workbook/workbook-checkpoint';
+import { workbookGridPlan } from '../../src/components/embedded/workbook/grid-plan';
 import { gridWorkbook } from '../../src/components/embedded/workbook/grid-model';
 import { seedWorkbookStructureIdentity } from '../../src/components/embedded/workbook/grid-structure-identity';
 import { captureWorkbookSourceDeletion, stampWorkbookSourceDeletion, associateWorkbookSourceDeletion, workbookSourceDeletionBaselineIdentity, WORKBOOK_SHEET_DELETE_MARKER } from '../../src/components/embedded/workbook/sheet-delete-context';
@@ -15,11 +18,15 @@ import { checkedWorkbookSaveAcknowledgement } from '../../src/components/embedde
 const scope = { viewerId: 'owned-person', projectId: '11111111-1111-4111-8111-111111111111', fileName: 'book.xlsx', draftId: '22222222-2222-4222-8222-222222222222' };
 const sourceSha256 = 'a'.repeat(64), targetSha256 = 'b'.repeat(64);
 const closers: (() => void)[] = []; afterEach(() => closers.splice(0).reverse().forEach(close => close()));
-function fixture() {
+function fixture(withFormulas = false) {
   const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: '1', worksheetStructureEditable: true, calculationMetadata: 'verified', styles: [{}, { font: { bold: true, size: 11 } }], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
     sheets: ['1','2','3'].map(id => ({ id, name: `Sheet ${id}`, visibility: 'visible', rowCount: 100, columnCount: 26, cells: [{ row: 0, column: 0, kind: 'number', value: 12, style: id === '2' ? 1 : 0 }], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0, arrayFormulas: [] })) };
+  if (withFormulas) model.sheets[2]!.cells.push({ row: 1, column: 0, kind: 'number', value: 24, formula: "='Sheet 2'!A1+'Sheet 1'!A1" });
   const initial = seedWorkbookStructureIdentity(gridWorkbook(model, `${scope.projectId}:${scope.fileName}`, 'Workbook').data as IWorkbookData, sourceSha256);
-  const univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: English } }); closers.push(() => univer.dispose()); univer.registerPlugin(UniverSheetsPlugin);
+  const univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: English } }); closers.push(() => univer.dispose());
+  if (withFormulas) univer.registerPlugin(UniverFormulaEnginePlugin, { notExecuteFormula: true });
+  univer.registerPlugin(UniverSheetsPlugin);
+  if (withFormulas) univer.registerPlugin(UniverSheetsFormulaPlugin, { notExecuteFormula: false, initialFormulaComputing: CalculationMode.NO_CALCULATION });
   const api = FUniver.newAPI(univer), book = api.createWorkbook(initial), instances = univer.__getInjector().get(IUniverInstanceService); instances.focusUnit(book.getId());
   const unit = instances.getUnit<Workbook>(book.getId(), UniverInstanceType.UNIVER_SHEET)!;
   const checkpoint: WorkbookCheckpoint = { version: 1, source: { sourceSha256, model }, acknowledged: book.save(), desired: book.save(), pending: null };
@@ -94,7 +101,7 @@ it('keeps one complete baseline and recomputes identity after JSON recovery rath
   expect(context).not.toHaveProperty('sourceSheet'); expect(context).not.toHaveProperty('date1904');
 });
 
-it('protects bounded contexts through the exact existing encoder and journal while clean, without admitting membership edits', async () => {
+it('protects bounded contexts through the exact existing encoder and journal while clean, then validates an actual source-present Delete plan', async () => {
   const f = fixture(), context = captureWorkbookSourceDeletion(scope, f.checkpoint, '2');
   const records: (WorkbookCheckpoint | null)[] = [], validated: WorkbookCheckpoint[] = [];
   const writer = new WorkbookWriter(f.checkpoint.source, f.checkpoint.acknowledged, async () => { throw Error('No remote write expected'); }, () => {}, undefined, {
@@ -105,10 +112,13 @@ it('protects bounded contexts through the exact existing encoder and journal whi
   expect(validated[0]!.sheetDeletions).toEqual([context]);
   expect(records.at(-1)?.sheetDeletions).toEqual([context]);
   expect(decodeWorkbookDraft(JSON.parse(serializeWorkbookDraft(scope, writer.checkpoint())), scope).sheetDeletions).toEqual([context]);
-  const deleted = structuredClone(f.checkpoint.desired); delete deleted.sheets['2']; deleted.sheetOrder = deleted.sheetOrder.filter(id => id !== '2');
-  expect(() => serializeWorkbookDraft(scope, { ...writer.checkpoint(), pending: { snapshot: deleted, intent: { id: crypto.randomUUID(), preparationId: crypto.randomUUID(), previewId: crypto.randomUUID(), plan: { sourceSha256, edits: [], sheets: [{ sheetId: '1', name: 'Sheet 1', origin: 'source' }, { sheetId: '3', name: 'Sheet 3', origin: 'source' }] } } } })).toThrow();
-  // Current producer remains OFF: this is honest refusal, not a forged positive
-  // restored checkpoint bypassing the existing membership derivation owner.
+  stampWorkbookSourceDeletion(f.unit.getSheetBySheetId('2')!, context.descriptor);
+  f.commands.syncExecuteCommand(RemoveSheetCommand.id, { unitId: f.book.getId(), subUnitId: '2' });
+  const deleted = f.book.save(), plan = workbookGridPlan(f.checkpoint.source.model, sourceSha256, f.checkpoint.acknowledged, deleted, [context]);
+  const pending = { snapshot: deleted, intent: { id: crypto.randomUUID(), preparationId: crypto.randomUUID(), previewId: crypto.randomUUID(), plan } };
+  expect(decodeWorkbookDraft(JSON.parse(serializeWorkbookDraft(scope, { ...writer.checkpoint(), pending })), scope).pending).toEqual(pending);
+  const forged = { ...pending, intent: { ...pending.intent, plan: { ...plan, sheets: plan.sheets!.slice(0, 1) } } };
+  expect(() => serializeWorkbookDraft(scope, { ...writer.checkpoint(), pending: forged })).toThrow();
 });
 it('refuses prospective context replacement, source/scope drift and validation failure without dropping protected roots', async () => {
   const f = fixture(), context = captureWorkbookSourceDeletion(scope, f.checkpoint, '2'); let refused = false;
@@ -123,5 +133,89 @@ it('refuses prospective context replacement, source/scope drift and validation f
   expect(() => writer.retainSheetDeletion(changed)).toThrow('cannot be replaced');
   const crossScope = structuredClone(second); crossScope.scope.viewerId = 'another-person'; refused = false;
   expect(() => writer.retainSheetDeletion(crossScope)).toThrow('scope'); expect(writer.checkpoint()).toEqual(before);
+  await writer.close();
+});
+
+it('derives source survivor membership from an actual Delete while preserving earlier unrelated authored edits', () => {
+  const f = fixture(); f.book.getSheetBySheetId('1')!.getRange('A1').setValue(20); f.book.getSheetBySheetId('2')!.getRange('A1').setValue(17);
+  f.checkpoint.desired = f.book.save();
+  const context = captureWorkbookSourceDeletion(scope, f.checkpoint, '2');
+  stampWorkbookSourceDeletion(f.unit.getSheetBySheetId('2')!, context.descriptor);
+  f.commands.syncExecuteCommand(RemoveSheetCommand.id, { unitId: f.book.getId(), subUnitId: '2' });
+  const plan = workbookGridPlan(f.checkpoint.source.model, sourceSha256, f.checkpoint.acknowledged, f.book.save(), [context]);
+  expect(plan.sheets).toEqual([{ sheetId: '1', name: 'Sheet 1', origin: 'source' }, { sheetId: '3', name: 'Sheet 3', origin: 'source' }]);
+  expect(plan.edits).toEqual([{ sheetId: '1', cell: { row: 0, column: 0, kind: 'number', value: 20, style: 0 } }]);
+  expect(f.checkpoint.source.model.sheets).toHaveLength(3); expect(f.checkpoint.acknowledged.sheets['2']).toBeDefined();
+});
+
+it('preserves actual SDK cross-sheet REF rewrites and refuses unsupported global names rather than dropping them', () => {
+  const f = fixture(true), context = captureWorkbookSourceDeletion(scope, f.checkpoint, '2');
+  stampWorkbookSourceDeletion(f.unit.getSheetBySheetId('2')!, context.descriptor);
+  f.commands.syncExecuteCommand(RemoveSheetCommand.id, { unitId: f.book.getId(), subUnitId: '2' });
+  const current = f.book.save(), formula = current.sheets['3']!.cellData![1]![0]!.f;
+  expect(formula).toContain('#REF!');
+  const plan = workbookGridPlan(f.checkpoint.source.model, sourceSha256, f.checkpoint.acknowledged, current, [context]);
+  expect(plan.edits.find(edit => edit.sheetId === '3')?.cell.formula).toBe(formula);
+  const names = structuredClone(f.checkpoint.source.model); names.definedNames = [{ name: 'OwnedName', formula: "'Sheet 1'!$A$1" }];
+  expect(() => workbookGridPlan(names, sourceSha256, f.checkpoint.acknowledged, current, [context])).toThrow('defined names');
+});
+it('keeps source, ACK, axis, survivor order and known-owner checks during membership projection', () => {
+  const f = fixture(), context = captureWorkbookSourceDeletion(scope, f.checkpoint, '2');
+  f.commands.syncExecuteCommand(RemoveSheetCommand.id, { unitId: f.book.getId(), subUnitId: '2' }); const current = f.book.save();
+  const project = (next: typeof current, contexts = [context]) => workbookGridPlan(f.checkpoint.source.model, sourceSha256, f.checkpoint.acknowledged, next, contexts);
+  const wrong = structuredClone(context); wrong.acknowledgedSheet.cellData![0]![0]!.v = 999;
+  expect(() => project(current, [wrong])).toThrow('ACK context');
+  const wrongOwner = structuredClone(context); wrongOwner.axisOwner.generation = crypto.randomUUID(); wrongOwner.descriptor.generation = wrongOwner.axisOwner.generation;
+  expect(() => project(current, [wrongOwner])).toThrow('ACK context');
+  const forged = structuredClone(context); forged.baseline.styleDefinitions[1]!.style.font!.bold = false;
+  expect(() => project(current, [forged])).toThrow('ACK context');
+  expect(() => project(current, [context, context])).toThrow('unique');
+  const reorder = structuredClone(current); reorder.sheetOrder.reverse(); expect(() => project(reorder)).toThrow('Reordering');
+  const restored = structuredClone(current); restored.sheets['4'] = { ...structuredClone(f.checkpoint.acknowledged.sheets['2']!), id: '4' }; restored.sheetOrder.push('4'); expect(() => project(restored)).toThrow('own protected owner');
+  const wrongId = structuredClone(current); wrongId.sheets['1']!.id = 'wrong'; expect(() => project(wrongId)).toThrow('identity changed');
+  const extraBaseline = structuredClone(f.checkpoint.acknowledged); extraBaseline.sheets['4'] = { ...structuredClone(extraBaseline.sheets['1']!), id: '4' };
+  expect(() => workbookGridPlan(f.checkpoint.source.model, sourceSha256, extraBaseline, current, [context])).toThrow('identity changed');
+  const badAxis = structuredClone(current); delete badAxis.sheets['1']!.rowData![0]!.custom; expect(() => project(badAxis)).toThrow();
+  const badStyles = structuredClone(current); badStyles.styles['0'] = { fs: 999 }; expect(() => project(badStyles)).toThrow('formatting changed');
+});
+
+it('binds a real SDK Delete save context to its checked pre-save receipt before retiring the source, retrying storage failure without a new remote intent', async () => {
+  const f = fixture(), context = captureWorkbookSourceDeletion(scope, f.checkpoint, '2');
+  f.book.getSheetBySheetId('1')!.getRange('A1').setValue(20);
+  stampWorkbookSourceDeletion(f.unit.getSheetBySheetId('2')!, context.descriptor);
+  f.commands.syncExecuteCommand(RemoveSheetCommand.id, { unitId: f.book.getId(), subUnitId: '2' });
+  const desired = f.book.save(), target = structuredClone(f.checkpoint.source); target.sourceSha256 = targetSha256;
+  target.model.sheets = target.model.sheets.filter(sheet => sheet.id !== '2'); target.model.sheets[0]!.cells[0]!.value = 20;
+  const records: WorkbookCheckpoint[] = [], intents: string[] = []; let fail = true;
+  let result: { preview: typeof target; acknowledgement: ReturnType<typeof checkedWorkbookSaveAcknowledgement> } | undefined;
+  const writer = new WorkbookWriter(f.checkpoint.source, f.checkpoint.acknowledged, async intent => {
+    if (!result) {
+      intents.push(intent.id); intent.renderId = crypto.randomUUID();
+      const acknowledgement = checkedWorkbookSaveAcknowledgement({ id: intent.id, projectId: scope.projectId, fileName: scope.fileName, renderId: intent.renderId, state: 'applied', sourceSha256, targetSha256, actualSha256: targetSha256, sourceVersionId: 'before-delete', versionId: 'after-delete' },
+        { ...intent, operationId: intent.id, projectId: scope.projectId, fileName: scope.fileName, renderId: intent.renderId }, targetSha256);
+      result = { preview: target, acknowledgement };
+    }
+    return result;
+  }, () => {}, undefined, {
+    validate: candidate => { serializeWorkbookDraft(scope, candidate); },
+    save: async candidate => {
+      if (!candidate) throw Error('Deletion context must stay protected');
+      serializeWorkbookDraft(scope, candidate);
+      if (candidate.pending?.acknowledgement && fail) throw Error('Device storage failure');
+      records.push(structuredClone(candidate));
+    },
+  });
+  writer.retainSheetDeletion(context); writer.update(desired); await writer.flush();
+  expect(writer.checkpoint().source.sourceSha256).toBe(sourceSha256);
+  const pendingId = writer.checkpoint().pending!.intent.id;
+  expect(writer.checkpoint().sheetDeletions![0]!.receiptAssociation).toMatchObject({ sourceVersionId: 'before-delete', versionId: 'after-delete' });
+  fail = false; await writer.flush();
+  expect(intents).toEqual([pendingId]); expect(writer.checkpoint().pending).toBeNull();
+  const protectedReceipt = records.find(record => record.pending?.acknowledgement)!;
+  expect(protectedReceipt.source.sourceSha256).toBe(sourceSha256);
+  expect(protectedReceipt.sheetDeletions![0]!.receiptAssociation).toMatchObject({ operationId: pendingId, sourceSha256, sourceVersionId: 'before-delete', targetSha256, versionId: 'after-delete' });
+  expect(records.at(-1)!.source.sourceSha256).toBe(targetSha256);
+  expect(records.at(-1)!.desired.sheets['1']!.cellData![0]![0]!.v).toBe(20);
+  expect(decodeWorkbookDraft(JSON.parse(serializeWorkbookDraft(scope, records.at(-1)!)), scope).sheetDeletions).toEqual(writer.checkpoint().sheetDeletions);
   await writer.close();
 });

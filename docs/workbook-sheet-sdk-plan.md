@@ -546,3 +546,46 @@ Scalar edit style annotations must follow the owning
 [style preservation guards](workbook-cell-style-guards.md). A compact historical
 model ordinal is not a raw stylesheet index or a transferable identity; the
 source owner proves any required guard rebase after membership/axis preparation.
+
+### Development checkpoint: source-present membership derivation
+
+`grid-sheet-projection.ts` now derives only current-source survivor projections
+when protected deletion contexts are present. Writer and pending decoder call
+the same `workbookGridPlan` owner. Original final membership is carried separately
+while matched survivor baselines reuse the existing scalar/style/dimension/axis
+diff. Source/ACK cell and complete style closure, account/file identity, actual
+axis generation, every original and surviving axis, unique contexts and survivor
+order are independently checked before filtering. Very-hidden deletion refuses.
+Unknown/restored/new IDs refuse; no marker becomes a blank or template grant.
+
+The existing scalar reference/work budget is extracted unchanged into
+`grid-scalar-admission.ts` and reused here. Actual pinned SDK formula-plugin
+Delete produces genuine cross-sheet `#REF!` references, which remain authored
+plan edits. Unresolved references refuse. Defined-name/table sources explicitly
+refuse in this initial producer; their metadata is never dropped to make a
+synthetic model parse. A deleted active-sheet baseline chooses a surviving
+visible model identity for the diff; actual XML view ownership remains the
+source writer's policy. The producer neither serializes SDK data as XLSX nor
+rewrites source styles or axes.
+
+A genuine SDK Delete now passes the real pending encoder/decoder rather than
+bypassing it with a seeded incompatible record. The original earlier refusal
+test is updated because this owning producer now derives that exact plan; forged
+pending membership still refuses. Another source test drives actual SDK Delete
+through Writer and a mocked remote checked receipt, fails device protection,
+then retries the same remote intent. The old-source pending checkpoint includes
+the selected pre-save history association before source retirement and preserves
+an unrelated earlier edit. This is a source-level mocked-transport proof, not a
+server/container/ACL, live browser command admission or durable Undo proof.
+
+Controls stay OFF. The awaited storage/lease/revision barrier and live controller
+are not installed. New/restored origins, multiple same-source deletion contexts
+for one ID (active-token selection), source metadata qualification, actual worker
+sheet mutation support, source-absent Undo/Redo and recovered server receipt
+rechecks still require their owning slices. No publication or pins change.
+
+Validation: 58 focused SDK-context/Writer/axis-controller/draft-store tests and
+nine baseline contract tests passed, plus final web typecheck, full repository
+typecheck and guard. The original actual SDK Delete projection test failed
+against the prior same-membership planner. No model, browser, container or
+production calls were made for this checkpoint.
