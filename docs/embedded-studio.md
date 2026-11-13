@@ -421,3 +421,8 @@ area/axis/work budgets; authored dimension XML is still not trusted. Unsupported
 source caches remain untouched, and the source worker repeats this qualification
 before returning any candidate bytes. Menu activation still waits for the
 independent source/worker review and complete packaged interaction qualification.
+
+Reduction admission also refuses operators on raw range arguments (for example
+`SUM(A1:A2*B1:B2)` and `SUM((A1:A2)+1)`), including grouped/unary forms. Ordinary
+scalar arithmetic outside a completed reduction remains supported. The source
+worker independently rejects iterative/display-rounded calculation metadata.

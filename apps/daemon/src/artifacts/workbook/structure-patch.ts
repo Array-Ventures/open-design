@@ -1,6 +1,7 @@
 import type { Document, Element } from '@xmldom/xmldom';
 import { WORKBOOK_MODEL_LIMITS, type WorkbookStructureEdit } from '@open-design/contracts/runtime/workbook';
 import { workbookAxisProjection, type WorkbookAxisProjection } from '@open-design/contracts/runtime/workbook-structure';
+import { assertWorkbookStructureAttributes } from './structure-attributes.js';
 import type { ReadWorkbook } from './reader.js';
 import { address, child, children, range, relationships, xmlPart } from './parts.js';
 import { WorkbookFormatError, writeWorkbookPackage } from './package.js';
@@ -16,8 +17,8 @@ function cellName(row: number, column: number) {
 function rangeName(bounds: { startRow: number; endRow: number; startColumn: number; endColumn: number }) {
   const start = cellName(bounds.startRow, bounds.startColumn), end = cellName(bounds.endRow, bounds.endColumn); return start === end ? start : `${start}:${end}`;
 }
-function projectedRange(value: string, projection: WorkbookSheetProjection) {
-  const original = range(value), rows = projection.rows.interval(original.startRow, original.endRow), columns = projection.columns.interval(original.startColumn, original.endColumn);
+function projectedRange(value: string, projection: WorkbookSheetProjection, view = false) {
+  const original = range(value), rows = view ? projection.rows.intervalClamped(original.startRow, original.endRow) : projection.rows.interval(original.startRow, original.endRow), columns = view ? projection.columns.intervalClamped(original.startColumn, original.endColumn) : projection.columns.interval(original.startColumn, original.endColumn);
   return !rows || !columns ? null : { startRow: rows[0], endRow: rows[1], startColumn: columns[0], endColumn: columns[1] };
 }
 /** Fail closed before offering structural commands, and repeat this inspection
@@ -25,6 +26,7 @@ function projectedRange(value: string, projection: WorkbookSheetProjection) {
  * merely shifting cells. These exclusions are deliberate capability boundaries. */
 export function assertWorkbookStructureSupported(source: ReadWorkbook): Map<string, { rows: number; columns: number }> {
   const book = xmlPart(source.parts, 'xl/workbook.xml').documentElement!;
+  assertWorkbookStructureAttributes(book);
   const owned = new Set(['[Content_Types].xml', '_rels/.rels', 'xl/workbook.xml', 'xl/_rels/workbook.xml.rels', ...source.sheetParts.values()]);
   for (const link of relationships(source.parts, 'xl/workbook.xml').values()) {
     if (link.external || !['worksheet', 'styles', 'theme', 'sharedStrings', 'calcChain'].some(kind => link.type.endsWith(`/${kind}`))) unsupported('This workbook relationship has no structural owner.');
@@ -35,6 +37,8 @@ export function assertWorkbookStructureSupported(source: ReadWorkbook): Map<stri
   // non-coordinate document properties and the explicitly owned parts above.
   for (const part of source.parts.keys()) if (!owned.has(part) && !part.startsWith('docProps/')) unsupported('This workbook package has unowned structural metadata.');
   const features = source.model.features;
+  const calculation = child(book, 'calcPr');
+  if (calculation && (calculation.hasAttribute('iterate') && !['0', 'false'].includes(calculation.getAttribute('iterate')!) || calculation.hasAttribute('fullPrecision') && !['1', 'true'].includes(calculation.getAttribute('fullPrecision')!) || calculation.hasAttribute('refMode') && calculation.getAttribute('refMode') !== 'A1')) unsupported('Iterative, display-rounded or non-A1 calculation needs a qualified structural adapter.');
   if (source.model.sheets.reduce((sum, sheet) => sum + sheet.rowCount * sheet.columnCount, 0) > WORKBOOK_MODEL_LIMITS.cells) unsupported('This workbook exceeds the qualified structural calculation area.');
   const bookChildren = new Set(['fileVersion', 'workbookPr', 'bookViews', 'sheets', 'definedNames', 'calcPr']);
   if (elements(book).some(node => node.namespaceURI !== book.namespaceURI || !bookChildren.has(node.localName!))) unsupported('This workbook has unsupported structural metadata.');
@@ -43,6 +47,7 @@ export function assertWorkbookStructureSupported(source: ReadWorkbook): Map<stri
   if ([...source.parts.keys()].some(name => /^(?:_xmlsignatures\/|xl\/(?:tables|drawings|charts|comments|threadedComments|pivot|externalLinks|metadata))/i.test(name))) unsupported('This workbook package has unsupported structural references.');
   for (const part of source.sheetParts.values()) {
     const root = xmlPart(source.parts, part).documentElement!;
+    assertWorkbookStructureAttributes(root);
     const allowed = new Set(['sheetPr', 'dimension', 'sheetViews', 'sheetFormatPr', 'cols', 'sheetData', 'mergeCells', 'printOptions', 'pageMargins', 'pageSetup', 'headerFooter']);
     if (elements(root).some(node => node.namespaceURI !== root.namespaceURI || !allowed.has(node.localName!))) unsupported('This worksheet has unsupported structural metadata.');
     const properties = child(root, 'sheetPr');
@@ -59,8 +64,10 @@ export function assertWorkbookStructureSupported(source: ReadWorkbook): Map<stri
       if (child(view, 'pane')) unsupported('Frozen and split panes need a qualified structural view writer.');
       if (elements(view).some(node => node.localName !== 'selection' || node.namespaceURI !== root.namespaceURI)) unsupported('This worksheet view cannot be structurally edited.');
     }
+    for (const column of child(root, 'cols') ? children(child(root, 'cols')!, 'col') : []) if (Number(column.getAttribute('outlineLevel') ?? '0') > 0 || ['1', 'true'].includes(column.getAttribute('collapsed') ?? '')) unsupported('Outlined axes need a qualified structural grouping writer.');
     const data = child(root, 'sheetData');
     for (const row of data ? children(data, 'row') : []) {
+      if (Number(row.getAttribute('outlineLevel') ?? '0') > 0 || ['1', 'true'].includes(row.getAttribute('collapsed') ?? '')) unsupported('Outlined axes need a qualified structural grouping writer.');
       if (elements(row).some(node => node.localName !== 'c' || node.namespaceURI !== root.namespaceURI)) unsupported('Extended row metadata cannot be structurally edited.');
       for (const cell of children(row, 'c')) {
         if (elements(cell).some(node => node.namespaceURI !== root.namespaceURI || !['f', 'v', 'is'].includes(node.localName!))) unsupported('Extended cell metadata needs a structural writer.');
@@ -90,7 +97,7 @@ function projectionFor(source: ReadWorkbook, edits: readonly WorkbookStructureEd
   return result;
 }
 function nearest(index: number, projection: WorkbookAxisProjection): number {
-  return Math.min(projection.targetCount - 1, projection.point(index) ?? projection.interval(index, projection.sourceCount - 1)?.[0] ?? projection.targetCount - 1);
+  return projection.pointClamped(index) ?? projection.intervalClamped(index, projection.sourceCount - 1)?.[0] ?? Math.min(projection.coordinateLimit - 1, projection.targetCount);
 }
 function patchViews(root: Element, projection: WorkbookSheetProjection) {
   const views = child(root, 'sheetViews');
@@ -101,7 +108,7 @@ function patchViews(root: Element, projection: WorkbookSheetProjection) {
       }
       if (node.hasAttribute('sqref')) {
         const values = node.getAttribute('sqref')!.trim().split(/\s+/); if (values.length > 4096) throw new WorkbookFormatError('Structural selection exceeds its limit.', 'WORKBOOK_LIMIT');
-        const next = values.map(value => projectedRange(value, projection)).filter((value): value is NonNullable<typeof value> => value !== null).map(rangeName);
+        const next = values.map(value => projectedRange(value, projection, true)).filter((value): value is NonNullable<typeof value> => value !== null).map(rangeName);
         if (!next.length) next.push(node.getAttribute('activeCell') ?? 'A1'); node.setAttribute('sqref', next.join(' '));
         // activeCellId indexes sqref, not source geometry; removing ranges must
         // not leave a stale index into the shortened selection list.

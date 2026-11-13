@@ -1,6 +1,6 @@
 import { assertWorkbookStructuralScalarTokens } from '@open-design/contracts/runtime/workbook-formula-policy';
 import { RANGE_TYPE } from '@univerjs/core';
-import { deserializeRangeWithSheet, ERROR_TYPE_SET, type ErrorType, generateStringWithSequence, LexerTreeBuilder, sequenceNodeType, serializeRange, serializeRangeWithSheet } from '@univerjs/engine-formula';
+import { deserializeRangeWithSheet, ALL_IMPLEMENTED_FUNCTIONS_SET, type IFunctionNames, ERROR_TYPE_SET, type ErrorType, generateStringWithSequence, LexerTreeBuilder, sequenceNodeType, serializeRange, serializeRangeWithSheet } from '@univerjs/engine-formula';
 import type { WorkbookAxisProjection } from '@open-design/contracts/runtime/workbook-structure';
 import { WorkbookFormatError } from './package.js';
 
@@ -62,6 +62,7 @@ export function workbookStructuralFormulaBounds(sheets: readonly { id: string; n
       work += nodes?.length ?? 0; if (work > 1_000_000) throw new WorkbookFormatError('Structural formula analysis exceeds its work budget.', 'WORKBOOK_LIMIT');
       assertWorkbookStructuralScalarTokens(cell.formula, nodes, {
         types: sequenceNodeType,
+        hasExecutor: name => ALL_IMPLEMENTED_FUNCTIONS_SET.has(name as IFunctionNames),
         isLiteral: token => ['TRUE', 'FALSE'].includes(token.toUpperCase()) || ERROR_TYPE_SET.has(token as ErrorType),
         referenceShape: token => {
           const ref = deserializeRangeWithSheet(token), target = ref.sheetName ? names.get(ref.sheetName.toLowerCase()) : sheet.id;

@@ -98,7 +98,7 @@ it('qualifies only bounded executable scalar sources and expands finite referenc
   const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('Bounds'); sheet.getCell('A1').value = { formula: 'A101', result: 0 };
   const qualified = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer()));
   expect(qualified.model.sheets[0]!.rowCount).toBe(101); expect(qualified.model.worksheetStructureEditable).toBe(true);
-  for (const formula of ['DOESNOTEXIST(A1)', 'SUM(A:A)', 'IF(TRUE,A2:A3,1)', 'A2:A3+1', 'SEQUENCE(3)', 'A1048576']) {
+  for (const formula of ['DOESNOTEXIST(A1)', 'SUM(A:A)', 'IF(TRUE,A2:A3,1)', 'A2:A3+1', 'SEQUENCE(3)', 'A1048576', 'SUM(A1:A2*B1:B2)', 'SUM(A1:A2+1)', 'SUM((A1:A2)+1)']) {
     sheet.getCell('A1').value = { formula, result: 55 };
     const source = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer()));
     expect(source.model.worksheetStructureEditable, formula).toBe(false);
@@ -115,4 +115,63 @@ it('recalculates structural-only writes before inherited dimensions, formatting 
   expect(prepared.model.sheets[1]!.visibility).toBe('hidden');
   expect(prepared.model.sheets[0]!.rowDimensions.find(row => row.index === 1)?.height).toBe(30);
   const independent = new ExcelJS.Workbook(); await independent.xlsx.load(Uint8Array.from(prepared.bytes).buffer); expect(independent.getWorksheet('Budget')!.getCell('C4').result).toBe(12);
+});
+
+it('refuses iterative calculation metadata without changing retained source bytes or caches', async () => {
+  const source = await fixture(), document = xmlPart(source.parts, 'xl/workbook.xml'), root = document.documentElement!;
+  const calculation = child(root, 'calcPr')!; calculation.setAttribute('iterate', '1');
+  const parts = new Map(source.parts); parts.set('xl/workbook.xml', writeWorkbookXml(document));
+  const iterative = await readXlsxWorkbook(await writeWorkbookPackage(parts));
+  expect(iterative.model.worksheetStructureEditable).toBe(false); expect(() => assertWorkbookStructureSupported(iterative)).toThrow('Iterative');
+  expect(iterative.model.sheets[0]!.cells.find(cell => cell.formula)?.value).toBe(12);
+});
+
+it('preserves source view anchors beyond the editor window and clamps them only at Excel hard limits', async () => {
+  const source = await fixture(), sheet = source.model.sheets[0]!, part = source.sheetParts.get(sheet.id)!, document = xmlPart(source.parts, part), root = document.documentElement!;
+  const view = children(child(root, 'sheetViews')!, 'sheetView')[0]!; view.setAttribute('topLeftCell', 'B1000');
+  const selection = document.createElementNS(root.namespaceURI, 'selection'); selection.setAttribute('activeCell', 'B1048576'); selection.setAttribute('sqref', 'B1048576'); view.appendChild(selection);
+  const parts = new Map(source.parts); parts.set(part, writeWorkbookXml(document));
+  const saved = await readXlsxWorkbook(await patchWorkbookStructure({ ...source, parts }, [{ sheetId: sheet.id, sourceRows: 100, sourceColumns: 26, rows: insert(100, 1), columns: Array.from({ length: 26 }, (_, index) => index) }]));
+  const changed = children(child(xmlPart(saved.parts, part).documentElement!, 'sheetViews')!, 'sheetView')[0]!;
+  expect(changed.getAttribute('topLeftCell')).toBe('B1001'); expect(children(changed, 'selection').at(-1)!.getAttribute('activeCell')).toBe('B1048576'); expect(children(changed, 'selection').at(-1)!.getAttribute('sqref')).toBe('B1048576');
+});
+
+it('refuses unknown coordinate attributes before advertising or writing while retaining reviewed Excel metadata', async () => {
+  const source = await fixture(), sheet = source.model.sheets[0]!, part = source.sheetParts.get(sheet.id)!;
+  const edit = { sheetId: sheet.id, sourceRows: sheet.rowCount, sourceColumns: sheet.columnCount, rows: insert(sheet.rowCount, 1), columns: Array.from({ length: sheet.columnCount }, (_, index) => index) };
+  for (const target of ['row', 'c', 'selection', 'unqualified-row']) {
+    const doc = xmlPart(source.parts, part), root = doc.documentElement!;
+    root.setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:test', 'urn:fixture:unowned');
+    let element = Array.from(root.getElementsByTagName(target === 'unqualified-row' ? 'row' : target))[0];
+    if (!element) { element = doc.createElementNS(root.namespaceURI, target); children(child(root, 'sheetViews')!, 'sheetView')[0]!.appendChild(element); }
+    if (target === 'unqualified-row') element.setAttribute('foreignRef', 'A1');
+    else element.setAttributeNS('urn:fixture:unowned', 'test:ref', 'A1');
+    const parts = new Map(source.parts); parts.set(part, writeWorkbookXml(doc));
+    const bytes = await writeWorkbookPackage(parts), rejected = await readXlsxWorkbook(bytes);
+    expect(rejected.model.worksheetStructureEditable, target).not.toBe(true);
+    await expect(patchWorkbookStructure(rejected, [edit])).rejects.toThrow('unowned structural XML');
+    expect(rejected.parts.get(part)).toEqual(parts.get(part));
+  }
+  const doc = xmlPart(source.parts, part), root = doc.documentElement!;
+  root.setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:mc', 'http://schemas.openxmlformats.org/markup-compatibility/2006');
+  root.setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:x14ac', 'http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac');
+  root.setAttributeNS('http://schemas.openxmlformats.org/markup-compatibility/2006', 'mc:Ignorable', 'x14ac');
+  children(child(root, 'sheetData')!, 'row')[1]!.setAttributeNS('http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac', 'x14ac:dyDescent', '0.25');
+  const parts = new Map(source.parts); parts.set(part, writeWorkbookXml(doc));
+  const qualified = await readXlsxWorkbook(await writeWorkbookPackage(parts)); expect(qualified.model.worksheetStructureEditable).toBe(true);
+  const saved = await readXlsxWorkbook(await patchWorkbookStructure(qualified, [edit]));
+  expect(children(child(xmlPart(saved.parts, part).documentElement!, 'sheetData')!, 'row').find(row => row.getAttribute('r') === '3')!.getAttributeNS('http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac', 'dyDescent')).toBe('0.25');
+});
+
+it('refuses unsupported calculation semantics with genuine cached formulas before advertising or writing', async () => {
+  const source = await fixture(), sheet = source.model.sheets[0]!;
+  for (const [name, value] of [['iterate', '1'], ['fullPrecision', '0'], ['refMode', 'R1C1'], ['iterate', 'unknown']] as const) {
+    const doc = xmlPart(source.parts, 'xl/workbook.xml'), root = doc.documentElement!;
+    let calc = child(root, 'calcPr'); if (!calc) { calc = doc.createElementNS(root.namespaceURI, 'calcPr'); root.appendChild(calc); }
+    calc.setAttribute(name, value); const parts = new Map(source.parts); parts.set('xl/workbook.xml', writeWorkbookXml(doc));
+    const rejected = await readXlsxWorkbook(await writeWorkbookPackage(parts));
+    expect(rejected.model.sheets[0]!.cells.find(cell => cell.formula)?.value).toBe(12);
+    expect(rejected.model.worksheetStructureEditable, `${name}=${value}`).not.toBe(true);
+    await expect(patchWorkbookStructure(rejected, [{ sheetId: sheet.id, sourceRows: sheet.rowCount, sourceColumns: sheet.columnCount, rows: insert(sheet.rowCount, 1), columns: Array.from({ length: sheet.columnCount }, (_, index) => index) }])).rejects.toThrow('calculation');
+  }
 });

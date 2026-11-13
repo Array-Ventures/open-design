@@ -21,3 +21,10 @@ it('bounds both allocations and reference growth and refuses permutations or dup
   expect(() => workbookAxisProjection(100001, [0], 200000)).toThrow('limit');
   expect(() => workbookAxisProjection(2, [0, null, 1], 4).point(3)).toThrow('limit');
 });
+
+it('preserves virtual-tail view positions and clamps only at the actual worksheet hard edge', () => {
+  const map = workbookAxisProjection(2, [0, null, 1], 4);
+  expect(() => map.point(3)).toThrow('limit'); expect(map.pointClamped(3)).toBe(3); expect(map.intervalClamped(2, 3)).toEqual([3, 3]);
+  const global = workbookAxisProjection(100, Array.from({ length: 101 }, (_, index) => index < 1 ? index : index === 1 ? null : index - 1), 1048576);
+  expect(global.pointClamped(999)).toBe(1000); expect(global.pointClamped(1048575)).toBe(1048575);
+});
