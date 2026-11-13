@@ -23,6 +23,7 @@ const PACKAGE_DIRS = [
   "packages/components",
   "packages/contracts",
   "packages/deck-export",
+  "packages/document-style",
   "packages/registry-protocol",
   "packages/sidecar-proto",
   "packages/launcher-proto",
@@ -49,6 +50,10 @@ const OUTPUT_FILES = [
   "packages/contracts/dist/index.d.ts",
   "packages/deck-export/dist/index.js",
   "packages/deck-export/dist/index.d.ts",
+  "packages/document-style/dist/color.js",
+  "packages/document-style/dist/color.d.ts",
+  "packages/document-style/dist/browser.js",
+  "packages/document-style/dist/browser.d.ts",
   "packages/registry-protocol/dist/index.mjs",
   "packages/registry-protocol/dist/index.d.ts",
   "packages/sidecar-proto/dist/index.mjs",
@@ -510,6 +515,10 @@ describe("createWorkspaceBuildCacheKey", () => {
       const baseline = await createWorkspaceBuildCacheKey(config);
       await mkdir(join(root, "packages/sidecar/dist"), { recursive: true });
       await writeFile(join(root, "packages/sidecar/dist/generated.js"), "generated\n", "utf8");
+      expect(await createWorkspaceBuildCacheKey(config)).toBe(baseline);
+
+      await mkdir(join(root, "packages/document-style/dist"), { recursive: true });
+      await writeFile(join(root, "packages/document-style/dist/color.js"), "generated color output\n", "utf8");
       expect(await createWorkspaceBuildCacheKey(config)).toBe(baseline);
 
       for (const packageInfo of WORKSPACE_BUILD_PACKAGES) {

@@ -4,6 +4,8 @@ Follow the root `AGENTS.md` first. This file only records module-level boundarie
 
 ## Package responsibilities
 
+- `packages/document-style`: pure document color math via `/color` and explicitly invoked browser DOM adapters via `/browser`. Keep React, filesystem, services and process lifecycle outside both entries. The Node-safe entry must not import DOM declarations.
+
 - `packages/deck-export`: browser-only editable deck conversion shared by desktop and isolated render workers. Keep filesystem, process, transport, and host lifecycle outside this package.
 
 - `packages/agui-adapter`: pure TypeScript adapter between persisted OpenDesign agent/GenUI/plugin-pipeline events and the AG-UI event protocol. Keep transport and filesystem concerns out; daemon producers and web/CopilotKit consumers share this conversion boundary.

@@ -1,0 +1,58 @@
+{
+  "owners": [
+    {
+      "id": "2000000000",
+      "name": "EveColorFixture_0",
+      "kind": "cell",
+      "colors": {
+        "background": "f2f3f5"
+      },
+      "rowSpan": 1,
+      "columnSpan": 1
+    },
+    {
+      "id": "2000000001",
+      "name": "EveColorFixture_1",
+      "kind": "inline",
+      "colors": {
+        "foreground": "7f1d1d",
+        "background": "fff6aa"
+      }
+    },
+    {
+      "id": "2000000002",
+      "name": "EveColorFixture_2",
+      "kind": "cell",
+      "colors": {
+        "background": "182828"
+      },
+      "rowSpan": 2,
+      "columnSpan": 1
+    },
+    {
+      "id": "2000000003",
+      "name": "EveColorFixture_3",
+      "kind": "cell",
+      "colors": {
+        "background": "fff6aa"
+      },
+      "rowSpan": 1,
+      "columnSpan": 1,
+      "temporaryStart": true,
+      "temporaryEnd": true
+    },
+    {
+      "id": "2000000004",
+      "name": "EveColorFixture_4",
+      "kind": "cell",
+      "colors": {
+        "background": "f2f3f5"
+      },
+      "rowSpan": 1,
+      "columnSpan": 1,
+      "temporaryStart": true,
+      "temporaryEnd": true
+    }
+  ],
+  "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:w10=\"urn:schemas-microsoft-com:office:word\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\" xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\">\n<w:body>\n    <w:tbl><w:tblPr><w:tblStyle w:val=\"Table\" /><w:tblW w:type=\"auto\" w:w=\"0\" /><w:tblLook w:firstRow=\"0\" w:lastRow=\"0\" w:firstColumn=\"0\" w:lastColumn=\"0\" w:noHBand=\"0\" w:noVBand=\"0\" w:val=\"0000\" /></w:tblPr><w:tblGrid><w:gridCol w:w=\"2640\" /><w:gridCol w:w=\"2640\" /><w:gridCol w:w=\"2640\" /></w:tblGrid><w:tr><w:tc><w:tcPr /><w:p><w:pPr><w:pStyle w:val=\"Compact\" /></w:pPr><w:bookmarkStart w:id=\"2000000000\" w:name=\"EveColorFixture_0\"/><w:bookmarkStart w:id=\"2000000001\" w:name=\"EveColorFixture_1\"/><w:r><w:t xml:space=\"preserve\">Red</w:t></w:r><w:r><w:t xml:space=\"preserve\"> </w:t></w:r><w:r><w:rPr><w:b /><w:bCs /></w:rPr><w:t xml:space=\"preserve\">bold</w:t></w:r><w:hyperlink r:id=\"rId9\"><w:r><w:rPr><w:rStyle w:val=\"Hyperlink\" /></w:rPr><w:t xml:space=\"preserve\">link</w:t></w:r></w:hyperlink><w:bookmarkEnd w:id=\"2000000001\"/><w:bookmarkEnd w:id=\"2000000000\"/></w:p></w:tc><w:tc><w:tcPr><w:vMerge w:val=\"restart\" /></w:tcPr><w:p><w:pPr><w:pStyle w:val=\"Compact\" /></w:pPr><w:bookmarkStart w:id=\"2000000002\" w:name=\"EveColorFixture_2\"/><w:r><w:t xml:space=\"preserve\">Merged</w:t></w:r><w:bookmarkEnd w:id=\"2000000002\"/></w:p></w:tc><w:tc><w:tcPr /><w:p><w:pPr><w:pStyle w:val=\"Compact\" /></w:pPr><w:bookmarkStart w:id=\"2000000003\" w:name=\"EveColorFixture_3\"/></w:p><w:p><w:pPr><w:pStyle w:val=\"Compact\" /></w:pPr><w:bookmarkEnd w:id=\"2000000003\"/></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr /><w:p><w:pPr><w:pStyle w:val=\"Compact\" /></w:pPr><w:r><w:t xml:space=\"preserve\">second</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:gridSpan w:val=\"1\" /><w:vMerge w:val=\"continue\" /></w:tcPr><w:p><w:pPr /></w:p></w:tc><w:tc><w:tcPr /><w:p><w:pPr><w:pStyle w:val=\"Compact\" /></w:pPr><w:bookmarkStart w:id=\"2000000004\" w:name=\"EveColorFixture_4\"/></w:p><w:p><w:pPr><w:pStyle w:val=\"Compact\" /></w:pPr><w:bookmarkEnd w:id=\"2000000004\"/></w:p></w:tc></w:tr></w:tbl>\n    <w:sectPr>\n      <w:footnotePr>\n        \n                \n        <w:numRestart w:val=\"eachSect\" />\n        \n              \n      </w:footnotePr>\n    </w:sectPr>\n  </w:body>\n</w:document>\n"
+}

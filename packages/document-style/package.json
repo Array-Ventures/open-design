@@ -1,0 +1,38 @@
+{
+  "name": "@open-design/document-style",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure document color math and explicitly invoked browser presentation adapters.",
+  "exports": {
+    ".": {
+      "types": "./dist/color.d.ts",
+      "default": "./dist/color.js"
+    },
+    "./color": {
+      "types": "./dist/color.d.ts",
+      "default": "./dist/color.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "default": "./dist/browser.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit && tsc -p tests/node-consumer/tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.39",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "vitest": "4.1.6",
+    "jsdom": "29.1.1"
+  },
+  "engines": {
+    "node": "~24"
+  }
+}

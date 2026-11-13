@@ -4,12 +4,13 @@ import { documentImportStyles, documentTextStyles } from './document-styles';
 import styles from './DocumentEditor.module.css';
 
 const tags = new Set(['main', 'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'table', 'colgroup', 'col', 'thead', 'tbody', 'tr', 'td', 'th', 'a', 'br', 'span', 'code', 'pre', 'img']);
+const canonicalBorderImageDefaults = new Set(['border-image-source', 'border-image-slice', 'border-image-width', 'border-image-outset', 'border-image-repeat']);
 const inline = new Set(['span', 'strong', 'b', 'em', 'i', 'u', 's', 'code']);
 const attributes: Record<string, string[]> = {
   a: ['href', 'title', 'target', 'rel'], img: ['src', 'alt', 'title', 'width', 'height'],
   td: ['colspan', 'rowspan'], th: ['colspan', 'rowspan'], ol: ['start'],
   li: ['value', 'role', 'tabindex', 'aria-checked'], ul: ['__lexicallisttype'],
-  pre: ['spellcheck', 'data-language', 'data-highlight-language'], span: ['data-eve-document-image'],
+  code: ['spellcheck'], pre: ['spellcheck', 'data-language', 'data-highlight-language'], span: ['data-eve-document-image'],
 };
 const editorClasses = new Set(Object.values(styles).flatMap(value => value.split(/\s+/)));
 function supportedElement(element: HTMLElement): boolean {
@@ -22,6 +23,7 @@ function supportedElement(element: HTMLElement): boolean {
   // Unknown declarations (including invalid CSS that the DOM parser discards) must not vanish on save.
   if (element.hasAttribute('dir') && (!['ltr', 'rtl'].includes(element.getAttribute('dir')!) || !['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'li', 'ul', 'ol', 'table', 'tr', 'td', 'th', 'pre'].includes(tag))) return false;
   if (element.hasAttribute('data-od-id') && !/^[A-Za-z0-9_-]{1,100}$/.test(element.getAttribute('data-od-id')!)) return false;
+  if (tag === 'code' && element.hasAttribute('spellcheck') && element.getAttribute('spellcheck') !== 'false') return false;
   if (tag === 'a' && element.hasAttribute('target') && element.getAttribute('target') !== '_blank') return false;
   if (tag === 'a' && element.hasAttribute('rel') && element.getAttribute('rel') !== 'noopener noreferrer') return false;
   if (['main', 'div'].includes(tag) && element.attributes.length) return false;
@@ -42,23 +44,37 @@ function supportedElement(element: HTMLElement): boolean {
     if (Number(element.getAttribute('value')) !== Number(parent.getAttribute('start') ?? 1) + index) return false;
   }
   const rawStyle = element.getAttribute('style') ?? '';
+  const canonicalInlineWhitespace = inline.has(tag) && element.style.getPropertyValue('white-space') === 'pre-wrap';
+  const canonicalCellBorder = ['td', 'th'].includes(tag) && /^1px solid (?:black|rgb\(0,\s*0,\s*0\))$/.test(element.style.getPropertyValue('border'));
+
   // CSSOM may expand shorthands (notably border). Validate each authored declaration
   // independently instead of comparing declaration counts with normalized properties.
   for (const declaration of rawStyle.split(';').filter(value => value.trim())) {
     const colon = declaration.indexOf(':');
     if (colon < 1) return false;
     const name = declaration.slice(0, colon).trim().toLowerCase();
+    // Check the authored shorthand before CSSOM can reset/normalize an image
+    // behind a later border declaration. Only the existing none default is safe.
+    // Own only the generated shorthand, never authored longhands that could
+    // be hidden by a later reset. Chromium expands pre-wrap during enumeration.
+    if (['white-space-collapse', 'text-wrap-mode', 'text-wrap-style'].includes(name)) return false;
+    if (name === 'white-space' && (!inline.has(tag) || declaration.slice(colon + 1).trim().toLowerCase() !== 'pre-wrap')) return false;
+    if (name === 'border-image' && declaration.slice(colon + 1).trim().toLowerCase() !== 'none') return false;
     const probe = document.createElement('span').style;
     probe.cssText = declaration;
     if (!probe.getPropertyValue(name)) return false;
+    // A later default must not hide an earlier authored image or reset.
+    if (canonicalBorderImageDefaults.has(name) && (probe.getPropertyValue(name).trim() !== 'initial' || probe.getPropertyPriority(name))) return false;
   }
   for (const name of Array.from(element.style)) {
     const value = element.style.getPropertyValue(name).trim();
     if (element.style.getPropertyPriority(name)) return false;
     // Lexical's own exports add these presentation defaults, regenerated on every save.
-    if (inline.has(tag) && name === 'white-space' && value === 'pre-wrap') continue;
-    const canonicalCellBorder = ['td', 'th'].includes(tag) && /^1px solid (?:black|rgb\(0,\s*0,\s*0\))$/.test(element.style.getPropertyValue('border'));
+    if (canonicalInlineWhitespace && ((name === 'white-space' && value === 'pre-wrap') || (name === 'white-space-collapse' && value === 'preserve') || (name === 'text-wrap-mode' && value === 'wrap'))) continue;
     if (canonicalCellBorder && name === 'border-image' && value === 'none') continue;
+    // Chromium expands Lexical's border shorthand into these exact reset
+    // longhands. Admit only regenerated initial defaults, never authored images.
+    if (canonicalCellBorder && canonicalBorderImageDefaults.has(name) && value === 'initial') continue;
     if (canonicalCellBorder && /^border(?:-(?:top|right|bottom|left))?(?:-(?:width|style|color))?$/.test(name)) continue;
     // Flattening text wrappers cannot retain contextual CSS-wide values or currentColor.
     if (documentTextStyles.has(name) && /^(?:inherit|initial|unset|revert|revert-layer|currentcolor)$/i.test(value)) return false;

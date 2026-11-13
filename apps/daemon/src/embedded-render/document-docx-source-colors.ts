@@ -1,0 +1,71 @@
+import { randomBytes } from 'node:crypto';
+import { load } from 'cheerio';
+import { documentDocxColorOwners, type DocumentDocxColors } from './document-docx-colors.js';
+
+export interface DocumentDocxColorRequest { id: string; kind: 'cell' | 'inline' }
+export interface DocumentDocxColorSource { html: string; attributeName: string; requests: DocumentDocxColorRequest[] }
+const fail = (): never => { throw new Error('The document converter could not preserve normalized color ownership.'); };
+
+/** Temporary conversion-only data attributes preserve all authored IDs. Neutral
+ * text wrappers allow the contained DOM adapter to resolve inherited ink and
+ * actual nested backgrounds without reproducing CSS ownership rules here. */
+export function documentDocxSourceColors(html: string): DocumentDocxColorSource {
+  const $ = load(html), requests: DocumentDocxColorRequest[] = [];
+  let attributeName: string;
+  do { attributeName = `data-eve-docx-color-${randomBytes(8).toString('hex')}`; }
+  while ($(`[${attributeName}],[${attributeName.slice(5)}]`).length);
+  const add = (kind: 'cell' | 'inline') => { if (requests.length >= 20000) return fail(); const id = String(requests.length); requests.push({ id, kind }); return id; };
+  const htmlNamespace = 'http://www.w3.org/1999/xhtml';
+  // Foreign syntax (for example passive MathML) has a separate admission owner.
+  // Never insert HTML spans/attributes into it or its embedded descendants.
+  const foreign = (elements: ReturnType<typeof $>) => elements.toArray().some(parent => parent.type === 'tag' && Boolean(parent.namespace && parent.namespace !== htmlNamespace));
+  $('td,th').each((_index, cell) => { if (!foreign($(cell).add($(cell).parents()))) $(cell).attr(attributeName, add('cell')); });
+  // Snapshot direct TextNodes before adding wrappers; never walk newly wrapped
+  // children a second time or reinterpret source IDs as generated ownership.
+  const structural = new Set(['body','main','div','table','thead','tbody','tfoot','tr','colgroup','ul','ol']);
+  const text = $('body,body *').contents().toArray().filter(node => node.type === 'text' && (Boolean(node.data.trim()) || !structural.has(node.parent?.type === 'tag' ? node.parent.name : '')));
+  for (const node of text) {
+    if ($(node).parents('script,style').length || foreign($(node).parents())) continue;
+    $(node).wrap(`<span ${attributeName}="${add('inline')}"></span>`);
+  }
+  return { html: $.html(), attributeName, requests };
+}
+
+/** Restore neutral conversion wrappers before parsing: even an uncolored
+ * whitespace SPAN can turn collapsed block indentation into visible paragraphs.
+ * Only generated wrappers with an explicitly empty normalized descriptor may
+ * disappear; the DOM resolver owns visibility/paint admission. */
+export function normalizedDocumentDocxHtml(source: DocumentDocxColorSource, resolved: ReadonlyMap<string, DocumentDocxColors>): string {
+  const $ = load(source.html), expected = new Set(source.requests.map(request => request.id));
+  if (resolved.size !== expected.size || [...resolved.keys()].some(id => !expected.has(id))) return fail();
+  for (const request of source.requests) {
+    const value = resolved.get(request.id) ?? fail();
+    for (const color of [value.foreground, value.background]) if (color !== undefined && !/^[A-Fa-f0-9]{6}$/.test(color)) return fail();
+    if (request.kind !== 'inline' || value.foreground || value.background) continue;
+    const wrapper = $(`[${source.attributeName}="${request.id}"]`);
+    if (wrapper.length !== 1 || wrapper[0]?.type !== 'tag' || wrapper[0].name !== 'span' || wrapper.contents().toArray().some(node => node.type !== 'text')) return fail();
+    wrapper.replaceWith(wrapper.contents());
+  }
+  return $.html();
+}
+
+/** Pandoc strips the HTML data- prefix. Remove only our generated attribute
+ * before native conversion, and fail if any normalized colored owner vanished
+ * (for example an unsupported code importer) rather than dropping its color. */
+export function resolvedDocumentDocxColorOwners(ast: unknown, source: DocumentDocxColorSource, resolved: ReadonlyMap<string, DocumentDocxColors>) {
+  const expected = new Map(source.requests.map(request => [request.id, request.kind])), seen = new Set<string>(), key = source.attributeName.slice(5);
+  if (resolved.size !== expected.size || [...resolved.keys()].some(id => !expected.has(id))) return fail();
+  const owners = documentDocxColorOwners(ast, (raw, kind) => {
+    if (!Array.isArray(raw) || raw.length !== 3 || !Array.isArray(raw[2])) return fail();
+    const attributes = raw[2] as unknown[], own = attributes.filter(pair => Array.isArray(pair) && pair[0] === key);
+    if (!own.length) return {};
+    if (own.length !== 1 || !Array.isArray(own[0]) || typeof own[0][1] !== 'string') return fail();
+    const id = own[0][1]; if (expected.get(id) !== kind || seen.has(id)) return fail();
+    seen.add(id); raw[2] = attributes.filter(pair => pair !== own[0]);
+    const value = resolved.get(id) ?? fail();
+    const { foreground, background } = value;
+    return { ...(foreground ? {foreground} : {}), ...(background ? {background} : {}) };
+  });
+  for (const [id, value] of resolved) if (Object.keys(value).length && !seen.has(id)) return fail();
+  return owners;
+}

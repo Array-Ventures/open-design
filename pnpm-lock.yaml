@@ -110,6 +110,9 @@ importers:
       '@open-design/diagnostics':
         specifier: workspace:*
         version: link:../../packages/diagnostics
+      '@open-design/document-style':
+        specifier: workspace:*
+        version: link:../../packages/document-style
       '@open-design/launcher-proto':
         specifier: workspace:*
         version: link:../../packages/launcher-proto
@@ -404,6 +407,9 @@ importers:
       '@open-design/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@open-design/document-style':
+        specifier: workspace:*
+        version: link:../../packages/document-style
       '@open-design/host':
         specifier: workspace:*
         version: link:../../packages/host
@@ -702,6 +708,21 @@ importers:
       esbuild:
         specifier: 0.28.0
         version: 0.28.0
+      vitest:
+        specifier: 4.1.6
+        version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@20.19.39)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@7.3.3(@types/node@20.19.39)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.3)(yaml@2.9.0))
+
+  packages/document-style:
+    devDependencies:
+      '@types/node':
+        specifier: 20.19.39
+        version: 20.19.39
+      '@typescript/native':
+        specifier: npm:typescript@7.0.2
+        version: typescript@7.0.2
+      jsdom:
+        specifier: 29.1.1
+        version: 29.1.1(@noble/hashes@1.8.0)
       vitest:
         specifier: 4.1.6
         version: 4.1.6(@opentelemetry/api@1.9.1)(@types/node@20.19.39)(jsdom@29.1.1(@noble/hashes@1.8.0))(vite@7.3.3(@types/node@20.19.39)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.22.3)(yaml@2.9.0))

@@ -13,7 +13,7 @@ RUN tar -xzf /tmp/pandoc.tgz -C /tmp && install /tmp/pandoc-3.13/bin/pandoc /usr
 ADD --checksum=sha256:3ebfbf9235b049d384cdba5a66a1a3434bb544391e720b76faa8e1b3ee61a4e5 https://raw.githubusercontent.com/jgm/pandoc/3.13/COPYING.md /usr/share/licenses/pandoc/COPYING.md
 LABEL org.evebot.document-converter="pandoc-3.13" org.evebot.document-converter-source="https://github.com/jgm/pandoc/tree/3.13"
 WORKDIR /opt/render
-COPY worker.mjs provenance.json hyperframe.runtime.iife.js deck-export.iife.js dom-to-pptx.bundle.js ./
+COPY worker.mjs provenance.json hyperframe.runtime.iife.js deck-export.iife.js document-color.iife.js dom-to-pptx.bundle.js ./
 COPY licenses ./licenses
 COPY node_modules/playwright-core ./node_modules/playwright-core
 ENV HOME=/tmp XDG_CACHE_HOME=/tmp
