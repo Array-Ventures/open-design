@@ -265,6 +265,21 @@ describe('manual edit bridge target normalization', () => {
     expect(bridge).not.toContain('if (isPrimaryTarget(el)) return el;');
   });
 
+  it('selects explicitly editable authored SVG roots from their polygon children', () => {
+    const dom = new JSDOM(
+      `<main data-od-id="canvas"><svg data-od-id="triangle" data-od-edit="container" role="img" aria-label="Triangle"><polygon points="50,0 100,100 0,100" /></svg><svg data-od-id="decoration"><path /></svg></main>${buildManualEditBridge(true)}`,
+      { runScripts: 'dangerously', url: 'http://localhost' },
+    );
+    const shape = dom.window.document.querySelector('svg')!;
+    shape.getBoundingClientRect = () => ({ x: 0, y: 0, width: 160, height: 96, top: 0, right: 160, bottom: 96, left: 0, toJSON: () => ({}) } as DOMRect);
+    const postMessage = vi.spyOn(dom.window.parent, 'postMessage');
+    expect(isMeaningfulManualEditElement(shape, { width: 160, height: 96 })).toBe(true);
+    expect(isMeaningfulManualEditElement(dom.window.document.querySelectorAll('svg')[1]!, { width: 160, height: 96 })).toBe(false);
+    shape.querySelector('polygon')!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(postMessage).toHaveBeenCalledWith({ type: 'od-edit-select', target: expect.objectContaining({ id: 'triangle', kind: 'container' }) }, '*');
+    dom.window.close();
+  });
+
   it('selects and announces ordinary HTML elements after srcdoc source-path annotation', () => {
     const dom = new JSDOM(
       `<main data-od-source-path="path-0"><section data-od-source-path="path-0-0"><h1 data-od-source-path="path-0-0-0">Plain title</h1><p data-od-source-path="path-0-0-1">Plain body</p></section></main>${buildManualEditBridge(true)}`,

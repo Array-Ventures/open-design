@@ -1,6 +1,6 @@
 import { buildInsertionBridge } from './insertion-bridge';
 export const MANUAL_EDIT_DISCOVERY_SELECTOR =
-  'svg[data-od-id^="eve-"], main, nav, section, article, aside, header, footer, div, h1, h2, h3, h4, h5, h6, p, a, button, img, ul, ol, li, dl, dt, dd, table, thead, tbody, tfoot, tr, td, th, caption, blockquote, figure, figcaption, label, summary, pre, code, strong, em, b, i, small, mark, span';
+  'svg[data-od-id^="eve-"], svg[data-od-edit="container"], main, nav, section, article, aside, header, footer, div, h1, h2, h3, h4, h5, h6, p, a, button, img, ul, ol, li, dl, dt, dd, table, thead, tbody, tfoot, tr, td, th, caption, blockquote, figure, figcaption, label, summary, pre, code, strong, em, b, i, small, mark, span';
 export const MANUAL_EDIT_SOURCE_PATH_ATTR = 'data-od-source-path';
 export const MANUAL_EDIT_HOST_NODE_SELECTOR = [
   '[data-od-sandbox-shim]',
