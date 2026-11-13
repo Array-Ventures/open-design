@@ -52,9 +52,10 @@ it('evaluates final visible membership together with visibility and refuses inva
   await expect(patchWorkbookSheets(source, [...target.slice(0, 1), { sheetId: '3', name: 'Visible', origin: 'new' }], [{ sheetId: '1', visibility: 'hidden' }])).resolves.toBeInstanceOf(Buffer);
   for (const invalid of [[...target].reverse(), [{ ...target[0]!, origin: 'new' as const }], [{ ...target[0]!, sheetId: '3' }], [...target, { sheetId: '65536', name: 'Overflow', origin: 'new' as const }], [...target, { sheetId: '3', name: 'summary', origin: 'new' as const }]]) await expect(patchWorkbookSheets(source, invalid)).rejects.toThrow();
 });
-it('uses the pinned UTF-16 name bound and keeps the public edit-plan wire closed', () => {
+it('uses the pinned UTF-16 name bound and refuses malformed or unknown public plan fields', () => {
   for (const name of ['Simple', "Bob's plan", '🚀'.repeat(15), '🚀'.repeat(16), "'bad", 'bad]', 'x'.repeat(31), 'x'.repeat(32)]) expect(workbookSheetProjectionSchema.safeParse([{ sheetId: '1', name, origin: 'source' }]).success).toBe(nameCharacterCheck(name));
   expect(workbookEditPlanSchema.safeParse({ sourceSha256: 'a'.repeat(64), edits: [], sheets: [] }).success).toBe(false);
+  expect(workbookEditPlanSchema.safeParse({ sourceSha256: 'a'.repeat(64), edits: [], sheets: [{ sheetId: '1', name: 'Source', origin: 'source' }], unknownOwner: true }).success).toBe(false);
 });
 it('refuses unowned extended-property vectors before changing any source part', async () => {
   const source = await fixture(), document = xmlPart(source.parts, 'docProps/app.xml');

@@ -29,3 +29,9 @@ it('rejects a late proof after Keep Editing aborts the cancellation', async () =
   vi.mocked(workbookHostRequest).mockImplementation(async () => { controller.abort(); return proof; });
   await expect(cancelWorkbookSavePreparation(attempt, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
 });
+it('retains the entire frozen sheet plan in cancellation identity without stripping its projection', async () => {
+  const current: WorkbookSaveAttempt = { ...attempt, plan: { ...attempt.plan, sheets: [{ sheetId: '1', name: 'Renamed', origin: 'source' }, { sheetId: '2', name: 'Fresh', origin: 'new' }] } };
+  vi.mocked(workbookHostRequest).mockResolvedValue(proof);
+  await cancelWorkbookSavePreparation(current);
+  expect(workbookHostRequest).toHaveBeenCalledWith(current.projectId, { action: 'cancel-preparation', body: { operationId: current.operationId, preparationId: current.preparationId, fileName: current.fileName, workbookEditPlan: JSON.stringify(current.plan) } }, undefined);
+});

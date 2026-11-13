@@ -74,8 +74,8 @@ export type WorkbookStyleEdit = z.infer<typeof workbookStyleEditSchema>;
 export const workbookVisibilityEditSchema = z.object({ sheetId: id, visibility: z.enum(['visible', 'hidden']) }).strict();
 export type WorkbookVisibilityEdit = z.infer<typeof workbookVisibilityEditSchema>;
 
-/** Standalone source foundation, deliberately NOT accepted by workbookEditPlan.
- * Wire/carrier support must land atomically before a sheet capability is exposed. */
+/** Source-owned final sheet projection. UI capability remains disabled until
+ * actual SDK identities, recovery and producer admission are qualified. */
 export const WORKBOOK_SHEET_ID_MAX = 65_535;
 export const workbookSheetProjectionSchema = z.array(z.object({
   sheetId: z.string().regex(/^[1-9][0-9]{0,4}$/).refine(value => Number(value) <= WORKBOOK_SHEET_ID_MAX, 'Worksheet identity exceeds its bounded importer limit.'),
@@ -97,7 +97,11 @@ export const workbookStructureEditSchema = z.object({ sheetId: id, sourceRows: z
   for (const [entries, count] of [[edit.rows, edit.sourceRows], [edit.columns, edit.sourceColumns]] as const) { let previous = -1; for (const origin of entries) if (origin !== null) { if (origin <= previous || origin >= count) context.addIssue({ code: 'custom', message: 'Structural origins must be unique, ordered and source-bound.' }); previous = origin; } }
 });
 export type WorkbookStructureEdit = z.infer<typeof workbookStructureEditSchema>;
-export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), styles: z.array(workbookStyleEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), visibility: z.array(workbookVisibilityEditSchema).max(WORKBOOK_MODEL_LIMITS.sheets).optional(), structure: z.array(workbookStructureEditSchema).max(WORKBOOK_MODEL_LIMITS.sheets).optional() }).strict().superRefine((plan,context)=>{
+export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), styles: z.array(workbookStyleEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), visibility: z.array(workbookVisibilityEditSchema).max(WORKBOOK_MODEL_LIMITS.sheets).optional(), structure: z.array(workbookStructureEditSchema).max(WORKBOOK_MODEL_LIMITS.sheets).optional(), sheets: workbookSheetProjectionSchema.optional() }).strict().superRefine((plan,context)=>{
+  if (plan.sheets) {
+    const finalIds = new Set(plan.sheets.map(sheet => sheet.sheetId));
+    for (const edit of [...plan.edits, ...plan.dimensions ?? [], ...plan.styles ?? [], ...plan.visibility ?? [], ...plan.structure ?? []]) if (!finalIds.has(edit.sheetId)) context.addIssue({ code: 'custom', message: 'An edit targets a worksheet outside the final sheet projection.' });
+  }
   const structuralIds = new Set<string>(); let axes = 0;
   for (const edit of plan.structure ?? []) {
     if (structuralIds.has(edit.sheetId)) context.addIssue({ code: 'custom', message: 'Duplicate structural worksheet edit.' });

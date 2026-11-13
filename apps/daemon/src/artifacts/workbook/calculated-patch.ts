@@ -196,8 +196,8 @@ async function calculateContent(source: ReadWorkbook, edits: readonly WorkbookCe
   return { bytes, model: (await readXlsxWorkbook(bytes)).model };
 }
 
-/** Standalone source foundation only: the public edit-plan wire intentionally
- * does not accept sheet projections until every contained carrier is wired. */
+/** Complete sheet-plan calculation owner reached only after the contained
+ * entry validates the frozen source digest. UI production remains disabled. */
 export async function calculateWorkbookSheetEdits(source: ReadWorkbook, sheets: WorkbookSheetProjection, edits: readonly WorkbookCellEdit[] = [], dimensions: readonly WorkbookDimensionEdit[] = [], styles: readonly WorkbookStyleEdit[] = [], visibility: readonly WorkbookVisibilityEdit[] = [], structure: readonly WorkbookStructureEdit[] = []): Promise<{ bytes: Buffer; model: WorkbookDocument }> {
   sheets = workbookSheetProjectionSchema.parse(sheets);
   assertWorkbookSheetsSupported(source);

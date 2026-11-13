@@ -82,3 +82,9 @@ it('carries only needed ACK-owned tail formatting windows as identity projection
   const inside = structuredClone(acknowledged); inside.sheets.a!.rowData![2]!.h = 36;
   expect(workbookGridEdits(refreshed, 'b'.repeat(64), acknowledged, inside).structure).toBeUndefined();
 });
+
+it('recognizes an admitted sheet-only plan as dirty without enabling a grid producer', async () => {
+  const { workbookPlanHasChanges } = await import('../../src/components/embedded/workbook/grid-plan');
+  expect(workbookPlanHasChanges({ sourceSha256: 'a'.repeat(64), edits: [] })).toBe(false);
+  expect(workbookPlanHasChanges({ sourceSha256: 'a'.repeat(64), edits: [], sheets: [{ sheetId: '1', name: 'Renamed', origin: 'source' }] })).toBe(true);
+});

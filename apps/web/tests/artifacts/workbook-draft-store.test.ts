@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { IDBFactory, IDBObjectStore } from 'fake-indexeddb';
 import type { IWorkbookData } from '@univerjs/presets';
-import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import { workbookEditPlanSchema, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { gridWorkbook } from '../../src/components/embedded/workbook/grid-model';
 import { WorkbookWriter, type WorkbookCheckpoint } from '../../src/components/embedded/workbook/workbook-writer';
 import { readWorkbookDraft, saveWorkbookDraft, listWorkbookDrafts, WORKBOOK_DRAFT_DATABASE } from '../../src/components/embedded/workbook/draft-store';
@@ -89,4 +89,22 @@ it('keeps a restore identity account-scoped and compare-and-set without altering
   expect(await readWorkbookDraft(scope)).toEqual(checkpoint);
   await accessWorkbookRestore(scope, { expected: intent.operationId, value: null });
   expect(await accessWorkbookRestore(scope)).toBeNull(); expect(await readWorkbookDraft(scope)).toEqual(checkpoint);
+});
+it('refuses a pending sheet projection until actual SDK derivation exists and preserves the prior protected draft', async () => {
+  const { writer } = fixture();
+  const protectedWriter = new WorkbookWriter(writer.checkpoint().source, writer.checkpoint().acknowledged, async () => { throw Error('Response lost'); }, () => {}, undefined, { save: async value => { if (value) await saveWorkbookDraft(scope, value); } });
+  protectedWriter.update(writer.recoveredSnapshot()); await protectedWriter.flush();
+  const original = await readWorkbookDraft(scope); expect(original?.pending).not.toBeNull();
+  const invalid = structuredClone(original!);
+  invalid.source.model.activeSheetId = '1'; invalid.source.model.sheets[0]!.id = '1';
+  for (const book of [invalid.acknowledged, invalid.desired, invalid.pending!.snapshot]) {
+    book.sheets['1'] = { ...book.sheets.s!, id: '1' }; delete book.sheets.s; book.sheetOrder = ['1'];
+  }
+  for (const edit of invalid.pending!.intent.plan.edits) edit.sheetId = '1';
+  invalid.pending!.intent.plan.sheets = [{ sheetId: '1', name: 'Renamed', origin: 'source' }];
+  expect(workbookEditPlanSchema.parse(invalid.pending!.intent.plan).sheets).toEqual(invalid.pending!.intent.plan.sheets);
+  // The intent schema retains the field, but derived snapshot ownership must
+  // still refuse it: sheet-producing SDK/recovery identities are not enabled.
+  await expect(saveWorkbookDraft(scope, invalid)).rejects.toThrow('does not match');
+  expect((await readWorkbookDraft(scope))?.pending?.intent).toEqual(original?.pending?.intent);
 });

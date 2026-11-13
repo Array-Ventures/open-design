@@ -11,8 +11,8 @@ import { removeWorkbookCalculationChain } from './calculation-chain.js';
 
 const invalid = (message: string): never => { throw new WorkbookFormatError(message); };
 const unsupported = (message: string): never => { throw new WorkbookFormatError(message, 'WORKBOOK_UNSUPPORTED'); };
-/** Internal source-only foundation. No preview capability or wire plan enables
- * these actions yet. Repeat this admission in the eventual contained caller. */
+/** Internal source admission, repeated by the contained sheet-plan consumer.
+ * No grid producer or preview capability enables these actions yet. */
 export function assertWorkbookSheetsSupported(source: ReadWorkbook): void {
   assertWorkbookStructureSupported(source);
   workbookSheetProjectionSchema.parse(source.model.sheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name, origin: 'source' })));
