@@ -13,8 +13,16 @@ export function gridStructuralBaseline(model: WorkbookDocument, sourceSha256: st
   if (!model.worksheetStructureEditable || !hasWorkbookStructureIdentity(initial) || !hasWorkbookStructureIdentity(current)) return { model, before, after, structure: [] as WorkbookStructureEdit[] };
   const maps = gridStructureIdentity(initial, current, sourceSha256), next = structuredClone(model), structure: WorkbookStructureEdit[] = [];
   for (const sheet of next.sheets) {
-    const map = maps[sheet.id]; if (!map) continue;
     const old = before.sheets[sheet.id]!;
+    const map = maps[sheet.id];
+    if (!map) {
+      // An acknowledged SDK window can retain inserted blank tail axes that
+      // a fresh source preview does not materialize. Its validated identities
+      // still own those coordinates; unchanged dimensions are not new edits.
+      sheet.rowCount = Math.max(sheet.rowCount, old.rowCount!);
+      sheet.columnCount = Math.max(sheet.columnCount, old.columnCount!);
+      continue;
+    }
     const rows = workbookAxisProjection(old.rowCount!, map.rows, 1048576), columns = workbookAxisProjection(old.columnCount!, map.columns, 16384);
     const move = (row: number, column: number) => { const r = rows.point(row), c = columns.point(column); return r === null || c === null ? null : { row: r, column: c }; };
     const range = (bounds: { startRow: number; endRow: number; startColumn: number; endColumn: number }) => {

@@ -47,3 +47,20 @@ it('journals and flushes structure-only changes and derives the next save relati
   expect(writes).toHaveLength(2); expect((writes[1] as { sourceSha256: string; structure?: unknown }).sourceSha256).toBe('b'.repeat(64)); expect((writes[1] as { structure?: unknown }).structure).toBeUndefined();
   await writer.close();
 });
+
+it('keeps acknowledged blank-axis metadata beyond the source reader window clean without admitting forged dimensions', () => {
+  const { source, book, sheet } = fixture(); sheet.insertRowsBefore(1, 1); sheet.insertColumnsBefore(1, 1);
+  const acknowledged = book.save(), refreshed = structuredClone(source);
+  refreshed.sheets[0]!.cells[0]!.row = 2; refreshed.sheets[0]!.cells[0]!.column = 2;
+  // The real reader derives 100x26 from materialized content even though the
+  // acknowledged SDK still owns a 101x27 editor window with dense metadata.
+  expect(refreshed.sheets[0]).toMatchObject({ rowCount: 100, columnCount: 26 });
+  expect(acknowledged.sheets.a!.rowData![100]).toBeDefined();
+  expect(acknowledged.sheets.a!.columnData![26]).toBeDefined();
+  expect(workbookGridEdits(refreshed, 'b'.repeat(64), acknowledged, acknowledged)).toEqual({ sourceSha256: 'b'.repeat(64), edits: [] });
+  expect(refreshed.sheets[0]).toMatchObject({ rowCount: 100, columnCount: 26 });
+  const forged = structuredClone(acknowledged); forged.sheets.a!.rowData![100] = {};
+  expect(() => workbookGridEdits(refreshed, 'b'.repeat(64), acknowledged, forged)).toThrow('identity');
+  const oversized = structuredClone(acknowledged); oversized.sheets.a!.rowCount = 100_001;
+  expect(() => workbookGridEdits(refreshed, 'b'.repeat(64), acknowledged, oversized)).toThrow('limit');
+});
