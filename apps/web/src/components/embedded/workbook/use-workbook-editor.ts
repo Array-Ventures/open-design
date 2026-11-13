@@ -1,4 +1,5 @@
-import { checkedWorkbookSaveAcknowledgement } from './save-provenance';
+import type { WorkbookKernelAcknowledgement } from './kernel-acknowledgement';
+import { checkedWorkbookSaveAcknowledgement, type WorkbookSaveAcknowledgement } from './save-provenance';
 import { workbookGridPlan, workbookPlanHasChanges } from './grid-plan';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { IWorkbookData } from '@univerjs/presets';
@@ -20,7 +21,7 @@ const sameWriterScope = (a: WriterScope, b: WriterScope) => Boolean(a.journal &&
 
 
 export function useWorkbookEditor(projectId: string, fileName: string, source: Preview | null,
-  onAcknowledged: (source: Preview) => void, onDirtyChange?: (dirty: boolean) => void, journal?: WorkbookJournal, onDiscarded?: () => void, history?: { open: boolean; blocked: boolean; visible?: boolean; show(): void }) {
+  onAcknowledged: (source: Preview, ticket?: WorkbookKernelAcknowledgement) => void, onDirtyChange?: (dirty: boolean) => void, journal?: WorkbookJournal, onDiscarded?: () => void, history?: { open: boolean; blocked: boolean; visible?: boolean; show(): void }) {
   const [state, setState] = useState<WorkbookWriteState>({ dirty: false, saving: false, error: null });
   const [discarding, setDiscarding] = useState(false);
   const current = useRef({ projectId, fileName, source, onAcknowledged, onDirtyChange, journal, onDiscarded, history, discarding }); current.current = { projectId, fileName, source, onAcknowledged, onDirtyChange, journal, onDiscarded, history, discarding };
@@ -64,7 +65,9 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     handoff.current = null;
     const controller = new AbortController(); running.current = controller;
     const attempts = new Map<string, { save: ReturnType<typeof newWorkbookSaveAttempt>; previewId: string }>();
-    let acknowledged: Preview | null = null;
+    let acknowledged: { source: Preview; snapshot: IWorkbookData; acknowledgement: WorkbookSaveAcknowledgement } | null = null;
+    let publishedSource = source;
+    let historyContinuity = Boolean(scope.journal);
     const ownedJournal = scope.journal;
     const matching = (candidate: WriterHandoff | null | undefined) => {
       if (!candidate || !sameWriterScope(candidate.scope, scope) || candidate.checkpoint.source.sourceSha256 !== source.sourceSha256) return undefined;
@@ -100,8 +103,14 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
       attempts.delete(intent.id); return { preview: refreshed, acknowledgement };
     }, next => {
       stateRef.current = next; setState(next); current.current.onDirtyChange?.(next.dirty);
-      if (!next.dirty && acknowledged) { const saved = acknowledged; acknowledged = null; current.current.onAcknowledged(saved); }
-    }, source => { acknowledged = source; }, ownedJournal ? { save: ownedJournal.save, restored: recovery } : undefined);
+      if (!next.dirty && acknowledged) {
+        const saved = acknowledged; acknowledged = null;
+        const ticket = historyContinuity && saved.acknowledgement.kind === 'history' && ownedJournal && generation.current === owner
+          && current.current.journal === ownedJournal && current.current.source === publishedSource
+          ? { previous: publishedSource, target: saved.source, snapshot: saved.snapshot, acknowledgement: saved.acknowledgement, controllerId, journal: ownedJournal } : undefined;
+        current.current.onAcknowledged(saved.source, ticket); publishedSource = saved.source;
+      }
+    }, (source, snapshot, acknowledgement) => { historyContinuity &&= acknowledgement.kind === 'history'; acknowledged = { source, snapshot, acknowledgement }; }, ownedJournal ? { save: ownedJournal.save, restored: recovery } : undefined);
     const next = writer.current.state(); stateRef.current = next; setState(next); current.current.onDirtyChange?.(next.dirty);
   }, [projectId, fileName, sourceIdentity, journal, closeWriter]);
   useEffect(() => {

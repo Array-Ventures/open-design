@@ -40,7 +40,7 @@ it('admits exact geometry-preserving visibility mutations to calculation while r
 it('uses real SDK visibility commands with undo/redo and refuses writes before ready, after readiness is withdrawn, or into veryHidden sheets', async () => {
   const model = source(), univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: English } }); closers.push(() => univer.dispose());
   let book: ReturnType<FUniver['createWorkbook']> | undefined, ready = false;
-  const owner = ownWorkbookVisibility(univer, model, () => book?.save(), () => ready); closers.push(() => owner.dispose());
+  const owner = ownWorkbookVisibility(univer, () => model, () => book?.save(), () => ready); closers.push(() => owner.dispose());
   univer.registerPlugin(UniverSheetsPlugin); const api = FUniver.newAPI(univer); book = api.createWorkbook(data(model)); book.setEditable(true);
   univer.__getInjector().get(IUniverInstanceService).focusUnit(book.getId());
   const commands = univer.__getInjector().get(ICommandService), params = { unitId: book.getId(), subUnitId: 'b' };
@@ -60,11 +60,11 @@ it('uses real SDK visibility commands with undo/redo and refuses writes before r
 it('checks parent origin, controller, source, read-only and blocked state and omits veryHidden from header state', () => {
   const model = source(), univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: English } }); closers.push(() => univer.dispose()); univer.registerPlugin(UniverSheetsPlugin);
   const api = FUniver.newAPI(univer), book = api.createWorkbook(data(model)); book.setEditable(true);
-  const owner = ownWorkbookVisibility(univer, model, () => book.save(), () => !scope.blocked); closers.push(() => owner.dispose());
+  const owner = ownWorkbookVisibility(univer, () => model, () => book.save(), () => !scope.blocked); closers.push(() => owner.dispose());
   const postMessage = vi.fn(), parent = { postMessage }, handlers = new Set<(event: MessageEvent) => void>();
   vi.stubGlobal('window', { parent, location: { origin: 'http://fixture.invalid' }, addEventListener: (_: string, fn: (event: MessageEvent) => void) => handlers.add(fn), removeEventListener: (_: string, fn: (event: MessageEvent) => void) => handlers.delete(fn) });
   const scope = { projectId: '11111111-1111-4111-8111-111111111111', controllerId: '22222222-2222-4222-8222-222222222222', sourceSha256: sha, blocked: false };
-  const bridge = workbookVisibilityBridge(univer, api, model, () => scope); closers.push(bridge.dispose);
+  const bridge = workbookVisibilityBridge(univer, api, () => model, () => scope); closers.push(bridge.dispose);
   // The strict wire shape has no host-internal blocked property.
   const send = (fields: Record<string, unknown> = {}, envelope: Record<string, unknown> = {}) => {
     const payload = { type: 'studio:workbook-visibility', projectId: scope.projectId, controllerId: scope.controllerId, sourceSha256: scope.sourceSha256, sheetId: 'b', visibility: 'hidden', ...fields };
@@ -96,8 +96,19 @@ it('journals visibility-only writes before admission and retries the identical i
 it('keeps a visibility bridge inert without a current scope', () => {
   const model = source(), postMessage = vi.fn(), handlers = new Set<(event: MessageEvent) => void>(), parent = { postMessage };
   vi.stubGlobal('window', { parent, location: { origin: 'http://fixture.invalid' }, addEventListener: (_: string, fn: (event: MessageEvent) => void) => handlers.add(fn), removeEventListener: (_: string, fn: (event: MessageEvent) => void) => handlers.delete(fn) });
-  const bridge = workbookVisibilityBridge({} as Univer, {} as FUniver, model, () => undefined);
+  const bridge = workbookVisibilityBridge({} as Univer, {} as FUniver, () => model, () => undefined);
   bridge.publish();
   handlers.forEach(fn => fn({ source: parent, origin: 'http://fixture.invalid', data: { type: 'studio:artifact-request' } } as unknown as MessageEvent));
   expect(postMessage).not.toHaveBeenCalled(); bridge.dispose(); expect(handlers.size).toBe(0);
+});
+
+
+it('withdraws mutation authority when the rebased source getter removes visibility capability', () => {
+  let model = source(); const univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: English } }); closers.push(() => univer.dispose());
+  let book: ReturnType<FUniver['createWorkbook']> | undefined;
+  const owner = ownWorkbookVisibility(univer, () => model, () => book?.save(), () => true); closers.push(() => owner.dispose());
+  univer.registerPlugin(UniverSheetsPlugin); const api = FUniver.newAPI(univer); book = api.createWorkbook(data(model));
+  const commands = univer.__getInjector().get(ICommandService), params = { unitId: book.getId(), subUnitId: 'b', hidden: 1 };
+  model = { ...model, worksheetVisibilityEditable: false };
+  expect(() => commands.syncExecuteCommand(SetWorksheetHideMutation.id, params)).toThrow(); expect(book.save().sheets.b!.hidden).toBe(0);
 });

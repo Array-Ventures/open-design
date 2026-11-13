@@ -98,7 +98,10 @@ it.each([true, false])('consumes the actual hook receipt as an explicit ACK with
     return { id: attempt.operationId, projectId, fileName, renderId: attempt.renderId, state: 'applied', sourceSha256: source.sourceSha256,
       targetSha256: target.sourceSha256, actualSha256: target.sourceSha256, sourceVersionId: history ? 'before' : null, versionId: 'after' };
   });
-  const acknowledged = vi.fn(() => {
+  const acknowledged = vi.fn((next: { sourceSha256: string; model: WorkbookDocument }, ticket?: import('../../src/components/embedded/workbook/kernel-acknowledgement').WorkbookKernelAcknowledgement) => {
+    expect(next).toBe(target);
+    if (history) { expect(ticket?.previous).toBe(source); expect(ticket?.target).toBe(target); expect(ticket?.journal).toBe(journal); expect(ticket?.controllerId).toBe(hook.result.current.controllerId); }
+    else expect(ticket).toBeUndefined();
     expect(records.some(record => record?.pending?.acknowledgement)).toBe(true);
     if (history) expect(records.at(-1)?.sourceAcknowledgement).toMatchObject({ kind: 'history', provenance: { sourceVersionId: 'before', versionId: 'after' } });
     else expect(records.at(-1)).toBeNull();
@@ -110,4 +113,42 @@ it.each([true, false])('consumes the actual hook receipt as an explicit ACK with
   await waitFor(() => expect(acknowledged).toHaveBeenCalledOnce());
   expect(hook.result.current.state).toMatchObject({ dirty: false, saving: false, error: null });
   expect(hook.result.current.checkpoint()?.sourceAcknowledgement).toMatchObject({ kind: history ? 'history' : 'unavailable' });
+});
+
+
+it('does not grant a retained kernel when the checked receipt has no protected journal owner', async () => {
+  const target = { ...source, sourceSha256: 'b'.repeat(64) }, acknowledged = vi.fn();
+  vi.mocked(loadWorkbookPreview).mockResolvedValue(target);
+  vi.mocked(saveWorkbook).mockImplementation(async (attempt, _signal, prepared) => {
+    attempt.renderId = crypto.randomUUID(); await prepared?.();
+    return { id: attempt.operationId, projectId, fileName, renderId: attempt.renderId, state: 'applied', sourceSha256: source.sourceSha256,
+      targetSha256: target.sourceSha256, actualSha256: target.sourceSha256, sourceVersionId: 'before', versionId: 'after' };
+  });
+  const hook = renderHook(() => useWorkbookEditor(projectId, fileName, source, acknowledged));
+  await act(() => hook.result.current.ready(snapshot(1)));
+  act(() => { hook.result.current.snapshot(snapshot(2)); save(hook.result.current.controllerId); });
+  await waitFor(() => expect(acknowledged).toHaveBeenCalledOnce());
+  expect(acknowledged).toHaveBeenCalledWith(target, undefined);
+});
+
+it('keeps one kernel ticket across a protected multi-ACK drain without inventing a source-version chain', async () => {
+  const target = (value: number, digest: string) => { const model = structuredClone(source.model); model.sheets[0]!.cells[0]!.value = value; return { sourceSha256: digest.repeat(64), model }; };
+  const first = target(2, 'b'), final = target(3, 'c'), release = deferred<void>(), entered = deferred<void>(), acknowledged = vi.fn(); let writes = 0;
+  vi.mocked(saveWorkbook).mockImplementation(async (attempt, _signal, prepared) => {
+    const index = ++writes; attempt.renderId = crypto.randomUUID(); await prepared?.();
+    if (index === 1) { entered.resolve(); await release.promise; }
+    const saved = index === 1 ? first : final;
+    return { id: attempt.operationId, projectId, fileName, renderId: attempt.renderId, state: 'applied', sourceSha256: attempt.plan.sourceSha256,
+      targetSha256: saved.sourceSha256, actualSha256: saved.sourceSha256, sourceVersionId: `before${index}`, versionId: `after${index}` };
+  });
+  vi.mocked(loadWorkbookPreview).mockImplementation(async () => writes === 1 ? first : final);
+  const journal = { save: vi.fn(async () => {}) }, hook = renderHook(() => useWorkbookEditor(projectId, fileName, source, acknowledged, undefined, journal));
+  await act(() => hook.result.current.ready(snapshot(1)));
+  act(() => { hook.result.current.snapshot(snapshot(2)); save(hook.result.current.controllerId); }); await entered.promise;
+  act(() => hook.result.current.snapshot(snapshot(3))); await act(async () => { release.resolve(); });
+  await waitFor(() => expect(acknowledged).toHaveBeenCalledOnce());
+  const ticket = acknowledged.mock.calls[0]![1];
+  expect(ticket.previous).toBe(source); expect(ticket.target).toBe(final); expect(ticket.snapshot.sheets.s.cellData[0][0].v).toBe(3);
+  expect(ticket.acknowledgement.provenance).toMatchObject({ sourceSha256: first.sourceSha256, targetSha256: final.sourceSha256, sourceVersionId: 'before2', versionId: 'after2' });
+  expect(hook.result.current.checkpoint()?.sourceAcknowledgement).toEqual(ticket.acknowledgement); expect(saveWorkbook).toHaveBeenCalledTimes(2);
 });

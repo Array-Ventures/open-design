@@ -33,7 +33,7 @@ export class WorkbookWriter {
   constructor(source: Preview, initial: IWorkbookData,
     private write: (intent: WorkbookWriteIntent, checkpoint: () => Promise<void>) => Promise<WorkbookWriteResult>,
     private changed: (state: WorkbookWriteState) => void,
-    private accepted?: (source: Preview, snapshot: IWorkbookData) => void, private journal?: WorkbookJournal) {
+    private accepted?: (source: Preview, snapshot: IWorkbookData, acknowledgement: WorkbookSaveAcknowledgement) => void, private journal?: WorkbookJournal) {
     this.source = source; this.acknowledged = structuredClone(initial); this.desired = structuredClone(initial);
     if (journal?.restored) {
       const restored = structuredClone(journal.restored);
@@ -114,7 +114,7 @@ export class WorkbookWriter {
         }
         if (!this.active) return;
         this.error = null; this.recoveryConflict = false;
-        this.accepted?.(source, structuredClone(this.acknowledged)); this.publish();
+        this.accepted?.(source, structuredClone(this.acknowledged), structuredClone(acknowledgement)); this.publish();
       } catch (error) {
         if (this.active && this.pending && isWorkbookSaveRejection(error, this.pending.intent)) {
           // Only a checked receipt or permanent candidate-removal fence rules

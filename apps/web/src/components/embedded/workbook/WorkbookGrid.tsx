@@ -1,5 +1,8 @@
 'use client';
 
+import { workbookSaveAcknowledgementSchema } from './save-provenance';
+import type { WorkbookKernelAcknowledgement } from './kernel-acknowledgement';
+
 import { WorkbookStructureMenu } from './WorkbookStructureMenu';
 import { liveWorkbookStructureMenu, workbookStructureController, type WorkbookStructureSource, type WorkbookStructureController } from './grid-structure-actions';
 import { hasWorkbookStructureIdentity, ownWorkbookAxisIdentity, seedWorkbookStructureIdentity } from './grid-structure-identity';
@@ -10,7 +13,7 @@ import { workbookExportBridge, type WorkbookExportScope } from './grid-export';
 import { attachWorkbookRichInput } from './rich-cell-input';
 import { attachCsvLiteralInput } from './csv-literal-input';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CommandType, IContextService, FUniver, LocaleType, Univer, type IRange, type IWorkbookData } from '@univerjs/presets';
 import English from '@univerjs/preset-sheets-core/locales/en-US';
 import '@univerjs/preset-sheets-core/lib/index.css';
@@ -36,6 +39,7 @@ import { WorkbookViewLayers } from './grid-view-layers';
 export interface WorkbookGridProps {
   id: string; title: string; model: WorkbookDocument; sourceSha256?: string;
   initialSnapshot?: IWorkbookData;
+  kernelGeneration?: object; acknowledgement?: WorkbookKernelAcknowledgement; onKernelReset?(): void;
   formatScope?: WorkbookFormatScope;
   exportScope?: WorkbookExportScope;
   structureSource?: () => WorkbookStructureSource | null;
@@ -47,15 +51,16 @@ export interface WorkbookGridProps {
 
 /** A disposable spreadsheet UI, never an XLSX serializer. A surface must supply
  * its durable edit controller before edits are enabled. Refresh/theme changes
- * do not recreate the grid unless the acknowledged source model changes. */
-export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, onSnapshot, onReady, onDisplayGaps, formatScope, exportScope, structureSource, structureBlocked = true }: WorkbookGridProps) {
+ * do not recreate the grid. Only a protected scalar own-ACK can rebase source
+ * authority within one generation; external replacements retire its history. */
+export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration, acknowledgement, onKernelReset, initialSnapshot, onSnapshot, onReady, onDisplayGaps, formatScope, exportScope, structureSource, structureBlocked = true }: WorkbookGridProps) {
   const structure = useRef({ source: structureSource, blocked: structureBlocked }); structure.current = { source: structureSource, blocked: structureBlocked };
   const structureOwner = useRef<WorkbookStructureController | null>(null);
   const structureMenu = useRef(liveWorkbookStructureMenu(() => structureOwner.current));
-  const container = useRef<HTMLDivElement>(null), callbacks = useRef({ id, model, title, onSnapshot, onReady, onDisplayGaps });
+  const container = useRef<HTMLDivElement>(null), callbacks = useRef({ id, model, sourceSha256, title, onSnapshot, onReady, onDisplayGaps, onKernelReset });
   const views = useRef<WorkbookViewLayers | null>(null);
   const viewScope = useRef(id);
-  callbacks.current = { id, model, title, onSnapshot, onReady, onDisplayGaps };
+  callbacks.current = { id, model, sourceSha256, title, onSnapshot, onReady, onDisplayGaps, onKernelReset };
   const view = useRef<{ id: string; sourceFormat: WorkbookDocument['sourceFormat']; sheetId: string; snapshot: IWorkbookData; range?: IRange } | null>(null);
   const restored = useRef(initialSnapshot);
   const format = useRef(formatScope); format.current = formatScope;
@@ -92,6 +97,14 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
   const stored = useRef<WorkbookDocument | null>(null);
   const carried = useRef<{ id: string; model: WorkbookDocument; snapshot: IWorkbookData } | null>(null);
   const editable = Boolean(onSnapshot);
+  const sourceGeneration = kernelGeneration ?? model, generationDigest = kernelGeneration ? undefined : sourceSha256;
+  const sourceRebase = useRef<{ generation: object; matches(model: WorkbookDocument, digest: string | undefined): boolean; apply(ticket: WorkbookKernelAcknowledgement): void } | null>(null);
+  useLayoutEffect(() => {
+    const owner = sourceRebase.current;
+    if (!owner || owner.generation !== kernelGeneration || owner.matches(model, sourceSha256)) return;
+    try { if (!acknowledgement) throw Error('The source has no owned acknowledgement.'); owner.apply(acknowledgement); }
+    catch { if (onKernelReset) onKernelReset(); else setKernel(value => value + 1); }
+  }, [model, sourceSha256, kernelGeneration, acknowledgement, onKernelReset]);
   useEffect(() => {
     if (!container.current) return;
     // Retire the old menu owner while retaining the host element shared by
@@ -100,13 +113,14 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
     structureOwner.current = null;
     reportInputError(null);
     calculationState.current = null;
+    let model = callbacks.current.model, sourceSha256 = callbacks.current.sourceSha256;
     const root = document.documentElement;
     let dispose = () => {}, active = true;
     let ownedStructure: WorkbookStructureController | null = null;
     // Crossing artifact identity withdraws old content synchronously, even if
     // the next lazy import or source preparation never completes.
     if (viewScope.current !== id) { views.current?.dispose(); views.current = null; viewScope.current = id; }
-    const current = () => active && callbacks.current.id === id && callbacks.current.model === model;
+    const current = () => active && callbacks.current.id === id && callbacks.current.model === model && callbacks.current.sourceSha256 === sourceSha256;
     const close = () => { const owned = dispose; dispose = () => {}; owned(); };
     const start = async () => {
     try {
@@ -130,7 +144,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
       const stopArrayInput = () => { const owned = arrayInput; arrayInput = null; owned?.dispose(); };
       const stopCalculation = () => { const owned = calculationOwner; calculationOwner = null; owned?.dispose(); const arrays = arrayOwner; arrayOwner = null; arrays?.dispose(); };
       let readSnapshot: (() => IWorkbookData) | undefined;
-      const visibilityOwner = ownWorkbookVisibility(univer, model, () => readSnapshot?.(), () => current() && readyForInput && editable && !format.current?.blocked && !format.current?.saving);
+      const visibilityOwner = ownWorkbookVisibility(univer, () => model, () => readSnapshot?.(), () => current() && readyForInput && editable && !format.current?.blocked && !format.current?.saving);
       layer.own(() => visibilityOwner.dispose());
       const fallback = () => {
         if (!current()) return;
@@ -139,7 +153,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
           const snapshot = readSnapshot();
           callbacks.current.onSnapshot?.(snapshot);
           carried.current = { id, model, snapshot };
-          setKernel(value => value + 1);
+          if (callbacks.current.onKernelReset) callbacks.current.onKernelReset(); else setKernel(value => value + 1);
         }
       };
       // Own every instance before an asynchronous startup or plugin setup.
@@ -196,7 +210,8 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
       workbook.setActiveSheet(previous && prepared.data.sheets?.[previous.sheetId] ? previous.sheetId : seed?.sheetOrder[0] ?? prepared.activeSheetId); workbook.setEditable(false);
       readSnapshot = () => workbook.save();
       const calculationChanged = (value: WorkbookCalculationState) => { if (current()) { calculationState.current = value; publish.current(); } };
-      const calculation = arraySeed ? attachWorkbookArrayCalculation(univer, univerAPI, model, original, workbook.save(), sourceSha256!, readSnapshot, arrayOwner, calculationChanged, { ready: univer.__getInjector().get(LifecycleService).onStage(LifecycleStages.Rendered), available: () => Boolean(univer.__getInjector().get(IRenderManagerService).getRenderUnitById(id)) }, guardedArrayInput!) : attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, calculationChanged);
+      const scalarCalculation = arraySeed ? null : attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, calculationChanged);
+      const calculation = scalarCalculation ?? attachWorkbookArrayCalculation(univer, univerAPI, model, original, workbook.save(), sourceSha256!, readSnapshot, arrayOwner, calculationChanged, { ready: univer.__getInjector().get(LifecycleService).onStage(LifecycleStages.Rendered), available: () => Boolean(univer.__getInjector().get(IRenderManagerService).getRenderUnitById(id)) }, guardedArrayInput!);
       dispose = () => {
         try { const sheet = workbook.getActiveSheet(); view.current = { id, sourceFormat: model.sourceFormat, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() }; }
         finally { workbook.setEditable(false); calculation.dispose(); stopCalculation(); layer.retire(); }
@@ -225,7 +240,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
         const scope = format.current;
         return editable && model.sourceFormat !== 'csv' && scope ? { ...scope, blocked: scope.blocked || !readyForInput } : undefined;
       }); formattingRef.current = formatting;
-      const visibility = workbookVisibilityBridge(univer, univerAPI, model, () => {
+      const visibility = workbookVisibilityBridge(univer, univerAPI, () => model, () => {
         const scope = format.current;
         return scope && sourceSha256 && model.sourceFormat !== 'csv' ? { ...scope, sourceSha256, blocked: scope.blocked || Boolean(scope.saving) || !editable || !readyForInput } : undefined;
       }); visibilityRef.current = visibility;
@@ -237,6 +252,20 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
         const scope = format.current;
         return scope ? { ...scope, blocked: scope.blocked || Boolean(scope.saving) || structure.current.blocked || !current() || !readyForInput || !editable || !calculationOwner?.ready || Boolean(univer.__getInjector().get(kernel.IEditorBridgeService).isVisible().visible) } : null;
       });
+      if (kernelGeneration) sourceRebase.current = { generation: kernelGeneration, matches(next, digest) { return next === model && digest === sourceSha256; }, apply(ticket) {
+        if (ticket.target.model === model && ticket.target.sourceSha256 === sourceSha256) return;
+        const scope = format.current, checked = workbookSaveAcknowledgementSchema.parse(ticket.acknowledgement);
+        if (checked.kind !== 'history' || checked.provenance.targetSha256 !== ticket.target.sourceSha256 || checked.provenance.projectId !== scope?.projectId) throw Error('The source acknowledgement does not match this workbook.');
+        if (!active || ticket.previous.model !== model || ticket.previous.sourceSha256 !== sourceSha256 || ticket.target.model !== callbacks.current.model
+          || ticket.target.sourceSha256 !== callbacks.current.sourceSha256 || !scope || ticket.controllerId !== scope.controllerId || ticket.snapshot.id !== id
+          || !calculationOwner?.ready || arraySeed || !scalarCalculation || !readyForInput || ticket.target.model.sourceFormat === 'csv'
+          || ticket.target.model.worksheetStructureEditable !== model.worksheetStructureEditable || ticket.target.model.worksheetVisibilityEditable !== model.worksheetVisibilityEditable
+          || !workbookLiveCalculationEligible(ticket.target.model, ticket.snapshot)) throw Error('The saved workbook requires a new kernel owner.');
+        const fresh = gridWorkbook(ticket.target.model, id, callbacks.current.title, workbookGridTheme(root).gray[900]);
+        scalarCalculation.rebaseSource(ticket.target.model, fresh.data as IWorkbookData, ticket.snapshot);
+        model = ticket.target.model; sourceSha256 = ticket.target.sourceSha256;
+        scalarCalculation.publish(); formatting.publish(); exporter.publish(); visibility.publish(); callbacks.current.onDisplayGaps?.(fresh.gaps);
+      } };
       ownedStructure = structureActions; structureOwner.current = structureActions;
       layer.own(() => { if (structureOwner.current === structureActions) structureOwner.current = null; structureActions.dispose(); });
       const changed = univerAPI.addEvent(univerAPI.Event.CommandExecuted, event => {
@@ -274,8 +303,8 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
     } catch { close(); if (current()) setError('The workbook grid could not be opened.'); }
     };
     void start();
-    return () => { active = false; if (structureOwner.current === ownedStructure) structureOwner.current = null; close(); };
-  }, [id, model, sourceSha256, editable, kernel]);
+    return () => { active = false; if (sourceRebase.current?.generation === kernelGeneration) sourceRebase.current = null; if (structureOwner.current === ownedStructure) structureOwner.current = null; close(); };
+  }, [id, sourceGeneration, generationDigest, editable, kernel]);
   // Run after the grid effect's cleanup has captured view state and detached
   // listeners. Disposing the kernel first would make workbook.save() invalid.
   useEffect(() => () => { views.current?.dispose(); views.current = null; }, []);

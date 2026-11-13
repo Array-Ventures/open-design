@@ -355,3 +355,38 @@ failure regressions fail against the original Writer. This remains a development
 checkpoint: own-ACK same-kernel retention, per-delete descriptor ownership,
 reachable older association retention, outer Undo gating and actual contained
 SDK recovery are not integrated, and sheet controls remain disabled.
+
+
+### Development checkpoint: protected scalar kernel/source handoff
+
+The editor issues an in-memory own-ACK ticket only after successful Writer
+protection, within the same controller and journal lease, and for the exact
+previously published Preview object. A multi-save drain retains that live owner
+continuity but carries only its last checked receipt; this does not manufacture a
+persisted historical chain. Without a journal, or after a legacy receipt, no
+retained-kernel ticket is issued.
+
+The surface keeps a separate kernel generation. External/history/reset source
+adoption creates a new generation; a matching own-ACK alone retains it. The grid
+then checks exact previous model/digest references, target/controller/project
+binding, scalar worker readiness and stable source capabilities before adopting
+the fresh source. Source closures and visibility gates read that rebased owner.
+The live worker, its input epochs/generation floors, actual Univer instance and
+SDK Undo history remain intact. A source change without a valid handoff retires
+the old kernel instead of trusting an equal checksum or a borrowed generation.
+
+The existing formula display owner explicitly rebases genuine source caches and
+the acknowledged input baseline, preserving newer desired inputs and verified
+calculated-output provenance. The input-equivalence guard normalizes only reader
+blank-window extents to the ACK-owned geometry, rejects source cells outside
+that window and never reseeds axis identities or modifies raw SDK cells. A cache
+rebase publishes after the grid's current-source guard has adopted the target.
+
+Source tests separately cover component lifetime retention, actual pinned SDK
+unit identity and Undo/Redo, live visibility capability withdrawal, stale worker
+epoch refusal, wrong source/controller/digest/project tickets and protected
+multi-ACK handoff. They are not browser/container or full SDK sheet-action
+qualification. Array/CSV source-family handoff, per-delete descriptor production,
+reachable older template associations, pending sheet Undo gating, protected
+restart recovery and actual worksheet add/remove/rename admission remain open.
+Sheet controls remain disabled; no distribution pins change.
