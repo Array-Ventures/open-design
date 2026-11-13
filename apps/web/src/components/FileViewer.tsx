@@ -11,6 +11,7 @@ import { CommentListPopover, CommentReviewPage, ResolveCommentButton, useComment
 import { CommentThreadMenu } from './embedded/CommentThreadMenu';
 import { ArtifactAnnotationControls } from './embedded/ArtifactAnnotationControls';
 import { ArtifactEditControls } from './embedded/ArtifactEditControls';
+import { ArtifactInsertionToolbar } from './embedded/ArtifactInsertionToolbar';
 import { SpeakerNotesDrawer } from './embedded/SpeakerNotesDrawer';
 import { DashboardControls } from './embedded/DashboardControls';
 import type { EmbeddedDashboard } from './embedded/dashboards';
@@ -9406,6 +9407,7 @@ function HtmlViewer({
   const [manualEditPanelPosition, setManualEditPanelPosition] = useState<{ left: number; top: number } | null>(null);
   const [manualEditDraftDirty, setManualEditDraftDirty] = useState(false);
   const selectManualEditTargetRef = useRef<(target: ManualEditTarget | null) => Promise<void>>(async () => {});
+  const pendingManualInsertSelectionRef = useRef<string | null>(null);
   const selectedManualEditTargetIdRef = useRef<string | null>(null);
   const manualEditSelectionDraftRef = useRef<{ id: string; draft: ManualEditDraft } | null>(null);
   // Tracks the iframe's in-flight inline text edit. `finishManualEditTextSession`
@@ -13379,6 +13381,7 @@ function HtmlViewer({
 
   useEffect(() => {
     if (!manualEditMode) {
+      pendingManualInsertSelectionRef.current = null;
       setManualEditTargets([]);
       setSelectedManualEditTarget(null);
       setManualEditHoverTarget(null);
@@ -13415,6 +13418,12 @@ function HtmlViewer({
       ) return;
       if (data.type === 'od-edit-targets' && Array.isArray(data.targets)) {
         setManualEditTargets(data.targets);
+        const insertedId = pendingManualInsertSelectionRef.current;
+        const insertedTarget = insertedId ? data.targets.find(target => target.id === insertedId) : null;
+        if (insertedTarget) {
+          pendingManualInsertSelectionRef.current = null;
+          void selectManualEditTargetRef.current(insertedTarget);
+        }
         // Target broadcasts can be briefly empty while the iframe/save path is
         // settling; keep the user's inspector selection unless a fresh copy is
         // available to update its metadata.
@@ -18338,6 +18347,20 @@ function HtmlViewer({
             </div>
       </>)}
       <div className="viewer-body" ref={previewBodyRef}>
+        {embedded && workspaceActive && manualEditMode && !viewerOnly ? <ArtifactInsertionToolbar key={file.name} source={source} busy={manualEditSaving}
+          getFrame={() => iframeRef.current} getSource={() => sourceRef.current}
+          onPrepare={async () => {
+            if (!(await flushManualEditPanelDraft())) return false;
+            await clearManualEditTargetSelection();
+            setManualEditPageStylesOpen(false);
+            return true;
+          }}
+          onInsert={async (patch, label) => {
+            pendingManualInsertSelectionRef.current = patch.id;
+            const saved = await applyManualEdit(patch, label);
+            if (!saved && pendingManualInsertSelectionRef.current === patch.id) pendingManualInsertSelectionRef.current = null;
+            return saved;
+          }} /> : null}
         {embedded && !viewerOnly && manualEditEntryAllowed && /\.html?$/i.test(file.name) ? <ArtifactEditControls key={file.name} projectId={projectId} active={manualEditMode} busy={manualEditSaving}
           onEnter={async () => {
             if (composerHoldsUnsentWorkRef.current && !(await confirmHostFeedbackDiscard(projectId, 'comment'))) return 'cancelled';

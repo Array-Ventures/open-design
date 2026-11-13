@@ -1,5 +1,6 @@
+import { buildInsertionBridge } from './insertion-bridge';
 export const MANUAL_EDIT_DISCOVERY_SELECTOR =
-  'main, nav, section, article, aside, header, footer, div, h1, h2, h3, h4, h5, h6, p, a, button, img, ul, ol, li, dl, dt, dd, table, thead, tbody, tfoot, tr, td, th, caption, blockquote, figure, figcaption, label, summary, pre, code, strong, em, b, i, small, mark, span';
+  'svg[data-od-id^="eve-"], main, nav, section, article, aside, header, footer, div, h1, h2, h3, h4, h5, h6, p, a, button, img, ul, ol, li, dl, dt, dd, table, thead, tbody, tfoot, tr, td, th, caption, blockquote, figure, figcaption, label, summary, pre, code, strong, em, b, i, small, mark, span';
 export const MANUAL_EDIT_SOURCE_PATH_ATTR = 'data-od-source-path';
 export const MANUAL_EDIT_HOST_NODE_SELECTOR = [
   '[data-od-sandbox-shim]',
@@ -39,7 +40,9 @@ export function manualEditStableIdForElement(el: Element): string {
 }
 
 export function isMeaningfulManualEditElement(el: Element, rect: Pick<DOMRect, 'width' | 'height'>): boolean {
-  return isSourceMappableManualEditElement(el) && el.matches(MANUAL_EDIT_DISCOVERY_SELECTOR) && rect.width >= 4 && rect.height >= 4;
+  const thinShape = el.localName === 'svg' && el.getAttribute('data-od-id')?.startsWith('eve-') && el.querySelector('line');
+  return isSourceMappableManualEditElement(el) && el.matches(MANUAL_EDIT_DISCOVERY_SELECTOR)
+    && (thinShape ? rect.width >= 1 && rect.height >= 1 && Math.max(rect.width, rect.height) >= 4 : rect.width >= 4 && rect.height >= 4);
 }
 
 export function isSourceMappableManualEditElement(el: Element): boolean {
@@ -169,7 +172,7 @@ export function buildManualEditKeyboardGuard(): string {
 }
 
 export function buildManualEditBridge(enabled: boolean): string {
-  return `<script data-od-edit-bridge>(function(){
+  return `${buildInsertionBridge()}<script data-od-edit-bridge>(function(){
   var enabled = ${JSON.stringify(enabled)};
   var commitOnEscape = false;
   var discoverySelector = ${JSON.stringify(MANUAL_EDIT_DISCOVERY_SELECTOR)};
@@ -488,7 +491,8 @@ export function buildManualEditBridge(enabled: boolean): string {
     for (var i = 0; i < nodes.length; i++) {
       var rect = nodes[i].getBoundingClientRect();
       if (!isSourceMappable(nodes[i])) continue;
-      if (!isHiddenTarget(nodes[i], rect) && (rect.width < 4 || rect.height < 4)) continue;
+      var thinShape = nodes[i].localName === 'svg' && (nodes[i].getAttribute('data-od-id') || '').indexOf('eve-') === 0 && nodes[i].querySelector('line');
+      if (!isHiddenTarget(nodes[i], rect) && (thinShape ? rect.width < 1 || rect.height < 1 || Math.max(rect.width, rect.height) < 4 : rect.width < 4 || rect.height < 4)) continue;
       targets.push(targetFrom(nodes[i], false));
     }
     return targets;
@@ -1322,6 +1326,7 @@ export function buildManualEditBridge(enabled: boolean): string {
 export function buildManualEditBridgeStyle(): string {
   return `<style data-od-edit-bridge-style>
 html[data-od-edit-mode] body * { cursor: pointer !important; }
+html[data-od-edit-mode][data-od-inserting] body * { cursor: crosshair !important; }
 html[data-od-edit-mode] [data-od-edit-selected] {
   outline: none !important;
 }

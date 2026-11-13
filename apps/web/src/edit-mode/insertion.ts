@@ -86,7 +86,7 @@ export function createInsertedElement(doc: Document, patch: ManualEditInsertionP
     }
     element = svg;
   }
-  if (content.kind === 'shape') { element.style.width = '160px'; element.style.height = ['line', 'arrow'].includes(content.shape) ? '2px' : '96px'; }
+  if (content.kind === 'shape') { element.setAttribute('data-od-edit', 'container'); element.style.width = '160px'; element.style.height = ['line', 'arrow'].includes(content.shape) ? '2px' : '96px'; }
   element.setAttribute('data-od-id', patch.id);
   if (patch.placement) {
     const { left, top, width, height } = patch.placement;
