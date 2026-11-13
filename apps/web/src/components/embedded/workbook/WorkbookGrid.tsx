@@ -1,3 +1,4 @@
+import { hasWorkbookStructureIdentity, ownWorkbookAxisIdentity, seedWorkbookStructureIdentity } from './grid-structure-identity';
 'use client';
 
 import { ownWorkbookVisibility, workbookVisibilityBridge } from './grid-visibility';
@@ -102,6 +103,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
       const { DISABLE_AUTO_FOCUS_KEY, IRenderManagerService, CalculationMode, UniverDocsPlugin, UniverDocsUIPlugin, UniverFormulaEnginePlugin, UniverRenderEnginePlugin, UniverSheetsPlugin, UniverSheetsUIPlugin, UniverSheetsFormulaPlugin, UniverSheetsFormulaUIPlugin, UniverSheetsNumfmtPlugin, UniverSheetsNumfmtUIPlugin, UniverUIPlugin } = kernel;
       if (!current() || !container.current) return;
       const theme = workbookGridTheme(root), prepared = gridWorkbook(model, id, callbacks.current.title, theme.gray[900]);
+      if (model.worksheetStructureEditable && sourceSha256) prepared.data = seedWorkbookStructureIdentity(prepared.data as IWorkbookData, sourceSha256);
       const layers = views.current && !views.current.closed ? views.current : (views.current = new WorkbookViewLayers(container.current));
       const layer = layers.begin();
       dispose = () => layer.retire();
@@ -129,6 +131,11 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
       };
       // Own every instance before an asynchronous startup or plugin setup.
       layer.own(() => { try { stopArrayInput(); } finally { try { stopCalculation(); } finally { univer.dispose(); } } });
+      const structural = model.worksheetStructureEditable && sourceSha256 ? ownWorkbookAxisIdentity(univer, () => readSnapshot?.(), () => {
+        const scope = format.current, snapshot = readSnapshot?.();
+        return Boolean(current() && readyForInput && editable && scope && !scope.blocked && !scope.saving && snapshot && hasWorkbookStructureIdentity(snapshot) && univerAPI.getActiveWorkbook()?.getWorkbookPermission().canEdit());
+      }) : null;
+      if (structural) layer.own(() => structural.dispose());
       dispose = () => { stopCalculation(); layer.retire(); };
       const recovered = carried.current?.id === id && carried.current.model === model ? carried.current.snapshot : undefined;
       const sourceSeed = recovered ?? restored.current ?? original;

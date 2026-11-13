@@ -1,5 +1,5 @@
 import type { Document, Element } from '@xmldom/xmldom';
-import { WORKBOOK_MODEL_LIMITS } from '@open-design/contracts/runtime/workbook';
+import { WORKBOOK_MODEL_LIMITS, type WorkbookStructureEdit } from '@open-design/contracts/runtime/workbook';
 import { workbookAxisProjection, type WorkbookAxisProjection } from '@open-design/contracts/runtime/workbook-structure';
 import type { ReadWorkbook } from './reader.js';
 import { address, child, children, range, relationships, xmlPart } from './parts.js';
@@ -7,7 +7,6 @@ import { WorkbookFormatError, writeWorkbookPackage } from './package.js';
 import { writeWorkbookXml } from './xml.js';
 import { workbookStructuralFormula, type WorkbookSheetProjection } from './structure-formulas.js';
 
-export interface WorkbookStructureEdit { sheetId: string; rows: readonly (number | null)[]; columns: readonly (number | null)[] }
 const unsupported = (message: string): never => { throw new WorkbookFormatError(message, 'WORKBOOK_UNSUPPORTED'); };
 function elements(parent: Element): Element[] { return Array.from(parent.childNodes).filter((node): node is Element => node.nodeType === 1); }
 function cellName(row: number, column: number) {
@@ -79,9 +78,12 @@ function projectionFor(source: ReadWorkbook, edits: readonly WorkbookStructureEd
   for (const edit of edits) {
     const sheet = source.model.sheets.find(sheet => sheet.id === edit.sheetId);
     if (!sheet || result.has(edit.sheetId)) throw new WorkbookFormatError('Invalid or duplicate structural worksheet identity.');
-    axes += sheet.rowCount + sheet.columnCount + edit.rows.length + edit.columns.length;
+    axes += edit.sourceRows + edit.sourceColumns + edit.rows.length + edit.columns.length;
     if (axes > 200_000) throw new WorkbookFormatError('Structural identity budget exceeded.', 'WORKBOOK_LIMIT');
-    result.set(sheet.id, { rows: workbookAxisProjection(sheet.rowCount, edit.rows, WORKBOOK_MODEL_LIMITS.rows), columns: workbookAxisProjection(sheet.columnCount, edit.columns, WORKBOOK_MODEL_LIMITS.columns) });
+    const ownedRows = sheet.merges.reduce((max, merge) => Math.max(max, merge.endRow + 1), sheet.rowDimensions.reduce((max, row) => Math.max(max, row.index + 1), sheet.cells.reduce((max, cell) => Math.max(max, cell.row + 1), 1)));
+    const ownedColumns = sheet.merges.reduce((max, merge) => Math.max(max, merge.endColumn + 1), sheet.columnDimensions.reduce((max, column) => Math.max(max, column.index + 1), sheet.cells.reduce((max, cell) => Math.max(max, cell.column + 1), 1)));
+    if (edit.sourceRows < ownedRows || edit.sourceColumns < ownedColumns) throw new WorkbookFormatError('Structural source window does not cover the retained worksheet.');
+    result.set(sheet.id, { rows: workbookAxisProjection(edit.sourceRows, edit.rows, WORKBOOK_MODEL_LIMITS.rows), columns: workbookAxisProjection(edit.sourceColumns, edit.columns, WORKBOOK_MODEL_LIMITS.columns) });
   }
   return result;
 }

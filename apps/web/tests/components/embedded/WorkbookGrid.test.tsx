@@ -49,7 +49,7 @@ beforeEach(() => {
   runtime.navigationShortcut.mockReturnValue({ dispose: runtime.navigationShortcutOff });
   runtime.events = []; runtime.workers = []; runtime.inputs = []; runtime.richInputs = [];
   runtime.live = false; runtime.fail = null; runtime.rendered = Promise.resolve();
-  runtime.createWorkbook.mockReturnValue({ onSelectionChange: () => ({ dispose: runtime.selectionOff }), getWorkbookPermission: () => ({ canEdit: () => true }), setActiveSheet: runtime.activeSheet, setEditable: runtime.editable, save: runtime.saved, getActiveSheet: () => ({ getSheetId: () => 'inputs', getMaxRows: () => 100, getMaxColumns: () => 26, getSelection: () => ({ getActiveRange: () => ({ getRange: () => ({ startRow: 5, endRow: 5, startColumn: 2, endColumn: 2 }) }) }), getRange: runtime.getRange, setActiveRange: runtime.select, setActiveSelection: runtime.firstCell, scrollToCell: runtime.scrollToCell }) });
+  runtime.createWorkbook.mockReturnValue({ getId: () => 'grid', onSelectionChange: () => ({ dispose: runtime.selectionOff }), getWorkbookPermission: () => ({ canEdit: () => true }), setActiveSheet: runtime.activeSheet, setEditable: runtime.editable, save: runtime.saved, getActiveSheet: () => ({ getSheetId: () => 'inputs', getMaxRows: () => 100, getMaxColumns: () => 26, getSelection: () => ({ getActiveRange: () => ({ getRange: () => ({ startRow: 5, endRow: 5, startColumn: 2, endColumn: 2 }), getCellDatas: () => [[{}]], getCellStyleData: () => ({}) }) }), getRange: runtime.getRange, setActiveRange: runtime.select, setActiveSelection: runtime.firstCell, scrollToCell: runtime.scrollToCell }) });
   runtime.getRange.mockReturnValue({ boundWorksheet: 'inputs' });
   runtime.saved.mockReturnValue({ id: 'current-grid-state' });
 });
@@ -358,4 +358,22 @@ it('registers first-cell navigation with readiness and editor-focus guards and r
   expect(command.handler()).toBe(false);
   expect(runtime.navigationShortcutOff).toHaveBeenCalledTimes(1);
   expect(runtime.navigationCommandOff).toHaveBeenCalledTimes(1);
+});
+
+it('owns structural mutation admission through startup, source-ready input, saving and retirement', async () => {
+  let ready!: () => void; const startup = new Promise<void>(resolve => { ready = resolve; });
+  const ordinary = runtime.createWorkbook.getMockImplementation()!;
+  runtime.createWorkbook.mockImplementation(input => { runtime.saved.mockReturnValue(structuredClone(input)); return ordinary(input); });
+  const scope = { projectId: '11111111-1111-4111-8111-111111111111', controllerId: '22222222-2222-4222-8222-222222222222', blocked: false, saving: false };
+  const qualified = { ...model, worksheetStructureEditable: true };
+  const view = render(<WorkbookGrid id="grid" title="Structure" model={qualified} onSnapshot={vi.fn()} sourceSha256={'a'.repeat(64)} formatScope={scope} onReady={() => startup} />);
+  await waitFor(() => expect(runtime.visibilityBefore).toHaveBeenCalledTimes(2));
+  const admit = runtime.visibilityBefore.mock.calls[1]![0];
+  const command = () => ({ id: 'sheet.mutation.insert-row', params: { unitId: 'grid', subUnitId: 'inputs', range: { startRow: 1, endRow: 1, startColumn: 0, endColumn: 25 } } });
+  expect(() => admit(command())).toThrow('not ready');
+  await act(async () => ready()); await waitFor(() => expect(runtime.editable).toHaveBeenLastCalledWith(true));
+  expect(() => admit(command())).not.toThrow();
+  view.rerender(<WorkbookGrid id="grid" title="Structure" model={qualified} onSnapshot={vi.fn()} sourceSha256={'a'.repeat(64)} formatScope={{ ...scope, saving: true }} onReady={() => startup} />);
+  expect(() => admit(command())).toThrow('not ready');
+  view.unmount(); expect(() => admit(command())).toThrow('not ready'); expect(runtime.visibilityBeforeOff).toHaveBeenCalledTimes(2);
 });

@@ -1,0 +1,49 @@
+import { afterEach, expect, it } from 'vitest';
+import { IUniverInstanceService, LocaleType, Univer, type IWorkbookData } from '@univerjs/core';
+import { FUniver } from '@univerjs/core/facade';
+import { UniverSheetsPlugin } from '@univerjs/sheets';
+import '@univerjs/sheets/facade';
+import English from '@univerjs/preset-sheets-core/locales/en-US';
+import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import { gridWorkbook } from '../../src/components/embedded/workbook/grid-model';
+import { workbookGridEdits } from '../../src/components/embedded/workbook/grid-edits';
+import { ownWorkbookAxisIdentity, seedWorkbookStructureIdentity } from '../../src/components/embedded/workbook/grid-structure-identity';
+import { WorkbookWriter } from '../../src/components/embedded/workbook/workbook-writer';
+const sha = 'a'.repeat(64), closers: (() => void)[] = [];
+afterEach(() => closers.splice(0).reverse().forEach(close => close()));
+function model(): WorkbookDocument { return { version: 1, worksheetStructureEditable: true, date1904: false, activeSheetId: 'a', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 'a', name: 'Data', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [{ row: 1, column: 1, kind: 'number', value: 12 }], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] }; }
+function fixture() {
+  const source = model(), seed = seedWorkbookStructureIdentity(gridWorkbook(source, 'structure', 'Structure').data as IWorkbookData, sha);
+  const univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: English } }); closers.push(() => univer.dispose());
+  let book: ReturnType<FUniver['createWorkbook']> | undefined;
+  const owner = ownWorkbookAxisIdentity(univer, () => book?.save(), () => true); closers.push(() => owner.dispose());
+  univer.registerPlugin(UniverSheetsPlugin); const api = FUniver.newAPI(univer); book = api.createWorkbook(seed); book.setEditable(true);
+  univer.__getInjector().get(IUniverInstanceService).focusUnit(book.getId());
+  return { source, book, api, sheet: book.getActiveSheet(), initial: book.save() };
+}
+it('derives structure-only plans from actual SDK movement instead of clearing and rewriting source cells', () => {
+  const { source, book, initial, sheet } = fixture(); sheet.insertRowsBefore(1, 1); sheet.insertColumnsBefore(1, 1);
+  const plan = workbookGridEdits(source, sha, initial, book.save());
+  expect(plan.edits).toEqual([]); expect(plan.styles).toBeUndefined(); expect(plan.dimensions).toBeUndefined();
+  expect(plan.structure).toHaveLength(1); expect(plan.structure![0]!.rows.slice(0, 4)).toEqual([0, null, 1, 2]); expect(plan.structure![0]!.columns.slice(0, 4)).toEqual([0, null, 1, 2]);
+});
+it('expresses additional cells in final coordinates and preserves ordinary older draft behavior', () => {
+  const { source, book, initial, sheet } = fixture(); sheet.insertRowsBefore(1, 1); sheet.getRange(2, 1).setValue(24);
+  const plan = workbookGridEdits(source, sha, initial, book.save());
+  expect(plan.edits).toEqual([{ sheetId: 'a', cell: { row: 2, column: 1, kind: 'number', value: 24 } }]);
+  const legacy = gridWorkbook(source, 'structure', 'Structure').data as IWorkbookData, changed = structuredClone(legacy); changed.sheets.a!.cellData![1]![1]!.v = 36;
+  expect(workbookGridEdits(source, sha, legacy, changed).structure).toBeUndefined(); expect(workbookGridEdits(source, sha, legacy, changed).edits[0]!.cell.value).toBe(36);
+});
+it('journals and flushes structure-only changes and derives the next save relative to the acknowledged snapshot', async () => {
+  const { source, book, initial, sheet } = fixture(); const writes: unknown[] = [], checkpoints: unknown[] = [];
+  const writer = new WorkbookWriter({ model: source, sourceSha256: sha }, initial, async intent => {
+    writes.push(structuredClone(intent.plan));
+    const next = structuredClone(source); next.sheets[0]!.rowCount = 101; next.sheets[0]!.cells[0]!.row = 2; next.sheets[0]!.cells[0]!.value = intent.plan.edits[0]?.cell.value ?? 12;
+    return { model: next, sourceSha256: (writes.length === 1 ? 'b' : 'c').repeat(64) };
+  }, () => {}, undefined, { save: async value => { checkpoints.push(value); } });
+  sheet.insertRowsBefore(1, 1); writer.update(book.save()); expect(writer.state().dirty).toBe(true); await writer.flush();
+  expect(writes).toHaveLength(1); expect((writes[0] as { structure: unknown[] }).structure).toHaveLength(1); expect(checkpoints.some(Boolean)).toBe(true); expect(writer.state().dirty).toBe(false);
+  sheet.getRange(2, 1).setValue(36); writer.update(book.save()); await writer.flush();
+  expect(writes).toHaveLength(2); expect((writes[1] as { sourceSha256: string; structure?: unknown }).sourceSha256).toBe('b'.repeat(64)); expect((writes[1] as { structure?: unknown }).structure).toBeUndefined();
+  await writer.close();
+});

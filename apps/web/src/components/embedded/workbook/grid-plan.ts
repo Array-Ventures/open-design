@@ -7,3 +7,8 @@ import { workbookGridEdits } from './grid-edits';
 export function workbookGridPlan(model: WorkbookDocument, sha256: string, initial: IWorkbookData, current: IWorkbookData) {
   return (model.sourceFormat === 'csv' ? csvGridEdits : workbookGridEdits)(model, sha256, initial, current);
 }
+
+/** Keep dirty/journal/drain admission aligned for every supported plan owner. */
+export function workbookPlanHasChanges(plan: ReturnType<typeof workbookGridPlan>): boolean {
+  return Boolean(plan.edits.length || plan.dimensions?.length || plan.styles?.length || plan.visibility?.length || plan.structure?.length);
+}

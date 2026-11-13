@@ -1,3 +1,4 @@
+import { seedWorkbookStructureIdentity } from '../../../src/components/embedded/workbook/grid-structure-identity';
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -81,4 +82,17 @@ it('can freeze an empty clean corrupt-file editor but hides controls when histor
   expect(post.mock.calls.some(([value]) => value.type === 'studio:workbook-unavailable')).toBe(true);
   act(() => window.dispatchEvent(new MessageEvent('message', { source: window, origin: window.location.origin, data: { type: 'studio:workbook-control', projectId, controllerId: view.result.current.controllerId, action: 'history' } })));
   expect(show).not.toHaveBeenCalled();
+});
+
+it('uses a fresh identity baseline after a clean protected kernel handoff instead of carrying the retired generation', async () => {
+  const qualified = { ...source, model: { ...model, worksheetStructureEditable: true } };
+  const journal = { save: vi.fn(async () => {}) }, acknowledged = vi.fn();
+  const view = renderHook(() => useWorkbookEditor(projectId, 'Forecast.xlsx', qualified, acknowledged, undefined, journal));
+  const first = seedWorkbookStructureIdentity(initial, source.sourceSha256), second = seedWorkbookStructureIdentity(initial, source.sourceSha256);
+  await act(async () => { await view.result.current.ready(first); });
+  await act(async () => { await view.result.current.ready(second); });
+  const desired = structuredClone(second); desired.sheets.s!.cellData![0]![0]!.v = 2;
+  act(() => view.result.current.snapshot(desired));
+  expect(view.result.current.state).toMatchObject({ dirty: true, error: null });
+  expect(view.result.current.checkpoint()!.acknowledged.custom).toEqual(second.custom);
 });

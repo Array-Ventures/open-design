@@ -1,3 +1,4 @@
+import { gridStructuralBaseline } from './grid-structure-plan';
 import { CellValueType, WorksheetHiddenState, type ICellData, type IWorkbookData } from '@univerjs/presets';
 import { workbookEditPlanSchema, type WorkbookCell, type WorkbookDimensionEdit, type WorkbookDocument, type WorkbookStyleEdit, type WorkbookVisibilityEdit } from '@open-design/contracts/runtime/workbook';
 
@@ -87,6 +88,8 @@ function scalar(cell: ICellData, original: WorkbookCell | undefined, row: number
  * the source package. Unsupported mutations block the whole save, not just the
  * unsupported cells, so a successful save cannot silently discard an edit. */
 export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string, initial: IWorkbookData, current: IWorkbookData) {
+  const projected = gridStructuralBaseline(model, sourceSha256, initial, current);
+  model = projected.model; initial = projected.before; current = projected.after;
   if (!same(initial.sheetOrder, current.sheetOrder) || !same(Object.keys(initial.sheets).sort(), Object.keys(current.sheets).sort())) fail('Sheet structure changed. Keep this workbook open; these changes cannot be saved yet.');
   if (!unchangedStyles(initial.styles, current.styles) || initial.dateSystem !== current.dateSystem) fail('Workbook formatting changed. Keep this workbook open; these changes cannot be saved yet.');
   const edits: { sheetId: string; cell: WorkbookCell }[] = [];
@@ -131,5 +134,5 @@ export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string,
     }
   }
   if (!Object.values(current.sheets).some(sheet => sheet.hidden === undefined || sheet.hidden === WorksheetHiddenState.VISIBLE)) fail('Keep at least one worksheet visible.');
-  return workbookEditPlanSchema.parse({ sourceSha256, edits, ...(dimensions.length ? { dimensions } : {}), ...(styles.length ? { styles } : {}), ...(visibility.length ? { visibility } : {}) });
+  return workbookEditPlanSchema.parse({ sourceSha256, edits, ...(dimensions.length ? { dimensions } : {}), ...(styles.length ? { styles } : {}), ...(visibility.length ? { visibility } : {}), ...(projected.structure.length ? { structure: projected.structure } : {}) });
 }

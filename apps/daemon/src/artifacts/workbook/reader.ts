@@ -1,3 +1,5 @@
+import { assertWorkbookStructureSupported } from './structure-patch.js';
+import { WORKBOOK_STRUCTURE_AXIS_BUDGET } from '@open-design/contracts/runtime/workbook-structure';
 import { assertWorkbookImportLayout } from './import-layout.js';
 import StylesXform from 'exceljs-community/lib/xlsx/xform/style/styles-xform.js';
 import { Readable } from 'node:stream';
@@ -202,6 +204,12 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
     if (!(error instanceof WorkbookFormatError)) throw error;
     model.calculationMetadata = 'unsupported';
     for (const sheet of model.sheets) for (const owner of sheet.arrayFormulas ?? []) owner.calculation = 'unsupported';
+  }
+  const axes = model.sheets.reduce((total, sheet) => total + sheet.rowCount + sheet.columnCount, 0);
+  model.worksheetStructureEditable = false;
+  if (axes <= WORKBOOK_STRUCTURE_AXIS_BUDGET) {
+    try { assertWorkbookStructureSupported(result); model.worksheetStructureEditable = true; }
+    catch { /* This workbook stays editable through its already qualified owners. */ }
   }
   return result;
 }

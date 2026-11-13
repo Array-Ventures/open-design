@@ -1,3 +1,5 @@
+import { patchWorkbookStructure } from './structure-patch.js';
+import type { WorkbookStructureEdit } from '@open-design/contracts/runtime/workbook';
 import { patchWorkbookVisibility } from './visibility-patch.js';
 import type { Document, Element } from '@xmldom/xmldom';
 import type { WorkbookDimensionEdit, WorkbookStyleEdit, WorkbookVisibilityEdit, WorkbookDocument } from '@open-design/contracts/runtime/workbook';
@@ -99,7 +101,11 @@ async function writeCalculatedCaches(source: ReadWorkbook, model: WorkbookDocume
 /** Internal transaction preparation. The caller must persist these bytes with
  * conditional binary history/receipts; this helper never writes workspace files.
  * Parser and calculation execution must be isolated before API exposure. */
-export async function calculateWorkbookCellEdits(source: ReadWorkbook, edits: readonly WorkbookCellEdit[], dimensions: readonly WorkbookDimensionEdit[] = [], styles: readonly WorkbookStyleEdit[] = [], visibility: readonly WorkbookVisibilityEdit[] = []): Promise<{ bytes: Buffer; model: WorkbookDocument }> {
+export async function calculateWorkbookCellEdits(source: ReadWorkbook, edits: readonly WorkbookCellEdit[], dimensions: readonly WorkbookDimensionEdit[] = [], styles: readonly WorkbookStyleEdit[] = [], visibility: readonly WorkbookVisibilityEdit[] = [], structure: readonly WorkbookStructureEdit[] = []): Promise<{ bytes: Buffer; model: WorkbookDocument }> {
+  if (structure.length) {
+    const prepared = await readXlsxWorkbook(await patchWorkbookStructure(source, structure));
+    return calculateWorkbookCellEdits(prepared, edits, dimensions, styles, visibility);
+  }
   if (visibility.length) {
     // Navigation-only changes neither require nor invalidate formula results.
     const content = edits.length || dimensions.length || styles.length ? await readXlsxWorkbook((await calculateWorkbookCellEdits(source, edits, dimensions, styles)).bytes) : source;

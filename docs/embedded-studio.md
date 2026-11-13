@@ -365,7 +365,9 @@ is bounded at 100,000 entries; it is not allocated for a million-row workbook.
 
 `workbook-structure.ts` validates a monotone partial source→current mapping;
 inserted axes are null, deleted source axes are absent, and reorder/duplicate
-ownership is rejected. `structure-formulas.ts` uses the pinned lexer and range
+ownership is rejected. Inserted axes receive stable editor-generation birth IDs
+before the SDK records redo parameters, so the next save can map relative to an
+acknowledged inserted axis without rewriting or losing pending cell edits. `structure-formulas.ts` uses the pinned lexer and range
 parser for actual references, absolute flags, quoted sheet names and whole-axis
 ranges. It leaves quoted strings unchanged, shrinks surviving ranges and emits
 `#REF!` when a referenced range is completely deleted. It does not regex-replace
@@ -379,8 +381,9 @@ supported merged ranges, updates selection/scroll references, and leaves unrelat
 ZIP members byte-identical. Column ranges split around inserted columns rather
 than giving those columns an unintended source style or hidden state. Formula
 caches are removed before the existing contained calculation/CAS path may admit
-an output. This primitive is not yet connected to that path and cannot save a
-live workbook itself.
+an output. The strict structural plan now reaches the contained preparation/calculation
+path and the existing conditional save protocol; the primitive itself still
+cannot persist a live workbook.
 
 Initial exclusions are explicit: named/table/external/3-D references; arrays and
 shared formula groups; macros/signatures; charts/drawings/comments/pivots;
@@ -388,9 +391,17 @@ frozen/split panes; protected or unknown coordinate-bearing metadata; deleting
 a surviving merged range's anchor; and reference growth outside Excel limits.
 These need qualified owners or an action-level refusal before any SDK mutation.
 
-**Still required before exposing menus:** capability admission in the reader and
-contained writer, strict structural edit schema, snapshot/source-plan comparison,
-calculation-worker mutation bounds, edit-controller/permission gates, actual SDK
-agreement for merged/view/formula behavior, source-bound conditional save/reopen,
+The reader advertises structural capability only after independent source/part
+inspection and a bounded metadata budget. Plans include the acknowledged SDK
+window sizes as well as origin maps: a blank 100-row reader window may represent
+a 101-row inserted or 99-row deleted SDK grid after saving. The source worker
+requires those declared sizes to cover all retained content/dimensions/merges,
+and shifts valid Excel coordinates beyond that window as a virtual tail. It
+never trusts a large authored dimension or injects a proprietary file extension
+just to preserve an editor window. Repeated blank-window insertion/deletion and
+out-of-window formula-reference regressions cover this distinction.
+
+**Still required before exposing menus:** calculation-worker mutation bounds,
+actual SDK agreement for merged/view/formula behavior, source-bound conditional save/reopen,
 keyboard/right-click BoardUI menu interaction, and packaged light/dark visual and
 end-to-end tests. The current shipped interface keeps unsupported SDK menus off.
