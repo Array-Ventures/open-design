@@ -314,3 +314,8 @@ selected-history template restore. Host ACL and compatible resources do not
 prove a prior SDK Delete command. Automatic Undo remains unavailable until the
 producer can prove and persist its protected per-delete/ACK kernel identity;
 this source API must not be presented as that lineage guarantee.
+
+Scalar edit style annotations must follow the owning
+[style preservation guards](workbook-cell-style-guards.md). A compact historical
+model ordinal is not a raw stylesheet index or a transferable identity; the
+source owner proves any required guard rebase after membership/axis preparation.
