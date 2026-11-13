@@ -129,3 +129,10 @@ it('does not suppress ordinary short taps or a moving touch scroll', async () =>
   expect(admit).not.toHaveBeenCalled(); expect(screen.queryByRole('menu')).toBeNull();
   const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true, detail: 1, clientX: 40, clientY: 50 }); fireEvent(target, down); expect(down.defaultPrevented).toBe(false);
 });
+it('withdraws a touch completion guard before an SDK stops a new pointer gesture bubbling', async () => {
+  render(<Fixture />); const target = screen.getByRole('button');
+  touch(target, 'pointerdown'); await screen.findByRole('menu');
+  target.addEventListener('pointerdown', event => event.stopPropagation());
+  touch(target, 'pointerdown', { pointerType: 'mouse' });
+  const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true, detail: 1, clientX: 40, clientY: 50 }); fireEvent(target, down); expect(down.defaultPrevented).toBe(false);
+});

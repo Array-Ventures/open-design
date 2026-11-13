@@ -5,11 +5,12 @@ export function guardLongPressCompletion(boundary: HTMLElement, target: Node, po
   const dispose = () => {
     if (disposed) return;
     disposed = true; clearTimeout(timer);
+    boundary.removeEventListener('pointerdown', dispose, true);
     boundary.removeEventListener('mousedown', mouseDown, true);
     boundary.removeEventListener('click', click, true);
   };
   const matches = (event: MouseEvent) => !disposed && target.isConnected && boundary.contains(target)
-    && event.target instanceof Node && target.contains(event.target) && event.detail > 0
+    && event.target instanceof Node && target.contains(event.target) && event.button === 0 && event.detail > 0
     && Math.hypot(event.clientX - point.x, event.clientY - point.y) <= 8;
   const mouseDown = (event: MouseEvent) => {
     if (!matches(event)) return;
@@ -19,6 +20,7 @@ export function guardLongPressCompletion(boundary: HTMLElement, target: Node, po
     if (mouseStarted && matches(event)) event.preventDefault();
     dispose();
   };
+  boundary.addEventListener('pointerdown', dispose, true);
   boundary.addEventListener('mousedown', mouseDown, true);
   boundary.addEventListener('click', click, true);
   return {

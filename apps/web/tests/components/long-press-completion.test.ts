@@ -23,6 +23,7 @@ it('leaves another target, another point and keyboard-generated mouse events unt
   expect(dispatch('mousedown', other).defaultPrevented).toBe(false);
   expect(dispatch('mousedown', target, { clientX: 70 }).defaultPrevented).toBe(false);
   expect(dispatch('mousedown', target, { detail: 0 }).defaultPrevented).toBe(false);
+  expect(dispatch('mousedown', target, { button: 2 }).defaultPrevented).toBe(false);
   expect(dispatch('click', target, { detail: 0 }).defaultPrevented).toBe(false);
   completion.dispose();
 });
@@ -38,4 +39,11 @@ it('releases on disposal or when the original target is no longer owned', () => 
   const { completion, target, boundary, dispatch } = fixture();
   target.remove(); document.body.append(target); expect(dispatch('mousedown').defaultPrevented).toBe(false);
   boundary.append(target); completion.dispose(); expect(dispatch('mousedown').defaultPrevented).toBe(false);
+});
+
+it('withdraws before a new native pointer gesture even when the editor stops bubbling', () => {
+  const { target, dispatch } = fixture();
+  target.addEventListener('pointerdown', event => event.stopPropagation());
+  target.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  expect(dispatch('mousedown').defaultPrevented).toBe(false);
 });
