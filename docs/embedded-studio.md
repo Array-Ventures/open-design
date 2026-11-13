@@ -312,3 +312,28 @@ Focused source-identity regressions: `pnpm exec tsx scripts/test-build-source.ts
 Workbook admission regressions: `pnpm --filter @open-design/daemon exec vitest run
 tests/artifacts/workbook-reader.test.ts`. These commands are validation gates,
 not a claim that the current snapshot has passed them.
+
+## Worksheet visibility slice
+
+Ordinary XLSX worksheets support hide/unhide through the host header's scoped
+visibility bridge and the existing sparse edit plan. `veryHidden` worksheets
+remain source-owned and are omitted from actionable controls. Signed or
+macro-bearing files, workbook protection, custom workbook views, unknown or
+duplicate sheet IDs and hiding the last visible worksheet are refused. Names,
+order, geometry, cell formulas and relationships cannot change through this
+slice. A newly qualified `worksheetVisibilityEditable` preview flag controls
+availability; absent metadata does not grant permission.
+
+The contained renderer patches workbook sheet state and reconciles affected
+active/first tabs and worksheet selection flags. A visibility-only save retains
+formula caches and every unrelated OOXML part rather than recalculating or
+reserializing the workbook. Combined cell saves calculate first and apply
+visibility to that private candidate. Saves retain the existing preparation,
+CAS, receipt, protected draft and binary-history/restore boundaries. Header
+messages require parent origin/source, controller and acknowledged source digest;
+controls are unavailable during startup, saving, discard or blocked history.
+
+Row/column insertion, sheet rename/reorder/create/delete and editing very hidden
+worksheets remain unsupported. Source and regression changes in this slice need
+central qualification and paired-package visual acceptance before availability
+can be claimed; this section does not report tests or publication.

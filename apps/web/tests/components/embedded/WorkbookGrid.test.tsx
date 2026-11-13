@@ -10,12 +10,12 @@ import { ICommandService } from '@univerjs/core';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookGrid } from '../../../src/components/embedded/workbook/WorkbookGrid';
 
-const runtime = vi.hoisted(() => ({ navigationCommand: vi.fn(), navigationShortcut: vi.fn(), navigationCommandOff: vi.fn(), navigationShortcutOff: vi.fn(), firstCell: vi.fn(), scrollToCell: vi.fn(), events: [] as string[], richInputs: [] as { dispose: ReturnType<typeof vi.fn> }[], workers: [] as { dispose: ReturnType<typeof vi.fn> }[], inputs: [] as { dispose: ReturnType<typeof vi.fn> }[], rendered: Promise.resolve(), context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
+const runtime = vi.hoisted(() => ({ visibilityBefore: vi.fn(), visibilityBeforeOff: vi.fn(), navigationCommand: vi.fn(), navigationShortcut: vi.fn(), navigationCommandOff: vi.fn(), navigationShortcutOff: vi.fn(), firstCell: vi.fn(), scrollToCell: vi.fn(), events: [] as string[], richInputs: [] as { dispose: ReturnType<typeof vi.fn> }[], workers: [] as { dispose: ReturnType<typeof vi.fn> }[], inputs: [] as { dispose: ReturnType<typeof vi.fn> }[], rendered: Promise.resolve(), context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
   calculation: null as null | ((state: { phase: string; stored: number; unavailable: number; paused: boolean }) => void),
   input: null as null | ((message: string) => void), live: false, fail: null as null | (() => void), calculationDisposed: vi.fn(),
   getRange: vi.fn(), select: vi.fn(), createWorkbook: vi.fn(), editable: vi.fn(), activeSheet: vi.fn(), saved: vi.fn(), listener: null as null | ((event: { type: number; id: string }) => void) }));
 vi.mock('@univerjs/presets', async original => ({ ...await original<typeof import('@univerjs/presets')>(),
-  Univer: class { constructor() { runtime.created(this); } registerPlugin = runtime.register; dispose = () => { runtime.events.push(`univer:${runtime.created.mock.calls.findIndex(([instance]) => instance === this) + 1}`); runtime.dispose(this); }; __getInjector = () => ({ get: (token: unknown) => token === ICommandService ? { registerCommand: runtime.navigationCommand } : token === 'IShortcutService' ? { registerShortcut: runtime.navigationShortcut } : { setContextValue: runtime.context, onStage: () => runtime.rendered } }); },
+  Univer: class { constructor() { runtime.created(this); } registerPlugin = runtime.register; dispose = () => { runtime.events.push(`univer:${runtime.created.mock.calls.findIndex(([instance]) => instance === this) + 1}`); runtime.dispose(this); }; __getInjector = () => ({ get: (token: unknown) => token === ICommandService ? { registerCommand: runtime.navigationCommand, beforeCommandExecuted: runtime.visibilityBefore } : token === 'IShortcutService' ? { registerShortcut: runtime.navigationShortcut } : { setContextValue: runtime.context, onStage: () => runtime.rendered } }); },
   FUniver: { newAPI: () => ({ createWorkbook: runtime.createWorkbook, getActiveWorkbook: () => runtime.createWorkbook.mock.results.at(-1)?.value, Event: { CommandExecuted: 'CommandExecuted', ActiveSheetChanged: 'ActiveSheetChanged' },
     addEvent: (event: string, callback: NonNullable<typeof runtime.listener>) => { if (event === 'CommandExecuted') { runtime.listener = callback; return { dispose: runtime.off }; } return { dispose() {} }; }, setTheme: runtime.theme, toggleDarkMode: runtime.dark }) },
 }));
@@ -44,6 +44,7 @@ vi.mock('@univerjs/rpc', async original => ({ ...await original<typeof import('@
 const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 'inputs', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
   sheets: [{ id: 'inputs', name: 'Inputs', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
 beforeEach(() => {
+  runtime.visibilityBefore.mockReturnValue({ dispose: runtime.visibilityBeforeOff });
   runtime.navigationCommand.mockReturnValue({ dispose: runtime.navigationCommandOff });
   runtime.navigationShortcut.mockReturnValue({ dispose: runtime.navigationShortcutOff });
   runtime.events = []; runtime.workers = []; runtime.inputs = []; runtime.richInputs = [];
