@@ -34,7 +34,28 @@ expected cell/inline fills, red bold and hyperlink runs, native merge geometry,
 and empty-cell structure. A separate source-annotation probe retained authored
 IDs and ordinary code while removing temporary source attributes.
 
-These core probes do not yet qualify the complete browser-normalizer/export
-integration, real UI downloads or rendered Word appearance. Those remain gates
-before reporting the authored-color export fix complete. Source documents are
-not rewritten by this conversion-only projection.
+The complete current-source pipeline was then executed as a read-only worker
+and shared-IIFE overlay on the existing local 100/43 image. Actual
+`prepareDocument` → browser normalization → Pandoc → editable Word output
+preserved eight native table cells, vertical/horizontal merges, explicit
+foreground/fills, mixed bold/link/superscript/underline/language properties,
+original empty paragraphs, indented PRE/plain CODE and prepared checked/unchecked
+checklist glyphs. Independent ZIP/XML inspection verified 36 property containers
+against the primary Open-XML-SDK sequence order and found no generated ownership
+attributes/bookmarks in the result.
+
+A separate four-case source-overlay proof verified that collapsed TD/LI/P
+indentation produces exactly the original four paragraphs, while a visible
+highlighted space remains a native `w:t xml:space="preserve"` run with foreground
+and shading. Whitespace with possible padded/bordered inline paint refused
+without an artifact. Direct authored red CODE was representable and retained
+native `VerbatimChar` plus `FF0000`. The original scratch oracle incorrectly
+expected that CODE case to refuse; its failure was preserved and the existing
+output was regraded using those stronger positive assertions, without rerunning
+the actor. The synthetic lost-nonempty-code-owner negative remains valid.
+
+The source-overlay containers exited and were removed; source digests remained
+unchanged. These probes are current bundled-source evidence, **not** qualification
+of a newly built immutable companion/renderer pair, real UI downloads or rendered
+Word-application appearance. Those remain subsequent gates. Source documents
+are not rewritten by this conversion-only projection.
