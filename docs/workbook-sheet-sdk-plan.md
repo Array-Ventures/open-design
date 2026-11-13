@@ -119,3 +119,93 @@ reopen, XLSX/selected CSV exports, and manual keyboard/pointer behavior in both
 themes and narrow/wide panes. Native carrier mocks and source tests do not prove
 these properties. Only after these gates may the reader advertise sheet-action
 capability and the real UI connect compact controls to qualified commands.
+
+## Required correction: undoing a committed deletion
+
+The current source foundation's fresh-ID/append-only `new` policy cannot express
+all real SDK undo. `RemoveSheetUndoMutationFactory` returns the old index and
+`worksheet.getConfig()`. After deleting sheet 2 and acknowledging a source with
+survivors 1 and 3, undo must reinsert **ID 2 between 1 and 3**. Renumbering that
+snapshot or restoring the whole historical file would corrupt undo semantics
+or discard unrelated later edits. Clearing undo at ACK is not an alternative.
+
+Two restoration classes must be distinguished before producer implementation:
+
+- A redo of the original add command retains its original blank configuration.
+  A later deletion's marker on the live sheet does not retroactively change
+  that older add-redo configuration. Its known blank birth can be reconstructed
+  from the deterministic blank baseline, retaining its old ID and position.
+- Undo of source-backed deletion retains the full SDK snapshot, but that is not
+  the full original worksheet package. Reader/grid models omit print options,
+  page margins/header/footer and other admitted raw metadata; styles and shared
+  strings also have package-level owners. A blank baseline cannot preserve them.
+
+Proposed source extension (not implemented): define `origin: new` as absent from
+**the current source**, with a bounded, noncolliding numeric ID, rather than a
+claim that the ID never existed historically. Allow absent-sheet insertion
+positions while keeping all current survivors in exactly their relative order.
+Normal fresh UI allocation still uses its monotonic high-water mark. This
+permits replaying a known blank add birth without renumbering it.
+
+For source-backed resurrection, add an explicit qualified historical worksheet
+template origin. Its descriptor names the exact retained source SHA and original
+sheet ID. Freeze that same artifact file's existing binary-history version through
+the native history access boundary and existing source manifest. The contained
+owner extracts only the selected worksheet, keeps current unrelated sheets and
+edits, and applies actual SDK cell/axis/style deltas relative to the historical
+template. It must not restore the entire file or accidentally resurrect cells
+which the actual undo snapshot has cleared.
+
+### Retained source and axis identity
+
+Stamp an immutable template/source-axis descriptor into the live SDK sheet
+configuration **before the delete command captures undo**. A per-deletion marker
+is necessary: a global sheet-ID-to-latest-template map confuses repeated deletion
+at different geometries. The descriptor refers to the current acknowledged
+source and its actual axis identities/logical window. Keep it within existing
+SDK snapshots and protected checkpoints, not a second action replay journal.
+
+The checked save receipt already has `sourceVersionId` for the before-save binary
+and `versionId` for its target. The companion currently only parses `versionId`
+explicitly and returns the refreshed preview from `use-workbook-editor.ts`,
+dropping those history associations. Restoration requires explicitly validating
+`sourceVersionId` and associating its before-source SHA with the old baseline
+before ACK retirement. A lost ACK must recover the same receipt/association.
+This provenance must be protected before a pending source transition can discard
+its predecessor. Do not trust an arbitrary passthrough receipt field.
+
+Keep inner edit plans opaque to the native host. Proposed historical inputs
+belong in a separately typed outer history-asset field, scoped to the same
+project/file and frozen with their authenticated version/digest. The inner
+restoration template SHA must match an actual frozen asset. History expiry,
+wrong scope, missing template or changed identity refuses preparation; none
+permits substitution from a newer file.
+
+Retain only bounded descriptors/axis baselines reachable from real SDK undo/redo
+or protected pending/desired snapshots. Admit destructive commands only when
+that future undo can be protected within the resource budget. Do not silently
+prune still-reachable source context or clear unrelated history to save space.
+
+### Package-level dependencies
+
+Historical worksheet XML cannot blindly retain historical style/string indices.
+Current unrelated formatting may have appended or otherwise changed global
+owners. First investigate and prove the current source writers' append/preserve
+invariants: checked historical style/font/fill/border/number-format components
+must still occupy equivalent indices, and shared-string/theme ownership must
+remain compatible. A verified continuous source-preserving lineage could make
+this a bounded prefix-qualification policy. Byte-prefix comparison of the entire
+XML file is insufficient because serializers and counts change.
+
+If those invariants do not cover an advertised restoration, the source owner
+must import/remap all used global dependencies. External replacement or a
+whole-file history restore changes source/kernel authority; it must not be
+mistaken for continuity. Either approach needs actual ZIP/readback/calculation
+proof, including unrelated formatting performed after deletion.
+
+Additional mandatory cases: delete 2 between 1/3→ACK→unrelated edits→undo→save;
+original add→ACK→undo add→ACK→redo original blank add; source-backed restore with
+nondefault geometry/merges/print metadata; repeated deletion at different axis
+states; lost ACK and protected remount; malformed/unavailable historical asset;
+and unrelated current styles/shared strings retained. No capability should claim
+post-ACK undo until these source and identity extensions are genuinely qualified.
