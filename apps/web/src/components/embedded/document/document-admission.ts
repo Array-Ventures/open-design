@@ -7,7 +7,7 @@ const tags = new Set(['main', 'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'b
 const inline = new Set(['span', 'strong', 'b', 'em', 'i', 'u', 's', 'code']);
 const attributes: Record<string, string[]> = {
   a: ['href', 'title', 'target', 'rel'], img: ['src', 'alt', 'title', 'width', 'height'],
-  td: ['colspan', 'rowspan'], th: ['colspan', 'rowspan', 'scope'], ol: ['start'],
+  td: ['colspan', 'rowspan'], th: ['colspan', 'rowspan'], ol: ['start'],
   li: ['value', 'role', 'tabindex', 'aria-checked'], ul: ['__lexicallisttype'],
   pre: ['spellcheck', 'data-language', 'data-highlight-language'], span: ['data-eve-document-image'],
 };
@@ -29,9 +29,9 @@ function supportedElement(element: HTMLElement): boolean {
   if (element.hasAttribute('tabindex') && element.getAttribute('tabindex') !== '-1') return false;
   if (element.hasAttribute('aria-checked') && !['true', 'false'].includes(element.getAttribute('aria-checked')!)) return false;
   if (element.hasAttribute('__lexicallisttype') && element.getAttribute('__lexicallisttype') !== 'check') return false;
-  if (element.hasAttribute('scope') && element.getAttribute('scope') !== 'col') return false;
   if (element.hasAttribute('data-eve-document-image') && (element.getAttribute('data-eve-document-image') !== '1' || element.children.length !== 1 || element.firstElementChild?.tagName !== 'IMG' || element.textContent?.trim())) return false;
-  if (element.hasAttribute('data-od-id') && inline.has(tag) && !element.hasAttribute('data-eve-document-image')) return false;
+  if (element.hasAttribute('data-od-id') && !['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'li', 'ul', 'ol', 'table', 'tr', 'td', 'th', 'pre'].includes(tag) && !element.hasAttribute('data-eve-document-image')) return false;
+  if (tag === 'li' && ['role', 'tabindex', 'aria-checked'].some(name => element.hasAttribute(name)) && element.parentElement?.getAttribute('__lexicallisttype') !== 'check') return false;
   for (const name of ['colspan', 'rowspan', 'start', 'value']) {
     if (element.hasAttribute(name) && !/^[1-9]\d*$/.test(element.getAttribute(name)!)) return false;
   }
@@ -60,6 +60,8 @@ function supportedElement(element: HTMLElement): boolean {
     const canonicalCellBorder = ['td', 'th'].includes(tag) && /^1px solid (?:black|rgb\(0,\s*0,\s*0\))$/.test(element.style.getPropertyValue('border'));
     if (canonicalCellBorder && name === 'border-image' && value === 'none') continue;
     if (canonicalCellBorder && /^border(?:-(?:top|right|bottom|left))?(?:-(?:width|style|color))?$/.test(name)) continue;
+    // Flattening text wrappers cannot retain contextual CSS-wide values or currentColor.
+    if (documentTextStyles.has(name) && /^(?:inherit|initial|unset|revert|revert-layer|currentcolor)$/i.test(value)) return false;
     const pattern = documentImportStyles.get(name);
     if (!pattern?.test(value)) return false;
     if (documentTextStyles.has(name) && !inline.has(tag) && !(name === 'background-color' && ['td', 'th'].includes(tag))) return false;

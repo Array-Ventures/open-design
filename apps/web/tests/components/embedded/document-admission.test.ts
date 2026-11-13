@@ -25,6 +25,14 @@ it.each([
   '<body><p><span style="font-size:20px"><span style="font-size:2em">Relative</span></span></p></body>',
   '<body><p><span style="font-size:120%">Relative</span></p></body>',
   '<body><p><span dir="rtl">Direction</span></p></body>',
+  '<body><p><span style="color:red"><span style="color:inherit">Inherited</span></span></p></body>',
+  '<body><p><span style="color:red"><span style="color:currentColor">Inherited</span></span></p></body>',
+  '<body><p><span style="font-family:Georgia"><span style="font-family:inherit">Inherited</span></span></p></body>',
+  '<body><p><span style="background-color:unset">Inherited</span></p></body>',
+  '<body><p><span style="color:var(--authored-color)">Variable</span></p></body>',
+  '<body><table><tr><th scope="col">Scoped header</th></tr></table></body>',
+  '<body><p><a href="https://example.test" data-od-id="lost">Anchor</a></p></body>',
+  '<body><ul><li role="checkbox" aria-checked="true">Not a supported checklist</li></ul></body>',
   '<body><p class="custom">Styled</p></body>',
   '<body><p id="anchor">Styled</p></body>',
   '<body><p style="color:red">Inherited color</p></body>',
@@ -51,6 +59,7 @@ it('keeps its own canonical Lexical export editable after saving lists, tables a
 it.each([
   '<h1><span style="white-space: pre-wrap;">Heading</span></h1>',
   '<p><b><strong style="white-space: pre-wrap;">Bold</strong></b></p>',
+  '<ul __lexicallisttype="check"><li value="1" role="checkbox" tabindex="-1" aria-checked="true"><span style="white-space: pre-wrap;">Checked</span></li></ul>',
   '<ul><li value="1"><span style="white-space: pre-wrap;">Item</span></li></ul>',
   '<table><colgroup><col><col></colgroup><tbody><tr><th style="border: 1px solid black; vertical-align: top; background-color: rgb(242, 243, 245);"><p><span style="white-space: pre-wrap;">Header</span></p></th><td style="border: 1px solid black; vertical-align: top;"><p><span style="white-space: pre-wrap;">Value</span></p></td></tr></tbody></table>',
 ])('admits canonical export fragments: %s', body => {
