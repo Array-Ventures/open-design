@@ -9962,7 +9962,9 @@ function HtmlViewer({
   // A compact screen must leave room for the slide. Preserve the person's
   // wide-screen rail preference while constraining only this rendered layout.
   const thumbnailRailDefaultWidth = compactThumbnailRail ? 120 : previewViewport === 'desktop' ? 194 : 56;
-  const thumbnailRailWidth = Math.min(deckThumbnailWidth ?? thumbnailRailDefaultWidth, thumbnailRailDefaultWidth + 24);
+  const thumbnailRailLayoutLimit = Math.max(64, (previewBodySize?.width ?? 800) - 160);
+  const thumbnailRailWidth = Math.min(deckThumbnailWidth ?? thumbnailRailDefaultWidth,
+    thumbnailRailDefaultWidth + 24, thumbnailRailLayoutLimit);
   const [speakerNotesEditMode, setSpeakerNotesEditMode] = useState(false);
   const [speakerNotesDraft, setSpeakerNotesDraft] = useState('');
   const [_speakerNotesSaving, setSpeakerNotesSaving] = useState(false);

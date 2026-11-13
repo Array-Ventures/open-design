@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import styles from './ThumbnailRailResize.module.css';
 
 export function ThumbnailRailResize({ children, collapsed, width, defaultWidth, onResize }: {
@@ -9,15 +9,6 @@ export function ThumbnailRailResize({ children, collapsed, width, defaultWidth, 
   const [dragging, setDragging] = useState(false);
   const [pointerFocus, setPointerFocus] = useState(false);
   const maximum = () => Math.max(64, Math.min(defaultWidth + 24, (root.current?.parentElement?.clientWidth ?? 800) - 160));
-  useLayoutEffect(() => {
-    const parent = root.current?.parentElement;
-    if (!parent) return;
-    const clamp = () => { if (parent.clientWidth <= 0) return; const limit = maximum(); if (!collapsed && width > limit) onResize(limit); };
-    clamp();
-    const observer = new ResizeObserver(clamp);
-    observer.observe(parent);
-    return () => observer.disconnect();
-  }, [collapsed, width, defaultWidth, onResize]);
   const restingWidth = () => Math.min(defaultWidth, maximum());
   const resize = (next: number) => onResize(Math.max(Math.max(24, restingWidth() - 23), Math.min(maximum(), next)));
   const stop = () => { pointer.current = null; setDragging(false); };
