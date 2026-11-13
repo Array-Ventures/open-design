@@ -2,9 +2,10 @@ import { expect, it } from 'vitest';
 import ExcelJS from 'exceljs-community';
 import { readXlsxWorkbook, type ReadWorkbook } from '../../src/artifacts/workbook/reader.js';
 import { calculateWorkbookCellEdits, calculateWorkbookSheetEdits } from '../../src/artifacts/workbook/calculated-patch.js';
+import { workbookStyleComponentSignature } from '../../src/artifacts/workbook/style-patch.js';
 import { assertWorkbookSheetResourceContinuity } from '../../src/artifacts/workbook/sheet-resources.js';
 import { child, children, xmlPart } from '../../src/artifacts/workbook/parts.js';
-import { writeWorkbookPackage } from '../../src/artifacts/workbook/package.js';
+import { writeWorkbookPackage, WORKBOOK_PACKAGE_LIMITS } from '../../src/artifacts/workbook/package.js';
 import { writeWorkbookXml } from '../../src/artifacts/workbook/xml.js';
 async function fixture() {
   const book = new ExcelJS.Workbook(), first = book.addWorksheet('Inputs'), removed = book.addWorksheet('Restore me'), last = book.addWorksheet('Other');
@@ -67,4 +68,40 @@ it.each(['format-id', 'style-name', 'builtin-style'])('refuses a shadowing appen
     }
   });
   expect(() => assertWorkbookSheetResourceContinuity(historical, current)).toThrow('resources');
+});
+
+it('keeps XML structure distinct from text that happens to contain its encoded signature', async () => {
+  const document = xmlPart((await fixture()).parts, 'xl/styles.xml'), namespace = document.documentElement!.namespaceURI;
+  const font = document.createElementNS(namespace, 'font'), name = document.createElementNS(namespace, 'name'); name.setAttribute('val', 'Arial'); font.appendChild(name);
+  const text = document.createElementNS(namespace, 'font'); text.textContent = workbookStyleComponentSignature(name);
+  expect(workbookStyleComponentSignature(font) === workbookStyleComponentSignature(text)).toBe(false);
+});
+it('serializes a bounded nested XML component once rather than repeatedly escaping child signatures', async () => {
+  const document = xmlPart((await fixture()).parts, 'xl/styles.xml'), namespace = document.documentElement!.namespaceURI;
+  const font = document.createElementNS(namespace, 'font'); let cursor = font;
+  for (let depth = 0; depth < 12; depth++) { const child = document.createElementNS(namespace, 'nested'); cursor.appendChild(child); cursor = child; }
+  cursor.setAttribute('val', 'bounded');
+  expect(workbookStyleComponentSignature(font).length).toBeLessThan(10_000);
+});
+it('refuses actual XML replacing retained font elements with signature-shaped CDATA', async () => {
+  const historical = await fixture();
+  const current = await modified(historical, 'xl/styles.xml', document => {
+    const font = children(child(document.documentElement!, 'fonts')!, 'font')[0]!;
+    const encoded = Array.from(font.childNodes).filter(node => node.nodeType === 1).map(node => workbookStyleComponentSignature(node as typeof font));
+    while (font.firstChild) font.removeChild(font.firstChild);
+    for (const text of encoded) font.appendChild(document.createCDATASection(text));
+  });
+  expect(() => assertWorkbookSheetResourceContinuity(historical, current)).toThrow('resources');
+});
+
+it('bounds constructed style trees and distinguishes comments from source text', async () => {
+  const document = xmlPart((await fixture()).parts, 'xl/styles.xml'), namespace = document.documentElement!.namespaceURI;
+  const text = document.createElementNS(namespace, 'font'), comment = document.createElementNS(namespace, 'font');
+  text.appendChild(document.createTextNode('preserve')); comment.appendChild(document.createComment('preserve'));
+  expect(workbookStyleComponentSignature(text) === workbookStyleComponentSignature(comment)).toBe(false);
+  const deep = document.createElementNS(namespace, 'font'); let cursor = deep;
+  for (let index = 0; index < 128; index++) { const child = document.createElementNS(namespace, 'nested'); cursor.appendChild(child); cursor = child; }
+  expect(() => workbookStyleComponentSignature(deep)).toThrow('structural limit');
+  text.textContent = 'x'.repeat(Math.floor(WORKBOOK_PACKAGE_LIMITS.partBytes / 6));
+  expect(() => workbookStyleComponentSignature(text)).toThrow('byte budget');
 });

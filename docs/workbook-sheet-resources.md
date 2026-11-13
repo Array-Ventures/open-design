@@ -36,3 +36,16 @@ cases rather than interpreting old cells using changed current resources.
 Template extraction, per-deletion source descriptors, authenticated historical
 assets, writer ACK integration and positive protected recovery remain subsequent
 work. These source tests do not establish post-ACK undo or UI support.
+
+
+The shared style fingerprint builds a typed XML tree and serializes once. It
+keeps elements distinct from text/CDATA containing an encoded child signature,
+and comments distinct from text. This closes a real parsed-ZIP alias found while
+qualifying templates. Depth/node limits reuse the XML parser's structural limits;
+a conservative escaped-byte budget applies before serialization. A bounded
+nested-component regression prevents repeated JSON-in-string growth. This does
+not change the resource check into a claim of historical ancestry.
+Whitespace and comment differences now conservatively retain distinct component
+identities. Formatting-only XML differences can therefore keep separate style
+entries rather than being interned together; no equality with the old textual
+fingerprint on all formatted XML is claimed.
