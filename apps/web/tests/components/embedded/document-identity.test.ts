@@ -43,9 +43,10 @@ it('round-trips supported authored inline typography through Lexical', async () 
   }, { discrete: true });
   editor.getEditorState().read(() => {
     const output = new DOMParser().parseFromString($generateHtmlFromNodes(editor), 'text/html');
-    const spans = Array.from(output.querySelectorAll('span'));
-    const outer = spans.find(span => span.textContent === 'Keep ');
-    const inner = spans.find(span => span.textContent === 'inner');
+    // Lexical exports bold text as a styled strong element (optionally wrapped in b).
+    const styled = Array.from(output.querySelectorAll<HTMLElement>('[style]'));
+    const outer = styled.find(element => element.textContent === 'Keep ');
+    const inner = styled.find(element => element.textContent === 'inner');
     expect(outer?.style.color).toBe('rgb(10, 20, 30)');
     expect(outer?.style.fontSize).toBe('22px');
     expect(outer?.style.fontFamily).toBe('Georgia');

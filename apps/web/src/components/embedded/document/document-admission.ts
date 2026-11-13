@@ -35,21 +35,43 @@ function supportedElement(element: HTMLElement): boolean {
   for (const name of ['colspan', 'rowspan', 'start', 'value']) {
     if (element.hasAttribute(name) && !/^[1-9]\d*$/.test(element.getAttribute(name)!)) return false;
   }
+  // Lexical re-numbers ordered items; only already-sequential exported values are lossless.
+  if (tag === 'li' && element.hasAttribute('value') && element.parentElement?.tagName === 'OL') {
+    const parent = element.parentElement;
+    const index = Array.from(parent.children).filter(child => child.tagName === 'LI').indexOf(element);
+    if (Number(element.getAttribute('value')) !== Number(parent.getAttribute('start') ?? 1) + index) return false;
+  }
   const rawStyle = element.getAttribute('style') ?? '';
-  if (rawStyle.split(';').filter(value => value.trim()).length !== element.style.length) return false;
+  // CSSOM may expand shorthands (notably border). Validate each authored declaration
+  // independently instead of comparing declaration counts with normalized properties.
+  for (const declaration of rawStyle.split(';').filter(value => value.trim())) {
+    const colon = declaration.indexOf(':');
+    if (colon < 1) return false;
+    const name = declaration.slice(0, colon).trim().toLowerCase();
+    const probe = document.createElement('span').style;
+    probe.cssText = declaration;
+    if (!probe.getPropertyValue(name)) return false;
+  }
   for (const name of Array.from(element.style)) {
     const value = element.style.getPropertyValue(name).trim();
     if (element.style.getPropertyPriority(name)) return false;
     // Lexical's own exports add these presentation defaults, regenerated on every save.
     if (inline.has(tag) && name === 'white-space' && value === 'pre-wrap') continue;
-    if (['td', 'th'].includes(tag) && name === 'border' && value === '1px solid black') continue;
+    const canonicalCellBorder = ['td', 'th'].includes(tag) && /^1px solid (?:black|rgb\(0,\s*0,\s*0\))$/.test(element.style.getPropertyValue('border'));
+    if (canonicalCellBorder && /^border(?:-(?:top|right|bottom|left))?(?:-(?:width|style|color))?$/.test(name)) continue;
     const pattern = documentImportStyles.get(name);
     if (!pattern?.test(value)) return false;
     if (documentTextStyles.has(name) && !inline.has(tag) && !(name === 'background-color' && ['td', 'th'].includes(tag))) return false;
-    if (['text-align', 'padding-inline-start'].includes(name) && (inline.has(tag) || ['img', 'br', 'col', 'colgroup'].includes(tag))) return false;
+    const indentable = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote'].includes(tag);
+    if (name === 'padding-inline-start' && (!indentable || parseFloat(value) % 40 !== 0)) return false;
+    if (name === 'text-align' && !indentable) return false;
+    // These resets do not cancel inherited semantic bold/italic/underline in Lexical.
+    if (name === 'font-weight' && ['normal', '400'].includes(value)) return false;
+    if (name === 'font-style' && value === 'normal') return false;
+    if (name === 'text-decoration' && value === 'none') return false;
     if (['font-weight', 'font-style', 'text-decoration'].includes(name) && !inline.has(tag)) return false;
     if (name === 'aspect-ratio' && tag !== 'img') return false;
-    if (name === 'width' && !['col', 'td', 'th'].includes(tag)) return false;
+    if (name === 'width' && (!['col', 'td', 'th'].includes(tag) || !value.endsWith('px'))) return false;
     if (name === 'height' && tag !== 'tr') return false;
     if (name === 'vertical-align' && !['td', 'th'].includes(tag)) return false;
   }
