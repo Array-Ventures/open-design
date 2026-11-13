@@ -431,8 +431,9 @@ row/column insertion and deletion, SDK undo/redo, keyboard-only Shift+F10 and
 Escape, immediate post-acknowledgement menus and independent saved-XLSX checks.
 Bounded mutation/identity checks, conditional save/recovery and contained source
 qualification are covered separately. This is local qualification, not an
-installer pin or publication. Manual edge/spacing checks and an intermittent
-blank initial client bootstrap remain under investigation; the native
+installer pin or publication. Manual menu checks passed light/dark at wide and 390-pixel widths, including
+padding and bounded edge flipping. An intermittent blank initial client bootstrap
+remains under investigation; the native
 `docs/workbook-structure.md` records the exact package identities and failures.
 Unsupported SDK menus remain disabled.
 
