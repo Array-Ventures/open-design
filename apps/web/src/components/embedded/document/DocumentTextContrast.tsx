@@ -3,7 +3,7 @@ import { $getNodeByKey, $isTextNode, TextNode, type MutationListener } from 'lex
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { CodeHighlightNode } from '@lexical/code';
 import { TableCellNode } from '@lexical/table';
-import { DOCUMENT_TEXT_INK, documentTextInk, documentColorReader } from './document-text-contrast';
+import { DOCUMENT_TEXT_INK, documentTextInk, documentColorReader } from '@open-design/document-style/browser';
 
 /** View-only contrast at actual text owners; no model or writer updates. */
 export function DocumentTextContrast() {

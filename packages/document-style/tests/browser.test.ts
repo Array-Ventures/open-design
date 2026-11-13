@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { documentTextInk, documentContrast, documentColorReader, type DocumentColor } from '../../../src/components/embedded/document/document-text-contrast';
+import { documentTextInk, documentContrast, documentColorReader, type DocumentColor } from '../src/browser.js';
 const colors: Record<string, DocumentColor> = { black: [0,0,0,1], white: [255,255,255,1], 'rgb(0, 0, 0)': [0,0,0,1], 'rgb(255, 255, 255)': [255,255,255,1], 'rgb(242, 243, 245)': [242,243,245,1], 'rgba(255, 255, 255, 0.5)': [255,255,255,.5], 'rgba(0, 0, 0, 0)': [0,0,0,0], 'rgb(30, 30, 30)': [30,30,30,1] };
 const read = (value: string) => colors[value] ?? null;
 afterEach(() => { document.body.replaceChildren(); document.body.removeAttribute('style'); vi.restoreAllMocks(); vi.unstubAllGlobals(); });

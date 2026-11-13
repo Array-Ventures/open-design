@@ -7,13 +7,13 @@ import { $isTableCellNode } from '@lexical/table';
 import { $generateHtmlFromNodes } from '@lexical/html';
 import { DocumentEditor } from '../../../src/components/embedded/document/DocumentEditor';
 import { documentHtml } from '../../../src/components/embedded/document/document-html';
-import { DOCUMENT_TEXT_INK } from '../../../src/components/embedded/document/document-text-contrast';
+import { DOCUMENT_TEXT_INK } from '@open-design/document-style/browser';
 const save = vi.hoisted(() => vi.fn());
 vi.mock('../../../src/components/embedded/document/document-file', () => ({ saveDocumentFile: save }));
 // Explicitly model the computed-theme seam. Actual Chromium independently
 // qualifies canvas parsing, token colors and the conditional CSS rule.
-vi.mock('../../../src/components/embedded/document/document-text-contrast', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../../src/components/embedded/document/document-text-contrast')>();
+vi.mock('@open-design/document-style/browser', async importOriginal => {
+  const actual = await importOriginal<typeof import('@open-design/document-style/browser')>();
   return { ...actual, documentColorReader: () => (value: string) => {
     const channels = /^rgb\((\d+), (\d+), (\d+)\)$/.exec(value);
     if (channels) return [Number(channels[1]), Number(channels[2]), Number(channels[3]), 1];
