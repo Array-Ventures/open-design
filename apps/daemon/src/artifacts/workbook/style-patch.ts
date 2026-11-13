@@ -1,9 +1,9 @@
-import type { Document, Element } from '@xmldom/xmldom';
+import type { Document, Element, Node as XmlNode } from '@xmldom/xmldom';
 import { workbookStyleEditSchema, WORKBOOK_MODEL_LIMITS, type WorkbookStyleEdit } from '@open-design/contracts/runtime/workbook';
-import { WorkbookFormatError, writeWorkbookPackage } from './package.js';
+import { WorkbookFormatError, writeWorkbookPackage, WORKBOOK_PACKAGE_LIMITS } from './package.js';
 import { appendWorkbookRowCell, orderWorkbookRowCells, address, child, children, relationships, xmlPart } from './parts.js';
 import type { ReadWorkbook } from './reader.js';
-import { writeWorkbookXml } from './xml.js';
+import { writeWorkbookXml, WORKBOOK_XML_STRUCTURE_LIMITS } from './xml.js';
 
 function create(doc: Document, parent: Element, name: string) { return doc.createElementNS(parent.namespaceURI, parent.prefix ? `${parent.prefix}:${name}` : name); }
 function unsigned(value: string | null, fallback?: number): number {
@@ -16,8 +16,26 @@ function flag(value: string | null): boolean {
   if (value === '1' || value === 'true') return true;
   throw new WorkbookFormatError('Invalid row formatting flag.');
 }
-function signature(node: Element): string {
-  return JSON.stringify([node.namespaceURI, node.localName, Array.from(node.attributes).map(a => [a.namespaceURI, a.name, a.value]).sort(), Array.from(node.childNodes).filter(n => n.nodeType !== 3 || n.textContent?.trim()).map(n => n.nodeType === 1 ? signature(n as Element) : n.textContent)]);
+/** Preserve node kinds and serialize once. Encoding child keys as text both
+ * aliases XML with signature-shaped CDATA and grows exponentially with depth. */
+export function workbookStyleComponentSignature(node: Element): string {
+  let elements = 0, budget = 0;
+  const charge = (...values: (string | null | undefined)[]) => {
+    // Six UTF-8 bytes per UTF-16 code unit conservatively bounds JSON escapes;
+    // account for repeated namespace/attribute data before serializing it.
+    budget += 64 + values.reduce((sum, value) => sum + (value?.length ?? 0) * 6, 0);
+    if (budget > WORKBOOK_PACKAGE_LIMITS.partBytes) throw new WorkbookFormatError('Workbook style component exceeds its byte budget.', 'WORKBOOK_LIMIT');
+  };
+  const tree = (value: XmlNode, depth: number): unknown[] => {
+    if (value.nodeType !== 1) { charge(value.nodeName, value.textContent); return ['node', value.nodeType, value.nodeName, value.textContent]; }
+    if (depth > WORKBOOK_XML_STRUCTURE_LIMITS.depth || ++elements > WORKBOOK_XML_STRUCTURE_LIMITS.nodes) throw new WorkbookFormatError('Workbook style component exceeds its structural limit.', 'WORKBOOK_LIMIT');
+    const element = value as Element; charge(element.namespaceURI, element.localName);
+    const attributes = Array.from(element.attributes).map(attribute => { charge(attribute.namespaceURI, attribute.name, attribute.value); return [attribute.namespaceURI, attribute.name, attribute.value]; }).sort();
+    return ['element', element.namespaceURI, element.localName,
+      attributes,
+      Array.from(element.childNodes).map(child => tree(child, depth + 1))];
+  };
+  return JSON.stringify(tree(node, 1));
 }
 /** Each source component is indexed once, and each new candidate once. */
 function table(root: Element, name: string, entry: string, required = true) {
@@ -27,11 +45,11 @@ function table(root: Element, name: string, entry: string, required = true) {
   if (parent?.hasAttribute('count') && unsigned(parent.getAttribute('count')) !== entries.length) throw new WorkbookFormatError('Workbook style count does not match its components.');
   if (entries.length > WORKBOOK_MODEL_LIMITS.styles) throw new WorkbookFormatError('Workbook style table exceeds its limit.', 'WORKBOOK_LIMIT');
   const identities = new Map<string, number>();
-  for (const [index, node] of entries.entries()) { const key = signature(node); if (!identities.has(key)) identities.set(key, index); }
+  for (const [index, node] of entries.entries()) { const key = workbookStyleComponentSignature(node); if (!identities.has(key)) identities.set(key, index); }
   return { entries, at(index: number) { const result = entries[index]; if (!result) throw new WorkbookFormatError('Workbook style component is missing.'); return result; },
     intern(node: Element) {
       if (!parent) throw new WorkbookFormatError('Workbook style table is missing.');
-      const key = signature(node), found = identities.get(key); if (found !== undefined) return found;
+      const key = workbookStyleComponentSignature(node), found = identities.get(key); if (found !== undefined) return found;
       if (entries.length >= WORKBOOK_MODEL_LIMITS.styles) throw new WorkbookFormatError('Workbook style table exceeds its limit.', 'WORKBOOK_LIMIT');
       const index = entries.length; entries.push(node); identities.set(key, index); parent.appendChild(node); parent.setAttribute('count', String(entries.length)); return index;
     } };

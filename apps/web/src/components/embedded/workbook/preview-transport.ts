@@ -1,3 +1,4 @@
+import type { WorkbookHistoricalSheetRef } from '@open-design/contracts/runtime/workbook';
 import { z } from 'zod';
 import { workbookPreviewSchema } from '@open-design/contracts/runtime/workbook';
 import { workbookHostRequest, WorkbookHostError } from './host-request';
@@ -32,8 +33,8 @@ export function workbookPollDelay(signal?: AbortSignal): Promise<void> {
     signal?.addEventListener('abort', abort, { once: true });
   });
 }
-export async function prepareWorkbookJob(projectId: string, fileName: string, format: 'workbook' | 'xlsx' | 'csv', operationId: string, signal?: AbortSignal, workbookEditPlan?: string) {
-  let job = checkedWorkbookJob(await workbookHostRequest(projectId, { action: 'prepare', body: { operationId, fileName, format, ...(workbookEditPlan === undefined ? {} : { workbookEditPlan }) } }, signal), projectId, fileName, format);
+export async function prepareWorkbookJob(projectId: string, fileName: string, format: 'workbook' | 'xlsx' | 'csv', operationId: string, signal?: AbortSignal, workbookEditPlan?: string, workbookSheetSources?: WorkbookHistoricalSheetRef[]) {
+  let job = checkedWorkbookJob(await workbookHostRequest(projectId, { action: 'prepare', body: { operationId, fileName, format, ...(workbookEditPlan === undefined ? {} : { workbookEditPlan }), ...(workbookSheetSources ? { workbookSheetSources } : {}) } }, signal), projectId, fileName, format);
   const id = job.id;
   try {
   while (job.state === 'queued' || job.state === 'running') {

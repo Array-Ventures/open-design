@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -63,6 +63,31 @@ describe('isolated workbook render preparation', () => {
       await expect(renderWorkbook(directory, { fileName: 'book.xlsx', format: 'xlsx', restore }, async () => bytes)).rejects.toThrow();
     }
     await expect(readFile(path.join(directory, 'artifact.xlsx'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('applies a complete source-bound sheet projection through the actual renderer and refuses replay against changed bytes', async () => {
+    const before = Buffer.from(bytes), sheets = [{ sheetId: '1', name: 'Renamed inputs', origin: 'source' }, { sheetId: '2', name: 'New notes', origin: 'new' }];
+    const body = Buffer.from(JSON.stringify({ sourceSha256, sheets, edits: [{ sheetId: '2', cell: { row: 0, column: 0, kind: 'number', value: 17 } }] }));
+    const input = { fileName: 'book.xlsx', dataFile: 'edits.json', format: 'xlsx' as const };
+    await renderWorkbook(directory, input, async name => name === 'edits.json' ? body : bytes);
+    const saved = await readFile(path.join(directory, 'artifact.xlsx')), book = new ExcelJS.Workbook(); await book.xlsx.load(Uint8Array.from(saved).buffer);
+    expect(book.worksheets.map(sheet => [sheet.id, sheet.name])).toEqual([[1, 'Renamed inputs'], [2, 'New notes']]);
+    expect(book.getWorksheet(2)!.getCell('A1').value).toBe(17);
+    expect(book.getWorksheet(1)!.getCell('B1').result).toBe(4);
+    const retry = path.join(directory, 'retry'); await mkdir(retry);
+    await expect(renderWorkbook(retry, input, async name => name === 'edits.json' ? body : saved)).rejects.toThrow('changed after');
+    expect(await readdir(retry)).toEqual([]); expect(bytes).toEqual(before);
+  });
+  it('applies rename/delete references before serializing the final preview model', async () => {
+    const book = new ExcelJS.Workbook(), removed = book.addWorksheet('Removed'), kept = book.addWorksheet('Kept');
+    removed.getCell('A1').value = 12; kept.getCell('A1').value = { formula: 'Removed!A1+1', result: 999 };
+    bytes = Buffer.from(await book.xlsx.writeBuffer()); sourceSha256 = createHash('sha256').update(bytes).digest('hex');
+    const body = Buffer.from(JSON.stringify({ sourceSha256, edits: [], sheets: [{ sheetId: '2', name: 'Kept renamed', origin: 'source' }] }));
+    await renderWorkbook(directory, { fileName: 'book.xlsx', format: 'workbook', dataFile: 'edits.json' }, async name => name === 'edits.json' ? body : bytes);
+    const result = workbookPreviewSchema.parse(JSON.parse(await readFile(path.join(directory, 'artifact.json'), 'utf8')));
+    expect(result.sourceSha256).toBe(sourceSha256);
+    expect(result.model.sheets).toHaveLength(1); expect(result.model.sheets[0]).toMatchObject({ id: '2', name: 'Kept renamed' });
+    expect(result.model.sheets[0]!.cells[0]).toMatchObject({ formula: '=#REF!+1', kind: 'error', value: '#REF!' });
   });
 
 });

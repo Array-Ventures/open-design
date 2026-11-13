@@ -15,7 +15,7 @@ it('probes status before preparing once and waits for the durable applied receip
   const intent = attempt(); request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockResolvedValueOnce(receipt(intent.operationId, 'pending')).mockResolvedValueOnce(receipt(intent.operationId));
   prepare.mockResolvedValueOnce({ id: renderId, projectId, input: { fileName, format: 'xlsx' }, state: 'ready', error: null });
   expect(await saveWorkbook(intent)).toMatchObject({ state: 'applied', targetSha256: target });
-  expect(prepare).toHaveBeenCalledWith(projectId, fileName, 'xlsx', intent.preparationId, undefined, JSON.stringify(intent.plan));
+  expect(prepare).toHaveBeenCalledWith(projectId, fileName, 'xlsx', intent.preparationId, undefined, JSON.stringify(intent.plan), undefined);
   expect(request.mock.calls.map(call => call[1].action)).toEqual(['read-save', 'save', 'read-save']);
 });
 it('recovers a lost admission response by status without preparing or writing again', async () => {
@@ -224,4 +224,24 @@ it('accepts a cancelled never-started preparation only for its exact local opera
   const current = attempt(), error = new WorkbookSavePreparationCancelledError(current.operationId, current.preparationId, null);
   expect(isWorkbookSaveRejection(error, { id: current.operationId, preparationId: current.preparationId })).toBe(true);
   for (const intent of [{ id: crypto.randomUUID(), preparationId: current.preparationId }, { id: current.operationId, preparationId: crypto.randomUUID() }, { id: current.operationId }, { id: current.operationId, preparationId: current.preparationId, renderId }]) expect(isWorkbookSaveRejection(error, intent)).toBe(false);
+});
+it('retains complete source-owned sheet projections through save preparation and lost-response recovery', async () => {
+  const sheets = [{ sheetId: '1', name: "Quarter's notes", origin: 'source' as const }, { sheetId: '2', name: 'Fresh', origin: 'new' as const }];
+  const intent = newWorkbookSaveAttempt(projectId, fileName, { sourceSha256: source, edits: [], sheets });
+  expect(intent.plan.sheets).toEqual(sheets);
+  request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockRejectedValueOnce(new WorkbookHostError('Response lost'));
+  prepare.mockResolvedValueOnce({ id: renderId, projectId, input: { fileName, format: 'xlsx' }, state: 'ready', error: null });
+  await expect(saveWorkbook(intent)).rejects.toThrow('Response lost');
+  expect(prepare).toHaveBeenCalledWith(projectId, fileName, 'xlsx', intent.preparationId, undefined, JSON.stringify({ sourceSha256: source, edits: [], sheets }), undefined);
+  request.mockResolvedValueOnce(receipt(intent.operationId));
+  await expect(saveWorkbook(intent)).resolves.toMatchObject({ state: 'applied' });
+  expect(prepare).toHaveBeenCalledTimes(1); expect(intent.plan.sheets).toEqual(sheets);
+});
+it('derives exact deduplicated historical outer references from the same retained restore plan', async () => {
+  const template = { versionId: 'retained-v1', versionSha256: 'c'.repeat(64) };
+  const intent = newWorkbookSaveAttempt(projectId, fileName, { sourceSha256: source, edits: [], sheets: [{ sheetId: '1', name: 'First restored', origin: 'restore', template }, { sheetId: '2', name: 'Second restored', origin: 'restore', template }] });
+  request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockResolvedValueOnce(receipt(intent.operationId, 'pending')).mockResolvedValueOnce(receipt(intent.operationId));
+  prepare.mockResolvedValueOnce({ id: renderId, projectId, input: { fileName, format: 'xlsx' }, state: 'ready', error: null });
+  await expect(saveWorkbook(intent)).resolves.toMatchObject({ state: 'applied' });
+  expect(prepare).toHaveBeenCalledWith(projectId, fileName, 'xlsx', intent.preparationId, undefined, JSON.stringify(intent.plan), [template]);
 });

@@ -505,3 +505,68 @@ keyboard capture and source-reset behavior. Its browser/visual qualification rem
 [document-markdown-code.md](document-markdown-code.md) records the native fenced
 code normalization, whole-code HTML fallbacks, actual contained Pandoc evidence
 and the remaining inline-code whitespace import limitation.
+
+
+## Sheet actions: source foundation only
+
+`workbookSheetProjectionSchema` and the daemon's `sheet-patch.ts` /
+`calculateWorkbookSheetEdits` provide a standalone, source-preserving foundation
+for ordinary scalar worksheet rename, blank append and deletion. The optional `sheets` field is accepted by `workbookEditPlanSchema` and dispatched
+by the real contained render consumer; it does not advertise a preview capability
+or enable SDK UI actions. CSV explicitly refuses sheet, visibility and axis
+structure owners. Existing plans without `sheets` keep their original path.
+
+The final ordered projection preserves imported numeric IDs, admits new bounded
+numeric births only above the source maximum, and refuses survivor reorder or
+insertion before survivors. The importer qualification caps IDs at 65,535, below
+the XML unsigned limit, and fails closed on exhaustion. Names use the pinned
+SDK's UTF-16 length bound and locale-independent lowercase conflict comparison;
+invalid XML controls and lone surrogates are additionally refused. New sheets
+are blank and visible unless a combined final visibility edit changes that.
+At least one final worksheet must remain visible.
+
+The source owner rewrites parsed qualified references, not formula text
+substrings; deleted references become real calculated `#REF!` errors. It owns
+workbook membership, checked relationships, content types, view indices and the
+ordinary extended-properties Worksheets title/count vectors. Unsupported title
+vectors, custom property parts, very-hidden sheets and reference-bearing
+features outside the current scalar structural admission are refused. Surviving
+IDs/parts/styles/shared strings remain owned by the source package; a no-op
+projection preserves all package-member bytes and stored caches. Formula-bearing
+changes clear derived caches and use the existing source calculator,
+not blanket workbook serialization.
+
+Remaining before UI exposure: qualify the actual packaged contained process
+and expose a source capability only after extending SDK identity/diff extraction, actual command/RPC
+admission, input epochs and scalar completion; preserve birth identity through
+undo/redo, protected checkpoints, ACK/rebase, draft recovery and history; connect
+conditional UI; then run actual export/crash and manual visual qualification.
+The source tests do not establish those unimplemented delivery/UI properties.
+
+
+### Sheet plan carrier boundary
+
+`workbookEditPlanSchema.sheets` is a strict final projection, and every accompanying
+cell/axis/style/dimension/visibility edit must target a final sheet ID. The actual
+`embedded-render/workbooks.ts` consumer validates the source SHA before dispatching
+it to `calculateWorkbookSheetEdits`; no sheet projection is parsed and ignored.
+Renderer source tests produce and reopen actual XLSX output, exercise real
+`#REF!` calculation in preview output, and refuse replay against changed source
+bytes. These tests invoke the render entry directly, not a running container.
+
+The companion save/preparation and cancellation transports retain the complete
+plan. Native contracts intentionally keep its JSON opaque: the host/API bridge
+carries the original string; `inlineWorkbookPlan` freezes exact UTF-8 bytes and a
+manifest SHA, and the existing render input digest fences changed-plan replay.
+The native carrier regression uses the real private-database admission machinery
+with a fake render container, proving transport/hash/replay and pending-save
+idempotency only. It does not prove workbook calculation, delivered CAS cuts or
+sheet-aware crash recovery. The conditional receipt/history owner still commits
+prepared binary bytes; its protocol is unchanged.
+
+Protected UI checkpoints remain stricter than schema acceptance: their pending
+plan must equal the independently derived snapshot plan. Until real sheet birth
+identity and SDK derivation land, a pending sheet projection is refused without
+replacing the prior protected draft. No UI producer or sheet-action capability
+is enabled by this carrier step. Positive multi-ACK/rebase/protected draft/history
+and actual packaged crash qualification remain mandatory in the next slices.
