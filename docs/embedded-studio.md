@@ -329,6 +329,21 @@ editing and staging, and failed handoffs retain their existing retry flow.
 Replies keep their existing separate save/reply and chat-staging controls; they
 do not gain an implicit mention-triggered handoff.
 
+## Choosing document text after opening comments
+
+Opening **Comment** without a selection keeps an unbound selection prompt. A
+subsequent completed pointer selection or keyboard range extension binds the
+exact current block identities, offsets and quote. Intermediate drag ranges do
+not open the composer or steal focus. Once a draft or saved thread has a target,
+new document selections cannot retarget it. List navigation and closing withdraw
+the pending selection; comment operations do not save the working document.
+
+Manual inspection of companion 103 found that its prompt stayed empty after a
+valid Viewing-mode selection. Focused real-editor regressions reproduce that
+failure and cover the source correction, including generated block identities,
+Shift extension and draft/thread retention. Packaged manual acceptance of this
+correction remains pending; companion 103 is unchanged.
+
 ## Worksheet visibility slice
 
 Ordinary XLSX worksheets support hide/unhide through the host header's scoped
