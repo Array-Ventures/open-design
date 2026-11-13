@@ -124,7 +124,7 @@ export function ManualEditPanel({
     return () => { imageUpload.current?.abort(); imageUpload.current = null; };
   }, [selectedTarget?.id]);
   const targetForInspector = selectedTarget;
-  const panelTitle = targetForInspector ? readableManualEditTargetName(targetForInspector) : t('manualEdit.fallbackTitle');
+  const panelTitle = targetForInspector ? readableManualEditTargetName(targetForInspector) : t(presentationSource ? 'manualEdit.presentationProperties' : 'manualEdit.fallbackTitle');
   useEffect(() => {
     selectedTargetRef.current = selectedTarget;
   }, [selectedTarget]);
