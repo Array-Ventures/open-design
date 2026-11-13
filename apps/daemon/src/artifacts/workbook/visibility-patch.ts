@@ -60,7 +60,7 @@ export async function patchWorkbookVisibility(source: ReadWorkbook, edits: reado
       let sheetViews = child(sheetRoot, 'sheetViews');
       if (!sheetViews) {
         sheetViews = create(parsed, sheetRoot, 'sheetViews');
-        const before = Array.from(sheetRoot.childNodes).find(node => node.nodeType === 1 && !['sheetPr', 'dimension'].includes((node as Element).localName));
+        const before = Array.from(sheetRoot.childNodes).find(node => node.nodeType === 1 && !['sheetPr', 'dimension'].includes((node as Element).localName ?? ''));
         sheetRoot.insertBefore(sheetViews, before ?? null);
       }
       let selected = children(sheetViews, 'sheetView').find(item => item.getAttribute('workbookViewId') === String(viewId));

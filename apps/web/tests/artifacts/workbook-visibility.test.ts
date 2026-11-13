@@ -1,8 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { ICommandService, Univer } from '@univerjs/core';
+import { ICommandService, IUniverInstanceService, LocaleType, Univer } from '@univerjs/core';
 import { FUniver } from '@univerjs/core/facade';
 import { UniverSheetsPlugin, SetWorksheetHideCommand, SetWorksheetHideMutation, SetWorksheetShowCommand } from '@univerjs/sheets';
 import '@univerjs/sheets/facade';
+import English from '@univerjs/preset-sheets-core/locales/en-US';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { workbookEditPlanSchema } from '@open-design/contracts/runtime/workbook';
 import type { IWorkbookData } from '@univerjs/presets';
@@ -36,10 +37,11 @@ it('admits exact geometry-preserving visibility mutations to calculation while r
   expect(() => assertWorkbookCalculationMutation({ id: SetWorksheetHideMutation.id, params: { ...params, subUnitId: 'a' } }, [book], 'range')).toThrow('at least one');
 });
 it('uses real SDK visibility commands with undo/redo and refuses writes before ready, after readiness is withdrawn, or into veryHidden sheets', async () => {
-  const model = source(), univer = new Univer(); closers.push(() => univer.dispose());
+  const model = source(), univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: English } }); closers.push(() => univer.dispose());
   let book: ReturnType<FUniver['createWorkbook']> | undefined, ready = false;
   const owner = ownWorkbookVisibility(univer, model, () => book?.save(), () => ready); closers.push(() => owner.dispose());
   univer.registerPlugin(UniverSheetsPlugin); const api = FUniver.newAPI(univer); book = api.createWorkbook(data(model)); book.setEditable(true);
+  univer.__getInjector().get(IUniverInstanceService).focusUnit(book.getId());
   const commands = univer.__getInjector().get(ICommandService), params = { unitId: book.getId(), subUnitId: 'b' };
   expect(() => commands.syncExecuteCommand(SetWorksheetHideMutation.id, { ...params, hidden: 1 })).toThrow('not ready');
   ready = true;
@@ -55,7 +57,7 @@ it('uses real SDK visibility commands with undo/redo and refuses writes before r
   expect(() => commands.syncExecuteCommand(SetWorksheetHideMutation.id, { ...params, hidden: 1 })).toThrow('not ready');
 });
 it('checks parent origin, controller, source, read-only and blocked state and omits veryHidden from header state', () => {
-  const model = source(), univer = new Univer(); closers.push(() => univer.dispose()); univer.registerPlugin(UniverSheetsPlugin);
+  const model = source(), univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: English } }); closers.push(() => univer.dispose()); univer.registerPlugin(UniverSheetsPlugin);
   const api = FUniver.newAPI(univer), book = api.createWorkbook(data(model)); book.setEditable(true);
   const owner = ownWorkbookVisibility(univer, model, () => book.save(), () => !scope.blocked); closers.push(() => owner.dispose());
   const postMessage = vi.fn(), parent = { postMessage }, handlers = new Set<(event: MessageEvent) => void>();

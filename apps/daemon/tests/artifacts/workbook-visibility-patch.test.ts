@@ -11,12 +11,15 @@ import { writeWorkbookXml } from '../../src/artifacts/workbook/xml.js';
 async function fixture(): Promise<ReadWorkbook> {
   const book = new ExcelJS.Workbook();
   const first = book.addWorksheet('Inputs'); first.getCell('A1').value = 2;
-  first.getCell('B1').value = { formula: 'A1*2', result: 4 }; first.views = [{ state: 'normal', tabSelected: true }];
+  first.getCell('B1').value = { formula: 'A1*2', result: 4 }; first.views = [{ state: 'normal' }];
   book.addWorksheet('Summary').getCell('A1').value = { formula: 'Inputs!B1', result: 4 };
   book.addWorksheet('Hidden', { state: 'hidden' }); book.addWorksheet('Internal', { state: 'veryHidden' });
   book.views = [{ x: 0, y: 0, width: 800, height: 600, visibility: 'visible', activeTab: 0, firstSheet: 0 }];
   const source = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer()));
   const parts = new Map(source.parts); parts.set('custom/opaque.bin', Buffer.from([1, 7, 255]));
+  const firstView = xmlPart(parts, 'xl/worksheets/sheet1.xml');
+  child(child(firstView.documentElement!, 'sheetViews')!, 'sheetView')!.setAttribute('tabSelected', '1');
+  parts.set('xl/worksheets/sheet1.xml', writeWorkbookXml(firstView));
   return readXlsxWorkbook(await writeWorkbookPackage(parts));
 }
 async function alter(source: ReadWorkbook, part: string, edit: (root: Element) => void): Promise<ReadWorkbook> {
@@ -25,7 +28,7 @@ async function alter(source: ReadWorkbook, part: string, edit: (root: Element) =
 }
 it('hides and unhides without changing cells, formula caches, relationships or unrelated part bytes', async () => {
   const source = await fixture();
-  const hidden = await readXlsxWorkbook(await calculateWorkbookCellEdits(source, [], [], [], [{ sheetId: '2', visibility: 'hidden' }]));
+  const hidden = await readXlsxWorkbook((await calculateWorkbookCellEdits(source, [], [], [], [{ sheetId: '2', visibility: 'hidden' }])).bytes);
   expect(hidden.model.sheets[1]!.visibility).toBe('hidden');
   for (const [name, bytes] of source.parts) if (name !== 'xl/workbook.xml') expect(hidden.parts.get(name), name).toEqual(bytes);
   expect(hidden.model.sheets.map(sheet => sheet.cells)).toEqual(source.model.sheets.map(sheet => sheet.cells));
