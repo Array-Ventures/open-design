@@ -3408,6 +3408,7 @@ function manualEditPatchKindToTracking(patch: ManualEditPatch): TrackingArtifact
     case 'set-attributes': return 'attributes';
     case 'set-outer-html': return 'html';
     case 'set-full-source': return 'source';
+    case 'insert-element': return 'html';
   }
 }
 
@@ -14169,7 +14170,7 @@ function HtmlViewer({
     setManualEditError(null);
     try {
       const baseSource = sourceRef.current;
-      const result = applyManualEditPatch(baseSource, patch);
+      const result = applyManualEditPatch(baseSource, patch, file.name);
       if (!result.ok) {
         setManualEditError(result.error ?? 'Could not apply edit.');
         finish('failed', 'patch_invalid');
@@ -14182,6 +14183,7 @@ function HtmlViewer({
         finish('failed', 'source_conflict');
         return false;
       }
+      if (result.unchanged) { setManualEditError(null); finish('success'); return true; }
       const parentVersionId = await resolveManualEditParentVersionId(baseSource);
       // A committed content patch can notify the file watcher as soon as the
       // write lands. Capture the opaque iframe's exact scroll position before
@@ -14189,7 +14191,7 @@ function HtmlViewer({
       // rebuild the preview from an initial 0/0 position. Style patches stream
       // live through postMessage and never reload.
       if (patch.kind !== 'set-style') {
-        await capturePreviewScrollPosition();
+        await capturePreviewScrollPosition(patch.kind === 'insert-element');
       }
       const saved = await writeProjectTextFileDetailed(projectId, file.name, result.source, {
         artifactManifest: file.artifactManifest,

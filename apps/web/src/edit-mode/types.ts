@@ -1,3 +1,5 @@
+import type { ManualEditInsertionPatch } from './insertion';
+
 export type ManualEditKind = 'text' | 'link' | 'image' | 'container' | 'token';
 
 export interface ManualEditRect {
@@ -108,6 +110,7 @@ export interface ManualEditTarget {
 }
 
 export type ManualEditPatch =
+  | ManualEditInsertionPatch
   | { id: string; kind: 'set-text'; value: string }
   | { id: string; kind: 'set-link'; text: string; href: string }
   | { id: string; kind: 'set-image'; src: string; alt: string }
