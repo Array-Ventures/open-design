@@ -1,3 +1,5 @@
+import { RiImageEditLine } from '@remixicon/react';
+import { Button as BoardUIButton } from './embedded/boardui/button';
 import { Button, Input, Textarea, ValueSelect } from '@open-design/components';
 import { useEffect, useLayoutEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import type { ProjectDesignTokenSuggestion, ProjectDesignTokenSuggestionProp } from '../providers/registry';
@@ -253,6 +255,10 @@ export function ManualEditPanel({
                 target={targetForInspector}
                 draft={draft}
                 onDraftChange={onDraftChange}
+                imageAction={onPickImage ? <BoardUIButton iconOnly leadingIcon={RiImageEditLine} size="xs" variant="ghost"
+                  aria-label={uploadingImage ? t('manualEdit.uploadingImage') : t('manualEdit.uploadImage')}
+                  title={uploadingImage ? t('manualEdit.uploadingImage') : t('manualEdit.uploadImage')}
+                  disabled={Boolean(busy || uploadingImage)} onClick={() => fileInputRef.current?.click()} /> : null}
               />
               <StyleInspector
                 target={targetForInspector}
@@ -282,17 +288,6 @@ export function ManualEditPanel({
           ) : null}
 
           {targetForInspector?.kind === 'image' && onPickImage ? (
-            <div className="cc-section">
-              <header className="cc-section-head">{t('manualEdit.sectionImage')}</header>
-              <div className="cc-section-body">
-                <button
-                  type="button"
-                  className="cc-action-btn"
-                  disabled={uploadingImage}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  {uploadingImage ? t('manualEdit.uploadingImage') : t('manualEdit.uploadImage')}
-                </button>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -325,8 +320,6 @@ export function ManualEditPanel({
                     }
                   }}
                 />
-              </div>
-            </div>
           ) : null}
         </fieldset></div></div>
 
@@ -416,18 +409,20 @@ function ContentInspector({
   target,
   draft,
   onDraftChange,
+  imageAction,
 }: {
   sourceControls: boolean;
   target: ManualEditTarget;
   draft: ManualEditDraft;
   onDraftChange: (draft: ManualEditDraft) => void;
+  imageAction?: ReactNode;
 }) {
   const t = useT();
   const update = (patch: Partial<ManualEditDraft>) => onDraftChange({ ...draft, ...patch });
   if (target.kind === 'image') {
     return (
       <div className="cc-inspector manual-edit-content-inspector">
-        <Section title={t('manualEdit.sectionContent')}>
+        <Section title={t('manualEdit.sectionImage')} action={imageAction}>
           <label className="manual-edit-field compact">
             <span>{t('manualEdit.imageUrl')}</span>
             <Input value={draft.src} onChange={(event) => update({ src: event.currentTarget.value })} />
@@ -829,7 +824,7 @@ function StyleInspector({
   const u = (key: keyof ManualEditStyles, value: string) => onChange(key, value);
   const summary = target.computedSummary;
   const layoutDisabled = !target.isLayoutContainer;
-  const typography = target.kind !== 'image' && !['svg', 'path', 'rect', 'circle', 'ellipse', 'polygon', 'polyline', 'line', 'video', 'canvas'].includes(target.tagName.toLowerCase());
+  const typography = target.kind !== 'image' && target.attributes.role !== 'img' && !['svg', 'path', 'rect', 'circle', 'ellipse', 'polygon', 'polyline', 'line', 'video', 'canvas'].includes(target.tagName.toLowerCase());
   const colorLabel = typography ? t('manualEdit.textColor') : t('sketch.color');
   const widthPlaceholder = styles.width ? '' : `${Math.round(target.rect.width)}px`;
   const heightPlaceholder = styles.height ? '' : `${Math.round(target.rect.height)}px`;
@@ -1007,10 +1002,10 @@ function borderStyleOptions(t: ManualEditTranslator): DropdownOption[] {
   ];
 }
 
-function Section({ title, children, inactive }: { title: string; children: ReactNode; inactive?: boolean }) {
+function Section({ title, children, inactive, action }: { title: string; children: ReactNode; inactive?: boolean; action?: ReactNode }) {
   return (
     <section className={`cc-section${inactive ? ' cc-section-inactive' : ''}`}>
-      <header className="cc-section-head">{title}</header>
+      <header className="cc-section-head flex items-center justify-between gap-2"><span>{title}</span>{action}</header>
       <div className="cc-section-body">{children}</div>
     </section>
   );

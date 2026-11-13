@@ -89,9 +89,9 @@ describe('ManualEditPanel', () => {
     expect(rowSelect('Align')).not.toBeNull();
   });
 
-  it('keeps currentColor editing on vector shapes without typography controls', () => {
+  it.each(['svg', 'div'])('keeps currentColor editing on %s shapes without typography controls', (tagName) => {
     const onStyleChange = vi.fn();
-    renderPanel({ selectedTarget: { ...target, kind: 'container', tagName: 'svg' }, onStyleChange });
+    renderPanel({ selectedTarget: { ...target, kind: 'container', tagName, attributes: { ...target.attributes, role: 'img' } }, onStyleChange });
     expect(host.querySelector('[aria-label="Font size"]')).toBeNull();
     const color = rowInput('Color');
     act(() => { color.value = '#2368c4'; Simulate.change(color); });
@@ -109,6 +109,8 @@ describe('ManualEditPanel', () => {
     await act(async () => { Simulate.change(input); });
     const signal = onPickImage.mock.calls[0]![1]!;
     expect(signal.aborted).toBe(false);
+    expect((host.querySelector('input[aria-label="Alt text"]') ?? host.querySelector('.manual-edit-content-inspector input'))?.matches(':disabled')).toBe(true);
+    expect(host.querySelector('fieldset')?.getAttribute('aria-busy')).toBe('true');
     renderPanel({ selectedTarget: { ...image, id: 'second-image' }, onPickImage, onApplyPatch, onError });
     expect(signal.aborted).toBe(true);
     await act(async () => { resolve('_studio-image-assets/confirmed.png'); });
