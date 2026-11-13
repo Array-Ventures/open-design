@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import { workbookWriteIdentitySchema, workbookRestoreSelectionSchema, type WorkbookRestoreSelection, type WorkbookWriteReceipt } from '@open-design/contracts/runtime/workbook';
-import { withProjectFileVersionBytesLock } from '../../project-file-versions.js';
+import { withProjectFileVersionBytesLock, type PreparedProjectFileVersion } from '../../project-file-versions.js';
 import { admitWorkbookWrite, finishWorkbookWrite, readWorkbookWrite, recordWorkbookSourceVersion, WorkbookWriteError, type WorkbookWriteIdentity } from '../../storage/workbook-writes.js';
 import { requireWorkbookHistoryBytes } from './history-storage.js';
 
@@ -35,6 +35,8 @@ export async function commitWorkbook(db: Database.Database, projectsRoot: string
     if (receipt && receipt.state !== 'pending') return receipt;
     if (identity.restore && (await history.matchVersionContent(bytes, identity.restore.versionId)).status !== 'matched') throw new WorkbookWriteError('WORKBOOK_RESTORE_VERSION_MISMATCH');
     receipt ??= admitWorkbookWrite(db, identity);
+    let preparedVersion: PreparedProjectFileVersion | undefined;
+    const versionOptions = () => ({ source: identity.restore ? 'restore' as const : 'manual' as const, label: identity.restore ? 'Restored workbook' : 'Saved workbook', ...(identity.restore ? { restoreFromVersionId: identity.restore.versionId } : {}), ...(receipt?.sourceVersionId ? { parentVersionId: receipt.sourceVersionId } : {}) });
     let current = await files.read(), actual = digest(current);
     if (actual !== identity.sourceSha256 && actual !== targetSha256) return finishWorkbookWrite(db, identity, { state: 'conflict', actualSha256: actual });
     if (actual !== targetSha256) {
@@ -42,6 +44,9 @@ export async function commitWorkbook(db: Database.Database, projectsRoot: string
       const prior = await history.ensureCurrentVersion(current!, { source: 'manual', label: 'Before workbook edit' });
       if (!prior) throw new Error('Workbook source history was not captured.');
       receipt = recordWorkbookSourceVersion(db, identity, prior.id);
+      // Capacity/schema/byte admission uses the exact target entry and manifest
+      // under this same lock, before any working-file replacement.
+      preparedVersion = await history.prepareVersion(bytes, versionOptions());
       await files.authorize();
       current = await files.read(); actual = digest(current);
       if (actual !== identity.sourceSha256) return finishWorkbookWrite(db, identity, { state: 'conflict', actualSha256: actual });
@@ -53,7 +58,7 @@ export async function commitWorkbook(db: Database.Database, projectsRoot: string
       current = await files.read(); actual = digest(current);
       if (actual !== targetSha256) return finishWorkbookWrite(db, identity, { state: 'conflict', actualSha256: actual });
     }
-    const version = await history.ensureCurrentVersion(bytes, { source: identity.restore ? 'restore' : 'manual', label: identity.restore ? 'Restored workbook' : 'Saved workbook', ...(identity.restore ? { restoreFromVersionId: identity.restore.versionId } : {}), ...(receipt.sourceVersionId ? { parentVersionId: receipt.sourceVersionId } : {}) });
+    const version = preparedVersion ? await preparedVersion.publish() : await history.ensureCurrentVersion(bytes, versionOptions());
     if (!version) throw new Error('Workbook saved history was not captured.');
     return finishWorkbookWrite(db, identity, { state: 'applied', versionId: version.id });
   });

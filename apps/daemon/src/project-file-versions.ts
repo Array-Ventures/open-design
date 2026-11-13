@@ -73,9 +73,14 @@ export interface ProjectFileVersionContentMatch {
   version: ProjectFileVersion | null;
 }
 
+export interface PreparedProjectFileVersion {
+  /** Publish this exact admitted manifest while the same version lock is held. */
+  publish: () => Promise<ProjectFileVersion>;
+}
 export interface ProjectFileVersionBytesLockContext {
   safeName: string;
   createVersion: (content: Buffer, options?: CreateProjectFileVersionOptions) => Promise<ProjectFileVersion>;
+  prepareVersion: (content: Buffer, options?: CreateProjectFileVersionOptions) => Promise<PreparedProjectFileVersion>;
   ensureCurrentVersion: (content: Buffer, options?: CreateProjectFileVersionOptions) => Promise<ProjectFileVersion | null>;
   matchVersionContent: (content: Buffer, versionId?: string) => Promise<ProjectFileVersionContentMatch>;
 }
@@ -85,6 +90,7 @@ export async function withProjectFileVersionBytesLock<T>(projectsRoot: string, p
   assertProjectAvailable(projectsRoot, projectId, metadata);
   return withVersionFileLock(projectsRoot, projectId, safeName, () => work({ safeName,
     createVersion: (bytes, options = {}) => createProjectFileVersionUnlocked(projectsRoot, projectId, safeName, requireWorkbookHistoryBytes(bytes), options),
+    prepareVersion: (bytes, options = {}) => prepareProjectFileVersionUnlocked(projectsRoot, projectId, safeName, requireWorkbookHistoryBytes(bytes), options),
     ensureCurrentVersion: (bytes, options = {}) => ensureCurrentProjectFileVersionUnlocked(projectsRoot, projectId, safeName, requireWorkbookHistoryBytes(bytes), options),
     matchVersionContent: (bytes, versionId) => resolveProjectFileVersionContentMatchUnlocked(projectsRoot, projectId, safeName, requireWorkbookHistoryBytes(bytes), versionId),
   }));
@@ -392,34 +398,24 @@ async function readVersionManifestState(
   }
 }
 
-async function writeVersionManifest(
-  projectsRoot: string,
-  projectId: string,
-  fileName: string,
-  entries: VersionEntry[],
-  options: { currentVersionId: string | null; deletedAt?: number },
-): Promise<void> {
+/** Construct and validate the exact bytes before a caller may replace its
+ * working file. Publication reuses this string; IDs/timestamps cannot drift. */
+function versionManifestContent(fileName: string, entries: VersionEntry[], options: { currentVersionId: string | null; deletedAt?: number }): string {
+  const manifest = { schemaVersion: 2, fileName, currentVersionId: options.currentVersionId, entries,
+    ...(typeof options.deletedAt === 'number' && Number.isFinite(options.deletedAt) ? { deletedAt: options.deletedAt } : {}) };
+  if (isWorkbookHistoryFile(fileName)) validateWorkbookHistoryManifest(manifest);
+  const content = JSON.stringify(manifest, null, 2);
+  if (isWorkbookHistoryFile(fileName) && Buffer.byteLength(content) > WORKBOOK_HISTORY_MANIFEST_BYTES) throw codedError('Workbook history manifest exceeds its byte limit.', 'EFBIG');
+  return content;
+}
+async function persistVersionManifest(projectsRoot: string, projectId: string, fileName: string, content: string): Promise<void> {
   const root = versionRootFor(projectsRoot, projectId, fileName);
   await mkdir(root, { recursive: true });
-  const manifest: {
-    schemaVersion: number;
-    fileName: string;
-    currentVersionId: string | null;
-    entries: VersionEntry[];
-    deletedAt?: number;
-  } = {
-    schemaVersion: 2,
-    fileName,
-    currentVersionId: options.currentVersionId,
-    entries,
-  };
-  if (typeof options.deletedAt === 'number' && Number.isFinite(options.deletedAt)) {
-    manifest.deletedAt = options.deletedAt;
-  }
-  if (isWorkbookHistoryFile(fileName)) {
-    validateWorkbookHistoryManifest(manifest);
-    await persistWorkbookHistoryFile(root, VERSION_MANIFEST, JSON.stringify(manifest, null, 2), true);
-  } else await writeFile(path.join(root, VERSION_MANIFEST), JSON.stringify(manifest, null, 2));
+  if (isWorkbookHistoryFile(fileName)) await persistWorkbookHistoryFile(root, VERSION_MANIFEST, content, true);
+  else await writeFile(path.join(root, VERSION_MANIFEST), content);
+}
+async function writeVersionManifest(projectsRoot: string, projectId: string, fileName: string, entries: VersionEntry[], options: { currentVersionId: string | null; deletedAt?: number }): Promise<void> {
+  await persistVersionManifest(projectsRoot, projectId, fileName, versionManifestContent(fileName, entries, options));
 }
 
 function publicVersion(entry: VersionEntry, currentId: string | null): ProjectFileVersion {
@@ -528,13 +524,13 @@ export async function createProjectFileVersion(
   );
 }
 
-async function createProjectFileVersionUnlocked(
+async function prepareProjectFileVersionUnlocked(
   projectsRoot: string,
   projectId: string,
   safeName: string,
   content: string | Buffer,
   options: CreateProjectFileVersionOptions,
-): Promise<ProjectFileVersion> {
+): Promise<PreparedProjectFileVersion> {
   const root = versionRootFor(projectsRoot, projectId, safeName);
   await mkdir(root, { recursive: true });
   const state = await readVersionManifestState(projectsRoot, projectId, safeName);
@@ -593,13 +589,17 @@ async function createProjectFileVersionUnlocked(
     const origin = normalizeArtifactOrigin(options.origin);
     if (origin) entry.origin = origin;
   }
-  if (isWorkbookHistoryFile(safeName)) await persistWorkbookHistoryFile(root, contentPath, text, false);
-  else await writeFile(path.join(root, contentPath), text);
-  const nextEntries = [...entries, entry];
-  await writeVersionManifest(projectsRoot, projectId, safeName, nextEntries, {
-    currentVersionId: id,
-  });
-  return publicVersion(entry, id);
+  const manifestContent = versionManifestContent(safeName, [...entries, entry], { currentVersionId: id });
+  const versionEntry = publicVersion(entry, id);
+  return { publish: async () => {
+    if (isWorkbookHistoryFile(safeName)) await persistWorkbookHistoryFile(root, contentPath, text, false);
+    else await writeFile(path.join(root, contentPath), text);
+    await persistVersionManifest(projectsRoot, projectId, safeName, manifestContent);
+    return versionEntry;
+  } };
+}
+async function createProjectFileVersionUnlocked(projectsRoot: string, projectId: string, safeName: string, content: string | Buffer, options: CreateProjectFileVersionOptions): Promise<ProjectFileVersion> {
+  return (await prepareProjectFileVersionUnlocked(projectsRoot, projectId, safeName, content, options)).publish();
 }
 
 export async function markProjectFileVersionStoreDeleted(
