@@ -17,7 +17,7 @@ const scratch = await mkdtemp(path.join(tmpdir(), 'od-contained-render-'));
 const source = path.join(scratch, 'source'); await mkdir(source);
 await writeFile(path.join(source, 'asset.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="#247955"/></svg>');
 await writeFile(path.join(source, 'index.html'), '<!doctype html><html><body><h1>Contained render fixture</h1><img src="asset.svg"></body></html>');
-await writeFile(path.join(source, 'deck.html'), '<!doctype html><html><head><style>body{margin:0}.slide{width:800px;height:450px;padding:40px;box-sizing:border-box;font:64px sans-serif}.slide:first-child{background:#fdd}.slide:last-child{background:#ddf}</style></head><body><deck-stage><section class="slide">Slide one</section><section class="slide">Slide two</section></deck-stage></body></html>');
+await writeFile(path.join(source, 'deck.html'), '<!doctype html><html><head><style>body{margin:0}.slide{width:800px;height:450px;padding:40px;box-sizing:border-box;font:64px sans-serif}.slide:first-child{background:#fdd}.slide:last-child{background:#ddf}</style></head><body><deck-stage><section class="slide">Slide one</section><section class="slide">Slide two</section></deck-stage><script type="application/json" id="speaker-notes">["Opening note retained","Second note retained"]</script></body></html>');
 const daemonRequire = createRequire(path.resolve('apps/daemon/package.json'));
 await writeFile(path.join(source, 'gsap.min.js'), await readFile(daemonRequire.resolve('gsap/dist/gsap.min.js')));
 await writeFile(path.join(source, 'motion.html'), `<!doctype html><html><head><style>*{margin:0}body{width:320px;height:240px;overflow:hidden}#scene{width:320px;height:240px;background:red}#box{width:40px;height:40px;background:white}</style><script src="gsap.min.js"></script></head><body><div id="scene" data-composition-id="main" data-start="0" data-duration="1" data-width="320" data-height="240" data-fps="12"><div id="box"></div></div><audio src="media.mp4" data-start="0" data-duration="1" data-volume="0.5"></audio><script>window.__timelines={main:gsap.timeline({paused:true}).to('#box',{x:240,y:160,duration:1,ease:'none'})};</script></body></html>`);
@@ -73,6 +73,11 @@ const editable = await run('deck-editable-pptx', { ...deck, format: 'pptx', edit
 assert.equal(editable.result.pages, 2);
 const JSZip = daemonRequire('jszip');
 const editableZip = await JSZip.loadAsync(editable.body);
+for (const result of [pptx, editable]) {
+  const archive = await JSZip.loadAsync(result.body);
+  assert.match(await archive.file('ppt/notesSlides/notesSlide1.xml').async('string'), /Opening note retained/);
+  assert.match(await archive.file('ppt/notesSlides/notesSlide2.xml').async('string'), /Second note retained/);
+}
 const slideOne = await editableZip.file('ppt/slides/slide1.xml').async('string');
 const slideTwo = await editableZip.file('ppt/slides/slide2.xml').async('string');
 assert.match(slideOne, /<a:t>Slide one<\/a:t>/);
