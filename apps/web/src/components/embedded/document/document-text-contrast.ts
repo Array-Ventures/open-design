@@ -1,6 +1,6 @@
 export type DocumentColor = readonly [number, number, number, number];
 export type DocumentColorReader = (value: string) => DocumentColor | null;
-export const DOCUMENT_CELL_INK = '--eve-document-cell-ink';
+export const DOCUMENT_TEXT_INK = '--eve-document-text-ink';
 
 /** Canvas resolves valid computed colors, including oklch/color(), into sRGB. */
 export function documentColorReader(document: Document): DocumentColorReader {
@@ -33,12 +33,12 @@ export function documentContrast(first: DocumentColor, second: DocumentColor): n
   const a = luminance(first), b = luminance(second); return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
 }
 /** Adjust inherited ink only. Authored descendant foreground styles still win. */
-export function documentCellInk(cell: HTMLElement, read: DocumentColorReader): string | null {
-  const view = cell.ownerDocument.defaultView;
+export function documentTextInk(owner: HTMLElement, read: DocumentColorReader): string | null {
+  const view = owner.ownerDocument.defaultView;
   if (!view) return null;
-  const ink = read(view.getComputedStyle(cell).color);
+  const ink = read(view.getComputedStyle(owner).color);
   let background: DocumentColor = [0, 0, 0, 0];
-  for (let current: HTMLElement | null = cell; current; current = current.parentElement) {
+  for (let current: HTMLElement | null = owner; current; current = current.parentElement) {
     const color = read(view.getComputedStyle(current).backgroundColor);
     if (!color) return null;
     background = over(background, color);

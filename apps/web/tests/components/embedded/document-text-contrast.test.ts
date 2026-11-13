@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { documentCellInk, documentContrast, documentColorReader, type DocumentColor } from '../../../src/components/embedded/document/document-cell-contrast';
+import { documentTextInk, documentContrast, documentColorReader, type DocumentColor } from '../../../src/components/embedded/document/document-text-contrast';
 const colors: Record<string, DocumentColor> = { black: [0,0,0,1], white: [255,255,255,1], 'rgb(0, 0, 0)': [0,0,0,1], 'rgb(255, 255, 255)': [255,255,255,1], 'rgb(242, 243, 245)': [242,243,245,1], 'rgba(255, 255, 255, 0.5)': [255,255,255,.5], 'rgba(0, 0, 0, 0)': [0,0,0,0], 'rgb(30, 30, 30)': [30,30,30,1] };
 const read = (value: string) => colors[value] ?? null;
 afterEach(() => { document.body.replaceChildren(); document.body.removeAttribute('style'); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -15,18 +15,18 @@ it.each([
 ] as const)('only repairs inadequate inherited %s ink on %s', (ink, background, expected) => {
   document.body.style.backgroundColor = 'white';
   document.body.innerHTML = `<table><tr><th style="color:${ink};background-color:${background}">Header</th></tr></table>`;
-  expect(documentCellInk(document.querySelector('th')!, read)).toBe(expected);
+  expect(documentTextInk(document.querySelector('th')!, read)).toBe(expected);
 });
 it('composites translucent cell and ancestor backgrounds before measuring contrast', () => {
   document.body.style.backgroundColor = 'black';
   document.body.innerHTML = '<table><tr><th style="color:white;background-color:rgba(255,255,255,.5)">Header</th></tr></table>';
-  expect(documentCellInk(document.querySelector('th')!, read)).toBe('black');
+  expect(documentTextInk(document.querySelector('th')!, read)).toBe('black');
 });
 it('does not guess unknown colors or an unowned transparent canvas', () => {
   document.body.innerHTML = '<table><tr><th style="color:white">Header</th></tr></table>';
   const cell = document.querySelector('th')!;
-  expect(documentCellInk(cell, read)).toBe(null);
-  cell.style.backgroundColor = 'red'; expect(documentCellInk(cell, read)).toBe(null);
+  expect(documentTextInk(cell, read)).toBe(null);
+  cell.style.backgroundColor = 'red'; expect(documentTextInk(cell, read)).toBe(null);
 });
 
 it('treats unavailable or failing canvas color reads as a cosmetic no-op', () => {
