@@ -29,3 +29,10 @@ reparse, restored axis projection, exact prepared-preview guards and separate
 formatting. Negative cases cover wrong/unknown guards, absent or inserted source
 coordinates and incompatible historical resource prefixes. This source fix does
 not enable automatic SDK worksheet Undo or change its remaining ownership gates.
+
+The restored-plus-survivor positive case also opens the emitted XLSX through
+ExcelJS independently to check values and historical Arial/bold/11-point ink.
+Pinned ExcelJS truncates font sizes through its integer reader, so an independent
+Python ZIP/XML check follows the emitted survivor cell's XF/font index and
+requires the exact `22.25` size. This avoids treating that reader limitation as
+proof of fractional-size loss or allowing it to hide a source-writer regression.

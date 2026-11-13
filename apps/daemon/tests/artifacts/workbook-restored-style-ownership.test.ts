@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import ExcelJS from 'exceljs-community';
 import { expect, it } from 'vitest';
 import type { WorkbookSheetTemplateEntry } from '../../src/artifacts/workbook/sheet-template.js';
@@ -33,6 +34,22 @@ it('applies a restored styled scalar edit without treating a historical compact 
   const saved = await readXlsxWorkbook(result.bytes), cell = saved.model.sheets[1]!.cells[0]!;
   expect(cell.value).toBe(17); expect(saved.model.styles[cell.style!]!.font).toMatchObject({ name: 'Arial', bold: true, size: 11 });
   expect(saved.model.styles[saved.model.sheets[0]!.cells[0]!.style!]!.font?.size).toBe(22.25);
+  // Inspect the actual emitted XLSX independently of the production reader and
+  // compact-style guard: historical ink and current survivor ink must coexist.
+  const independent = new ExcelJS.Workbook(); await independent.xlsx.load(Uint8Array.from(result.bytes).buffer);
+  expect(independent.getWorksheet('Restored')!.getCell('A1').value).toBe(17);
+  expect(independent.getWorksheet('Restored')!.getCell('A1').font).toMatchObject({ name: 'Arial', bold: true, size: 11 });
+  expect(independent.getWorksheet('Survivor')!.getCell('A1').value).toBe(3);
+  // Pinned ExcelJS reads <sz> through IntegerXform/parseInt. Inspect the raw
+  // emitted font ownership independently to qualify fractional size losslessly.
+  const size = execFileSync('python3', ['-c', `
+import io,sys,zipfile,xml.etree.ElementTree as E
+z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read()));n={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+cell=E.fromstring(z.read('xl/worksheets/sheet1.xml')).find('.//s:c[@r="A1"]',n)
+styles=E.fromstring(z.read('xl/styles.xml'));xf=styles.find('s:cellXfs',n)[int(cell.get('s','0'))]
+print(styles.find('s:fonts',n)[int(xf.get('fontId','0'))].find('s:sz',n).get('val'))
+`], { input: result.bytes, encoding: 'utf8' });
+  expect(size.trim()).toBe('22.25');
 });
 
 it('retains a surviving styled scalar edit when deleting an earlier style owner compacts the reader table', async () => {
