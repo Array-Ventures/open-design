@@ -16,8 +16,8 @@ function flag(value: string | null): boolean {
   if (value === '1' || value === 'true') return true;
   throw new WorkbookFormatError('Invalid row formatting flag.');
 }
-function signature(node: Element): string {
-  return JSON.stringify([node.namespaceURI, node.localName, Array.from(node.attributes).map(a => [a.namespaceURI, a.name, a.value]).sort(), Array.from(node.childNodes).filter(n => n.nodeType !== 3 || n.textContent?.trim()).map(n => n.nodeType === 1 ? signature(n as Element) : n.textContent)]);
+export function workbookStyleComponentSignature(node: Element): string {
+  return JSON.stringify([node.namespaceURI, node.localName, Array.from(node.attributes).map(a => [a.namespaceURI, a.name, a.value]).sort(), Array.from(node.childNodes).filter(n => n.nodeType !== 3 || n.textContent?.trim()).map(n => n.nodeType === 1 ? workbookStyleComponentSignature(n as Element) : n.textContent)]);
 }
 /** Each source component is indexed once, and each new candidate once. */
 function table(root: Element, name: string, entry: string, required = true) {
@@ -27,11 +27,11 @@ function table(root: Element, name: string, entry: string, required = true) {
   if (parent?.hasAttribute('count') && unsigned(parent.getAttribute('count')) !== entries.length) throw new WorkbookFormatError('Workbook style count does not match its components.');
   if (entries.length > WORKBOOK_MODEL_LIMITS.styles) throw new WorkbookFormatError('Workbook style table exceeds its limit.', 'WORKBOOK_LIMIT');
   const identities = new Map<string, number>();
-  for (const [index, node] of entries.entries()) { const key = signature(node); if (!identities.has(key)) identities.set(key, index); }
+  for (const [index, node] of entries.entries()) { const key = workbookStyleComponentSignature(node); if (!identities.has(key)) identities.set(key, index); }
   return { entries, at(index: number) { const result = entries[index]; if (!result) throw new WorkbookFormatError('Workbook style component is missing.'); return result; },
     intern(node: Element) {
       if (!parent) throw new WorkbookFormatError('Workbook style table is missing.');
-      const key = signature(node), found = identities.get(key); if (found !== undefined) return found;
+      const key = workbookStyleComponentSignature(node), found = identities.get(key); if (found !== undefined) return found;
       if (entries.length >= WORKBOOK_MODEL_LIMITS.styles) throw new WorkbookFormatError('Workbook style table exceeds its limit.', 'WORKBOOK_LIMIT');
       const index = entries.length; entries.push(node); identities.set(key, index); parent.appendChild(node); parent.setAttribute('count', String(entries.length)); return index;
     } };
