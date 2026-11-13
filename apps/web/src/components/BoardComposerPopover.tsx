@@ -1,3 +1,4 @@
+import { useCommentChatDefault } from './embedded/useCommentChatDefault';
 import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode, PointerEvent as ReactPointerEvent } from 'react';
 import { Button, Textarea } from '@open-design/components';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -547,8 +548,9 @@ export function BoardComposerPopover({
   const targetTitle = compact
     ? (target.text?.trim().replace(/\s+/g, ' ') || target.label || target.elementId)
     : (target.label || target.elementId);
-  const [addToChat, setAddToChat] = useState(false);
-  useEffect(() => { setAddToChat(false); }, [target.elementId]);
+  const { selected: addToChat, choose: setAddToChat } = useCommentChatDefault(draft,
+    JSON.stringify([threadTarget, target.slideIndex, threadComment?.id, rootSelectionIntent]),
+    compact && canEditComment && canSendToAgent && allowSendToChat, !readingThread);
   const ComposerTextarea = compact ? TextareaBase : Textarea;
   const backButtonRef = useRef<HTMLButtonElement | null>(null);
   const viewAllButtonRef = useRef<HTMLButtonElement | null>(null);
