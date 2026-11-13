@@ -17189,6 +17189,8 @@ function HtmlViewer({
       busy={manualEditSaving}
       resetAvailable={manualEditResetAvailable}
       presentationSource={effectiveDeck ? source ?? undefined : undefined}
+      presentationSlideIndex={effectiveDeck ? activeDeckSlideIndex : undefined}
+      presentationSlideCount={effectiveDeck ? deckSlideTotal : undefined}
       pageStylesEnabled={manualEditPageStylesEnabled}
       onSelectTarget={(target) => {
         void selectManualEditTarget(target);

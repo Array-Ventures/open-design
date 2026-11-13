@@ -24,7 +24,7 @@ const DECK_SLIDE_MARKERS = [
   '.ppt-slide',
   '.slide-frame',
 ] as const;
-const DECK_EXPLICIT_SLIDE_MARKERS = [
+export const DECK_EXPLICIT_SLIDE_MARKERS = [
   '.slide',
   '.deck-slide',
   '.ppt-slide',

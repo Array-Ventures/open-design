@@ -5,6 +5,11 @@ adapted from the installed free BoardUI components and styles in Evebot's
 `apps/web`. They are kept in this explicit embedded boundary, separate from
 Open Design's standalone component styling. No Pro source is included.
 
+The inline color picker is the installed free BoardUI color-picker editor,
+adapted to relative imports and the existing translation keys. It retains React
+Aria saturation/hue/opacity, keyboard controls and hex-field commits. The existing
+BoardUI Dropdown hosts its compact popover; source ownership stays in the caller.
+
 The adaptations are React 18 `forwardRef` compatibility, the semantic
 `text-on-accent` name, scoped theme selectors, the bundled Inter families,
 opaque icon children required by existing workspace actions, and disabling

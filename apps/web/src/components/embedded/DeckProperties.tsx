@@ -3,9 +3,10 @@ import { DECK_TRANSITIONS } from '@open-design/contracts/runtime/deck-stage-fall
 import { readDeckDimensions, resizeDeckSource, readDeckTransition, setDeckTransition, type DeckAspect } from '../../edit-mode/deck-properties';
 import { useT } from '../../i18n';
 import { Select, SelectItem } from './boardui/select';
+import { DeckSlideBackground } from './DeckSlideBackground';
 
 /** Source-backed presentation controls; the saved stage owns their behavior. */
-export function DeckProperties({ source, busy, onChange }: { source: string; busy?: boolean; onChange: (source: string, label: string) => void }) {
+export function DeckProperties({ source, busy, slideIndex, slideCount, onChange }: { source: string; busy?: boolean; slideIndex?: number; slideCount?: number; onChange: (source: string, label: string) => void }) {
   const t = useT();
   const dimensions = useMemo(() => readDeckDimensions(source), [source]);
   const transition = useMemo(() => readDeckTransition(source), [source]);
@@ -30,5 +31,7 @@ export function DeckProperties({ source, busy, onChange }: { source: string; bus
     <SelectItem id="fade">{t('manualEdit.transitionFade')}</SelectItem>
     <SelectItem id="push">{t('manualEdit.transitionPush')}</SelectItem>
     <SelectItem id="magic-move">{t('manualEdit.transitionMagicMove')}</SelectItem>
-  </Select></div>;
+  </Select>
+  {slideIndex !== undefined && slideCount !== undefined ? <DeckSlideBackground source={source} index={slideIndex} count={slideCount} busy={busy} onChange={onChange} /> : null}
+  </div>;
 }
