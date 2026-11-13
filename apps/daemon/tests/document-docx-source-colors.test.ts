@@ -65,7 +65,7 @@ it('preserves the actual ordinary-GFM MathML corpus and TeX annotations exactly 
   const { readFile } = await import('node:fs/promises');
   const html=await readFile(new URL('./fixtures/documents/gfm-builtins-prepared.html',import.meta.url),'utf8'),before=load(html);
   const originalMath=before('math').toArray().map(node=>before(node).toString());
-  expect(originalMath).toHaveLength(33);
+  expect(originalMath).toHaveLength(53);
   const source=documentDocxSourceColors(html),after=load(source.html);
   expect(after('math').toArray().map(node=>after(node).toString())).toEqual(originalMath);
   expect(after(`math[${source.attributeName}],math [${source.attributeName}]`)).toHaveLength(0);

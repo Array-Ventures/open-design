@@ -118,3 +118,32 @@ $$
 Ordinary mathematical alphabets $\mathbf{x}$, $\mathit{x}$, $\mathrm{d}$, $\mathbb{R}$, $\mathcal{F}$, $\mathfrak{g}$, $\mathsf{x}$, $\mathtt{x}$.
 
 Ordinary spacing $x\!y$, $a\,b$ and explicit style $\displaystyle\sum_i x_i$.
+
+## Finite passive math producer families
+
+Display and text fractions $\dfrac{1}{2}$ and $\tfrac{1}{2}$.
+
+Enclosures $\boxed{x}$, $\cancel{x}$, $\bcancel{x}$, $\xcancel{x}$.
+
+Scaled fences $\big(x\big)$, $\Big(x\Big)$, $\bigg(x\bigg)$, $\Bigg(x\Bigg)$.
+
+Middle delimiter $\left(x\middle|y\right)$ and non-accent overset $\overset{=}{x}$.
+
+Styled identifier, number and operator $\mathbf{A1+}$.
+
+Styled text $\textrm{ roman }$, $\textbf{Bold text}$, $\textit{Italic text}$,
+$\textsf{Sans text}$, $\texttt{mono text}$.
+
+$$
+\begin{array}{lcr}
+a & b & c \\
+d & e & f
+\end{array}
+$$
+
+$$
+\begin{aligned}
+a &= b \\
+c &= d
+\end{aligned}
+$$
