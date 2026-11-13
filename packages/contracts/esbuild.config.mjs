@@ -17,6 +17,7 @@ await build({
     "./src/api/research.ts",
     "./src/api/touchpointOffline.ts",
     "./src/api/touchpointTestRuntime.ts",
+    "./src/runtime/speaker-notes.ts",
     "./src/runtime/deck-stage-fallback.ts",
     "./src/runtime/motion-source-player.ts",
     "./src/runtime/deck-protocol.ts",

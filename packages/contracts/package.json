@@ -121,6 +121,10 @@
     "./runtime/workbook": {
       "types": "./dist/runtime/workbook.d.ts",
       "default": "./dist/runtime/workbook.mjs"
+    },
+    "./runtime/speaker-notes": {
+      "types": "./dist/runtime/speaker-notes.d.ts",
+      "default": "./dist/runtime/speaker-notes.mjs"
     }
   },
   "scripts": {
