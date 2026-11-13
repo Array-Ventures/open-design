@@ -6,6 +6,7 @@ import { load } from 'cheerio';
 import JSZip from 'jszip';
 import { bundleStandaloneHtml } from '../artifacts/standalone-html.js';
 import { documentHtml, documentMetadataDirective, documentMetadataSchema } from '@open-design/contracts/runtime/document';
+import { documentMarkdownInput, restoreDocumentMarkdownSpans } from './document-markdown.js';
 
 type Font = 'sans' | 'serif';
 const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
@@ -96,7 +97,16 @@ export async function documentReference(bytes: Buffer, fonts: { text: Font; head
 
 export async function exportDocument(html: string, original: string, fileName: string, format: 'docx' | 'markdown', title: string, readAsset: (name: string) => Promise<{ buffer: Buffer; size: number; mime: string } | null>): Promise<{ body: Buffer; file: string; mime: string }> {
   if (format === 'markdown') {
-    const body = markdownFile(fileName) ? Buffer.from(markdownSource(original).body) : await pandoc(['--sandbox', '--from=html+raw_html', '--to=gfm+raw_html', '--wrap=none', '--fail-if-warnings'], html);
+    let body: Buffer;
+    if (markdownFile(fileName)) body = Buffer.from(markdownSource(original).body);
+    else {
+      const input = documentMarkdownInput(html);
+      if (!input.rawSpans.size) body = await pandoc(['--sandbox', '--from=html+raw_html', '--to=gfm+raw_html', '--wrap=none', '--fail-if-warnings'], input.html);
+      else {
+        const ast = JSON.parse((await pandoc(['--sandbox', '--from=html+raw_html', '--to=json', '--fail-if-warnings'], input.html)).toString('utf8'));
+        body = await pandoc(['--sandbox', '--from=json', '--to=gfm+raw_html', '--wrap=none', '--fail-if-warnings'], JSON.stringify(restoreDocumentMarkdownSpans(ast, input.rawSpans)));
+      }
+    }
     return { body, file: 'artifact.md', mime: 'text/markdown' };
   }
   const directory = await mkdtemp(path.join(tmpdir(), 'document-export-'));
