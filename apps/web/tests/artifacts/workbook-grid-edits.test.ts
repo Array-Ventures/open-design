@@ -44,7 +44,8 @@ it('clears cells while retaining their source formatting and permits undo back t
 });
 it('blocks an entire save containing unsupported formatting rather than partially saving the valid cells', () => {
   const { model, initial, current } = fixture(); current.sheets.s1!.cellData![0]![0]!.v = 100;
-  current.sheets.s1!.cellData![1]![0]!.s = { fs: 20 };
+  // Font size now has a preservation-safe writer; border edits still do not.
+  current.sheets.s1!.cellData![1]![0]!.s = { bd: { b: { s: 1, cl: { rgb: '#123456' } } } };
   expect(() => workbookGridEdits(model, hash, initial, current)).toThrow('This formatting change cannot be saved yet');
   current.sheets.s1!.cellData![1]![0] = structuredClone(initial.sheets.s1!.cellData![1]![0]!);
   current.sheets.s1!.mergeData = [{ startRow: 0, endRow: 1, startColumn: 0, endColumn: 0 }];
@@ -98,6 +99,17 @@ it('blocks unsupported styles even when a permitted style is changed in the same
   current.sheets.s1!.cellData![0]![0]!.s = { bl: 1 };
   current.sheets.s1!.cellData![2]![0]!.s = { bl: 1 };
   expect(() => workbookGridEdits(model, hash, initial, current)).toThrow('Rich text formatting changes');
+});
+it('keeps fractional point sizes in sparse style edits and rejects invalid or unsupported combined changes', () => {
+  const { model, initial, current } = fixture();
+  current.sheets.s1!.cellData![1]![0]!.s = { fs: 22.5 };
+  expect(workbookGridEdits(model, hash, initial, current)).toMatchObject({ edits: [], styles: [{ sheetId: 's1', row: 1, column: 0, fontSize: 22.5 }] });
+  for (const fs of [0, -1, 513, NaN, Infinity, '22']) {
+    current.sheets.s1!.cellData![1]![0]!.s = { fs } as never;
+    expect(() => workbookGridEdits(model, hash, initial, current)).toThrow('font size');
+  }
+  current.sheets.s1!.cellData![1]![0]!.s = { fs: 22.5, bd: { b: { s: 1, cl: { rgb: '#123456' } } } };
+  expect(() => workbookGridEdits(model, hash, initial, current)).toThrow('formatting change');
 });
 
 it('represents explicit automatic color and no fill without reviving authored Normal colors', () => {

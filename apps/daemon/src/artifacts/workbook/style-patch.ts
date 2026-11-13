@@ -101,10 +101,11 @@ export async function patchWorkbookStyles(source: ReadWorkbook, edits: readonly 
     if (!cell?.hasAttribute('s') && rowStyle !== undefined && columnStyle !== undefined && rowStyle !== columnStyle) throw new WorkbookFormatError('Intersecting row and column styles need a formatting adapter.', 'WORKBOOK_UNSUPPORTED');
     const baseId = cell?.hasAttribute('s') ? unsigned(cell.getAttribute('s')) : rowStyle ?? columnStyle ?? 0;
     const base = xfs.at(baseId), xf = base.cloneNode(true) as Element;
-    if (edit.bold !== undefined || edit.italic !== undefined || edit.fontColor !== undefined) {
+    if (edit.bold !== undefined || edit.italic !== undefined || edit.fontSize !== undefined || edit.fontColor !== undefined) {
       if (['0', 'false'].includes(base.getAttribute('applyFont') ?? '')) throw new WorkbookFormatError('Inherited font overrides need a formatting adapter.', 'WORKBOOK_UNSUPPORTED');
       const font = fonts.at(unsigned(base.getAttribute('fontId'), 0)).cloneNode(true) as Element;
       for (const [property, name] of [['bold', 'b'], ['italic', 'i']] as const) if (edit[property] !== undefined) replace(font, name, edit[property] ? create(doc, font, name) : undefined);
+      if (edit.fontSize !== undefined) { const size = create(doc, font, 'sz'); size.setAttribute('val', String(edit.fontSize)); replace(font, 'sz', size); }
       if (edit.fontColor !== undefined) { const color = create(doc, font, 'color'); color.setAttribute(edit.fontColor === null ? 'auto' : 'rgb', edit.fontColor === null ? '1' : edit.fontColor.toUpperCase()); replace(font, 'color', color); }
       xf.setAttribute('fontId', String(fonts.intern(font))); xf.setAttribute('applyFont', '1');
     }
