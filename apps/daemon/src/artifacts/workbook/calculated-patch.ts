@@ -206,6 +206,13 @@ export async function calculateWorkbookSheetEdits(source: ReadWorkbook, sheets: 
     return calculateWorkbookCellEdits(source, edits, dimensions, styles, [], structure);
   }
   const prepared = await readXlsxWorkbook(await patchWorkbookSheets(source, sheets, visibility));
+  return calculatePreparedWorkbookSheetEdits(prepared, edits, dimensions, styles, structure);
+}
+
+/** Calculate the fully assembled source, including restored XML templates.
+ * Admission is repeated here; unlike an acknowledged no-op projection, a
+ * newly assembled package must never retain historical formula caches. */
+export async function calculatePreparedWorkbookSheetEdits(prepared: ReadWorkbook, edits: readonly WorkbookCellEdit[] = [], dimensions: readonly WorkbookDimensionEdit[] = [], styles: readonly WorkbookStyleEdit[] = [], structure: readonly WorkbookStructureEdit[] = []): Promise<{ bytes: Buffer; model: WorkbookDocument }> {
   assertWorkbookSheetsSupported(prepared);
   if (structure.length) return calculateWorkbookCellEdits(prepared, edits, dimensions, styles, [], structure);
   assertCalculationSupported(prepared);

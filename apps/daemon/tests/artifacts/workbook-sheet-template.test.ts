@@ -6,6 +6,8 @@ import { patchWorkbookSheets } from '../../src/artifacts/workbook/sheet-patch.js
 import { prepareWorkbookSheetTemplate, type WorkbookSheetTemplateEntry } from '../../src/artifacts/workbook/sheet-template.js';
 import { child, children, xmlPart } from '../../src/artifacts/workbook/parts.js';
 import { workbookSheetProjectionSchema } from '@open-design/contracts/runtime/workbook';
+import { calculateWorkbookRestoredSheetEdits } from '../../src/artifacts/workbook/sheet-restoration.js';
+import { calculateWorkbookCellEdits } from '../../src/artifacts/workbook/calculated-patch.js';
 
 async function fixture() {
   const book = new ExcelJS.Workbook();
@@ -56,4 +58,41 @@ it('refuses wrong source hashes, missing IDs, colliding restorations and invalid
   await expect(prepareWorkbookSheetTemplate(current, bytes, sha, '5', [...target.filter(sheet => sheet.sheetId !== '2'), { sheetId: '5', name: 'Missing', origin: 'restore' }])).rejects.toThrow('missing');
   await expect(prepareWorkbookSheetTemplate(historical, bytes, sha, '2', target)).rejects.toThrow('identity');
   await expect(prepareWorkbookSheetTemplate(current, bytes, sha, '2', [...target, { sheetId: '5', name: 'Missing', origin: 'source' }])).rejects.toThrow('identity');
+});
+it('assembles and recalculates only the restored sheet while preserving prior current survivor edits', async () => {
+  const { bytes, historical, current, sha, target } = await fixture();
+  // The historical template still contains Other=10. The current source owns
+  // Other=20, reflecting an edit saved alongside the deletion, not history undo.
+  const edited = await readXlsxWorkbook((await calculateWorkbookCellEdits(current, [{ sheetId: '3', cell: { row: 0, column: 0, kind: 'number', value: 20 } }])).bytes);
+  const result = await calculateWorkbookRestoredSheetEdits(edited, target, [{ sheetId: '2', bytes, sourceSha256: sha }], [
+    { sheetId: '2', cell: { row: 1, column: 1, kind: 'blank', value: null, formula: "='Other renamed'!A1+Inputs!A1" } },
+    { sheetId: '2', cell: { row: 5, column: 3, kind: 'number', value: 19 } },
+  ]);
+  const saved = await readXlsxWorkbook(result.bytes);
+  expect(saved.model.sheets.map(sheet => [sheet.id, sheet.name])).toEqual([['1', 'Inputs'], ['2', 'Restored'], ['3', 'Other renamed']]);
+  expect(saved.model.sheets[2]!.cells.find(cell => cell.row === 0 && cell.column === 0)?.value).toBe(20);
+  expect(saved.model.sheets[1]!.cells.find(cell => cell.row === 1 && cell.column === 1)).toMatchObject({ formula: "='Other renamed'!A1+Inputs!A1", value: 22 });
+  expect(saved.model.sheets[1]!.cells.find(cell => cell.row === 5 && cell.column === 3)?.value).toBe(19);
+  const beforeRoot = xmlPart(historical.parts, historical.sheetParts.get('2')!).documentElement!;
+  const restoredRoot = xmlPart(saved.parts, saved.sheetParts.get('2')!).documentElement!;
+  for (const name of ['cols', 'mergeCells', 'headerFooter', 'pageSetup', 'pageMargins']) expect(child(restoredRoot, name)?.toString()).toBe(child(beforeRoot, name)?.toString());
+  for (const name of ['xl/styles.xml', 'xl/sharedStrings.xml', 'docProps/core.xml']) expect(saved.parts.get(name)).toEqual(edited.parts.get(name));
+  const independent = new ExcelJS.Workbook(); await independent.xlsx.load(Uint8Array.from(result.bytes).buffer);
+  expect(independent.getWorksheet('Restored')!.getCell('B2').result).toBe(22);
+  expect(independent.getWorksheet('Restored')!.headerFooter.oddHeader).toBe('Retained header');
+  expect(independent.getWorksheet('Other renamed')!.getCell('A1').value).toBe(20);
+});
+it('requires every restore owner exactly once before admitting cross-restoration references', async () => {
+  const { bytes, current, sha, target } = await fixture();
+  const asset = { sheetId: '2', bytes, sourceSha256: sha };
+  await expect(calculateWorkbookRestoredSheetEdits(current, target, [])).rejects.toThrow('incomplete');
+  await expect(calculateWorkbookRestoredSheetEdits(current, target, [asset, asset])).rejects.toThrow('incomplete');
+  await expect(calculateWorkbookRestoredSheetEdits(current, [...target, { sheetId: '5', name: 'Unproven', origin: 'restore' }], [asset, { ...asset, sheetId: '5' }])).rejects.toThrow('missing');
+  await expect(calculateWorkbookRestoredSheetEdits(current, target, [{ ...asset, sheetId: '5' }])).rejects.toThrow('ambiguous');
+});
+it('calculates a missing historical identity as REF even when its name belongs to a different current ID', async () => {
+  const { bytes, historical, sha } = await fixture();
+  const current = await readXlsxWorkbook(await patchWorkbookSheets(historical, [{ sheetId: '1', name: 'Inputs', origin: 'source' }, { sheetId: '4', name: 'Other old', origin: 'new' }]));
+  const result = await calculateWorkbookRestoredSheetEdits(current, [{ sheetId: '1', name: 'Inputs', origin: 'source' }, { sheetId: '2', name: 'Restored', origin: 'restore' }, { sheetId: '4', name: 'Other old', origin: 'source' }], [{ sheetId: '2', bytes, sourceSha256: sha }]);
+  expect(result.model.sheets[1]!.cells.find(cell => cell.row === 1 && cell.column === 1)).toMatchObject({ formula: '=#REF!+Inputs!A1', kind: 'error', value: '#REF!' });
 });

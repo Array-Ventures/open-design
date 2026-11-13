@@ -251,3 +251,25 @@ replays a blank ID 2 between survivors, calculates/readbacks the result, and
 checks survivor values/part identities and global bytes. Reordered survivors,
 current-ID collisions and numeric overflow remain refused. This does not yet
 qualify source-backed restoration or implement the SDK high-water producer.
+
+### Source-only restoration assembly
+
+`calculateWorkbookRestoredSheetEdits` composes those templates with the existing
+membership/relationship/content-type/view writer. It requires exactly one
+SHA-checked, resource-qualified template for every restored ID and refuses
+duplicate/missing/undeclared owners before final calculation. Historical input
+archives together are bounded by the existing workbook archive-byte limit.
+Only selected raw worksheet parts are inserted; current globals and unrelated
+worksheets retain their own owners. The assembled package is actually reparsed,
+source-qualified, calculated with final authored cell edits and optional axis/
+dimension/style changes, then read back through the ordinary reader.
+
+The source fixture retains current Other=20 while its historical file still has
+Other=10, restores the middle sheet's raw geometry/merges/print metadata and
+applies its final authored formula/cell edits. Actual output calculation and an
+independent ExcelJS read both confirm 22. Another actual calculation returns
+`#REF!` rather than retargeting an absent historical ID to a different current ID
+with the same name. These are source-layer fixtures, not simulated proof of SDK
+Undo or receipts. Accepted restore wire fields, scoped history asset capture,
+SDK per-delete/ACK descriptors, positive draft recovery and actual contained
+execution remain unimplemented and the sheet-actions UI capability stays off.
