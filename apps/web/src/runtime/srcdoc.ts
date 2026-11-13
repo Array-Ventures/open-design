@@ -2719,6 +2719,16 @@ function meaningfulDomFallbackTarget(el) {
   window.addEventListener('message', function(ev){
     var data = ev && ev.data;
     if (!data || !data.type) return;
+    // Toolbar/thumbnail navigation originates outside this document, so no
+    // trusted pointer event can cancel a pending state replay for it. Only
+    // explicit intent cancels; load-time index synchronization must not.
+    if (data.type === 'od:slide' && data.userInitiated === true &&
+        (data.protocolVersion == null || data.protocolVersion === ${DECK_PROTOCOL_VERSION}) &&
+        ((data.action === 'go' && Number.isFinite(data.index)) ||
+         ['next','prev','first','last'].indexOf(data.action) >= 0)) {
+      runtimeStateRestoreSequence += 1;
+      return;
+    }
     if (data.type === 'od:preview-runtime-state-restore') {
       var currentGeneration = runtimeStateRestoreGeneration();
       if (

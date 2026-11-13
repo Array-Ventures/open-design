@@ -612,6 +612,42 @@ describe('selection bridge — empty annotation surface (#890)', () => {
     ]);
   });
 
+  it('does not replay old canvas state after explicit host slide navigation', async () => {
+    const { dom, win, parentPostMessage } = setupBridgeDom('<main id="app">Second slide</main>', 'inspect', [], 'navigation-generation');
+    win.dispatchEvent(new win.MessageEvent('message', { data: {
+      type: 'od:preview-runtime-state-restore', id: 'restore-before-navigation', generation: 'navigation-generation',
+      state: { version: 1, hash: '', roots: [{ path: [0], tag: 'main', id: 'app', html: 'Second slide' }], htmlAttrs: {}, bodyAttrs: {}, entries: [] },
+    } }));
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', action: 'go', index: 2, userInitiated: true } }));
+    win.document.getElementById('app')!.textContent = 'Third slide';
+    await new Promise<void>(resolve => win.setTimeout(resolve, 120));
+    expect(win.document.getElementById('app')!.textContent).toBe('Third slide');
+    expect(postedMessages(parentPostMessage, 'od:preview-runtime-state-restored')).toEqual([
+      expect.objectContaining({ id: 'restore-before-navigation', outcome: 'canceled' }),
+    ]);
+    dom.window.close();
+  });
+
+  it.each([
+    { action: 'go', index: 2 },
+    { action: 'go', index: 2, userInitiated: true, protocolVersion: 999 },
+    { action: 'go', index: 'invalid', userInitiated: true },
+  ])('retains restore retries for synchronization or invalid navigation: %j', async navigation => {
+    const { dom, win, parentPostMessage } = setupBridgeDom('<main id="app">Second slide</main>', 'inspect', [], 'sync-generation');
+    win.dispatchEvent(new win.MessageEvent('message', { data: {
+      type: 'od:preview-runtime-state-restore', id: 'restore-sync', generation: 'sync-generation',
+      state: { version: 1, hash: '', roots: [{ path: [0], tag: 'main', id: 'app', html: 'Second slide' }], htmlAttrs: {}, bodyAttrs: {}, entries: [] },
+    } }));
+    win.dispatchEvent(new win.MessageEvent('message', { data: { type: 'od:slide', ...navigation } }));
+    win.document.getElementById('app')!.textContent = 'Booting placeholder';
+    await new Promise<void>(resolve => win.setTimeout(resolve, 120));
+    expect(win.document.getElementById('app')!.textContent).toBe('Second slide');
+    expect(postedMessages(parentPostMessage, 'od:preview-runtime-state-restored')).toEqual([
+      expect.objectContaining({ id: 'restore-sync', outcome: 'restored' }),
+    ]);
+    dom.window.close();
+  });
+
   it('does not copy stale source annotations onto a different runtime-rendered page', async () => {
     const { win } = setupBridgeDom(
       '<main data-od-id="today-screen" data-od-source-path="path-0"><h1>Today page</h1></main>',

@@ -37,7 +37,7 @@ it('lists all artifact slides and navigates a selected off-page thread through t
   const { post, control } = await setup(); await control('comments');
   expect(await screen.findByText('Note first')).toBeVisible(); expect(screen.getByText('Note second')).toBeVisible(); expect(screen.queryByText('Note internal')).toBeNull();
   fireEvent.click(screen.getAllByTestId('comment-side-item').find(node => node.textContent?.includes('Note second'))!);
-  await waitFor(() => expect(post).toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 1 }, '*'));
+  await waitFor(() => expect(post).toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 1, userInitiated: true }, '*'));
   expect(await screen.findByRole('textbox', { name: 'Reply' })).toBeVisible();
 });
 it('filters the current slide without discarding a mounted reply draft and updates scope on slide changes', async () => {
@@ -50,7 +50,7 @@ it('filters the current slide without discarding a mounted reply draft and updat
   post.mockClear();
   fireEvent.click(screen.getAllByTestId('comment-side-item').find(node => node.textContent?.includes('Note second'))!);
   await waitFor(() => expect(confirmDiscard).toHaveBeenCalledWith('project', 'comment'));
-  expect(post).not.toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 1 }, '*');
+  expect(post).not.toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 1, userInitiated: true }, '*');
   fireEvent.click(screen.getByRole('button', { name: /go back/i }));
   expect(screen.getByRole('textbox', { name: 'Reply' })).toBe(reply); expect(reply).toHaveValue('Keep this unsent reply');
   await showAll(); await filter('This page');
@@ -74,7 +74,7 @@ async function pendingRetarget() {
 it('applies a confirmed retarget only when its captured composer and draft still match', async () => {
   const { finish, post } = await pendingRetarget();
   await act(async () => finish(true));
-  expect(post).toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 1 }, '*');
+  expect(post).toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 1, userInitiated: true }, '*');
   expect(await screen.findByRole('textbox', { name: 'Reply' })).toHaveValue('');
   expect(screen.getByText('Note second')).toBeVisible();
 });
@@ -83,7 +83,7 @@ it('ignores delayed consent after newer typing in the same already-dirty reply',
   fireEvent.click(screen.getByRole('button', { name: /go back/i }));
   const reply = screen.getByRole('textbox', { name: 'Reply' }); fireEvent.change(reply, { target: { value: 'Newer unsent reply' } });
   await act(async () => finish(true));
-  expect(post).not.toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 1 }, '*');
+  expect(post).not.toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 1, userInitiated: true }, '*');
   expect(reply).toHaveValue('Newer unsent reply'); expect(screen.getByText('Note first')).toBeVisible();
 });
 it.each(['file', 'project'] as const)('ignores delayed consent after %s replacement and retains the replacement draft', async changed => {
@@ -101,7 +101,7 @@ it.each(['file', 'project'] as const)('ignores delayed consent after %s replacem
   fireEvent.click(screen.getAllByTestId('comment-side-item').find(node => node.textContent?.includes('Note new-first'))!);
   const reply = await screen.findByRole('textbox', { name: 'Reply' }); fireEvent.change(reply, { target: { value: 'Replacement draft' } });
   post.mockClear(); await act(async () => finish(true));
-  expect(post).not.toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 1 }, '*');
+  expect(post).not.toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 1, userInitiated: true }, '*');
   expect(screen.getByRole('textbox', { name: 'Reply' })).toBe(reply); expect(reply).toHaveValue('Replacement draft'); expect(screen.getByText('Note new-first')).toBeVisible();
 });
 it('ignores a pending consent after unmount', async () => {
@@ -116,7 +116,7 @@ it('invalidates earlier consent when another accepted retarget replaces the comp
   await waitFor(() => expect(reply).toHaveValue(''));
   fireEvent.change(reply, { target: { value: 'Draft after replacement' } });
   post.mockClear(); await act(async () => finish(true));
-  expect(post).not.toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 1 }, '*');
+  expect(post).not.toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 1, userInitiated: true }, '*');
   expect(reply).toHaveValue('Draft after replacement');
 });
 it('filters a direct native all-comments list while the preview remains interactive', async () => {

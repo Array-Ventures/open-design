@@ -14589,11 +14589,12 @@ function HtmlViewer({
       const target = Math.max(0, Math.min(count - 1, current + (action === 'next' ? 1 : -1)));
       setSlideStateCached(previewStateKey, { active: target, count });
       setSlideState({ active: target, count });
-      win.postMessage({ type: 'od:slide', action: 'go', index: target }, '*');
+      win.postMessage({ type: 'od:slide', action: 'go', index: target, userInitiated: true }, '*');
       return;
     }
     win.postMessage({
       type: 'od:slide',
+      userInitiated: true,
       action,
       ...(action === 'go' && typeof index === 'number' ? { index } : {}),
     }, '*');
