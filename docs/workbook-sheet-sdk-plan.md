@@ -17,13 +17,15 @@ and post-redos; their formula reference effects and undo arrays must stay intact
 A mutation-only helper would bypass those effects. Actual RPC tests must prove
 completion against the final composite input, not just the first mutation.
 
-`RemoveSheetCommand` clears the entire undo stack at the default large-sheet
-threshold of **6,000 cells**. That falls inside our existing 100,000-cell budget.
-Before exposing deletion, prove a bounded plugin threshold above the admitted
-cell cap (proposed `largeSheetOperation.largeSheetCellCountThreshold =
-WORKBOOK_MODEL_LIMITS.cells + 1`) preserves real delete undo for every admitted
-snapshot. Test at and above 6,000 cells. Do not enable copy or reorder as a side
-effect of this configuration; they remain independently unadmitted.
+The pinned large-sheet helper is named `countCells`, but actual SDK probes
+show its `ObjectMatrix.forEach` counts matrix **rows**, not literal cells.
+The default threshold is 6,000 counted rows: a 6,400-cell/100-row book keeps
+undo, while a generic 6,001-row/one-column SDK book clears it. A bounded higher
+threshold retains the real deletion and prior-edit undo entries in that generic
+probe. The current qualified XLSX reader's minimum 26-column window and 100,000
+area cap exclude a persisted 6,001-row source, so no production threshold
+override is currently justified. Recheck if geometry qualification changes;
+copy and reorder remain independently unadmitted.
 
 ## Proposed identity owner
 
@@ -209,3 +211,13 @@ nondefault geometry/merges/print metadata; repeated deletion at different axis
 states; lost ACK and protected remount; malformed/unavailable historical asset;
 and unrelated current styles/shared strings retained. No capability should claim
 post-ACK undo until these source and identity extensions are genuinely qualified.
+
+
+### Actual SDK command probe scope
+
+The command-boundary tests use real pinned insert/remove/edit/undo/redo commands
+with an initialized locale and focused workbook. They confirm old ID/index,
+merges and row geometry survive deletion undo while an earlier unrelated-sheet
+edit remains; original add redo is actually blank after undoing its later edit
+and then its insertion. Snapshot reads are not simulated server receipts: real
+writer ACK/history/retention integration remains a separate required gate.
