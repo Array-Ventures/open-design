@@ -366,7 +366,7 @@ it('owns structural mutation admission through startup, source-ready input, savi
   const ordinary = runtime.createWorkbook.getMockImplementation()!;
   runtime.createWorkbook.mockImplementation(input => { runtime.saved.mockReturnValue(structuredClone(input)); return ordinary(input); });
   const scope = { projectId: '11111111-1111-4111-8111-111111111111', controllerId: '22222222-2222-4222-8222-222222222222', blocked: false, saving: false };
-  const qualified = { ...model, worksheetStructureEditable: true };
+  const qualified: WorkbookDocument = { ...model, calculationMetadata: 'verified', worksheetStructureEditable: true, sheets: model.sheets.map(sheet => ({ ...sheet, arrayFormulas: [] })) };
   const source = () => ({ model: qualified, sourceSha256: 'a'.repeat(64), acknowledged: runtime.saved() });
   const view = render(<WorkbookGrid id="grid" title="Structure" model={qualified} onSnapshot={vi.fn()} sourceSha256={'a'.repeat(64)} formatScope={scope} structureBlocked={false} structureSource={source} onReady={() => startup} />);
   await waitFor(() => expect(runtime.visibilityBefore).toHaveBeenCalledTimes(2));
@@ -375,6 +375,9 @@ it('owns structural mutation admission through startup, source-ready input, savi
   expect(() => admit(command())).toThrow('not ready');
   await act(async () => ready()); await waitFor(() => expect(runtime.editable).toHaveBeenLastCalledWith(true));
   expect(() => admit(command())).not.toThrow();
+  expect(runtime.workers).toHaveLength(0);
+  expect(runtime.register.mock.calls.some(([plugin]) => plugin === 'UniverSheetsFormulaPlugin')).toBe(true);
+  expect(runtime.fail).not.toBeNull();
   view.rerender(<WorkbookGrid id="grid" title="Structure" model={qualified} onSnapshot={vi.fn()} sourceSha256={'a'.repeat(64)} formatScope={{ ...scope, saving: true }} structureBlocked={false} structureSource={source} onReady={() => startup} />);
   expect(() => admit(command())).toThrow('not ready');
   view.unmount(); expect(() => admit(command())).toThrow('not ready'); expect(runtime.visibilityBeforeOff).toHaveBeenCalledTimes(2);

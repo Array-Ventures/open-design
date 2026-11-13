@@ -7,6 +7,10 @@ import { assertWorkbookCalculationBudget } from './formula-worker-budget';
  * a disposable display capability; the server revalidates all save ownership. */
 export function prepareWorkbookArrayLiveSource(model: WorkbookDocument, original: IWorkbookData, sourceSha256: string | undefined, restored?: IWorkbookData): IWorkbookData | undefined {
   if (model.sourceFormat === 'csv' || model.calculationMetadata !== 'verified' || !/^[a-f0-9]{64}$/.test(sourceSha256 ?? '') || model.definedNames?.length || model.tables?.length || model.sheets.some(sheet => sheet.arrayFormulas === undefined || sheet.arrayFormulas.some(owner => owner.kind !== 'array' || owner.calculation !== 'fixed' && owner.calculation !== 'dynamic'))) return;
+  // Qualified structural scalar sources need the normal bounded RPC replica,
+  // whose axis mutations retain the stamped row/column ownership. An empty
+  // array-owner set is not a reason to select the array-only projection lane.
+  if (model.worksheetStructureEditable && model.sheets.every(sheet => sheet.arrayFormulas?.length === 0)) return;
   const candidate = sourceArrayInteractiveSnapshot(model, original);
   if (candidate.state !== 'known') return;
   try {
