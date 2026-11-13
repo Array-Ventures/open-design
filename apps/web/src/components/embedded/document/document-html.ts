@@ -21,13 +21,17 @@ export function documentImport(html: string): Document {
     if (!localDocumentImageSource(src) && !dataDocumentImageSource(src)) image.remove();
   }
   for (const element of fragment.querySelectorAll<HTMLElement>('[style]')) {
-    // Remove unsupported shorthand before reading longhands: background:url(...)
-    // synthesizes background-color:transparent in CSSOM despite no authored color.
-    for (const name of Array.from(element.style)) {
-      if (!documentImportStyles.has(name)) element.style.removeProperty(name);
-    }
-    const properties = [...documentImportStyles].flatMap(([name, pattern]) => {
-      const value = element.style.getPropertyValue(name).trim();
+    // Read authored declarations rather than CSSOM-expanded longhands: an unsafe
+    // background shorthand must not synthesize an admitted transparent color.
+    const properties = (element.getAttribute('style') ?? '').split(';').flatMap(declaration => {
+      const colon = declaration.indexOf(':');
+      if (colon < 1) return [];
+      const name = declaration.slice(0, colon).trim().toLowerCase();
+      const pattern = documentImportStyles.get(name);
+      if (!pattern) return [];
+      const probe = document.createElement('span').style;
+      probe.cssText = declaration;
+      const value = probe.getPropertyValue(name).trim();
       return pattern.test(value) ? [[name, value]] : [];
     });
     element.removeAttribute('style');

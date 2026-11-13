@@ -4,7 +4,7 @@ import { DocumentImageNode } from './DocumentImageNode';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { CodeNode } from '@lexical/code';
 import { ListItemNode, ListNode } from '@lexical/list';
-import { TableCellNode, TableNode } from '@lexical/table';
+import { TableCellNode, TableNode, TableRowNode } from '@lexical/table';
 
 export const documentBlockId = createState('eveDocumentBlockId', { parse: value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(value) ? value : '' });
 const blocks: readonly Klass<LexicalNode>[] = [ParagraphNode, HeadingNode, QuoteNode, ListItemNode, TableCellNode, CodeNode, ListNode, TableNode, DocumentImageNode];
@@ -14,7 +14,7 @@ export function documentHtmlConfig(): HTMLConfig {
   const imports: DOMConversionMap = {};
   const exports: NonNullable<HTMLConfig['export']> = new Map();
   const candidates = new Map<string, NonNullable<DOMConversionMap[string]>[]>();
-  for (const Block of [...blocks, TextNode]) {
+  for (const Block of [...blocks, TextNode, TableRowNode]) {
     for (const [tag, convert] of Object.entries(Block.importDOM?.() ?? {})) {
       const list = candidates.get(tag) ?? []; list.push(convert); candidates.set(tag, list);
     }
@@ -42,20 +42,26 @@ export function documentHtmlConfig(): HTMLConfig {
           const converted = original ? original(child, parent) : child;
           if ($isTextNode(converted)) {
             const style = document.createElement('span').style;
-            for (const [name, pattern] of documentTextStyles) {
-              const value = element.style.getPropertyValue(name);
+            style.cssText = converted.getStyle();
+            // Lexical applies ancestor forChild callbacks before descendants. Resolve
+            // this element's DOM ancestry too: a nested span replaces its ancestor's
+            // callback under Lexical's tag-keyed map, but must retain inherited styles.
+            const ancestry: HTMLElement[] = [];
+            for (let current: HTMLElement | null = element; current; current = current.parentElement) ancestry.unshift(current);
+            for (const ancestor of ancestry) for (const [name, pattern] of documentTextStyles) {
+              const value = ancestor.style.getPropertyValue(name);
               if (pattern.test(value)) style.setProperty(name, value);
             }
-            // Inner authored spans take precedence over inherited outer styles.
-            const own = document.createElement('span').style; own.cssText = converted.getStyle();
-            for (const name of Array.from(own)) style.setProperty(name, own.getPropertyValue(name));
             converted.setStyle(style.cssText);
           }
           return converted;
         };
       }
       const nodes = output?.node ? Array.isArray(output.node) ? output.node : [output.node] : [];
-      for (const node of nodes.filter(node => !$isTextNode(node))) $setState(node, documentBlockId, documentBlockId.parse(element.getAttribute('data-od-id')));
+      for (const node of nodes.filter(node => !$isTextNode(node))) {
+        if ($isElementNode(node) && (element.dir === 'ltr' || element.dir === 'rtl')) node.setDirection(element.dir);
+        $setState(node, documentBlockId, documentBlockId.parse(element.getAttribute('data-od-id')));
+      }
       return output;
     } };
   };

@@ -167,6 +167,7 @@ it.each([
   const markdown = { ...await readMarkdownDocument(source, 'Report'), sha256: 'original', format: 'markdown' as const };
   save.mockImplementation(async (_project, _file, content) => ({ ...await readMarkdownDocument(await finalizeMarkdownDocument(content), 'Report'), sha256: 'saved', format: 'markdown' }));
   const view = render(<DocumentEditor projectId="fixture" fileName="report.md" title="Report" observed={markdown} onSaved={() => {}} />);
+  expect(screen.queryByRole('alert')).toBeNull();
   const snapshot = () => editor().getEditorState().read(() => {
     const collect = (node: import('lexical').LexicalNode): unknown => ({ type: node.getType(), image: 'getImageData' in node ? (node as import('../../../src/components/embedded/document/DocumentImageNode').DocumentImageNode).getImageData() : undefined, text: $isTextNode(node) ? node.getTextContent() : undefined, format: $isElementNode(node) || $isTextNode(node) ? node.getFormat() : undefined, url: 'getURL' in node ? (node as import('@lexical/link').LinkNode).getURL() : undefined, title: 'getTitle' in node ? (node as import('@lexical/link').LinkNode).getTitle() : undefined, children: $isElementNode(node) ? node.getChildren().map(collect) : undefined });
     return $getRoot().getChildren().slice(1).map(collect);

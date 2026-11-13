@@ -54,3 +54,19 @@ it('round-trips supported authored inline typography through Lexical', async () 
     expect(inner?.style.fontSize).toBe('22px');
   });
 });
+
+
+it('preserves block direction across importing and exporting a saved document', async () => {
+  const { $generateNodesFromDOM, $generateHtmlFromNodes } = await import('@lexical/html');
+  const { documentImport } = await import('../../../src/components/embedded/document/document-html');
+  const { documentHtmlConfig } = await import('../../../src/components/embedded/document/document-identity');
+  const editor = createEditor({ nodes: [HeadingNode], html: documentHtmlConfig(), onError: error => { throw error; } });
+  editor.update(() => {
+    $getRoot().append(...$generateNodesFromDOM(editor, documentImport('<h1 dir="rtl">Heading</h1><p dir="ltr">Body</p>')));
+  }, { discrete: true });
+  editor.getEditorState().read(() => {
+    const output = new DOMParser().parseFromString($generateHtmlFromNodes(editor), 'text/html');
+    expect(output.querySelector('h1')?.getAttribute('dir')).toBe('rtl');
+    expect(output.querySelector('p')?.getAttribute('dir')).toBe('ltr');
+  });
+});

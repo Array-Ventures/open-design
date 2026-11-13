@@ -20,7 +20,7 @@ function supportedElement(element: HTMLElement): boolean {
     if (!['style', 'dir', 'data-od-id', ...(attributes[tag] ?? [])].includes(attribute.name)) return false;
   }
   // Unknown declarations (including invalid CSS that the DOM parser discards) must not vanish on save.
-  if (element.hasAttribute('dir') && !['ltr', 'rtl'].includes(element.getAttribute('dir')!)) return false;
+  if (element.hasAttribute('dir') && (!['ltr', 'rtl'].includes(element.getAttribute('dir')!) || !['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'li', 'ul', 'ol', 'table', 'tr', 'td', 'th', 'pre'].includes(tag))) return false;
   if (element.hasAttribute('data-od-id') && !/^[A-Za-z0-9_-]{1,100}$/.test(element.getAttribute('data-od-id')!)) return false;
   if (tag === 'a' && element.hasAttribute('target') && element.getAttribute('target') !== '_blank') return false;
   if (tag === 'a' && element.hasAttribute('rel') && element.getAttribute('rel') !== 'noopener noreferrer') return false;
@@ -58,6 +58,7 @@ function supportedElement(element: HTMLElement): boolean {
     // Lexical's own exports add these presentation defaults, regenerated on every save.
     if (inline.has(tag) && name === 'white-space' && value === 'pre-wrap') continue;
     const canonicalCellBorder = ['td', 'th'].includes(tag) && /^1px solid (?:black|rgb\(0,\s*0,\s*0\))$/.test(element.style.getPropertyValue('border'));
+    if (canonicalCellBorder && name === 'border-image' && value === 'none') continue;
     if (canonicalCellBorder && /^border(?:-(?:top|right|bottom|left))?(?:-(?:width|style|color))?$/.test(name)) continue;
     const pattern = documentImportStyles.get(name);
     if (!pattern?.test(value)) return false;
@@ -70,6 +71,7 @@ function supportedElement(element: HTMLElement): boolean {
     if (name === 'font-style' && value === 'normal') return false;
     if (name === 'text-decoration' && value === 'none') return false;
     if (['font-weight', 'font-style', 'text-decoration'].includes(name) && !inline.has(tag)) return false;
+    if (name === 'font-size' && !/^(?:\d+(?:\.\d+)?)(?:px|pt)$/.test(value)) return false;
     if (name === 'aspect-ratio' && tag !== 'img') return false;
     if (name === 'width' && (!['col', 'td', 'th'].includes(tag) || !value.endsWith('px'))) return false;
     if (name === 'height' && tag !== 'tr') return false;
