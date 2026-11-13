@@ -1,5 +1,6 @@
 import { RiImageEditLine } from '@remixicon/react';
 import { Button as BoardUIButton } from './embedded/boardui/button';
+import { ARTIFACT_ICON_BUTTON } from './embedded/artifact-controls';
 import { Button, Input, Textarea, ValueSelect } from '@open-design/components';
 import { useEffect, useLayoutEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import type { ProjectDesignTokenSuggestion, ProjectDesignTokenSuggestionProp } from '../providers/registry';
@@ -255,7 +256,7 @@ export function ManualEditPanel({
                 target={targetForInspector}
                 draft={draft}
                 onDraftChange={onDraftChange}
-                imageAction={onPickImage ? <BoardUIButton iconOnly leadingIcon={RiImageEditLine} size="xs" variant="ghost"
+                imageAction={onPickImage ? <BoardUIButton iconOnly leadingIcon={RiImageEditLine} size="xs" variant="ghost" className={ARTIFACT_ICON_BUTTON}
                   aria-label={uploadingImage ? t('manualEdit.uploadingImage') : t('manualEdit.uploadImage')}
                   title={uploadingImage ? t('manualEdit.uploadingImage') : t('manualEdit.uploadImage')}
                   disabled={Boolean(busy || uploadingImage)} onClick={() => fileInputRef.current?.click()} /> : null}
