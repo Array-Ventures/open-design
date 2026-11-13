@@ -313,6 +313,22 @@ Workbook admission regressions: `pnpm --filter @open-design/daemon exec vitest r
 tests/artifacts/workbook-reader.test.ts`. These commands are validation gates,
 not a claim that the current snapshot has passed them.
 
+## Mention defaults for comment chat staging
+
+The embedded generic and structured-document root composers use the same **Add
+to chat** checkbox. A complete host-provided bot name in an actively edited root
+comment checks it by default, including when editing a saved root. Emails,
+unknown names and partial handles do not. A person's explicit checkbox choice
+wins through further typing, more mentions and temporary permission loss. Each
+new target starts a new choice; merely opening an existing saved thread does
+not stage anything.
+
+The checkbox only controls the existing explicit save-and-stage action. Mentions
+never send a message or invoke a bot by themselves. Permissions still gate both
+editing and staging, and failed handoffs retain their existing retry flow.
+Replies keep their existing separate save/reply and chat-staging controls; they
+do not gain an implicit mention-triggered handoff.
+
 ## Worksheet visibility slice
 
 Ordinary XLSX worksheets support hide/unhide through the host header's scoped
