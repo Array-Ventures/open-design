@@ -1,13 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { RiText, RiTableLine, RiShapesLine, RiCloseLine, RiRefreshLine } from '@remixicon/react';
-import { ManualEditInsertionPatch, type ManualEditInsertion } from '../../edit-mode/insertion';
+import { ManualEditInsertionPatch, insertionImageSourceForAsset, type ManualEditInsertion } from '../../edit-mode/insertion';
 import { Button } from './boardui/button';
 import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem } from './boardui/dropdown';
 import { cx } from './boardui/cx';
+import { ArtifactImagePicker, type ArtifactImageState } from './ArtifactImagePicker';
 import { DOCUMENT_ICON_BUTTON } from './document/document-controls';
 
 type Request = { requestId: string; id: string; element: ManualEditInsertion; source: string; frame: HTMLIFrameElement; window: Window };
 interface Props {
+  projectId: string; fileName: string;
   source: string | null; busy: boolean;
   onHeightChange?(height: number): void;
   getFrame(): HTMLIFrameElement | null;
@@ -36,6 +38,8 @@ export function ArtifactInsertionToolbar(props: Props) {
   const [status, setStatus] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [imageState,setImageState]=useState<ArtifactImageState>('empty');
+  const [imageReset,setImageReset]=useState(0),[imageConsumed,setImageConsumed]=useState(0);
   const alive = useRef(true);
   const preparing = useRef(false);
   const ackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -63,7 +67,7 @@ export function ArtifactInsertionToolbar(props: Props) {
     try {
       const ok = await current.current.onInsert(patch, patch.element.kind === 'shape' ? `Insert ${patch.element.shape}` : `Insert ${patch.element.kind}`, expectedSource);
       if (!alive.current) return;
-      if (ok) { retry.current = null; setStatus(null); }
+      if (ok) { retry.current = null; setStatus(null); if(patch.element.kind === 'image') setImageConsumed(value => value+1); }
       else setStatus('Could not save insertion. Retry or cancel.');
     } catch { if (alive.current) setStatus('Could not save insertion. Retry or cancel.'); }
     finally { if (alive.current) setPending(false); }
@@ -106,7 +110,7 @@ export function ArtifactInsertionToolbar(props: Props) {
     const loaded = () => { cancel(); setStatus('The canvas refreshed. Choose an insertion tool again.'); }; attempt.frame.addEventListener('load',loaded);
     return () => attempt.frame.removeEventListener('load',loaded);
   }, [props.source, active]);
-  const arm = async (element: ManualEditInsertion) => {
+  const arm = async (selection: ManualEditInsertion | (() => ManualEditInsertion | null)) => {
     if (preparing.current || pending || current.current.busy || retry.current) return;
     cancel(); setMenu(false); preparing.current = true; setPending(true);
     try {
@@ -116,6 +120,8 @@ export function ArtifactInsertionToolbar(props: Props) {
       // the live frame and revision that own this insertion.
       await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       if (!alive.current) return;
+      const element=typeof selection === 'function' ? selection() : selection;
+      if(!element) {setStatus('This artifact’s base URL does not support project image placement.');return;}
       const frame = current.current.getFrame(), source = current.current.getSource(), target = frame?.contentWindow;
       if (!frame || !target || source === null) { setStatus('The canvas is not ready. Try again.'); return; }
       const attempt: Request = {requestId:crypto.randomUUID(),id:`eve-${crypto.randomUUID()}`,element,source,frame,window:target};
@@ -123,11 +129,19 @@ export function ArtifactInsertionToolbar(props: Props) {
     } catch { if (alive.current) setStatus('Could not prepare insertion. Try again.'); }
     finally { preparing.current = false; if (alive.current) setPending(false); }
   };
-  const disabled = props.busy || pending || retry.current !== null;
+  const disabled = props.busy || pending || retry.current !== null || imageState === 'uploading';
   return <div ref={toolbar} className="pointer-events-none absolute inset-x-3 bottom-3 z-30 flex flex-col items-center gap-2" data-testid="artifact-insertion-toolbar">
     {status ? <div role="status" className="pointer-events-auto max-w-full rounded-lg bg-background-secondary-default px-3 py-2 text-caption-1-regular text-text-secondary shadow-sm">{status}</div> : null}
     <div role="toolbar" aria-label="Canvas insertion" className="pointer-events-auto flex max-w-full items-center gap-1 rounded-2xl border border-border-button-default bg-background-secondary-default p-1 shadow-sm">
       <Button variant="ghost" size="small" iconOnly leadingIcon={RiText} aria-label="Insert text" title="Insert text" disabled={disabled} aria-pressed={active === 'text'} className={cx(DOCUMENT_ICON_BUTTON,active === 'text' && 'bg-accent-100 text-accent-700')} onClick={() => void arm({kind:'text',text:'Text'})} />
+      <ArtifactImagePicker key={`${props.projectId}:${props.fileName}`} projectId={props.projectId} disabled={disabled} active={active === 'image'} reset={imageReset} consumed={imageConsumed}
+        getSource={() => current.current.getSource()} onStateChange={setImageState} onStatus={setStatus}
+        onImage={asset => arm(() => {
+          const source=current.current.getSource();if(source === null) return null;
+          const base=new DOMParser().parseFromString(source,'text/html').querySelector('base[href]')?.getAttribute('href') ?? null;
+          const src=insertionImageSourceForAsset(asset.name,current.current.fileName,base);
+          return src ? {kind:'image',src,alt:asset.alt,size:{width:asset.width,height:asset.height}} : null;
+        })} />
       <Button variant="ghost" size="small" iconOnly leadingIcon={RiTableLine} aria-label="Insert table" title="Insert 3 × 3 table" disabled={disabled} aria-pressed={active === 'table'} className={cx(DOCUMENT_ICON_BUTTON,active === 'table' && 'bg-accent-100 text-accent-700')} onClick={() => void arm({kind:'table',rows:3,columns:3})} />
       <Dropdown isOpen={menu} onOpenChange={setMenu}>
         <DropdownTrigger isDisabled={disabled} aria-label="Insert shape" className={cx(DOCUMENT_ICON_BUTTON,'box-border flex size-8 items-center justify-center border-0 p-0',active === 'shape' && 'bg-accent-100 text-accent-700')}><RiShapesLine className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
@@ -136,7 +150,7 @@ export function ArtifactInsertionToolbar(props: Props) {
         </DropdownPopover>
       </Dropdown>
       {retry.current ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry insertion save" title="Retry save" disabled={props.busy || pending} className={DOCUMENT_ICON_BUTTON} onClick={() => { const attempt = retry.current; if (attempt) void save(attempt.patch, attempt.source); }} /> : null}
-      {active || retry.current ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiCloseLine} aria-label="Cancel insertion" title="Cancel insertion" disabled={props.busy || pending} className={DOCUMENT_ICON_BUTTON} onClick={cancel} /> : null}
+      {active || retry.current || imageState !== 'empty' ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiCloseLine} aria-label="Cancel insertion" title="Cancel insertion" disabled={props.busy || pending} className={DOCUMENT_ICON_BUTTON} onClick={() => {setImageReset(value => value+1);cancel();}} /> : null}
     </div>
   </div>;
 }

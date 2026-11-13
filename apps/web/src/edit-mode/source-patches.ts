@@ -108,6 +108,16 @@ export interface ManualEditPatchResult {
   unchanged?: true;
 }
 
+/** Decide replay from authenticated persisted bytes. The caller owns freshness
+ * and access admission; this pure check never authorizes a write. Undo can be
+ * recovered only when the whole file is exactly the original insertion result. */
+export function persistedInsertionReplay(expectedSource: string,storedSource: string,patch: ManualEditInsertionPatch,ownerFileName = 'index.html'): {source:string;beforeSource:string|null}|null {
+  const replay=applyManualEditPatch(storedSource,patch,ownerFileName);
+  if(!replay.ok || !replay.unchanged) return null;
+  const expected=applyManualEditPatch(expectedSource,patch,ownerFileName);
+  return {source:storedSource,beforeSource:expected.ok && !expected.unchanged && expected.source === storedSource ? expectedSource : null};
+}
+
 export function applyManualEditPatch(source: string, patch: ManualEditPatch, ownerFileName = 'index.html'): ManualEditPatchResult {
   if (patch.kind === 'set-full-source') return { ok: true, source: patch.source };
 

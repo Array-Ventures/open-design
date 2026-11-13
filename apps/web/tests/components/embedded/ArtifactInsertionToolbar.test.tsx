@@ -1,15 +1,17 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+const imageUpload=vi.hoisted(() => vi.fn());
+vi.mock('../../../src/components/embedded/project-image-upload',() => ({uploadProjectImage:imageUpload}));
 import { ArtifactInsertionToolbar } from '../../../src/components/embedded/ArtifactInsertionToolbar';
 import type { ManualEditInsertionPatch } from '../../../src/edit-mode/insertion';
-afterEach(() => { cleanup(); document.querySelectorAll('iframe').forEach(frame => frame.remove()); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); document.querySelectorAll('iframe').forEach(frame => frame.remove()); vi.unstubAllGlobals(); imageUpload.mockReset(); });
 function harness(onInsert = vi.fn(async (_patch: ManualEditInsertionPatch) => true)) {
   const frame = document.createElement('iframe'); document.body.append(frame);
   const post = vi.spyOn(frame.contentWindow!, 'postMessage');
   let source = '<section>Source A</section>';
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 1; });
-  const props = {source,busy:false,getFrame:() => frame,getSource:() => source,onPrepare:vi.fn(async () => true),onInsert};
+  const props = {projectId:'project',fileName:'index.html',source,busy:false,getFrame:() => frame,getSource:() => source,onPrepare:vi.fn(async () => true),onInsert};
   const view = render(<ArtifactInsertionToolbar {...props} />);
   const arm = async () => {
     fireEvent.click(screen.getByRole('button',{name:'Insert text'}));
@@ -81,10 +83,28 @@ it('measures insertion chrome and releases its reserved space when removed', () 
   const disconnect=vi.fn(), report=vi.fn();
   vi.stubGlobal('ResizeObserver',class {constructor(callback: ResizeObserverCallback){resize=callback;} observe(){} disconnect=disconnect;});
   const rect=vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockReturnValue({height:96} as DOMRect);
-  const view=render(<ArtifactInsertionToolbar source="source" busy={false} getFrame={() => null} getSource={() => 'source'} onPrepare={async () => true} onInsert={async () => true} onHeightChange={report} />);
+  const view=render(<ArtifactInsertionToolbar projectId="project" fileName="index.html" source="source" busy={false} getFrame={() => null} getSource={() => 'source'} onPrepare={async () => true} onInsert={async () => true} onHeightChange={report} />);
   expect(report).toHaveBeenLastCalledWith(120);
   rect.mockReturnValue({height:144} as DOMRect);
   act(() => resize!([],{} as ResizeObserver)); expect(report).toHaveBeenLastCalledWith(168);
   view.unmount(); expect(disconnect).toHaveBeenCalledOnce(); expect(report).toHaveBeenLastCalledWith(0);
   rect.mockRestore();
+});
+
+it('places an uploaded image through the same source-bound insertion writer using the authored base', async () => {
+  const source='<!doctype html><html><head><base href="../images/"></head><body><main>Canvas</main></body></html>';
+  const frame=document.createElement('iframe');document.body.append(frame);const post=vi.spyOn(frame.contentWindow!,'postMessage');
+  vi.stubGlobal('requestAnimationFrame',(callback:FrameRequestCallback) => {callback(0);return 1;});
+  imageUpload.mockResolvedValue({name:'_studio-image-assets/receipt.png',alt:'Figure',width:800,height:400});
+  const onInsert=vi.fn(async () => true);
+  render(<ArtifactInsertionToolbar projectId="project" fileName="slides/index.html" source={source} busy={false} getFrame={() => frame} getSource={() => source} onPrepare={async () => true} onInsert={onInsert} />);
+  fireEvent.click(screen.getByRole('button',{name:'Insert image'}));
+  fireEvent.change(screen.getByLabelText('Choose artifact image'),{target:{files:[new File(['image'],'Figure.png',{type:'image/png'})]}});
+  await waitFor(() => expect(post.mock.calls.some(([data]) => data.type === 'od-insert-arm')).toBe(true));
+  const armed=post.mock.calls.find(([data]) => data.type === 'od-insert-arm')![0];
+  expect(armed.element).toEqual({kind:'image',src:'../_studio-image-assets/receipt.png',alt:'Figure',size:{width:800,height:400}});
+  await act(async () => {window.dispatchEvent(new MessageEvent('message',{source:frame.contentWindow,data:{type:'od-insert-placement',requestId:armed.requestId,parentId:'canvas',placement:{left:20,top:30,width:320,height:160}}}));});
+  expect(onInsert).toHaveBeenCalledWith(expect.objectContaining({kind:'insert-element',element:armed.element}),'Insert image',source);
+  await waitFor(() => expect(screen.getByRole('button',{name:'Insert image'})).toBeTruthy());
+  expect(imageUpload).toHaveBeenCalledOnce();
 });

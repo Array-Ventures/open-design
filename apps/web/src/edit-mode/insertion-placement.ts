@@ -47,10 +47,12 @@ export function insertionPlacement(
     width = Math.max(1, Math.abs(x - origin.x)); height = Math.max(line ? 1 : 16, Math.abs(y - origin.y));
   } else {
     const preferred = element.kind === 'table' ? { width: element.columns * 120, height: element.rows * 40 }
+      : element.kind === 'image' && element.size ? {width:Math.max(1,element.size.width*Math.min(320/element.size.width,240/element.size.height)),height:Math.max(1,element.size.height*Math.min(320/element.size.width,240/element.size.height))}
       : element.kind === 'image' ? { width: 320, height: 240 }
       : element.kind === 'text' ? { width: 240, height: 48 }
       : { width: 160, height: line ? 2 : 96 };
-    width = Math.min(preferred.width, surface.clientWidth); height = Math.min(preferred.height, surface.clientHeight);
+    const fit = element.kind === 'image' ? Math.min(1,surface.clientWidth/preferred.width,surface.clientHeight/preferred.height) : 1;
+    width = Math.max(1,Math.min(preferred.width*fit, surface.clientWidth)); height = Math.max(1,Math.min(preferred.height*fit, surface.clientHeight));
     left = clamp(origin.x - (anchor === 'center' ? width / 2 : 0), surface.clientWidth - width);
     top = clamp(origin.y - (anchor === 'center' ? height / 2 : 0), surface.clientHeight - height);
   }

@@ -731,15 +731,20 @@ describe('FileViewer manual edit regressions', () => {
     });
   });
 
-  it.each(['external', 'lost-response'] as const)('keeps an uncertain insertion retry bound to its source (%s)', async outcome => {
+  it.each(['external', 'lost-response', 'unreadable'] as const)('keeps an uncertain insertion retry bound to its source (%s)', async outcome => {
     const original = '<!doctype html><html><body><main data-od-id="hero" style="position:relative">Hero</main></body></html>';
     let disk = original, writes = 0;
     vi.stubGlobal('fetch',vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       if (String(input).includes('/api/projects/project-1/files') && init?.method === 'POST') {
         writes++;
-        if (outcome === 'lost-response') disk = JSON.parse(String(init.body)).content;
-        return new Response(JSON.stringify({error:'Uncertain fixture response'}),{status:500,headers:{'Content-Type':'application/json'}});
+        if (writes === 1) {
+          if (outcome !== 'external') disk = JSON.parse(String(init.body)).content;
+          return new Response(JSON.stringify({error:'Uncertain fixture response'}),{status:500,headers:{'Content-Type':'application/json'}});
+        }
+        disk=JSON.parse(String(init.body)).content;
+        return new Response(JSON.stringify({file:htmlPreviewFile()}),{status:200,headers:{'Content-Type':'application/json'}});
       }
+      if(outcome === 'unreadable' && writes > 0) return new Response('{}',{status:403});
       return new Response(disk,{status:200,headers:{'Content-Type':'text/html'}});
     }));
     render(<FileViewer projectId="project-1" projectKind="prototype" embedded inlineAnnotations file={htmlPreviewFile()} liveHtml={original} />);
@@ -757,17 +762,23 @@ describe('FileViewer manual edit regressions', () => {
     await waitFor(() => expect(screen.getByRole('button',{name:'Retry insertion save'})).not.toBeDisabled());
     expect(writes).toBe(1);
     if (outcome === 'external') disk = original.replace('Hero','External content');
-    // First retry discovers persisted bytes after the uncertain response.
     fireEvent.click(screen.getByRole('button',{name:'Retry insertion save'}));
-    await waitFor(() => expect(screen.getByRole('button',{name:'Retry insertion save'})).not.toBeDisabled());
-    // Second retry may acknowledge the exact saved insertion, but must never
-    // silently rebase it onto an unrelated external source revision.
-    fireEvent.click(screen.getByRole('button',{name:'Retry insertion save'}));
-    if (outcome === 'lost-response') await waitFor(() => expect(screen.queryByRole('button',{name:'Retry insertion save'})).toBeNull());
-    else await waitFor(() => expect(screen.getByRole('button',{name:'Retry insertion save'})).not.toBeDisabled());
-    expect(writes).toBe(1);
-    if (outcome === 'external') expect(disk).not.toContain('eve-');
-    else expect((disk.match(/data-od-id="eve-/g) ?? [])).toHaveLength(1);
+    if (outcome === 'lost-response') {
+      await waitFor(() => expect(screen.queryByRole('button',{name:'Retry insertion save'})).toBeNull());
+      expect(writes).toBe(1);expect((disk.match(/data-od-id="eve-/g) ?? [])).toHaveLength(1);
+      const insertedId=new DOMParser().parseFromString(disk,'text/html').querySelector('[data-od-id^="eve-"]')!.getAttribute('data-od-id')!;
+      await selectManualEditTarget({...heroTarget(),id:insertedId,label:'Text',tagName:'div',text:'Text',fields:{text:'Text'}});
+      await waitFor(() => expect(screen.getByRole('button',{name:'Undo'})).not.toBeDisabled());
+      fireEvent.click(screen.getByRole('button',{name:'Undo'}));
+      await waitFor(() => expect(disk).toBe(original));expect(writes).toBe(2);
+    } else {
+      await waitFor(() => expect(screen.getByRole('button',{name:'Retry insertion save'})).not.toBeDisabled());
+      fireEvent.click(screen.getByRole('button',{name:'Retry insertion save'}));
+      await waitFor(() => expect(screen.getByRole('button',{name:'Retry insertion save'})).not.toBeDisabled());
+      expect(writes).toBe(1);
+      if(outcome === 'external') expect(disk).not.toContain('eve-');
+      else expect((disk.match(/data-od-id="eve-/g) ?? [])).toHaveLength(1);
+    }
   });
 
   it('removes the embedded insertion toolbar on safe exit and can re-enter without orphaned controls', async () => {

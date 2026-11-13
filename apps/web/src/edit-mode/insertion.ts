@@ -3,7 +3,7 @@ import { z } from 'zod';
 const coordinate = z.number().finite().min(0).max(100_000);
 export const ManualEditInsertion = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('text'), text: z.string().min(1).max(20_000) }).strict(),
-  z.object({ kind: z.literal('image'), src: z.string().min(1).max(2000), alt: z.string().max(2000) }).strict(),
+  z.object({ kind: z.literal('image'), src: z.string().min(1).max(2000), alt: z.string().max(2000), size: z.object({width:z.number().int().min(1).max(10000),height:z.number().int().min(1).max(10000)}).strict().optional() }).strict(),
   z.object({ kind: z.literal('table'), rows: z.number().int().min(1).max(20), columns: z.number().int().min(1).max(12) }).strict(),
   z.object({ kind: z.literal('shape'), shape: z.enum(['rectangle', 'ellipse', 'triangle', 'line', 'arrow']) }).strict(),
 ]);
@@ -24,6 +24,30 @@ export function insertionParentAllowed(parent: Element): boolean {
     && /^(body|main|section|article|div|header|footer|aside|nav|figure|figcaption|form|fieldset|details|li|td|th)$/.test(parent.localName);
 }
 
+const imageProjectRoot = 'https://project.invalid/__evebot_project__/';
+function imageOwnerBase(ownerFileName: string,authoredBase: string | null): URL | null {
+  if (authoredBase && /^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(authoredBase.trim())) return null;
+  const owner=ownerFileName.split('/');
+  if (owner.some(part => !part || part === '.' || part === '..' || /[\\\u0000-\u001f?#]/.test(part))) return null;
+  try {
+    const ownerUrl=new URL(owner.map(encodeURIComponent).join('/'),imageProjectRoot);
+    const base=authoredBase ? new URL(authoredBase,ownerUrl) : ownerUrl;
+    return base.href.startsWith(imageProjectRoot) ? base : null;
+  } catch {return null;}
+}
+
+/** Resolve an authenticated upload receipt against the authored HTML base.
+ * Keep the saved source portable; never embed the preview server's URL. */
+export function insertionImageSourceForAsset(assetPath: string,ownerFileName: string,authoredBase: string | null = null): string | null {
+  const base=imageOwnerBase(ownerFileName,authoredBase),asset=assetPath.split('/');
+  if (!base || asset.some(part => !part || part === '.' || part === '..' || /[\\\u0000-\u001f?#%]/.test(part))) return null;
+  const from=new URL('.',base).pathname.slice(new URL(imageProjectRoot).pathname.length).split('/').filter(Boolean);
+  const to=asset.map(encodeURIComponent);let common=0;
+  while(common < from.length && common < to.length && from[common] === to[common]) common++;
+  const relative=[...Array.from({length:from.length-common},() => '..'),...to.slice(common)].join('/');
+  return insertionImageSourceAllowed(relative,ownerFileName,authoredBase) ? relative : null;
+}
+
 /** Project-relative assets only: creation never starts a remote fetch or adds
  * an executable URL. Existing approved media upload resolves the asset name. */
 export function insertionImageSourceAllowed(src: string, ownerFileName = 'index.html', authoredBase: string | null = null): boolean {
@@ -31,13 +55,10 @@ export function insertionImageSourceAllowed(src: string, ownerFileName = 'index.
     const decoded = decodeURIComponent(src);
     if (decoded.includes('%') || authoredBase && /^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(authoredBase.trim())) return false;
     if (src !== src.trim() || /[\\\u0000-\u001f\u007f?#]/.test(decoded) || /%(?:2f|5c)/i.test(src) || /^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(decoded)) return false;
-    const owner = ownerFileName.split('/');
-    if (owner.some(part => !part || part === '.' || part === '..' || /[\\\u0000-\u001f?#]/.test(part))) return false;
-    const root = 'https://project.invalid/__evebot_project__/';
-    const ownerUrl = new URL(owner.map(encodeURIComponent).join('/'), root);
-    const base = authoredBase ? new URL(authoredBase, ownerUrl) : ownerUrl;
+    const base = imageOwnerBase(ownerFileName,authoredBase);
+    if (!base) return false;
     const target = new URL(src, base);
-    if (!target.href.startsWith(root) || target.search || target.hash) return false;
+    if (!target.href.startsWith(imageProjectRoot) || target.search || target.hash) return false;
     const parts = decodeURIComponent(target.pathname).split('/');
     if (parts.some(part => /^\.env(?:\.|$)/i.test(part) || ['.git', '.eve', '.file-versions', 'node_modules'].includes(part))) return false;
     return /\.(?:png|jpe?g|gif|webp|avif|svg)$/i.test(parts.at(-1) ?? '');
@@ -55,7 +76,7 @@ export function createInsertedElement(doc: Document, patch: ManualEditInsertionP
     element.style.fontFamily = 'inherit'; element.style.fontSize = 'inherit'; element.style.lineHeight = '1.3';
   } else if (content.kind === 'image') {
     const image = doc.createElement('img'); image.setAttribute('src', content.src); image.setAttribute('alt', content.alt);
-    image.style.objectFit = 'contain'; element = image;
+    image.style.objectFit = 'contain'; if (content.size) { image.width=content.size.width; image.height=content.size.height; } element = image;
   } else if (content.kind === 'table') {
     const table = doc.createElement('table'); table.style.borderCollapse = 'collapse';
     const head = table.createTHead(), header = head.insertRow();

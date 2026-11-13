@@ -367,6 +367,7 @@ import type {
 import { ManualEditPanel, emptyManualEditDraft, type ManualEditDraft } from './ManualEditPanel';
 import {
   applyManualEditPatch,
+  persistedInsertionReplay,
   isManualEditFullHtmlDocument,
   readManualEditAttributes,
   readManualEditFields,
@@ -14158,14 +14159,39 @@ function HtmlViewer({
         finish('failed', 'source_conflict');
         return false;
       }
+      const adoptPersistedInsertion = async (storedSource: string): Promise<boolean> => {
+        if(patch.kind !== 'insert-element' || expectedInsertionSource === undefined) return false;
+        const replay=persistedInsertionReplay(expectedInsertionSource,storedSource,patch,file.name);
+        if(!replay) return false;
+        await capturePreviewScrollPosition(true);
+        manualEditPersistedDocumentRef.current=null;
+        setManualEditFrozenSource(storedSource);
+        setManualEditDraft(current => ({...current,fullSource:storedSource}));
+        requestManualEditUrlStandbyRefresh(storedSource);
+        if(replay.beforeSource !== null && !manualEditHistory.some(entry => entry.patch.kind === 'insert-element' && entry.patch.id === patch.id)) {
+          const previous=manualEditHistory[0]?.afterSource === replay.beforeSource ? manualEditHistory : [];
+          setManualEditHistory([{id:`insertion-${patch.id}`,label,patch,beforeSource:replay.beforeSource,afterSource:storedSource,createdAt:Date.now()},...previous]);
+          setManualEditUndone([]);
+        }
+        setManualEditError(null);
+        await onFileSaved?.();
+        finish('success');return true;
+      };
       if (!(await confirmManualEditHistorySource(
         baseSource,
         'The file changed outside manual edit mode. Refreshing before applying manual edits.',
       ))) {
+        // Only a successful fresh read changes sourceRef here. An unreadable
+        // file must not be acknowledged from a stale in-memory snapshot.
+        const stored=sourceRef.current;
+        if(stored !== null && stored !== baseSource && await adoptPersistedInsertion(stored)) return true;
         finish('failed', 'source_conflict');
         return false;
       }
-      if (result.unchanged) { setManualEditError(null); finish('success'); return true; }
+      if (result.unchanged) {
+        if(await adoptPersistedInsertion(baseSource)) return true;
+        setManualEditError(null);finish('success');return true;
+      }
       const parentVersionId = await resolveManualEditParentVersionId(baseSource);
       // A committed content patch can notify the file watcher as soon as the
       // write lands. Capture the opaque iframe's exact scroll position before
@@ -18321,7 +18347,7 @@ function HtmlViewer({
             </div>
       </>)}
       <div className="viewer-body" ref={previewBodyRef}>
-        {embedded && workspaceActive && manualEditMode && !viewerOnly ? <ArtifactInsertionToolbar key={`insertion:${file.name}`} source={source} busy={manualEditSaving || manualEditEntryHandoffPending || manualEditExitHandoffPending} onHeightChange={setManualEditInsertionInset}
+        {embedded && workspaceActive && manualEditMode && !viewerOnly ? <ArtifactInsertionToolbar key={`insertion:${projectId}:${file.name}`} projectId={projectId} fileName={file.name} source={source} busy={manualEditSaving || manualEditEntryHandoffPending || manualEditExitHandoffPending} onHeightChange={setManualEditInsertionInset}
           getFrame={() => iframeRef.current} getSource={() => sourceRef.current}
           onPrepare={async () => {
             if (!(await flushManualEditPanelDraft())) return false;
@@ -18333,6 +18359,10 @@ function HtmlViewer({
             pendingManualInsertSelectionRef.current = patch.id;
             const saved = await applyManualEdit(patch, label, expectedSource);
             if (!saved && pendingManualInsertSelectionRef.current === patch.id) pendingManualInsertSelectionRef.current = null;
+            if(saved && pendingManualInsertSelectionRef.current === patch.id) {
+              const existing=manualEditTargets.find(target => target.id === patch.id);
+              if(existing) {pendingManualInsertSelectionRef.current=null;void selectManualEditTargetRef.current(existing);}
+            }
             return saved;
           }} /> : null}
         {embedded && !viewerOnly && manualEditEntryAllowed && /\.html?$/i.test(file.name) ? <ArtifactEditControls key={file.name} projectId={projectId} active={manualEditMode} busy={manualEditSaving}

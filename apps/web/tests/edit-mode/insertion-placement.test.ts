@@ -17,6 +17,10 @@ describe('insertion coordinates', () => {
     expect(insertionPlacement(surface,{x:155,y:255},{x:255,y:305},text,'center'))
       .toEqual({left:100,top:100,width:200,height:100});
   });
+  it('fits natural image proportions into a narrow canvas', () => {
+    expect(insertionPlacement({...surface,clientWidth:100,clientHeight:80},{x:105,y:205},null,{kind:'image',src:'image.png',alt:'Figure',size:{width:800,height:400}}))
+      .toEqual({left:0,top:0,width:100,height:50});
+  });
   it('maps a scaled bordered canvas to authored CSS pixels', () => {
     expect(insertionPlacement(surface, { x: 155, y: 255 }, { x: 255, y: 305 }, text))
       .toEqual({ left: 100, top: 100, width: 200, height: 100 });
@@ -50,6 +54,6 @@ describe('insertion coordinates', () => {
     expect(insertionPlacement(surface, { x: 155, y: 255 }, null, { kind: 'table', rows: 3, columns: 2 }))
       .toEqual({ left: 100, top: 100, width: 240, height: 120 });
     expect(insertionPlacement({ ...surface, clientWidth: 100, clientHeight: 80 }, { x: 105, y: 205 }, null, { kind: 'image', src: 'image.png', alt: '' }))
-      .toEqual({ left: 0, top: 0, width: 100, height: 80 });
+      .toEqual({ left: 0, top: 0, width: 100, height: 75 });
   });
 });

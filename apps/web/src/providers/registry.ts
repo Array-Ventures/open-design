@@ -3234,6 +3234,7 @@ export async function writeProjectBase64File(
   name: string,
   base64: string,
   workspaceContext?: WorkspaceCollabContext | null,
+  options?: { overwrite?: boolean; signal?: AbortSignal },
 ): Promise<ProjectFile | null> {
   try {
     const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files`, {
@@ -3242,7 +3243,8 @@ export async function writeProjectBase64File(
         'Content-Type': 'application/json',
         ...(workspaceContext ? workspaceProjectHeaders(workspaceContext) : {}),
       },
-      body: JSON.stringify({ name, content: base64, encoding: 'base64' }),
+      body: JSON.stringify({ name, content: base64, encoding: 'base64', ...(options?.overwrite !== undefined ? {overwrite:options.overwrite} : {}) }),
+      ...(options?.signal ? {signal:options.signal} : {}),
     });
     if (!resp.ok) return null;
     invalidateProjectFilesCache(projectId, workspaceContext);

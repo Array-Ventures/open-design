@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { applyManualEditPatch } from '../../src/edit-mode/source-patches';
+import { applyManualEditPatch, persistedInsertionReplay } from '../../src/edit-mode/source-patches';
 import { insertionImageSourceAllowed, type ManualEditInsertion, type ManualEditInsertionPatch } from '../../src/edit-mode/insertion';
 import type { ManualEditPatch } from '../../src/edit-mode/types';
 const source = '<!doctype html><html><head><style>.original{color:purple}</style></head><body><section data-od-id="slide" style="position:relative"><h1 data-od-id="heading">Retained heading</h1><p>Supporting content.</p></section><script>const original = "<keep>";</script></body></html>';
@@ -60,6 +60,16 @@ describe('typed source insertion', () => {
     const shape = applyManualEditPatch(source,patch({kind:'shape',shape:'rectangle'}));
     expect(applyManualEditPatch(shape.source,next)).toMatchObject({ok:false,source:shape.source});
   });
+  it('recovers Undo only for an exact persisted insertion result', () => {
+    const request=patch({kind:'text',text:'Inserted'}),stored=applyManualEditPatch(source,request).source;
+    expect(persistedInsertionReplay(source,stored,request)).toEqual({source:stored,beforeSource:source});
+    const external=stored.replace('Retained heading','Another writer changed this heading');
+    expect(persistedInsertionReplay(source,external,request)).toEqual({source:external,beforeSource:null});
+    expect(persistedInsertionReplay(source,source,request)).toBeNull();
+    const changed=applyManualEditPatch(stored,{kind:'set-text',id,value:'Changed insertion'}).source;
+    expect(persistedInsertionReplay(source,changed,request)).toBeNull();
+    expect(persistedInsertionReplay(stored,stored,request)).toEqual({source:stored,beforeSource:null});
+  });
   it('supports fragments and an explicit body target without wrapping a fragment in html', () => {
     const result = applyManualEditPatch('<main>Original</main>', { ...patch({ kind: 'text', text: 'Flow text' }, false), parentId: '__body__' });
     expect(result.ok).toBe(true); expect(result.source).not.toContain('<html'); expect(parse(result.source).body.children).toHaveLength(2);
@@ -76,6 +86,12 @@ describe('typed source insertion', () => {
   });
 });
 describe('project image insertion', () => {
+  it('persists intrinsic dimensions alongside the independently placed image bounds', () => {
+    const result=applyManualEditPatch(source,patch({kind:'image',src:'image.png',alt:'Figure',size:{width:800,height:400}}));
+    const image=parse(result.source).querySelector('img')!;
+    expect(result.ok).toBe(true);expect(image.width).toBe(800);expect(image.height).toBe(400);
+    expect(image.style.width).toBe('240px');expect(image.style.objectFit).toBe('contain');
+  });
   it('keeps nested assets and ordinary encoded filenames inside the owning project', () => {
     expect(insertionImageSourceAllowed('../images/my photo.png', 'slides/index.html')).toBe(true);
     expect(insertionImageSourceAllowed('../images/my%20photo.png', 'slides/index.html')).toBe(true);
