@@ -76,3 +76,19 @@ CSSOM reading while retaining the raw image shorthand. That policy test failed
 with the raw shorthand guard removed and passed with it restored; it simulates
 the normalization seam rather than asserting jsdom is Chromium. Final focused
 qualification passed 115 cases across the four files, plus web types and guard.
+
+## Later direct reference comparison
+
+On November 13 the coordinator inspected the authorized disposable Claude
+document directly. Its slash menu inserted a real three-by-three table;
+Shift+F10 inside a cell opened its table context menu. Inserting a row above
+produced four rows, and one Undo restored three. These interactions were
+personally checked in screenshots with the reference chat open.
+
+The seven actions in this implementation match an observed subset. The same
+reference menu also exposed row/column movement, column width, ascending and
+descending sort, alignment, background colors, a header-row toggle and richer
+cell content controls. Those remain separate capability gaps; the seven-action
+slice does not establish full table parity. Pointer-versus-caret targeting,
+touch completion and our own save/reopen/export behavior require independent
+local qualification rather than inference from the reference menu.
