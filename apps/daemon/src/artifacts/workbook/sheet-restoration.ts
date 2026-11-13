@@ -1,8 +1,9 @@
+import { workbookCellStyleSources } from './cell-style-guard.js';
 import type { WorkbookCellEdit, WorkbookDimensionEdit, WorkbookStructureEdit, WorkbookStyleEdit, WorkbookVisibilityEdit } from '@open-design/contracts/runtime/workbook';
 import { readXlsxWorkbook, type ReadWorkbook } from './reader.js';
 import { WorkbookFormatError, WORKBOOK_PACKAGE_LIMITS, writeWorkbookPackage } from './package.js';
 import { patchWorkbookSheets } from './sheet-patch.js';
-import { prepareWorkbookSheetTemplate, type WorkbookSheetTemplateEntry } from './sheet-template.js';
+import { prepareWorkbookSheetTemplateSource, type WorkbookSheetTemplateEntry } from './sheet-template.js';
 import { calculatePreparedWorkbookSheetEdits } from './calculated-patch.js';
 
 export interface WorkbookSheetTemplateSource { sheetId: string; sourceSha256: string; bytes: Buffer }
@@ -25,8 +26,11 @@ export async function calculateWorkbookRestoredSheetEdits(source: ReadWorkbook, 
     if (!prior) { assets.set(template.sourceSha256, template.bytes); total += template.bytes.length; }
     if (!Number.isSafeInteger(total) || total > WORKBOOK_PACKAGE_LIMITS.archiveBytes) throw new WorkbookFormatError('Historical worksheet templates exceed their aggregate limit.', 'WORKBOOK_LIMIT');
   }
-  const prepared = new Map<string, Buffer>();
-  for (const template of templates) prepared.set(template.sheetId, await prepareWorkbookSheetTemplate(source, template.bytes, template.sourceSha256, template.sheetId, target));
+  const prepared = new Map<string, Buffer>(), guards = new Map(workbookCellStyleSources(source));
+  for (const template of templates) {
+    const checked = await prepareWorkbookSheetTemplateSource(source, template.bytes, template.sourceSha256, template.sheetId, target);
+    prepared.set(template.sheetId, checked.xml); guards.set(template.sheetId, checked.styleSource);
+  }
   // Membership/rels/content-types/visible selection retain the existing strict
   // owner. Restored IDs are absent births only for that package assembly step;
   // their content comes exclusively from the checked raw worksheet templates.
@@ -38,5 +42,5 @@ export async function calculateWorkbookRestoredSheetEdits(source: ReadWorkbook, 
     parts.set(part, xml);
   }
   const assembled = await readXlsxWorkbook(await writeWorkbookPackage(parts));
-  return calculatePreparedWorkbookSheetEdits(assembled, edits, dimensions, styles, structure);
+  return calculatePreparedWorkbookSheetEdits(assembled, edits, dimensions, styles, structure, guards);
 }
