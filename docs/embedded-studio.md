@@ -353,8 +353,23 @@ source follow-up makes only an unbound prompt pointer-transparent/nonselectable
 while retaining its controls, and uses explicit hidden/flex display state while
 keeping the reply editor mounted. The source guard still refuses selections
 outside the document; it never widens an anchor to include the comment card.
-Actual packaged hit-testing and retained-draft acceptance for these follow-ups
-remain pending. This is not full reference UI or markup parity.
+Candidate 105's actual packaged browser checks covered physical drag endpoints
+inside the prompt, full quotes only after release, focus retention, real hidden
+thread visibility, the same reply DOM/draft after list navigation, generated
+identities after reload and unchanged source. Manual inspection additionally
+repeated the exact prior obstructed paragraph in dark mode and inspected the
+light 390px layout. These qualify the bounded fixes, not full reference parity.
+
+The passing unit that asserted utility class names was removed after actual
+browser hit-testing covered the behavior; it mirrored implementation tokens
+rather than protecting the interaction. Anchor, source, gesture and retained
+reply-state assertions remain. A separate observed stale-model selection after
+reply focus and the reference's no-selection Comment → list workflow still need
+the next reference-guided interaction slice. Prompt occlusion and document
+markup also remain broader UI gaps.
+
+The [comment selection checkpoint](document-comment-selection.md) records exact
+candidate identities, manual evidence, tests and remaining workflow gaps.
 
 ## Worksheet visibility slice
 

@@ -376,13 +376,3 @@ it('keeps the mounted thread and its reply draft hidden while the comment list i
     expect(screen.getByRole('textbox', { name: 'Reply' })).toBe(reply); expect(reply).toHaveValue('Retained reply draft'); expect(quote).toBeVisible();
   } finally { utilities.remove(); }
 });
-
-it('makes only an unbound selection prompt transparent to document gestures while retaining its controls', async () => {
-  render(<Harness />); command('comment'); await screen.findByText('Select text in the document to comment.');
-  const card = screen.getByRole('dialog', { name: 'Document comments' });
-  expect(card).toHaveClass('pointer-events-none', 'select-none');
-  fireEvent.click(screen.getByRole('button', { name: 'All comments' }));
-  expect(card).not.toHaveClass('pointer-events-none');
-  fireEvent.click(screen.getByRole('button', { name: 'Close comments' }));
-  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Document comments' })).toBeNull());
-});
