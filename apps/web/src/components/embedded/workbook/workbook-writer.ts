@@ -1,3 +1,4 @@
+import { workbookSaveAcknowledgementSchema, type WorkbookSaveAcknowledgement } from './save-provenance';
 import { workbookGridPlan, workbookPlanHasChanges } from './grid-plan';
 import type { IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument, workbookEditPlanSchema } from '@open-design/contracts/runtime/workbook';
@@ -5,12 +6,14 @@ import type { z } from 'zod';
 import { isWorkbookSaveRejection, WorkbookSaveTerminalError, WorkbookSavePreparationCancelledError } from './save-terminal';
 
 type Preview = { sourceSha256: string; model: WorkbookDocument };
+export interface WorkbookWriteResult { preview: Preview; acknowledgement: WorkbookSaveAcknowledgement }
 type Plan = z.infer<typeof workbookEditPlanSchema>;
 export interface WorkbookWriteState { dirty: boolean; saving: boolean; error: string | null }
 export interface WorkbookWriteIntent { id: string; preparationId: string; previewId: string; renderId?: string; plan: Plan }
 export interface WorkbookCheckpoint {
   version: 1; source: Preview; acknowledged: IWorkbookData; desired: IWorkbookData;
-  pending: { intent: WorkbookWriteIntent; snapshot: IWorkbookData } | null;
+  pending: { intent: WorkbookWriteIntent; snapshot: IWorkbookData; acknowledgement?: WorkbookSaveAcknowledgement } | null;
+  sourceAcknowledgement?: WorkbookSaveAcknowledgement;
 }
 export interface WorkbookJournal { save(checkpoint: WorkbookCheckpoint | null): Promise<void>; restored?: WorkbookCheckpoint }
 /** Serializes edits against acknowledged bytes. A failed/uncertain intent keeps
@@ -20,20 +23,21 @@ export class WorkbookWriter {
   private acknowledged: IWorkbookData;
   private desired: IWorkbookData;
   private source: Preview;
-  private pending: { intent: WorkbookWriteIntent; snapshot: IWorkbookData } | null = null;
+  private pending: WorkbookCheckpoint['pending'] = null;
+  private sourceAcknowledgement: WorkbookSaveAcknowledgement | undefined;
   private running: Promise<void> | null = null;
   private active = true;
   private persistence = Promise.resolve();
   private recoveryConflict = false;
   private error: string | null = null;
   constructor(source: Preview, initial: IWorkbookData,
-    private write: (intent: WorkbookWriteIntent, checkpoint: () => Promise<void>) => Promise<Preview>,
+    private write: (intent: WorkbookWriteIntent, checkpoint: () => Promise<void>) => Promise<Preview | WorkbookWriteResult>,
     private changed: (state: WorkbookWriteState) => void,
     private accepted?: (source: Preview, snapshot: IWorkbookData) => void, private journal?: WorkbookJournal) {
     this.source = source; this.acknowledged = structuredClone(initial); this.desired = structuredClone(initial);
     if (journal?.restored) {
       const restored = structuredClone(journal.restored);
-      this.source = restored.source; this.acknowledged = restored.acknowledged; this.desired = restored.desired; this.pending = restored.pending;
+      this.source = restored.source; this.acknowledged = restored.acknowledged; this.desired = restored.desired; this.pending = restored.pending; this.sourceAcknowledgement = restored.sourceAcknowledgement;
       if (source.sourceSha256 !== restored.source.sourceSha256) {
         this.recoveryConflict = !restored.pending;
         this.error = 'Recovered edits belong to an earlier workbook version. Keep this draft while checking the save status.';
@@ -54,14 +58,14 @@ export class WorkbookWriter {
     this.publish();
     void this.persist().catch(error => { if (this.active) { this.error = this.persistenceError(error); this.publish(); } });
   }
-  checkpoint(): WorkbookCheckpoint { return structuredClone({ version: 1, source: this.source, acknowledged: this.acknowledged, desired: this.desired, pending: this.pending }); }
+  checkpoint(): WorkbookCheckpoint { return structuredClone({ version: 1, source: this.source, acknowledged: this.acknowledged, desired: this.desired, pending: this.pending, ...(this.sourceAcknowledgement ? { sourceAcknowledgement: this.sourceAcknowledgement } : {}) }); }
   recoveredSnapshot(): IWorkbookData { return structuredClone(this.desired); }
   private persistenceError(_error: unknown) { return 'This draft could not be protected on this device. Keep the workbook open and try saving again.'; }
   private async persist() {
     if (!this.journal) return;
     let dirty = Boolean(this.pending);
     try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
-    const checkpoint = dirty ? this.checkpoint() : null;
+    const checkpoint = dirty || this.sourceAcknowledgement?.kind === 'history' ? this.checkpoint() : null;
     const next = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
     this.persistence = next;
     try { await next; }
@@ -86,10 +90,30 @@ export class WorkbookWriter {
         // Persist identity before any side effect. A crash after admission can
         // then recover the same receipt instead of inventing another write.
         await this.persist(); if (!this.active) return;
-        const pending = this.pending, source = await this.write(pending.intent, () => this.persist());
+        const pending = this.pending, written = await this.write(pending.intent, () => this.persist());
         if (!this.active) return;
-        this.source = source; this.acknowledged = pending.snapshot; this.pending = null; this.error = null; this.recoveryConflict = false;
+        const source = 'preview' in written ? written.preview : written;
+        const acknowledgement = workbookSaveAcknowledgementSchema.parse('preview' in written ? written.acknowledgement : { kind: 'unavailable', reason: 'legacy-receipt' });
+        if (acknowledgement.kind === 'history') {
+          const proof = acknowledgement.provenance;
+          if (proof.operationId !== pending.intent.id || proof.renderId !== pending.intent.renderId || proof.sourceSha256 !== this.source.sourceSha256 || proof.targetSha256 !== source.sourceSha256) throw Error('The workbook acknowledgement does not match its owned save.');
+        }
+        if (pending.acknowledgement && JSON.stringify(pending.acknowledgement) !== JSON.stringify(acknowledgement)) throw Error('The workbook acknowledgement changed while protecting its save.');
+        // Protect the checked pre-save history association together with the
+        // original intent before retiring any source or SDK baseline.
+        pending.acknowledgement = structuredClone(acknowledgement);
         await this.persist(); if (!this.active) return;
+        const previous = { source: this.source, acknowledged: this.acknowledged, sourceAcknowledgement: this.sourceAcknowledgement };
+        this.source = source; this.acknowledged = pending.snapshot; this.pending = null; this.sourceAcknowledgement = acknowledgement;
+        try { await this.persist(); }
+        catch (error) {
+          // A failed ownership transfer must retry the same retained receipt,
+          // never derive a second write against a prematurely advanced source.
+          this.source = previous.source; this.acknowledged = previous.acknowledged; this.sourceAcknowledgement = previous.sourceAcknowledgement; this.pending = pending;
+          throw error;
+        }
+        if (!this.active) return;
+        this.error = null; this.recoveryConflict = false;
         this.accepted?.(source, structuredClone(this.acknowledged)); this.publish();
       } catch (error) {
         if (this.active && this.pending && isWorkbookSaveRejection(error, this.pending.intent)) {

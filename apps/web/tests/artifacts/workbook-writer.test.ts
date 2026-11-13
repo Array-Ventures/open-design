@@ -229,3 +229,43 @@ it('includes edits made while clearing a proven cancelled preparation in the rep
   writer.update(snapshot(3)); release.resolve(); await saving;
   expect(write).toHaveBeenCalledTimes(2); expect(writer.state()).toEqual({ dirty: false, saving: false, error: null });
 });
+
+
+it('protects a checked history ACK before baseline retirement and retries the same intent after transfer storage failure', async () => {
+  const { source, initial, snapshot } = fixture(), saved = { ...source, sourceSha256: 'b'.repeat(64) };
+  const records: (WorkbookCheckpoint | null)[] = [], accepted = vi.fn(); let failTransfer = true;
+  const write = vi.fn(async (intent: WorkbookWriteIntent) => {
+    intent.renderId ??= crypto.randomUUID();
+    return { preview: saved, acknowledgement: { kind: 'history' as const, provenance: {
+      operationId: intent.id, projectId: crypto.randomUUID(), fileName: 'book.xlsx', renderId: intent.renderId,
+      sourceSha256: source.sourceSha256, sourceVersionId: 'before', targetSha256: saved.sourceSha256, versionId: 'after',
+    } } };
+  });
+  // Use the identical immutable receipt on retry, not a replacement operation.
+  let receipt: Awaited<ReturnType<typeof write>> | undefined;
+  const writer = new WorkbookWriter(source, initial, async (intent) => receipt ??= await write(intent), () => {}, accepted, { save: async checkpoint => {
+    if (failTransfer && checkpoint?.sourceAcknowledgement) throw Error('Device storage failed');
+    records.push(structuredClone(checkpoint));
+  } });
+  writer.update(snapshot(2)); await writer.flush();
+  const protectedAck = [...records].reverse().find(record => record?.pending?.acknowledgement);
+  expect(protectedAck?.source.sourceSha256).toBe(source.sourceSha256);
+  expect(protectedAck?.pending?.acknowledgement).toMatchObject({ kind: 'history', provenance: { sourceVersionId: 'before', versionId: 'after' } });
+  expect(writer.checkpoint().pending?.intent.id).toBe(protectedAck?.pending?.intent.id);
+  expect(writer.checkpoint().source.sourceSha256).toBe(source.sourceSha256);
+  expect(writer.state()).toMatchObject({ dirty: true, error: expect.stringContaining('protected') }); expect(accepted).not.toHaveBeenCalled();
+  failTransfer = false; await writer.flush();
+  expect(write).toHaveBeenCalledOnce(); expect(accepted).toHaveBeenCalledOnce();
+  expect(writer.checkpoint()).toMatchObject({ source: saved, pending: null, sourceAcknowledgement: receipt!.acknowledgement });
+  expect(records.at(-1)?.sourceAcknowledgement).toEqual(receipt!.acknowledgement);
+});
+
+it('retains the original pending operation when protecting its prospective ACK fails', async () => {
+  const { source, initial, snapshot } = fixture(), accepted = vi.fn(); let received = false;
+  const writer = new WorkbookWriter(source, initial, async () => { received = true; return { ...source, sourceSha256: 'b'.repeat(64) }; }, () => {}, accepted, { save: async checkpoint => {
+    if (received && checkpoint?.pending?.acknowledgement) throw Error('Device storage failed');
+  } });
+  writer.update(snapshot(2)); await writer.flush();
+  expect(writer.checkpoint()).toMatchObject({ source, pending: { snapshot: snapshot(2), acknowledgement: { kind: 'unavailable', reason: 'legacy-receipt' } } });
+  expect(writer.state()).toMatchObject({ dirty: true, error: expect.stringContaining('protected') }); expect(accepted).not.toHaveBeenCalled();
+});

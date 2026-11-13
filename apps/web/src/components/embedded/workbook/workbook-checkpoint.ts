@@ -1,3 +1,4 @@
+import { workbookSaveAcknowledgementSchema } from './save-provenance';
 import { z } from 'zod';
 import { workbookEditPlanSchema, workbookPreviewSchema } from '@open-design/contracts/runtime/workbook';
 import type { WorkbookCheckpoint } from './workbook-writer';
@@ -15,7 +16,8 @@ const snapshot = z.object({ id: identity, name: z.string().max(1000), appVersion
 }).passthrough();
 const intent = z.object({ id: z.string().uuid(), preparationId: z.string().uuid(), previewId: z.string().uuid(), renderId: z.string().uuid().optional(), plan: workbookEditPlanSchema }).strict();
 const checkpoint = z.object({ version: z.literal(1), source: workbookPreviewSchema, acknowledged: snapshot, desired: snapshot,
-  pending: z.object({ intent, snapshot }).strict().nullable(),
+  pending: z.object({ intent, snapshot, acknowledgement: workbookSaveAcknowledgementSchema.optional() }).strict().nullable(),
+  sourceAcknowledgement: workbookSaveAcknowledgementSchema.optional(),
 }).strict();
 const record = z.object({ version: z.literal(1), scope: workbookDraftScopeSchema, checkpoint, updatedAt: z.number().int().nonnegative() }).strict();
 export function workbookDraftArtifactKey(scope: Omit<WorkbookDraftScope, 'draftId'>): string {
@@ -41,6 +43,13 @@ export function decodeWorkbookDraft(value: unknown, scope: WorkbookDraftScope): 
   }
   const sheetIds = state.source.model.sheets.map(sheet => sheet.id);
   if (JSON.stringify(state.acknowledged.sheetOrder) !== JSON.stringify(sheetIds)) throw new Error('The workbook draft baseline is inconsistent.');
+  for (const [acknowledgement, pending] of [[state.sourceAcknowledgement, null], [state.pending?.acknowledgement, state.pending]] as const) {
+    if (acknowledgement?.kind !== 'history') continue;
+    const proof = acknowledgement.provenance;
+    if (proof.projectId !== scope.projectId || proof.fileName !== scope.fileName || (pending
+      ? proof.operationId !== pending.intent.id || proof.renderId !== pending.intent.renderId || proof.sourceSha256 !== state.source.sourceSha256
+      : proof.targetSha256 !== state.source.sourceSha256)) throw Error('The protected workbook acknowledgement identity is inconsistent.');
+  }
   if (state.pending) {
     const derived = workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.pending.snapshot);
     if (JSON.stringify(derived) !== JSON.stringify(state.pending.intent.plan)) throw new Error('The pending workbook save does not match its protected snapshot.');

@@ -5,9 +5,11 @@ import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import type { IWorkbookData } from '@univerjs/presets';
 import { gridWorkbook } from '../../src/components/embedded/workbook/grid-model';
 import { useWorkbookEditor } from '../../src/components/embedded/workbook/use-workbook-editor';
+import { loadWorkbookPreview } from '../../src/components/embedded/workbook/preview-transport';
 import { saveWorkbook } from '../../src/components/embedded/workbook/save-transport';
 import type { WorkbookCheckpoint, WorkbookJournal } from '../../src/components/embedded/workbook/workbook-writer';
 vi.mock('../../src/components/embedded/workbook/save-transport', async original => ({ ...await original<object>(), saveWorkbook: vi.fn() }));
+vi.mock('../../src/components/embedded/workbook/preview-transport', async original => ({ ...await original<object>(), loadWorkbookPreview: vi.fn() }));
 const projectId = '66a28381-a8cf-40cd-91d2-b1f9cd696ac0', fileName = 'Forecast.xlsx';
 const source = { sourceSha256: 'a'.repeat(64), model: { version: 1, date1904: false, activeSheetId: 's', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 's', name: 'Sheet', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [{ row: 0, column: 0, kind: 'number', value: 1 }], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] } satisfies WorkbookDocument };
 function snapshot(value: number) { const data = gridWorkbook(source.model, `${projectId}:${fileName}`, 'Forecast').data as IWorkbookData; data.sheets.s!.cellData![0]![0]!.v = value; return data; }
@@ -85,4 +87,27 @@ it('does not revive a retiring checkpoint after access loss invalidates its gene
   await act(async () => { persisted.resolve(); await recreating; });
   expect(hook.result.current.checkpoint()).toBeNull(); expect(hook.result.current.state.dirty).toBe(false);
   expect(journal.save).not.toHaveBeenCalledWith(null);
+});
+
+
+it.each([true, false])('consumes the actual hook receipt as an explicit ACK with history=%s before notifying the parent', async history => {
+  const target = { ...source, sourceSha256: 'b'.repeat(64) }, records: (WorkbookCheckpoint | null)[] = [];
+  vi.mocked(loadWorkbookPreview).mockResolvedValue(target);
+  vi.mocked(saveWorkbook).mockImplementation(async (attempt, _signal, prepared) => {
+    attempt.renderId = crypto.randomUUID(); await prepared?.();
+    return { id: attempt.operationId, projectId, fileName, renderId: attempt.renderId, state: 'applied', sourceSha256: source.sourceSha256,
+      targetSha256: target.sourceSha256, actualSha256: target.sourceSha256, sourceVersionId: history ? 'before' : null, versionId: 'after' };
+  });
+  const acknowledged = vi.fn(() => {
+    expect(records.some(record => record?.pending?.acknowledgement)).toBe(true);
+    if (history) expect(records.at(-1)?.sourceAcknowledgement).toMatchObject({ kind: 'history', provenance: { sourceVersionId: 'before', versionId: 'after' } });
+    else expect(records.at(-1)).toBeNull();
+  });
+  const journal = { save: async (value: WorkbookCheckpoint | null) => { records.push(structuredClone(value)); } };
+  const hook = renderHook(() => useWorkbookEditor(projectId, fileName, source, acknowledged, undefined, journal));
+  await act(() => hook.result.current.ready(snapshot(1)));
+  act(() => { hook.result.current.snapshot(snapshot(2)); save(hook.result.current.controllerId); });
+  await waitFor(() => expect(acknowledged).toHaveBeenCalledOnce());
+  expect(hook.result.current.state).toMatchObject({ dirty: false, saving: false, error: null });
+  expect(hook.result.current.checkpoint()?.sourceAcknowledgement).toMatchObject({ kind: history ? 'history' : 'unavailable' });
 });

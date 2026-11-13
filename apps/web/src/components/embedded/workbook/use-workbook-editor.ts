@@ -1,3 +1,4 @@
+import { checkedWorkbookSaveAcknowledgement } from './save-provenance';
 import { workbookGridPlan, workbookPlanHasChanges } from './grid-plan';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { IWorkbookData } from '@univerjs/presets';
@@ -95,7 +96,8 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
       catch (error) { if (error instanceof WorkbookHostError && [410, 422].includes(error.status)) intent.previewId = attempt.previewId = crypto.randomUUID(); await checkpoint(); throw error; }
       intent.previewId = attempt.previewId = crypto.randomUUID(); // a successfully consumed preview is removed
       if (refreshed.sourceSha256 !== receipt.targetSha256) throw new WorkbookHostError('The workbook changed after saving. Your edits are still here; keep a copy before reloading.', 409);
-      attempts.delete(intent.id); return refreshed;
+      const acknowledgement = checkedWorkbookSaveAcknowledgement(receipt, currentAttempt.save, refreshed.sourceSha256);
+      attempts.delete(intent.id); return { preview: refreshed, acknowledgement };
     }, next => {
       stateRef.current = next; setState(next); current.current.onDirtyChange?.(next.dirty);
       if (!next.dirty && acknowledged) { const saved = acknowledged; acknowledged = null; current.current.onAcknowledged(saved); }

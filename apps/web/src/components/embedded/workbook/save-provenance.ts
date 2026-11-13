@@ -11,9 +11,11 @@ export const workbookSaveProvenanceSchema = z.object({
   renderId: z.string().uuid(), sourceSha256: digest, sourceVersionId: version, targetSha256: digest, versionId: version,
 }).strict().refine(value => value.sourceSha256 === value.targetSha256 || value.sourceVersionId !== value.versionId, 'Different workbook byte identities cannot share one immutable history version.');
 export type WorkbookSaveProvenance = z.infer<typeof workbookSaveProvenanceSchema>;
-export type WorkbookSaveAcknowledgement =
-  | { kind: 'history'; provenance: WorkbookSaveProvenance }
-  | { kind: 'unavailable'; reason: 'legacy-receipt' | 'whole-file-restore' };
+export const workbookSaveAcknowledgementSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('history'), provenance: workbookSaveProvenanceSchema }).strict(),
+  z.object({ kind: z.literal('unavailable'), reason: z.enum(['legacy-receipt', 'whole-file-restore']) }).strict(),
+]);
+export type WorkbookSaveAcknowledgement = z.infer<typeof workbookSaveAcknowledgementSchema>;
 
 /** Qualifies receipt metadata only, not SDK ancestry or durable ownership.
  * sourceVersionId names the pre-save bytes; versionId names the saved target.

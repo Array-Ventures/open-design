@@ -333,3 +333,25 @@ association in the existing journal before baseline retirement, retain only
 current/reachable per-delete associations, and prove lost-ACK/storage-failure
 ordering before the UI capability may be enabled. Whole-file/external kernel
 reset must retire the old ancestry rather than relabel it as a new source.
+
+
+### Development checkpoint: ACK writer consumer
+
+The editor now consumes that result after fresh-preview validation and returns
+an internal `{preview, acknowledgement}` pair to the existing Writer, without
+adding fields to the strict preview wire schema. The existing protected pending
+checkpoint retains its old source, snapshot and immutable intent while recording
+the checked association before baseline retirement. A failed transfer-storage
+write restores the old in-memory baseline and pending identity. Recovery checks
+the same remote receipt again; it does not skip source/target validation based on
+a client-stored acknowledgement. Legacy receipts remain explicitly unavailable.
+
+After successful protection, only the latest source-bound association survives
+in the existing checkpoint; this is not an append-only cell-save journal.
+Decoder checks bind historical ACKs to account/artifact scope, current target or
+pending operation/render/source. Source tests cover actual Writer failure and
+IndexedDB recovery, cross-owner refusal and the React hook consumer. Two new
+failure regressions fail against the original Writer. This remains a development
+checkpoint: own-ACK same-kernel retention, per-delete descriptor ownership,
+reachable older association retention, outer Undo gating and actual contained
+SDK recovery are not integrated, and sheet controls remain disabled.
