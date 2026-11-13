@@ -73,6 +73,22 @@ export type WorkbookStyleEdit = z.infer<typeof workbookStyleEditSchema>;
 /** Worksheet visibility is independent of name/order/geometry. veryHidden is source-owned. */
 export const workbookVisibilityEditSchema = z.object({ sheetId: id, visibility: z.enum(['visible', 'hidden']) }).strict();
 export type WorkbookVisibilityEdit = z.infer<typeof workbookVisibilityEditSchema>;
+
+/** Standalone source foundation, deliberately NOT accepted by workbookEditPlan.
+ * Wire/carrier support must land atomically before a sheet capability is exposed. */
+export const WORKBOOK_SHEET_ID_MAX = 65_535;
+export const workbookSheetProjectionSchema = z.array(z.object({
+  sheetId: z.string().regex(/^[1-9][0-9]{0,4}$/).refine(value => Number(value) <= WORKBOOK_SHEET_ID_MAX, 'Worksheet identity exceeds its bounded importer limit.'),
+  name: z.string().min(1).max(31).refine(value => !/[:\\/\?*\[\]\u0000-\u001f\uFFFE\uFFFF\p{Cs}]/u.test(value) && !value.startsWith("'") && !value.endsWith("'"), 'Invalid worksheet name.'),
+  origin: z.enum(['source', 'new']),
+}).strict()).min(1).max(WORKBOOK_MODEL_LIMITS.sheets).superRefine((sheets, context) => {
+  const ids = new Set<string>(), names = new Set<string>();
+  for (const sheet of sheets) {
+    if (ids.has(sheet.sheetId) || names.has(sheet.name.toLowerCase())) context.addIssue({ code: 'custom', message: 'Duplicate worksheet identity or name.' });
+    ids.add(sheet.sheetId); names.add(sheet.name.toLowerCase());
+  }
+});
+export type WorkbookSheetProjection = z.infer<typeof workbookSheetProjectionSchema>;
 /** Final source-axis ownership, derived from the actual SDK snapshot. Null
  * positions are inserted; omitted source positions are deleted. */
 export const workbookStructureEditSchema = z.object({ sheetId: id, sourceRows: z.number().int().min(1).max(100_000), sourceColumns: z.number().int().min(1).max(16_384),

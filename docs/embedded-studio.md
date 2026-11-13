@@ -492,3 +492,39 @@ Controller regressions cover out-of-order graph/terminal delivery, invalid or
 stale terminals failing to evict a current candidate, monotonic graph ownership,
 and the structural scalar requirement. The production-RPC cases separately
 exercise genuine engine no-result completion and cold structural recalculation.
+
+## Sheet actions: source foundation only
+
+`workbookSheetProjectionSchema` and the daemon's `sheet-patch.ts` /
+`calculateWorkbookSheetEdits` provide a standalone, source-preserving foundation
+for ordinary scalar worksheet rename, blank append and deletion. They are not
+accepted by `workbookEditPlanSchema`, do not advertise a preview capability, and
+do not enable SDK UI actions. Public save tools cannot yet submit a sheet plan.
+
+The final ordered projection preserves imported numeric IDs, admits new bounded
+numeric births only above the source maximum, and refuses survivor reorder or
+insertion before survivors. The importer qualification caps IDs at 65,535, below
+the XML unsigned limit, and fails closed on exhaustion. Names use the pinned
+SDK's UTF-16 length bound and locale-independent lowercase conflict comparison;
+invalid XML controls and lone surrogates are additionally refused. New sheets
+are blank and visible unless a combined final visibility edit changes that.
+At least one final worksheet must remain visible.
+
+The source owner rewrites parsed qualified references, not formula text
+substrings; deleted references become real calculated `#REF!` errors. It owns
+workbook membership, checked relationships, content types, view indices and the
+ordinary extended-properties Worksheets title/count vectors. Unsupported title
+vectors, custom property parts, very-hidden sheets and reference-bearing
+features outside the current scalar structural admission are refused. Surviving
+IDs/parts/styles/shared strings remain owned by the source package; a no-op
+projection preserves all package-member bytes and stored caches. Formula-bearing
+changes clear derived caches and use the existing source calculator,
+not blanket workbook serialization.
+
+Remaining before user exposure: atomically wire a sheet field through every
+strict plan/carrier/renderer; qualify source capability and final output in the
+contained process; extend SDK identity/diff extraction, actual command/RPC
+admission, input epochs and scalar completion; preserve birth identity through
+undo/redo, protected checkpoints, ACK/rebase, draft recovery and history; connect
+conditional UI; then run actual export/crash and manual visual qualification.
+The source tests do not establish those unimplemented delivery/UI properties.

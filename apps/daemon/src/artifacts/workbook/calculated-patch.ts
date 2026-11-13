@@ -1,3 +1,5 @@
+import { patchWorkbookSheets, assertWorkbookSheetsSupported } from './sheet-patch.js';
+import { workbookSheetProjectionSchema, type WorkbookSheetProjection } from '@open-design/contracts/runtime/workbook';
 import { assertWorkbookStructureSupported, patchWorkbookStructure } from './structure-patch.js';
 import { WORKBOOK_STRUCTURE_AXIS_BUDGET } from '@open-design/contracts/runtime/workbook-structure';
 import type { WorkbookStructureEdit } from '@open-design/contracts/runtime/workbook';
@@ -192,4 +194,24 @@ async function calculateContent(source: ReadWorkbook, edits: readonly WorkbookCe
   const { model, retained } = calculated;
   const bytes = await writeCalculatedCaches(patched, model, retained);
   return { bytes, model: (await readXlsxWorkbook(bytes)).model };
+}
+
+/** Standalone source foundation only: the public edit-plan wire intentionally
+ * does not accept sheet projections until every contained carrier is wired. */
+export async function calculateWorkbookSheetEdits(source: ReadWorkbook, sheets: WorkbookSheetProjection, edits: readonly WorkbookCellEdit[] = [], dimensions: readonly WorkbookDimensionEdit[] = [], styles: readonly WorkbookStyleEdit[] = [], visibility: readonly WorkbookVisibilityEdit[] = [], structure: readonly WorkbookStructureEdit[] = []): Promise<{ bytes: Buffer; model: WorkbookDocument }> {
+  sheets = workbookSheetProjectionSchema.parse(sheets);
+  assertWorkbookSheetsSupported(source);
+  if (!visibility.length && sheets.length === source.model.sheets.length && sheets.every((sheet, index) => sheet.origin === 'source' && sheet.sheetId === source.model.sheets[index]!.id && sheet.name === source.model.sheets[index]!.name)) {
+    if (!edits.length && !dimensions.length && !styles.length && !structure.length) return { bytes: await writeWorkbookPackage(source.parts), model: source.model };
+    return calculateWorkbookCellEdits(source, edits, dimensions, styles, [], structure);
+  }
+  const prepared = await readXlsxWorkbook(await patchWorkbookSheets(source, sheets, visibility));
+  assertWorkbookSheetsSupported(prepared);
+  if (structure.length) return calculateWorkbookCellEdits(prepared, edits, dimensions, styles, [], structure);
+  assertCalculationSupported(prepared);
+  let bytes = (await calculateContent(prepared, edits, verifiedDynamicArrayOwners(prepared))).bytes;
+  if (dimensions.length) bytes = await patchWorkbookDimensions(await readXlsxWorkbook(bytes), dimensions);
+  if (styles.length) bytes = await patchWorkbookStyles(await readXlsxWorkbook(bytes), styles);
+  const saved = await readXlsxWorkbook(bytes); assertWorkbookSheetsSupported(saved);
+  return { bytes, model: saved.model };
 }
