@@ -168,11 +168,10 @@ source and its actual axis identities/logical window. Keep it within existing
 SDK snapshots and protected checkpoints, not a second action replay journal.
 
 The checked save receipt already has `sourceVersionId` for the before-save binary
-and `versionId` for its target. The companion currently only parses `versionId`
-explicitly and returns the refreshed preview from `use-workbook-editor.ts`,
-dropping those history associations. Restoration requires explicitly validating
-`sourceVersionId` and associating its before-source SHA with the old baseline
-before ACK retirement. A lost ACK must recover the same receipt/association.
+and `versionId` for its target. The checked ACK consumer now explicitly validates those identities and protects
+the before-source association in the existing pending checkpoint before retiring
+its baseline. The per-delete producer still must bind that checked association
+to its captured descriptor, not infer it from the latest target version. A lost ACK must recover the same receipt/association.
 This provenance must be protected before a pending source transition can discard
 its predecessor. Do not trust an arbitrary passthrough receipt field.
 
@@ -390,3 +389,23 @@ qualification. Array/CSV source-family handoff, per-delete descriptor production
 reachable older template associations, pending sheet Undo gating, protected
 restart recovery and actual worksheet add/remove/rename admission remain open.
 Sheet controls remain disabled; no distribution pins change.
+
+
+### Development checkpoint: live SDK history reachability
+
+A maintained generic `@univerjs/core` patch supplies the missing read-only
+primitive-history query; its boundaries and refresh evidence are documented in
+[`patches/README.md`](../patches/README.md). It projects detached strings from
+actual SDK history, including grouped entries and references retained on the
+opposite stack after Undo. No source consumer may inspect private stacks,
+truncate overflowing reachability or substitute a shadow history. Inspection
+refusal must withdraw sheet deletion/Undo authority while retaining protected
+context. The descriptor consumer is not installed yet.
+
+Ordinary browser reload starts a fresh SDK Undo/Redo history, as it already does
+for workbook edits. This work does not serialize or restore that native history.
+Durable restart qualification must protect the current acknowledged/desired and
+pending restored-sheet ownership, same operation/receipt and exact history
+assets. Live own-ACK handoff, separately, must retain actual Undo/Redo across
+saves. These are distinct guarantees; the new query provides live reachability
+only, not durable Undo stacks.
