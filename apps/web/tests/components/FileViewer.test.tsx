@@ -3302,7 +3302,7 @@ describe('FileViewer SVG artifacts', () => {
       }));
     });
     expect(srcDocPostSpy).toHaveBeenCalledWith(
-      { type: 'od-edit-mode', enabled: true },
+      { type: 'od-edit-mode', enabled: true, commitOnEscape: false },
       '*',
     );
     fireEvent.load(srcDocFrameAfter!);
@@ -5772,15 +5772,15 @@ describe('FileViewer SVG artifacts', () => {
 
   it('shows speaker notes panel with existing real notes', () => {
     const file = baseFile({
-      name: 'deck.html',
-      path: 'deck.html',
+      name: 'existing-real-notes.html',
+      path: 'existing-real-notes.html',
       mime: 'text/html',
       kind: 'html',
       artifactManifest: {
         version: 1,
         kind: 'html',
         title: 'Deck',
-        entry: 'deck.html',
+        entry: 'existing-real-notes.html',
         renderer: 'html',
         exports: ['html'],
       },
@@ -9784,7 +9784,7 @@ describe('FileViewer tweaks toolbar', () => {
       const replacementPostMessage = vi.spyOn(replacementFrame.contentWindow!, 'postMessage');
 
       fireEvent.click(screen.getByTestId('manual-edit-mode-toggle'));
-      act(() => {
+      await act(async () => {
         window.dispatchEvent(new MessageEvent('message', {
           source: replacementFrame.contentWindow,
           data: { type: 'od-edit-background' },
@@ -12374,10 +12374,10 @@ describe('FileViewer tweaks toolbar', () => {
     postMessage.mockClear();
     fireEvent.click(rows.find((row) => row.dataset.commentId === 'comment-slide-one')!);
 
-    // Cross-slide sidebar selection edits the comment, never the deck state.
-    expect(postMessage).not.toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 0 }, '*');
+    // Accepted cross-slide selection locates that comment on its own slide.
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'od:slide', action: 'go', index: 0, userInitiated: true }), '*');
     expect(rows.find((row) => row.dataset.commentId === 'comment-slide-one')!.textContent).toContain('First slide note');
-    expect(screen.getByTestId('comment-saved-marker-shared-title').getAttribute('data-pin-number')).toBe('2');
+    expect(screen.getByTestId('comment-saved-marker-shared-title').getAttribute('data-pin-number')).toBe('1');
   });
 
   it('orders side comments by creation time (newest first) and displays creation age', () => {
