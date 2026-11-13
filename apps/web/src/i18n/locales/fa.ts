@@ -4982,6 +4982,7 @@ export const fa: Dict = {
   'settings.mediaProviderNoKeyHint': 'This provider uses a local login or bundled runtime.',
   'manualEdit.sectionImage': 'IMAGE',
   'manualEdit.sectionContent': 'CONTENT',
+  'manualEdit.presentationProperties': 'ویژگی‌های ارائه',
   'manualEdit.sectionPage': 'PAGE',
   'manualEdit.pageBackground': 'Background',
   'manualEdit.pageBaseSize': 'Base size',

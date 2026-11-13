@@ -4976,6 +4976,7 @@ export const id: Dict = {
   'settings.mediaProviderNoKeyHint': 'This provider uses a local login or bundled runtime.',
   'manualEdit.sectionImage': 'IMAGE',
   'manualEdit.sectionContent': 'CONTENT',
+  'manualEdit.presentationProperties': 'Properti presentasi',
   'manualEdit.sectionPage': 'PAGE',
   'manualEdit.pageBackground': 'Background',
   'manualEdit.pageBaseSize': 'Base size',

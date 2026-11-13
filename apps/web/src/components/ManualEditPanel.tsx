@@ -1,3 +1,4 @@
+import { DeckDimensions } from './embedded/DeckDimensions';
 import { RiImageEditLine } from '@remixicon/react';
 import { Button as BoardUIButton } from './embedded/boardui/button';
 import { ARTIFACT_ICON_BUTTON } from './embedded/artifact-controls';
@@ -52,6 +53,7 @@ export function ManualEditPanel({
   tokenSuggestionsLoading = false,
   onApplyTokenSuggestion,
   onInspectValueSelect,
+  presentationSource,
   pageStylesEnabled = true,
   sourceControls = true,
   floatingStyle,
@@ -70,6 +72,7 @@ export function ManualEditPanel({
   canRedo: boolean;
   busy?: boolean;
   resetAvailable?: boolean;
+  presentationSource?: string;
   pageStylesEnabled?: boolean;
   /** Embedded artifacts expose visual properties, never raw source editing. */
   sourceControls?: boolean;
@@ -273,6 +276,8 @@ export function ManualEditPanel({
               />
             </>
           ) : !targetForInspector ? (
+            <>
+            {presentationSource ? <DeckDimensions source={presentationSource} busy={busy} onChange={source => onApplyPatch({ kind: 'set-full-source', source }, t('inspect.size'))} /> : null}
             <PageInspector
               enabled={pageStylesEnabled}
               onStyleChange={(styles) => {
@@ -286,6 +291,7 @@ export function ManualEditPanel({
                 onStyleChange?.('__body__', normalized.styles, 'Page styles');
               }}
             />
+            </>
           ) : null}
 
           {targetForInspector?.kind === 'image' && onPickImage ? (

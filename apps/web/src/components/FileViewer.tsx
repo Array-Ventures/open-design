@@ -17161,6 +17161,7 @@ function HtmlViewer({
       canRedo={manualEditUndone.length > 0}
       busy={manualEditSaving}
       resetAvailable={manualEditResetAvailable}
+      presentationSource={effectiveDeck ? source ?? undefined : undefined}
       pageStylesEnabled={manualEditPageStylesEnabled}
       onSelectTarget={(target) => {
         void selectManualEditTarget(target);
@@ -18429,6 +18430,7 @@ function HtmlViewer({
       </>)}
       <div className="viewer-body" ref={previewBodyRef}>
         {embedded && workspaceActive && manualEditMode && !viewerOnly ? <ArtifactInsertionToolbar key={`insertion:${projectId}:${file.name}`} projectId={projectId} fileName={file.name} source={source} busy={manualEditSaving || manualEditEntryHandoffPending || manualEditExitHandoffPending} onHeightChange={setManualEditInsertionInset}
+          onProperties={effectiveDeck ? async () => { await selectManualEditTarget(null); } : undefined}
           getFrame={() => iframeRef.current} getSource={() => sourceRef.current}
           onPrepare={async () => {
             if (!(await flushManualEditPanelDraft())) return false;

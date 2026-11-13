@@ -49,6 +49,7 @@ describe('ManualEditPanel', () => {
     globalThis.window = dom.window as unknown as Window & typeof globalThis;
     globalThis.document = dom.window.document;
     globalThis.HTMLElement = dom.window.HTMLElement;
+    globalThis.SVGElement = dom.window.SVGElement;
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     host = dom.window.document.querySelector('#root') as HTMLDivElement;
     root = createRoot(host);
@@ -60,7 +61,23 @@ describe('ManualEditPanel', () => {
     Reflect.deleteProperty(globalThis, 'window');
     Reflect.deleteProperty(globalThis, 'document');
     Reflect.deleteProperty(globalThis, 'HTMLElement');
+    Reflect.deleteProperty(globalThis, 'SVGElement');
     Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT');
+  });
+
+  it('saves a presentation aspect change through history and rereads restored source', () => {
+    const source = '<deck-stage width="1600" height="900"><section data-slide><h1>Keep me</h1></section></deck-stage>';
+    const onApplyPatch = vi.fn<OnApplyPatch>();
+    renderPanel({ selectedTarget: null, presentationSource: source, onApplyPatch });
+    const select = host.querySelector('select')!;
+    expect(select).not.toBeNull();
+    expect(select.value).toBe('16:9');
+    act(() => { select.value = '4:3'; Simulate.change(select); });
+    expect(onApplyPatch).toHaveBeenCalledWith({ kind: 'set-full-source', source: source.replace('height="900"', 'height="1200"') }, 'Size');
+    renderPanel({ selectedTarget: null, presentationSource: source.replace('height="900"', 'height="1200"'), onApplyPatch });
+    expect(host.querySelector('select')?.value).toBe('4:3');
+    renderPanel({ selectedTarget: null, presentationSource: source, onApplyPatch });
+    expect(host.querySelector('select')?.value).toBe('16:9');
   });
 
   it('keeps raw source out of embedded properties while retaining visual controls', () => {
@@ -978,6 +995,7 @@ describe('ManualEditPanel', () => {
     selectedTarget = target,
     styles = emptyManualEditStyles(),
     resetAvailable = false,
+    presentationSource,
     pageStylesEnabled = true,
     sourceControls = true,
     busy = false,
@@ -1008,6 +1026,7 @@ describe('ManualEditPanel', () => {
     selectedTarget?: ManualEditTarget | null;
     styles?: ReturnType<typeof emptyManualEditStyles>;
     resetAvailable?: boolean;
+    presentationSource?: string;
     pageStylesEnabled?: boolean;
     sourceControls?: boolean;
     busy?: boolean;
@@ -1038,6 +1057,7 @@ describe('ManualEditPanel', () => {
           canUndo={canUndo}
           canRedo={canRedo}
           resetAvailable={resetAvailable}
+          presentationSource={presentationSource}
           pageStylesEnabled={pageStylesEnabled}
           sourceControls={sourceControls}
           busy={busy}

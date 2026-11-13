@@ -1,5 +1,6 @@
+import { useT } from '../../i18n';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { RiText, RiTableLine, RiShapesLine, RiCloseLine, RiRefreshLine } from '@remixicon/react';
+import { RiText, RiTableLine, RiShapesLine, RiCloseLine, RiRefreshLine, RiEqualizerLine } from '@remixicon/react';
 import { ManualEditInsertionPatch, insertionImageSourceForAsset, type ManualEditInsertion } from '../../edit-mode/insertion';
 import { Button } from './boardui/button';
 import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem } from './boardui/dropdown';
@@ -12,6 +13,7 @@ interface Props {
   projectId: string; fileName: string;
   source: string | null; busy: boolean;
   onHeightChange?(height: number): void;
+  onProperties?(): Promise<void>;
   getFrame(): HTMLIFrameElement | null;
   getSource(): string | null;
   onPrepare(): Promise<boolean>;
@@ -20,6 +22,7 @@ interface Props {
 /** Visible only in Edit. Content remains in the source-owning canvas and uses
  * its conditional writer/history; the toolbar never writes files itself. */
 export function ArtifactInsertionToolbar(props: Props) {
+  const t = useT();
   const toolbar = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const node=toolbar.current, report=props.onHeightChange;
@@ -149,6 +152,7 @@ export function ArtifactInsertionToolbar(props: Props) {
           {(['rectangle','ellipse','triangle','line','arrow'] as const).map(shape => <DropdownItem key={shape} onSelect={() => void arm({kind:'shape',shape})}>{shape[0]!.toUpperCase()+shape.slice(1)}</DropdownItem>)}
         </DropdownPopover>
       </Dropdown>
+      {props.onProperties ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiEqualizerLine} aria-label={t('manualEdit.presentationProperties')} title={t('manualEdit.presentationProperties')} disabled={disabled} className={DOCUMENT_ICON_BUTTON} onClick={() => { cancel(); setImageReset(value => value+1); void props.onProperties?.(); }} /> : null}
       {retry.current ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry insertion save" title="Retry save" disabled={props.busy || pending} className={DOCUMENT_ICON_BUTTON} onClick={() => { const attempt = retry.current; if (attempt) void save(attempt.patch, attempt.source); }} /> : null}
       {active || retry.current || imageState !== 'empty' ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiCloseLine} aria-label="Cancel insertion" title="Cancel insertion" disabled={props.busy || pending} className={DOCUMENT_ICON_BUTTON} onClick={() => {setImageReset(value => value+1);cancel();}} /> : null}
     </div>

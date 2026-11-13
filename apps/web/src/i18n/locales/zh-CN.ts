@@ -5420,6 +5420,7 @@ export const zhCN: Dict = {
   'settings.mediaProviderNoKeyHint': '该提供商使用本地登录或内置运行时。',
   'manualEdit.sectionImage': '图片',
   'manualEdit.sectionContent': '内容',
+  'manualEdit.presentationProperties': '演示文稿属性',
   'manualEdit.sectionPage': '页面',
   'manualEdit.pageBackground': '背景',
   'manualEdit.pageBaseSize': '基准字号',

@@ -108,3 +108,15 @@ it('places an uploaded image through the same source-bound insertion writer usin
   await waitFor(() => expect(screen.getByRole('button',{name:'Insert image'})).toBeTruthy());
   expect(imageUpload).toHaveBeenCalledOnce();
 });
+it('cancels placement before opening presentation properties and respects busy state', async () => {
+  const h = harness(), onProperties = vi.fn(async () => {});
+  h.view.rerender(<ArtifactInsertionToolbar {...h.props} onProperties={onProperties} />);
+  const armed = await h.arm();
+  await h.send({ type: 'od-insert-armed', requestId: armed.requestId });
+  fireEvent.click(screen.getByRole('button', { name: 'Presentation properties' }));
+  expect(onProperties).toHaveBeenCalledOnce();
+  expect(h.post).toHaveBeenCalledWith({ type: 'od-insert-cancel', requestId: armed.requestId }, '*');
+  expect(h.onInsert).not.toHaveBeenCalled();
+  h.view.rerender(<ArtifactInsertionToolbar {...h.props} busy onProperties={onProperties} />);
+  expect(screen.getByRole('button', { name: 'Presentation properties' })).toBeDisabled();
+});

@@ -5427,6 +5427,7 @@ export const zhTW: Dict = {
   'settings.mediaProviderNoKeyHint': '該提供商使用本地登入或內建執行環境。',
   'manualEdit.sectionImage': '圖片',
   'manualEdit.sectionContent': '內容',
+  'manualEdit.presentationProperties': '簡報屬性',
   'manualEdit.sectionPage': '頁面',
   'manualEdit.pageBackground': '背景',
   'manualEdit.pageBaseSize': '基準字級',
