@@ -117,6 +117,7 @@ export function ContextMenuTrigger({ children, isDisabled = false, capture = fal
   const id = useId();
   const direction = useLocale().direction;
   const anchorRef = useRef<HTMLDivElement>(null);
+  const boundaryRef = useRef<HTMLDivElement>(null);
   const openRef = useRef(false);
   const press = useRef<{ x: number; y: number; timer: number } | null>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -206,8 +207,8 @@ export function ContextMenuTrigger({ children, isDisabled = false, capture = fal
     else openAt(event.clientX, event.clientY, true);
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (isDisabled || event.defaultPrevented || !event.currentTarget.contains(event.target as Node)) return;
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement> | globalThis.KeyboardEvent) => {
+    if (isDisabled || event.defaultPrevented || !boundaryRef.current?.contains(event.target as Node)) return;
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
     if (onBeforeOpen?.() === false) return;
     event.preventDefault();
@@ -234,17 +235,29 @@ export function ContextMenuTrigger({ children, isDisabled = false, capture = fal
     }
   };
 
+  // Embedded SDKs can own a separate React root for their editor. A native
+  // boundary listener reaches those keyboard targets without relying on a
+  // synthetic event crossing between the two renderers.
+  const keyboardHandler = useRef(onKeyDown); keyboardHandler.current = onKeyDown;
+  useEffect(() => {
+    if (!capture) return;
+    const boundary = boundaryRef.current;
+    const receive = (event: globalThis.KeyboardEvent) => keyboardHandler.current(event);
+    boundary?.addEventListener("keydown", receive, true);
+    return () => boundary?.removeEventListener("keydown", receive, true);
+  }, [capture]);
+
   const content = typeof children === "function" ? children({ isOpen }) : children;
 
   return (
     <TriggerContext.Provider value={{ id, isOpen, openCount, anchorRef, autoFocus, close }}>
       <div
+        ref={boundaryRef}
         className={cx("contents [-webkit-touch-callout:none]", className)}
         data-open={isOpen || undefined}
         onContextMenu={capture ? undefined : onContextMenu}
         onContextMenuCapture={capture ? onContextMenu : undefined}
         onKeyDown={capture ? undefined : onKeyDown}
-        onKeyDownCapture={capture ? onKeyDown : undefined}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={cancelPress}

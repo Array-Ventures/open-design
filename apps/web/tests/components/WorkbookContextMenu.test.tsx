@@ -64,3 +64,22 @@ it('withdraws a replaced source menu while preserving its actual canvas host', a
   view.rerender(<WorkbookStructureMenu controller={owner} resetKey="source-b" disabled={false}><button>Grid</button></WorkbookStructureMenu>);
   expect(screen.queryByRole('menu')).toBeNull(); expect(screen.getByRole('button')).toBe(host); expect(host.isConnected).toBe(true);
 });
+it('captures SDK-owned editor keyboard targets locally and releases that listener on retirement', async () => {
+  const { owner } = actions(), read = vi.spyOn(owner, 'read');
+  const view = render(<><button>Chat</button><WorkbookStructureMenu controller={owner} disabled={false}><div data-testid="sdk-root" /></WorkbookStructureMenu></>);
+  const host = screen.getByTestId('sdk-root'), editor = document.createElement('div'); editor.contentEditable = 'true'; editor.tabIndex = 0; host.appendChild(editor);
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Chat' }), { key: 'F10', shiftKey: true }); expect(read).not.toHaveBeenCalled();
+  editor.focus(); const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'F10', shiftKey: true }); fireEvent(editor, event);
+  await screen.findByRole('menu'); expect(event.defaultPrevented).toBe(true); expect(read).toHaveBeenCalledOnce();
+  view.unmount(); const retired = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'ContextMenu' }); fireEvent(editor, retired);
+  expect(retired.defaultPrevented).toBe(false); expect(read).toHaveBeenCalledOnce();
+});
+it('removes native capture when a trigger returns to ordinary bubbling', async () => {
+  const admit = vi.fn(() => true);
+  const content = (capture: boolean) => <ContextMenuTrigger capture={capture} onBeforeOpen={admit}><button>Grid</button><ContextMenu aria-label="Worksheet actions"><ContextMenuItem id="insert">Insert row</ContextMenuItem></ContextMenu></ContextMenuTrigger>;
+  const view = render(content(true)), target = screen.getByRole('button');
+  fireEvent(target, new KeyboardEvent('keydown', { bubbles: false, cancelable: true, key: 'F10', shiftKey: true })); await screen.findByRole('menu');
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' }); view.rerender(content(false)); admit.mockClear();
+  fireEvent(target, new KeyboardEvent('keydown', { bubbles: false, cancelable: true, key: 'F10', shiftKey: true }));
+  expect(admit).not.toHaveBeenCalled(); expect(screen.queryByRole('menu')).toBeNull();
+});
