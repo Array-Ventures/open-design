@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { canonicalWorkbookSheetBaseline, workbookSheetBaseline, workbookSheetBaselineIdentitySchema, type WorkbookSheetBaselineIdentity } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import { workbookSourceSheetProjectionSchema } from '@open-design/contracts/runtime/workbook';
 import { readXlsxWorkbook, type ReadWorkbook } from './reader.js';
 import { WorkbookFormatError } from './package.js';
@@ -11,6 +12,7 @@ export interface WorkbookSheetTemplateEntry {
   sheetId: string;
   name: string;
   origin: 'source' | 'new' | 'restore';
+  baselineIdentity?: WorkbookSheetBaselineIdentity | undefined;
 }
 
 /** Raw XML owner called by the declared frozen-asset assembler. The host
@@ -28,6 +30,15 @@ export async function prepareWorkbookSheetTemplate(current: ReadWorkbook, bytes:
   const selected = target.find(sheet => sheet.sheetId === sheetId);
   if (selected?.origin !== 'restore' || current.sheetParts.has(sheetId)) throw new WorkbookFormatError('Historical worksheet target identity is invalid.');
   const historical = await readXlsxWorkbook(bytes);
+  if (selected.baselineIdentity !== undefined) {
+    // A client claim is only consistency data. Extract from the fully validated
+    // historical reader, including actual referenced style definitions, before
+    // assembling XML or applying any authored deltas. Asset SHA/ACL checks stay
+    // independent and optional legacy manual requests retain their semantics.
+    const identity = workbookSheetBaselineIdentitySchema.parse(selected.baselineIdentity);
+    const actual = createHash('sha256').update(canonicalWorkbookSheetBaseline(workbookSheetBaseline(historical.model, sheetId)), 'utf8').digest('hex');
+    if (identity.sha256 !== actual) throw new WorkbookFormatError('Historical worksheet baseline identity does not match.');
+  }
   assertWorkbookSheetResourceContinuity(historical, current);
   const part = historical.sheetParts.get(sheetId);
   if (!part) throw new WorkbookFormatError('Historical worksheet identity is missing.');

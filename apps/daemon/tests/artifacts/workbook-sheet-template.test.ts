@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { canonicalWorkbookSheetBaseline, workbookSheetBaseline } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import ExcelJS from 'exceljs-community';
 import JSZip from 'jszip';
 import { expect, it } from 'vitest';
@@ -123,3 +124,32 @@ it('checks one shared archive budget for two restored worksheets with cross-shee
   const changed = Buffer.from(bytes); changed[0] = changed[0]! ^ 1;
   await expect(calculateWorkbookRestoredSheetEdits(current, target, [assets[0]!, { ...assets[1]!, bytes: changed }])).rejects.toThrow('inconsistent');
 }, 30_000);
+
+it('checks a declared selected-baseline identity against the actual historical reader before template assembly', async () => {
+  const { bytes, current, target, sha } = await fixture();
+  const declared = target.map(sheet => sheet.origin === 'restore' ? { ...sheet, baselineIdentity: { version: 1 as const, sha256: '0'.repeat(64) } } : sheet);
+  await expect(prepareWorkbookSheetTemplate(current, bytes, sha, '2', declared)).rejects.toThrow('baseline');
+});
+
+it('qualifies the actual selected historical model and refuses same-ordinal changed style or interpreted baseline claims', async () => {
+  const { bytes, historical, current, target, sha } = await fixture();
+  const baseline = workbookSheetBaseline(historical.model, '2');
+  const identity = (value: typeof baseline) => ({ version: 1 as const, sha256: createHash('sha256').update(canonicalWorkbookSheetBaseline(value)).digest('hex') });
+  const selectedTarget = (value: typeof baseline) => target.map(sheet => sheet.origin === 'restore' ? { ...sheet, baselineIdentity: identity(value) } : sheet);
+  const original = Buffer.from(bytes);
+  const valid = selectedTarget(baseline);
+  const result = await calculateWorkbookRestoredSheetEdits(current, valid, [{ sheetId: '2', bytes, sourceSha256: sha }]);
+  const book = new ExcelJS.Workbook(); await book.xlsx.load(Uint8Array.from(result.bytes).buffer);
+  expect(book.getWorksheet('Restored')!.getCell('B2').result).toBe(12);
+  expect(book.getWorksheet('Restored')!.getCell('A1').font!.bold).toBe(true);
+  for (const change of [
+    (value: typeof baseline) => { value.sheet.cells[0]!.value = 'Forged cell'; },
+    (value: typeof baseline) => { value.styleDefinitions.find(item => item.style.font?.bold)!.style.font!.bold = false; },
+    (value: typeof baseline) => { value.date1904 = !value.date1904; },
+    (value: typeof baseline) => { value.sheetIdentities[0]!.name = 'Forged name'; },
+  ]) {
+    const forged = structuredClone(baseline); change(forged);
+    await expect(calculateWorkbookRestoredSheetEdits(current, selectedTarget(forged), [{ sheetId: '2', bytes, sourceSha256: sha }])).rejects.toThrow('baseline identity');
+  }
+  expect(bytes.equals(original)).toBe(true);
+});

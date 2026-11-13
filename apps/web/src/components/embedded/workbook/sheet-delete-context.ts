@@ -1,6 +1,9 @@
 import { z } from 'zod';
+import { sha256 } from '@noble/hashes/sha256';
+import { bytesToHex } from '@noble/hashes/utils';
+import { canonicalWorkbookSheetBaseline, workbookSheetBaseline, workbookSheetBaselineSchema, WORKBOOK_SHEET_BASELINE_VERSION, type WorkbookSheetBaselineIdentity } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import type { Worksheet } from '@univerjs/core';
-import { WORKBOOK_SHEET_ID_MAX, workbookSheetSchema, workbookCommitRequestSchema } from '@open-design/contracts/runtime/workbook';
+import { WORKBOOK_SHEET_ID_MAX, workbookCommitRequestSchema } from '@open-design/contracts/runtime/workbook';
 import type { WorkbookCheckpoint } from './workbook-writer';
 import { workbookDraftScopeSchema, workbookGridSnapshotSchema, type WorkbookDraftScope } from './workbook-draft-schema';
 import { workbookSaveProvenanceSchema, type WorkbookSaveAcknowledgement } from './save-provenance';
@@ -18,13 +21,12 @@ export type WorkbookSheetDeleteDescriptor = z.infer<typeof workbookSheetDeleteDe
 export const workbookSourceDeleteContextSchema = z.object({
   descriptor: workbookSheetDeleteDescriptorSchema,
   scope: workbookDraftScopeSchema.omit({ draftId: true }).extend({ fileName: workbookCommitRequestSchema.shape.fileName }),
-  sourceSha256: digest, date1904: z.boolean(), richTextMetadata: z.literal('verified').optional(),
-  sourceSheet: workbookSheetSchema, acknowledgedSheet: workbookGridSnapshotSchema.shape.sheets.valueSchema,
+  sourceSha256: digest, baseline: workbookSheetBaselineSchema, acknowledgedSheet: workbookGridSnapshotSchema.shape.sheets.valueSchema,
   axisOwner: z.object({ generation: z.string().uuid(), sourceSha256: digest }).strict(),
   receiptAssociation: workbookSaveProvenanceSchema.optional(),
 }).strict().superRefine((context, check) => {
   const { descriptor, receiptAssociation: receipt } = context;
-  if (descriptor.sheetId !== context.sourceSheet.id || descriptor.sheetId !== context.acknowledgedSheet.id || descriptor.generation !== context.axisOwner.generation) check.addIssue({ code: 'custom', message: 'The deletion context identity changed.' });
+  if (descriptor.sheetId !== context.baseline.sheet.id || descriptor.sheetId !== context.acknowledgedSheet.id || descriptor.generation !== context.axisOwner.generation) check.addIssue({ code: 'custom', message: 'The deletion context identity changed.' });
   if (receipt && (receipt.sourceSha256 !== context.sourceSha256 || receipt.projectId !== context.scope.projectId || receipt.fileName !== context.scope.fileName)) check.addIssue({ code: 'custom', message: 'The deletion receipt association changed source or scope.' });
 });
 export type WorkbookSourceDeleteContext = z.infer<typeof workbookSourceDeleteContextSchema>;
@@ -44,8 +46,8 @@ export function captureWorkbookSourceDeletion(scope: WorkbookDraftScope, checkpo
   const axisOwner = checkpoint.acknowledged.custom!.evebotStructureOwner as { generation: string; sourceSha256: string };
   return workbookSourceDeleteContextSchema.parse(structuredClone({
     descriptor: { version: 1, token: crypto.randomUUID(), generation: axisOwner.generation, sheetId: selectedId },
-    scope: { viewerId: scope.viewerId, projectId: scope.projectId, fileName: scope.fileName }, sourceSha256, date1904: model.date1904,
-    ...(model.richTextMetadata ? { richTextMetadata: model.richTextMetadata } : {}), sourceSheet, acknowledgedSheet, axisOwner,
+    scope: { viewerId: scope.viewerId, projectId: scope.projectId, fileName: scope.fileName }, sourceSha256,
+    baseline: workbookSheetBaseline(model, selectedId), acknowledgedSheet, axisOwner,
   }));
 }
 
@@ -65,4 +67,11 @@ export function associateWorkbookSourceDeletion(context: WorkbookSourceDeleteCon
   const next = workbookSourceDeleteContextSchema.parse({ ...context, receiptAssociation: checked.provenance });
   if (context.receiptAssociation && JSON.stringify(context.receiptAssociation) !== JSON.stringify(next.receiptAssociation)) throw Error('The immutable deletion receipt association cannot be replaced.');
   return next;
+}
+
+/** Recompute from the sole protected baseline; never retain a second claimed
+ * hash which could survive modification of its source semantics. Not a grant. */
+export function workbookSourceDeletionBaselineIdentity(raw: WorkbookSourceDeleteContext): WorkbookSheetBaselineIdentity {
+  const context = workbookSourceDeleteContextSchema.parse(raw);
+  return { version: WORKBOOK_SHEET_BASELINE_VERSION, sha256: bytesToHex(sha256(new TextEncoder().encode(canonicalWorkbookSheetBaseline(context.baseline)))) };
 }

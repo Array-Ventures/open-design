@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { canonicalCommentJson } from './comment-write-json';
 import { WORKBOOK_MODEL_LIMITS, workbookDocumentSchema, workbookSheetSchema, workbookStyleSchema, type WorkbookDocument } from './workbook';
 
-export const WORKBOOK_SHEET_BASELINE_VERSION = 1;
+import { WORKBOOK_SHEET_BASELINE_VERSION } from './workbook-sheet-baseline-identity.js';
+export { WORKBOOK_SHEET_BASELINE_VERSION, workbookSheetBaselineIdentitySchema, type WorkbookSheetBaselineIdentity } from './workbook-sheet-baseline-identity.js';
 export const WORKBOOK_SHEET_BASELINE_LIMITS = { depth: 64, nodes: 4_000_000, text: 64 * 1024 * 1024, bytes: 64 * 1024 * 1024 } as const;
 const document = workbookDocumentSchema.innerType().shape;
 const sheetIdentity = workbookSheetSchema.pick({ id: true, name: true });
@@ -70,7 +71,7 @@ function bounded(value: unknown): void {
         text += key.length; visit(property.value, depth + 1);
       }
       ancestors.delete(item);
-    } else if (item !== undefined && typeof item !== 'boolean') throw Error('Workbook baseline requires JSON values.');
+    } else if (item !== null && item !== undefined && typeof item !== 'boolean') throw Error('Workbook baseline requires JSON values.');
     if (text > WORKBOOK_SHEET_BASELINE_LIMITS.text) throw Error('Workbook baseline exceeds its text limit.');
   }
   visit(value, 0);

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { workbookSheetBaselineIdentitySchema } from './workbook-sheet-baseline-identity.js';
 
 export const WORKBOOK_MODEL_LIMITS = { sheets: 64, cells: 100_000, styles: 20_000, text: 8 * 1024 * 1024, rows: 1_048_576, columns: 16_384 } as const;
 const row = z.number().int().min(0).max(WORKBOOK_MODEL_LIMITS.rows - 1);
@@ -83,7 +84,7 @@ const workbookSheetIdentity = {
 };
 const workbookSourceSheetEntry = z.object({ ...workbookSheetIdentity, origin: z.enum(['source', 'new']) }).strict();
 export const workbookHistoricalSheetRefSchema = z.object({ versionId: z.string().regex(/^[A-Za-z0-9_-]{1,200}$/), versionSha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
-const workbookRestoredSheetEntry = z.object({ ...workbookSheetIdentity, origin: z.literal('restore'), template: workbookHistoricalSheetRefSchema }).strict();
+const workbookRestoredSheetEntry = z.object({ ...workbookSheetIdentity, origin: z.literal('restore'), template: workbookHistoricalSheetRefSchema, baselineIdentity: workbookSheetBaselineIdentitySchema.optional() }).strict();
 function uniqueSheetProjection(sheets: readonly {sheetId: string; name: string}[], context: z.RefinementCtx) {
   const ids = new Set<string>(), names = new Set<string>();
   for (const sheet of sheets) {

@@ -8,7 +8,7 @@ import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import type { WorkbookCheckpoint } from '../../src/components/embedded/workbook/workbook-writer';
 import { gridWorkbook } from '../../src/components/embedded/workbook/grid-model';
 import { seedWorkbookStructureIdentity } from '../../src/components/embedded/workbook/grid-structure-identity';
-import { captureWorkbookSourceDeletion, stampWorkbookSourceDeletion, associateWorkbookSourceDeletion, WORKBOOK_SHEET_DELETE_MARKER } from '../../src/components/embedded/workbook/sheet-delete-context';
+import { captureWorkbookSourceDeletion, stampWorkbookSourceDeletion, associateWorkbookSourceDeletion, workbookSourceDeletionBaselineIdentity, WORKBOOK_SHEET_DELETE_MARKER } from '../../src/components/embedded/workbook/sheet-delete-context';
 import { checkedWorkbookSaveAcknowledgement } from '../../src/components/embedded/workbook/save-provenance';
 const scope = { viewerId: 'owned-person', projectId: '11111111-1111-4111-8111-111111111111', fileName: 'book.xlsx', draftId: '22222222-2222-4222-8222-222222222222' };
 const sourceSha256 = 'a'.repeat(64), targetSha256 = 'b'.repeat(64);
@@ -32,7 +32,7 @@ it('captures source and ACK before actual deletion while Undo preserves earlier 
   const f = fixture(), original = structuredClone(f.checkpoint);
   f.book.getSheetBySheetId('1')!.getRange('A1').setValue(20); f.book.getSheetBySheetId('2')!.getRange('A1').setValue(17); f.checkpoint.desired = f.book.save();
   const context = captureWorkbookSourceDeletion(scope, f.checkpoint, '2');
-  expect(context.sourceSheet.cells[0]).toMatchObject({ value: 12, style: 1 }); expect(context.acknowledgedSheet.cellData![0]![0]!.v).toBe(12);
+  expect(context.baseline.sheet.cells[0]).toMatchObject({ value: 12, style: 1 }); expect(context.acknowledgedSheet.cellData![0]![0]!.v).toBe(12);
   stampWorkbookSourceDeletion(f.unit.getSheetBySheetId('2')!, context.descriptor);
   f.commands.syncExecuteCommand(RemoveSheetCommand.id, { unitId: f.book.getId(), subUnitId: '2' });
   expect(f.history.getUndoRedoMutationStrings(f.book.getId(), InsertSheetMutation.id, ['sheet','custom',WORKBOOK_SHEET_DELETE_MARKER,'token']).undos).toEqual([context.descriptor.token]);
@@ -79,4 +79,15 @@ it('keeps receipt associations source/scoped and immutable without treating seri
   expect(() => associateWorkbookSourceDeletion(copied, checked)).toThrow('identity');
   expect(() => stampWorkbookSourceDeletion(f.unit.getSheetBySheetId('2')!, copied.descriptor)).toThrow('target changed');
   expect(f.unit.getSheetBySheetId('2')!.getCustomMetadata()).toBeUndefined();
+});
+
+it('keeps one complete baseline and recomputes identity after JSON recovery rather than accepting a claimed hash', () => {
+  const f = fixture(), context = captureWorkbookSourceDeletion(scope, f.checkpoint, '2');
+  const identity = workbookSourceDeletionBaselineIdentity(context);
+  expect(context.baseline.styleDefinitions).toContainEqual({ index: 1, style: { font: { bold: true, size: 11 } } });
+  expect(workbookSourceDeletionBaselineIdentity(JSON.parse(JSON.stringify(context)))).toEqual(identity);
+  const forged = structuredClone(context); forged.baseline.styleDefinitions[1]!.style.font!.size = 22;
+  expect(workbookSourceDeletionBaselineIdentity(forged)).not.toEqual(identity);
+  expect(() => workbookSourceDeletionBaselineIdentity({ ...context, baselineIdentity: identity } as typeof context)).toThrow();
+  expect(context).not.toHaveProperty('sourceSheet'); expect(context).not.toHaveProperty('date1904');
 });

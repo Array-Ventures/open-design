@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { expect, it } from 'vitest';
+import { z } from 'zod';
 import { workbookSheetBaseline, canonicalWorkbookSheetBaseline, workbookSheetBaselineSchema } from '../src/runtime/workbook-sheet-baseline';
 import { workbookEditPlanSchema, type WorkbookDocument } from '../src/runtime/workbook';
 function source(): WorkbookDocument {
@@ -63,10 +64,11 @@ it('refuses non-JSON/accessor/cyclic/deep input before cloning without executing
 });
 
 
-it('keeps the proposed baseline claim outside the render wire until its consumer is implemented', () => {
+it('accepts only the versioned optional restore consistency claim and keeps template references immutable', () => {
   const plan = { sourceSha256: 'a'.repeat(64), edits: [], sheets: [{ sheetId: '1', name: 'Sheet 1', origin: 'restore', template: { versionId: 'retained', versionSha256: 'a'.repeat(64) } }] };
   expect(workbookEditPlanSchema.safeParse(plan).success).toBe(true);
-  expect(workbookEditPlanSchema.safeParse({ ...plan, sheets: [{ ...plan.sheets[0], baselineIdentity: { version: 1, sha256: 'b'.repeat(64) } }] }).success).toBe(false);
+  expect(workbookEditPlanSchema.safeParse({ ...plan, sheets: [{ ...plan.sheets[0], baselineIdentity: { version: 1, sha256: 'b'.repeat(64) } }] }).success).toBe(true);
+  for (const identity of [{ version: 2, sha256: 'b'.repeat(64) }, { version: 1, sha256: 'B'.repeat(64) }, { version: 1, sha256: 'b'.repeat(64), baseline: {} }]) expect(workbookEditPlanSchema.safeParse({ ...plan, sheets: [{ ...plan.sheets[0], baselineIdentity: identity }] }).success).toBe(false);
 });
 
 
@@ -77,4 +79,19 @@ it('refuses sparse and undefined array slots before schema cloning', () => {
   const small = baseline.styleDefinitions.slice(); delete small[0];
   expect(() => canonicalWorkbookSheetBaseline({ ...baseline, styleDefinitions: small })).toThrow('dense JSON arrays');
   expect(() => canonicalWorkbookSheetBaseline({ ...baseline, styleDefinitions: [undefined] })).toThrow('dense JSON arrays');
+});
+
+it('accepts JSON null in actual blank-cell models and retains it canonically', () => {
+  const model = source(); model.sheets[0]!.cells.push({ row: 2, column: 0, kind: 'blank', value: null });
+  const baseline = workbookSheetBaseline(model, '1');
+  expect(canonicalWorkbookSheetBaseline(baseline)).toContain('"value":null');
+  expect(canonicalWorkbookSheetBaseline(JSON.parse(JSON.stringify(baseline)))).toBe(canonicalWorkbookSheetBaseline(baseline));
+});
+
+it('fails the captured previous strict restore-entry boundary instead of silently dropping a new identity claim', () => {
+  // Exact former field set: source-level compatibility proof, not an old-image run.
+  const oldEntry = z.object({ sheetId: z.string(), name: z.string(), origin: z.literal('restore'), template: z.object({ versionId: z.string(), versionSha256: z.string() }).strict() }).strict();
+  const manual = { sheetId: '1', name: 'Sheet', origin: 'restore', template: { versionId: 'checked', versionSha256: 'a'.repeat(64) } };
+  expect(oldEntry.safeParse(manual).success).toBe(true);
+  expect(oldEntry.safeParse({ ...manual, baselineIdentity: { version: 1, sha256: 'b'.repeat(64) } }).success).toBe(false);
 });

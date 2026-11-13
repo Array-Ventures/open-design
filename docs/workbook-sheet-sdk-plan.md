@@ -472,3 +472,45 @@ The context must store one baseline object and recompute its hash rather than
 trust a separately stored digest. Old strict workers must refuse unknown fields;
 no SDK producer may enable controls before the paired capability and complete
 worker/receipt/recovery pipeline are qualified.
+
+
+### Development checkpoint: selected-baseline consumer and context migration
+
+The optional `baselineIdentity: { version: 1, sha256 }` is now accepted only on
+restored-sheet entries. `sheet-template.ts` consumes it before assembly or cell
+deltas: it extracts the selected baseline from the actual fully validated
+historical `WorkbookDocument`, recomputes the canonical digest and rejects any
+mismatch. Parsing the standalone baseline schema is never content authority.
+Legacy manually authorized restoration without the optional field retains its
+existing semantics. The original `template.versionId/versionSha256` and current
+source CAS remain independent and unchanged; all historical assets still pass
+exact same-file server authorization, frozen byte hashes and resource checks.
+
+The development Delete context now stores one full selected baseline (including
+referenced style definitions), not separate source-sheet/flag copies or a stored
+claimed digest. Its helper recomputes the identity after JSON recovery. Serialized
+context and receipt association remain data: no descriptor controller may use
+them without rechecking the actual protected operation, server receipt/history
+association and source scope. This checkpoint does not implement that controller.
+
+Actual source tests pass a valid identity through `renderWorkbook` and inspect
+the independently loaded XLSX; forged claims and unknown versions produce no
+output. Historical-template tests reject changed selected values, same-ordinal
+style definitions, date system and ID/name maps before assembly. Existing worker
+asset tests retain wrong/missing/version/extra/hash refusal and unchanged source
+checks; existing context tests retain receipt source/scope/rebinding refusals.
+The captured old strict field set rejects the new claim (source-level proof,
+not an old-image execution). Genuine merged/blank historical models exposed and
+now cover JSON-null admission in the canonical preclone guard.
+
+SDK sheet controls and capability remain OFF. No contained pair or runtime was
+built/activated for this checkpoint; producer/controller integration, actual
+old/new pair negotiation, checked recovered receipt binding and full protected
+Undo/Redo/ACK/recovery qualification remain required before enablement.
+
+Checkpoint validation: nine focused contract tests, fourteen historical-template
+and actual renderer tests, and six SDK-context/cross-runtime tests passed.
+Full repository typecheck and guard passed. The first full typecheck exposed
+NodeNext import-extension and exact-optional interface mismatches; those were
+corrected before the final pass. No full daemon/web suite, browser, contained
+image or server-side receipt recovery run is claimed by these source checks.
