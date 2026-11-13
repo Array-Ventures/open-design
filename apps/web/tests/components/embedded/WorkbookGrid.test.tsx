@@ -6,19 +6,20 @@ import { WorkbookWriter } from '../../../src/components/embedded/workbook/workbo
 import { gridWorkbook } from '../../../src/components/embedded/workbook/grid-model';
 import type { IWorkbookData } from '@univerjs/presets';
 import { CommandType } from '@univerjs/presets';
+import { ICommandService } from '@univerjs/core';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookGrid } from '../../../src/components/embedded/workbook/WorkbookGrid';
 
-const runtime = vi.hoisted(() => ({ events: [] as string[], richInputs: [] as { dispose: ReturnType<typeof vi.fn> }[], workers: [] as { dispose: ReturnType<typeof vi.fn> }[], inputs: [] as { dispose: ReturnType<typeof vi.fn> }[], rendered: Promise.resolve(), context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
+const runtime = vi.hoisted(() => ({ navigationCommand: vi.fn(), navigationShortcut: vi.fn(), navigationCommandOff: vi.fn(), navigationShortcutOff: vi.fn(), firstCell: vi.fn(), scrollToCell: vi.fn(), events: [] as string[], richInputs: [] as { dispose: ReturnType<typeof vi.fn> }[], workers: [] as { dispose: ReturnType<typeof vi.fn> }[], inputs: [] as { dispose: ReturnType<typeof vi.fn> }[], rendered: Promise.resolve(), context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
   calculation: null as null | ((state: { phase: string; stored: number; unavailable: number; paused: boolean }) => void),
   input: null as null | ((message: string) => void), live: false, fail: null as null | (() => void), calculationDisposed: vi.fn(),
   getRange: vi.fn(), select: vi.fn(), createWorkbook: vi.fn(), editable: vi.fn(), activeSheet: vi.fn(), saved: vi.fn(), listener: null as null | ((event: { type: number; id: string }) => void) }));
 vi.mock('@univerjs/presets', async original => ({ ...await original<typeof import('@univerjs/presets')>(),
-  Univer: class { constructor() { runtime.created(this); } registerPlugin = runtime.register; dispose = () => { runtime.events.push(`univer:${runtime.created.mock.calls.findIndex(([instance]) => instance === this) + 1}`); runtime.dispose(this); }; __getInjector = () => ({ get: () => ({ setContextValue: runtime.context, onStage: () => runtime.rendered }) }); },
+  Univer: class { constructor() { runtime.created(this); } registerPlugin = runtime.register; dispose = () => { runtime.events.push(`univer:${runtime.created.mock.calls.findIndex(([instance]) => instance === this) + 1}`); runtime.dispose(this); }; __getInjector = () => ({ get: (token: unknown) => token === ICommandService ? { registerCommand: runtime.navigationCommand } : token === 'IShortcutService' ? { registerShortcut: runtime.navigationShortcut } : { setContextValue: runtime.context, onStage: () => runtime.rendered } }); },
   FUniver: { newAPI: () => ({ createWorkbook: runtime.createWorkbook, getActiveWorkbook: () => runtime.createWorkbook.mock.results.at(-1)?.value, Event: { CommandExecuted: 'CommandExecuted', ActiveSheetChanged: 'ActiveSheetChanged' },
     addEvent: (event: string, callback: NonNullable<typeof runtime.listener>) => { if (event === 'CommandExecuted') { runtime.listener = callback; return { dispose: runtime.off }; } return { dispose() {} }; }, setTheme: runtime.theme, toggleDarkMode: runtime.dark }) },
 }));
-vi.mock('@univerjs/preset-sheets-core', () => ({ ...Object.fromEntries(['UniverRenderEnginePlugin', 'UniverFormulaEnginePlugin', 'UniverUIPlugin', 'UniverDocsPlugin', 'UniverDocsUIPlugin', 'UniverSheetsPlugin', 'UniverSheetsUIPlugin', 'UniverSheetsFormulaPlugin', 'UniverSheetsFormulaUIPlugin', 'UniverSheetsNumfmtPlugin', 'UniverSheetsNumfmtUIPlugin'].map(name => [name, name])), IRenderManagerService: 'IRenderManagerService', DISABLE_AUTO_FOCUS_KEY: 'disableAutoFocus', CalculationMode: { NO_CALCULATION: 2 } }));
+vi.mock('@univerjs/preset-sheets-core', () => ({ ...Object.fromEntries(['UniverRenderEnginePlugin', 'UniverFormulaEnginePlugin', 'UniverUIPlugin', 'UniverDocsPlugin', 'UniverDocsUIPlugin', 'UniverSheetsPlugin', 'UniverSheetsUIPlugin', 'UniverSheetsFormulaPlugin', 'UniverSheetsFormulaUIPlugin', 'UniverSheetsNumfmtPlugin', 'UniverSheetsNumfmtUIPlugin'].map(name => [name, name])), IShortcutService: 'IShortcutService', KeyCode: { HOME: 36 }, MetaKeys: { CTRL_COMMAND: 2048 }, whenSheetEditorFocused: (context: { focused: boolean }) => context.focused, SetSelectionsOperation: { id: 'sheet.operation.set-selections' }, IRenderManagerService: 'IRenderManagerService', DISABLE_AUTO_FOCUS_KEY: 'disableAutoFocus', CalculationMode: { NO_CALCULATION: 2 } }));
 vi.mock('../../../src/components/embedded/workbook/grid-calculation', () => ({ workbookLiveCalculationEligible: () => runtime.live, attachWorkbookCalculation: (...args: unknown[]) => { runtime.calculation = args[7] as NonNullable<typeof runtime.calculation>; return { dispose() {} }; } }));
 vi.mock('../../../src/components/embedded/workbook/calculation-worker-owner', () => ({ ownWorkbookCalculationWorker: (fail: () => void) => { runtime.fail = fail; return { loaded: Promise.resolve(true), ready: true, worker: {}, dispose: runtime.calculationDisposed }; } }));
 vi.mock('../../../src/components/embedded/workbook/array-projection-owner', () => ({ ownArrayProjectionWorker: () => {
@@ -43,9 +44,11 @@ vi.mock('@univerjs/rpc', async original => ({ ...await original<typeof import('@
 const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 'inputs', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
   sheets: [{ id: 'inputs', name: 'Inputs', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
 beforeEach(() => {
+  runtime.navigationCommand.mockReturnValue({ dispose: runtime.navigationCommandOff });
+  runtime.navigationShortcut.mockReturnValue({ dispose: runtime.navigationShortcutOff });
   runtime.events = []; runtime.workers = []; runtime.inputs = []; runtime.richInputs = [];
   runtime.live = false; runtime.fail = null; runtime.rendered = Promise.resolve();
-  runtime.createWorkbook.mockReturnValue({ onSelectionChange: () => ({ dispose: runtime.selectionOff }), getWorkbookPermission: () => ({ canEdit: () => true }), setActiveSheet: runtime.activeSheet, setEditable: runtime.editable, save: runtime.saved, getActiveSheet: () => ({ getSheetId: () => 'inputs', getMaxRows: () => 100, getMaxColumns: () => 26, getSelection: () => ({ getActiveRange: () => ({ getRange: () => ({ startRow: 5, endRow: 5, startColumn: 2, endColumn: 2 }) }) }), getRange: runtime.getRange, setActiveRange: runtime.select }) });
+  runtime.createWorkbook.mockReturnValue({ onSelectionChange: () => ({ dispose: runtime.selectionOff }), getWorkbookPermission: () => ({ canEdit: () => true }), setActiveSheet: runtime.activeSheet, setEditable: runtime.editable, save: runtime.saved, getActiveSheet: () => ({ getSheetId: () => 'inputs', getMaxRows: () => 100, getMaxColumns: () => 26, getSelection: () => ({ getActiveRange: () => ({ getRange: () => ({ startRow: 5, endRow: 5, startColumn: 2, endColumn: 2 }) }) }), getRange: runtime.getRange, setActiveRange: runtime.select, setActiveSelection: runtime.firstCell, scrollToCell: runtime.scrollToCell }) });
   runtime.getRange.mockReturnValue({ boundWorksheet: 'inputs' });
   runtime.saved.mockReturnValue({ id: 'current-grid-state' });
 });
@@ -328,4 +331,30 @@ it('releases array input, worker and Univer when plugin setup throws before a ca
  expect(runtime.events.indexOf('input:1')).toBeLessThan(runtime.events.indexOf('univer:1'));
  expect(runtime.events.indexOf('worker:1')).toBeLessThan(runtime.events.indexOf('univer:1'));
  view.unmount();expect(runtime.dispose).toHaveBeenCalledOnce();expect(runtime.inputs[0]!.dispose).toHaveBeenCalledOnce();
+});
+
+
+it('registers first-cell navigation with readiness and editor-focus guards and releases both registrations', async () => {
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const view = render(<WorkbookGrid id="navigation" title="Navigation" model={model} onReady={() => pending} onSnapshot={() => {}} />);
+  await waitFor(() => expect(runtime.navigationShortcut).toHaveBeenCalledTimes(1));
+  const command = runtime.navigationCommand.mock.calls[0]![0] as { id: string; handler(): boolean };
+  const shortcut = runtime.navigationShortcut.mock.calls[0]![0] as { id: string; preconditions(context: { focused: boolean }): boolean };
+  expect(shortcut.id).toBe(command.id);
+  expect(command.handler()).toBe(false);
+  expect(shortcut.preconditions({ focused: true })).toBe(false);
+  expect(runtime.firstCell).not.toHaveBeenCalled();
+  await act(async () => { release(); });
+  await waitFor(() => expect(runtime.editable).toHaveBeenLastCalledWith(true));
+  expect(shortcut.preconditions({ focused: false })).toBe(false);
+  expect(shortcut.preconditions({ focused: true })).toBe(true);
+  expect(command.handler()).toBe(true);
+  expect(runtime.getRange).toHaveBeenLastCalledWith(0, 0);
+  expect(runtime.firstCell).toHaveBeenCalledWith(runtime.getRange.mock.results.at(-1)!.value);
+  expect(runtime.scrollToCell).toHaveBeenCalledWith(0, 0);
+  view.unmount();
+  expect(command.handler()).toBe(false);
+  expect(runtime.navigationShortcutOff).toHaveBeenCalledTimes(1);
+  expect(runtime.navigationCommandOff).toHaveBeenCalledTimes(1);
 });
