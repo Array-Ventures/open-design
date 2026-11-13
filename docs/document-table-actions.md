@@ -34,8 +34,12 @@ merged insertion/deletion and neighbour retention, final-dimension removal,
 HTML identities and Markdown serialization/reimport. Markdown tables that no
 longer fit the simple pipe-table form use the existing HTML fallback.
 
-The focused suite passed 48 cases across the new actions and existing document
-editor/HTML tests; plain web TypeScript and the repository guard passed.
+The integration passed 58 focused cases across the table actions, existing
+document editor/HTML tests and shared workbook menu tests. The latter retain
+native keyboard capture, zero-argument admission checks and source-reset
+dismissal; a combined regression also checks selected-cell anchoring and actual
+gesture targets after reset. Plain web TypeScript and the repository guard
+passed.
 Browser visual checks in both themes, narrow viewports, touch scrolling and
 post-edit exports are still required. The supplied Claude reference captures
 showed ordinary document/presentation panels, not an open table context menu;

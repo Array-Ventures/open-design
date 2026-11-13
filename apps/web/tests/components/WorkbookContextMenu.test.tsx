@@ -83,3 +83,13 @@ it('removes native capture when a trigger returns to ordinary bubbling', async (
   fireEvent(target, new KeyboardEvent('keydown', { bubbles: false, cancelable: true, key: 'F10', shiftKey: true }));
   expect(admit).not.toHaveBeenCalled(); expect(screen.queryByRole('menu')).toBeNull();
 });
+it('retains selected-cell keyboard anchoring and target admission across source resets', async () => {
+  const admit = vi.fn(() => true), anchor = document.createElement('div');
+  const measure = vi.spyOn(anchor, 'getBoundingClientRect').mockReturnValue({ x: 30, y: 40, left: 30, top: 40, right: 90, bottom: 70, width: 60, height: 30, toJSON() {} });
+  const content = (source: string) => <ContextMenuTrigger capture resetKey={source} onBeforeOpen={admit} getKeyboardAnchor={() => anchor}><div data-testid="editor-owner" /><ContextMenu aria-label="Cell actions"><ContextMenuItem id="insert">Insert row</ContextMenuItem></ContextMenu></ContextMenuTrigger>;
+  const view = render(content('a')), editor = document.createElement('div'); screen.getByTestId('editor-owner').appendChild(editor);
+  fireEvent(editor, new KeyboardEvent('keydown', { bubbles: false, cancelable: true, key: 'ContextMenu' }));
+  await screen.findByRole('menu'); expect(admit).toHaveBeenLastCalledWith(editor, true); expect(measure).toHaveBeenCalled();
+  view.rerender(content('b')); expect(screen.queryByRole('menu')).toBeNull(); expect(editor.isConnected).toBe(true);
+  fireEvent.contextMenu(editor, { clientX: 40, clientY: 50 }); await screen.findByRole('menu'); expect(admit).toHaveBeenLastCalledWith(editor, false);
+});
