@@ -93,3 +93,39 @@ it('retains selected-cell keyboard anchoring and target admission across source 
   view.rerender(content('b')); expect(screen.queryByRole('menu')).toBeNull(); expect(editor.isConnected).toBe(true);
   fireEvent.contextMenu(editor, { clientX: 40, clientY: 50 }); await screen.findByRole('menu'); expect(admit).toHaveBeenLastCalledWith(editor, false);
 });
+
+function touch(target: Element, type: string, fields: Record<string, unknown> = {}) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  for (const [name, value] of Object.entries({ pointerType: 'touch', pointerId: 1, isPrimary: true, clientX: 40, clientY: 50, ...fields })) Object.defineProperty(event, name, { value });
+  fireEvent(target, event); return event;
+}
+it('keeps a completed long-touch menu open without letting its compatibility press refocus the editor', async () => {
+  render(<Fixture />); const target = screen.getByRole('button');
+  touch(target, 'pointerdown'); await screen.findByRole('menu'); touch(target, 'pointerup');
+  const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true, detail: 1, clientX: 40, clientY: 50 });
+  fireEvent(target, down); expect(down.defaultPrevented).toBe(true);
+  const click = new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1, clientX: 40, clientY: 50 });
+  fireEvent(target, click); expect(click.defaultPrevented).toBe(true); expect(screen.getByRole('menu')).toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+  const ordinary = new MouseEvent('mousedown', { bubbles: true, cancelable: true, detail: 1, clientX: 40, clientY: 50 });
+  fireEvent(target, ordinary); expect(ordinary.defaultPrevented).toBe(false);
+});
+it.each(['disable', 'reset', 'cancel', 'new-pointer', 'unmount'])('releases a fired long-touch guard on %s', async how => {
+  const content = (disabled = false, resetKey = 'one') => <ContextMenuTrigger capture isDisabled={disabled} resetKey={resetKey}><button>Cell</button><ContextMenu><ContextMenuItem id="insert">Insert</ContextMenuItem></ContextMenu></ContextMenuTrigger>;
+  const view = render(content()), target = screen.getByRole('button'); touch(target, 'pointerdown'); await screen.findByRole('menu');
+  if (how === 'disable') view.rerender(content(true));
+  else if (how === 'reset') view.rerender(content(false, 'two'));
+  else if (how === 'cancel') touch(target, 'pointercancel');
+  else if (how === 'new-pointer') touch(target, 'pointerdown', { pointerType: 'mouse' });
+  else { view.unmount(); document.body.append(target); }
+  const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true, detail: 1, clientX: 40, clientY: 50 }); fireEvent(target, down); expect(down.defaultPrevented).toBe(false);
+  if (how === 'unmount') target.remove();
+});
+it('does not suppress ordinary short taps or a moving touch scroll', async () => {
+  const admit = vi.fn(() => true); render(<Fixture admit={admit} />); const target = screen.getByRole('button');
+  touch(target, 'pointerdown'); touch(target, 'pointerup');
+  touch(target, 'pointerdown'); touch(target, 'pointermove', { clientY: 100 }); touch(target, 'pointerup', { clientY: 100 });
+  await new Promise(resolve => setTimeout(resolve, 550));
+  expect(admit).not.toHaveBeenCalled(); expect(screen.queryByRole('menu')).toBeNull();
+  const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true, detail: 1, clientX: 40, clientY: 50 }); fireEvent(target, down); expect(down.defaultPrevented).toBe(false);
+});

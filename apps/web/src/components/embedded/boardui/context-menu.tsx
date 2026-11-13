@@ -27,6 +27,7 @@ import type {
   MenuSectionProps as AriaMenuSectionProps,
 } from "react-aria-components";
 import { RiArrowRightSLine, RiCheckLine } from "@remixicon/react";
+import { guardLongPressCompletion } from "./long-press-completion";
 import { MENU_ITEM, MENU_ITEM_ACTIVE } from "./menu-styles";
 import { ScrollFade, useScrollFade } from "./scroll-fade";
 import { cx } from "./cx";
@@ -121,6 +122,8 @@ export function ContextMenuTrigger({ children, isDisabled = false, capture = fal
   const anchorRef = useRef<HTMLDivElement>(null);
   const boundaryRef = useRef<HTMLDivElement>(null);
   const openRef = useRef(false);
+  const completion = useRef<ReturnType<typeof guardLongPressCompletion> | null>(null);
+  const clearCompletion = useCallback(() => { completion.current?.dispose(); completion.current = null; }, []);
   const press = useRef<{ x: number; y: number; timer: number } | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
@@ -162,26 +165,29 @@ export function ContextMenuTrigger({ children, isDisabled = false, capture = fal
 
   useEffect(() => () => {
     if (press.current) window.clearTimeout(press.current.timer);
-  }, []);
+    clearCompletion();
+  }, [clearCompletion]);
 
   useEffect(() => {
     if (!isDisabled) return;
+    clearCompletion();
     if (press.current) { window.clearTimeout(press.current.timer); press.current = null; }
     close();
-  }, [isDisabled, close]);
+  }, [isDisabled, close, clearCompletion]);
 
   const previousReset = useRef(resetKey);
   useEffect(() => {
     if (Object.is(previousReset.current, resetKey)) return;
     previousReset.current = resetKey;
+    clearCompletion();
     if (press.current) { window.clearTimeout(press.current.timer); press.current = null; }
     close();
-  }, [resetKey, close]);
+  }, [resetKey, close, clearCompletion]);
 
   // React Aria leaves non-modal popovers open on outside presses, and the
   // anchor is fixed, so close on a press or a scroll outside this menu tree.
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) { clearCompletion(); return; }
     const onOutside = (event: Event) => {
       if (menuOf(event.target) !== id) close();
     };
@@ -191,7 +197,7 @@ export function ContextMenuTrigger({ children, isDisabled = false, capture = fal
       document.removeEventListener("pointerdown", onOutside, true);
       document.removeEventListener("scroll", onOutside, true);
     };
-  }, [isOpen, id, close]);
+  }, [isOpen, id, close, clearCompletion]);
 
   const onContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     // Events from the open menu bubble here through its portal; never show
@@ -218,15 +224,21 @@ export function ContextMenuTrigger({ children, isDisabled = false, capture = fal
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    clearCompletion();
+    if (event.isPrimary === false) { cancelPress(); return; }
     if (event.pointerType !== "touch" || isDisabled || !event.currentTarget.contains(event.target as Node)) return;
     cancelPress();
-    const { clientX: x, clientY: y } = event;
+    const { clientX: x, clientY: y, pointerId, target } = event;
     press.current = {
       x,
       y,
       timer: window.setTimeout(() => {
         press.current = null;
-        if (!openRef.current && onBeforeOpen?.(event.target, false) !== false) openAt(x, y, true);
+        if (!openRef.current && onBeforeOpen?.(target, false) !== false) {
+          const boundary = boundaryRef.current;
+          if (boundary && target instanceof Node && boundary.contains(target)) completion.current = guardLongPressCompletion(boundary, target, { x, y }, pointerId);
+          openAt(x, y, true);
+        }
       }, LONG_PRESS_MS),
     };
   };
@@ -262,8 +274,8 @@ export function ContextMenuTrigger({ children, isDisabled = false, capture = fal
         onKeyDown={capture ? undefined : onKeyDown}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={cancelPress}
-        onPointerCancel={cancelPress}
+        onPointerUp={event => { cancelPress(); completion.current?.release(event.pointerId); }}
+        onPointerCancel={() => { cancelPress(); clearCompletion(); }}
       >
         {content}
       </div>
