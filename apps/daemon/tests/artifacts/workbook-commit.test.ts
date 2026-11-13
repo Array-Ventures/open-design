@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { chmod, mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,9 +9,10 @@ import { closeDatabase, insertProject, openDatabase } from '../../src/db.js';
 import { PinnedProject, readPinnedFile, writePinnedFile } from '../../src/embedded-files/pinned-project.js';
 import { commitWorkbook, WorkbookSourceChangedError, type WorkbookCommitFiles, type WorkbookCommitInput } from '../../src/artifacts/workbook/commit.js';
 import { commitEmbeddedWorkbook } from '../../src/artifacts/workbook/contained-commit.js';
-import { listProjectFileVersions } from '../../src/project-file-versions.js';
+import { listProjectFileVersions, getProjectFileVersionRootStats } from '../../src/project-file-versions.js';
 import { readXlsxWorkbook } from '../../src/artifacts/workbook/reader.js';
 import { calculateWorkbookCellEdits } from '../../src/artifacts/workbook/calculated-patch.js';
+import { WORKBOOK_HISTORY_MANIFEST_BYTES } from '../../src/artifacts/workbook/history-storage.js';
 import { readWorkbookWrite } from '../../src/storage/workbook-writes.js';
 
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
@@ -24,6 +25,21 @@ describe('workbook save receipt coordination', () => {
   const commit = (request = input) => commitWorkbook(db, projectsRoot, request, metadata(), files);
   const versions = () => listProjectFileVersions(projectsRoot, projectId, 'book.xlsx', metadata());
   const receipt = () => readWorkbookWrite(db, { ...input, targetSha256: digest(input.bytes) });
+  async function seedHistory(count: number, currentBytes = original, byteCap = false) {
+    const history = await getProjectFileVersionRootStats(projectsRoot, projectId, 'book.xlsx', metadata());
+    await mkdir(history.root, { recursive: true });
+    const entries = Array.from({ length: count }, (_, index) => ({ id: `retained-${index}`, fileName: 'book.xlsx', version: index + 1, label: 'Retained fixture', createdAt: index + 1, source: 'manual', prompt: null, size: currentBytes.length, mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', kind: 'data', contentPath: `retained-${index}.xlsx`, contentDigest: digest(currentBytes) }));
+    const manifest = { schemaVersion: 2, fileName: 'book.xlsx', currentVersionId: entries.at(-1)!.id, entries };
+    if (byteCap) entries[0]!.label += 'x'.repeat(WORKBOOK_HISTORY_MANIFEST_BYTES - Buffer.byteLength(JSON.stringify(manifest, null, 2)) - 32);
+    const content = JSON.stringify(manifest, null, 2);
+    expect(Buffer.byteLength(content)).toBeLessThanOrEqual(WORKBOOK_HISTORY_MANIFEST_BYTES);
+    // Only the current blob is read. Metadata-capacity fixtures do not need
+    // thousands of duplicate large workbook payloads to exercise the bound.
+    await writeFile(path.join(history.root, entries.at(-1)!.contentPath), currentBytes);
+    await writeFile(path.join(history.root, 'manifest.json'), content);
+    return { root: history.root, content, currentId: manifest.currentVersionId };
+  }
+
   beforeEach(async () => {
     root = await mkdtemp(path.join(tmpdir(), 'od-workbook-commit-')); projectsRoot = path.join(root, 'metadata'); projectId = randomUUID();
     const workspace = path.join(root, 'workspaces'); directory = path.join(workspace, 'team', 'projects', projectId);
@@ -199,6 +215,50 @@ describe('workbook save receipt coordination', () => {
     const request = await restoreRequest(); await rm(path.join(directory, 'book.xlsx')); vi.mocked(files.write).mockClear();
     expect(await commit(request)).toMatchObject({ state: 'conflict', actualSha256: null }); expect(files.write).not.toHaveBeenCalled();
     await expect(pinned.read('book.xlsx')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('refuses exhausted retained-history capacity before replacing the working workbook', async () => {
+    const seeded = await seedHistory(10_000);
+    await expect(commit()).rejects.toThrow();
+    expect(digest((await pinned.read('book.xlsx')).buffer)).toBe(digest(original));
+    expect(files.write).not.toHaveBeenCalled(); expect(receipt()?.state).not.toBe('applied');
+    expect((await readdir(seeded.root)).sort()).toEqual(['manifest.json', 'retained-9999.xlsx']);
+    expect(await readFile(path.join(seeded.root, 'manifest.json'), 'utf8')).toBe(seeded.content);
+  });
+
+  it('admits the exact 9999-to-10000 target boundary and deduplicates an already-current source at capacity', async () => {
+    const seeded = await seedHistory(9_999);
+    const applied = await commit();
+    expect(applied).toMatchObject({ state: 'applied', sourceVersionId: seeded.currentId });
+    expect((await pinned.read('book.xlsx')).buffer).toEqual(candidate);
+    expect(await versions()).toHaveLength(10_000);
+    const same = await commit({ ...input, operationId: randomUUID(), sourceSha256: digest(candidate) });
+    expect(same).toMatchObject({ state: 'applied', versionId: applied.versionId });
+    expect(await versions()).toHaveLength(10_000);
+    expect(files.write).toHaveBeenCalledTimes(1);
+  });
+  it('counts a newly retained before-source version before admitting its target', async () => {
+    await seedHistory(9_999, later);
+    await expect(commit()).rejects.toThrow();
+    expect((await pinned.read('book.xlsx')).buffer).toEqual(original);
+    expect(files.write).not.toHaveBeenCalled(); expect(receipt()?.state).toBe('pending');
+    const retained = await versions(); expect(retained).toHaveLength(10_000);
+    expect(retained.some(version => version.contentDigest === digest(original))).toBe(true);
+  });
+  it('refuses the actual prospective manifest byte bound before replacing working bytes', async () => {
+    await seedHistory(1, original, true);
+    await expect(commit()).rejects.toMatchObject({ code: 'EFBIG' });
+    expect((await pinned.read('book.xlsx')).buffer).toEqual(original);
+    expect(files.write).not.toHaveBeenCalled(); expect(receipt()?.state).not.toBe('applied');
+  });
+
+  it('publishes the exact target timestamp admitted before the working-file boundary', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000), write = files.write;
+    files.write = vi.fn(async (bytes, expected) => { await write(bytes, expected); clock.mockReturnValue(1_800_000_000_000); });
+    try {
+      const applied = await commit();
+      expect((await versions()).find(version => version.id === applied.versionId)?.createdAt).toBe(1_700_000_000_000);
+    } finally { clock.mockRestore(); }
   });
 
 });
