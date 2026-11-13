@@ -8,7 +8,7 @@ import { ownWorkbookCalculationWorker } from '../../src/components/embedded/work
 import { workbookGridEdits } from '../../src/components/embedded/workbook/grid-edits';
 import { attachWorkbookCalculation } from '../../src/components/embedded/workbook/grid-calculation';
 import { workbookDocumentSchema, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
-import { workbookCalculationInputSha256, workbookCalculationTagSchema } from '../../src/components/embedded/workbook/formula-input-provenance';
+import { WORKBOOK_INPUT_EPOCH_OPTION, workbookCalculationInputSha256, workbookCalculationTagSchema } from '../../src/components/embedded/workbook/formula-input-provenance';
 import { workbookCalculationDeadline } from '../../src/components/embedded/workbook/formula-worker-deadline';
 import { assertWorkbookCalculationBudget, assertWorkbookCalculationMutation } from '../../src/components/embedded/workbook/formula-worker-budget';
 const packageRoot = realpathSync(fileURLToPath(new URL('../../node_modules/@univerjs/preset-sheets-core/package.json', import.meta.url)));
@@ -26,12 +26,21 @@ const closers: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of closers.splice(0).reverse()) await close(); vi.unstubAllGlobals(); });
 class WorkerAdapter {
   readonly thread: NodeWorker;
+  readonly sentInputEpochs: number[] = [];
   private listeners = new Map<EventListener, (data: unknown) => void>();
   constructor(budget = false, execution = false, stall = false, production = false) {
     this.thread = new NodeWorker(new URL('../fixtures/workbook-formula-rpc-worker.ts', import.meta.url), { workerData: { packageRoot, stall, productionEntry: production ? fileURLToPath(new URL('../../src/components/embedded/workbook/workbook-formula.worker.ts', import.meta.url)) : undefined, executionModule: execution ? fileURLToPath(new URL('../../src/components/embedded/workbook/formula-execution-policy.ts', import.meta.url)) : undefined, budgetModule: budget ? fileURLToPath(new URL('../../src/components/embedded/workbook/formula-worker-budget.ts', import.meta.url)) : undefined }, execArgv: ['--experimental-transform-types', '--no-warnings'], resourceLimits: { maxOldGenerationSizeMb: 192, maxYoungGenerationSizeMb: 32 } });
     closers.push(async () => { await this.thread.terminate(); }); }
   terminate() { void this.thread.terminate(); }
-  postMessage(data: unknown) { this.thread.postMessage(data); }
+  postMessage(data: unknown) {
+    const inspect = (value: unknown, depth = 0): void => {
+      if (depth > 12 || !value || typeof value !== 'object') return;
+      const record = value as Record<string, unknown>;
+      if (typeof record[WORKBOOK_INPUT_EPOCH_OPTION] === 'number') this.sentInputEpochs.push(record[WORKBOOK_INPUT_EPOCH_OPTION] as number);
+      for (const nested of Object.values(record)) inspect(nested, depth + 1);
+    };
+    inspect(data); this.thread.postMessage(data);
+  }
   addEventListener(type: string, listener: EventListener) { if (type !== 'message') return; const handler = (data: unknown) => { listener({ data } as MessageEvent); }; this.listeners.set(listener, handler); this.thread.on('message', handler); }
   removeEventListener(_type: string, listener: EventListener) { const handler = this.listeners.get(listener); if (handler) this.thread.off('message', handler); this.listeners.delete(listener); }
   async ready() { await new Promise<void>((resolve, reject) => { const timer = setTimeout(() => reject(Error('Owned RPC worker did not start.')), 5000); this.thread.once('error', reject); const listen = (data: { fixtureReady?: boolean; type?: string; kind?: string }) => { if (data.fixtureReady || data.type === 'studio:workbook-calculation-worker' && data.kind === 'ready') { clearTimeout(timer); this.thread.off('message', listen); resolve(); } }; this.thread.on('message', listen); }); }
@@ -245,4 +254,43 @@ it('refuses structural allocation beyond prospective area, axis, identity and ra
   expect(() => assertWorkbookCalculationMutation({ ...valid, params: { ...valid.params, unitId: 'foreign' } }, [small], sheets.SetRangeValuesMutation.id)).toThrow('identity');
   expect(() => assertWorkbookCalculationMutation({ ...valid, params: { ...valid.params, range: { ...valid.params.range, endColumn: 2 } } }, [small], sheets.SetRangeValuesMutation.id)).toThrow('bounds');
   expect(() => assertWorkbookCalculationMutation({ id: 'sheet.mutation.remove-rows', params: { ...valid.params, range: { ...valid.params.range, startRow: 0, endRow: 7 } } }, [small], sheets.SetRangeValuesMutation.id)).toThrow('budget');
+});
+
+it.each(['unrelated literal', 'all formulas removed', 'shared options A-B-A'] as const)('keeps a healthy production RPC worker after no-result completion: %s', async edit => {
+  vi.stubGlobal('Worker', WorkerAdapter);
+  let rejectCompletion: ((cause: Error) => void) | undefined;
+  const worker = new WorkerAdapter(true, false, false, true), unavailable = vi.fn(() => rejectCompletion?.(Error(`Owned RPC unavailable; sent input epochs: ${worker.sentInputEpochs.join(',')}`)));
+  const owner = ownWorkbookCalculationWorker(unavailable, () => worker as unknown as Worker);
+  closers.push(() => owner.dispose()); expect(await owner.loaded).toBe(true);
+  const English = pinned('@univerjs/preset-sheets-core/locales/en-US');
+  const univer = new core.Univer({ locale: core.LocaleType.EN_US, locales: { [core.LocaleType.EN_US]: English.default ?? English } }); closers.push(() => univer.dispose());
+  univer.registerPlugin(rpc.UniverRPCMainThreadPlugin, { workerURL: worker as unknown as Worker });
+  univer.registerPlugin(engine.UniverFormulaEnginePlugin, { notExecuteFormula: true }); univer.registerPlugin(sheets.UniverSheetsPlugin, { notExecuteFormula: true });
+  univer.registerPlugin(formula.UniverSheetsFormulaPlugin, { notExecuteFormula: true, initialFormulaComputing: formula.CalculationMode.NO_CALCULATION });
+  const api = FUniver.newAPI(univer), book = api.createWorkbook({ id: 'no-result', name: 'No result', sheetOrder: ['s'], styles: {}, sheets: { s: { id: 's', name: 'Inputs', rowCount: 100, columnCount: 20, cellData: { 0: { 0: { v: 2, t: 2 }, 2: { f: '=A1+3', v: 999, t: 2 } } } } } });
+  const original = book.save(), model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 's', calculationMetadata: 'verified', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 's', name: 'Inputs', visibility: 'visible', rowCount: 100, columnCount: 20, frozenRows: 0, frozenColumns: 0, merges: [], rowDimensions: [], columnDimensions: [], arrayFormulas: [], cells: [{ row: 0, column: 0, kind: 'number', value: 2 }, { row: 0, column: 2, kind: 'number', value: 999, formula: '=A1+3' }] }] };
+  expect(workbookDocumentSchema.parse(model)).toEqual(model);
+  const deadline = workbookCalculationDeadline(worker, () => { owner.dispose(); unavailable(); }, 500); closers.push(() => deadline.dispose());
+  const statuses: { phase: string }[] = [];
+  const calculation = attachWorkbookCalculation(univer, api, model, original, original, () => book.save(), { ...owner, deadline }, value => statuses.push(value)); closers.push(() => calculation.dispose());
+  const sidebands: unknown[] = []; const sideband = owner.onResult(result => sidebands.push({ kind: result.kind, tag: result.workbookCalculation, ...('result' in result ? { trees: result.result.length } : {}), digest: workbookCalculationInputSha256(book.save()) })); closers.push(sideband);
+  const commands = univer.__getInjector().get(core.ICommandService), scalar = vi.fn();
+  const observe = commands.beforeCommandExecuted(command => { if (command.id === engine.SetFormulaCalculationResultMutation.id) scalar(); }); closers.push(() => observe.dispose());
+  await univer.__getInjector().get(rpc.IRemoteInstanceService).whenReady();
+  const terminal = new Promise<number>((resolve, reject) => { rejectCompletion = reject; const timer = setTimeout(() => { listener.dispose(); reject(Error('Owned no-result RPC did not finish.')); }, 5000); const listener = api.getFormula().calculationEnd((state: number) => { clearTimeout(timer); listener.dispose(); resolve(state); }); });
+  if (edit === 'shared options A-B-A') {
+    const options = {};
+    for (const value of [77, 78, 77]) commands.syncExecuteCommand(sheets.SetRangeValuesMutation.id, { unitId: book.getId(), subUnitId: 's', cellValue: { 0: { 3: { v: value, t: 2 } } } }, options);
+  } else book.getActiveSheet().getRange(edit === 'unrelated literal' ? 'D1' : 'C1').setValue(77);
+  const epochProof = edit === 'shared options A-B-A' ? vi.waitFor(() => expect(worker.sentInputEpochs.slice(0, 3)).toEqual([1, 2, 3])) : Promise.resolve();
+  const [state] = await Promise.all([terminal, epochProof]); expect(state).toBe(engine.FormulaExecutedStateType.NOT_EXECUTED);
+  expect(scalar).not.toHaveBeenCalled();
+  // This real wait witnesses the owned deadline across an independently running
+  // Node worker; faking only one event loop would collapse the RPC/timeout race.
+  await new Promise(resolve => setTimeout(resolve, 650));
+  expect(unavailable, JSON.stringify(sidebands)).not.toHaveBeenCalled(); expect(owner.ready).toBe(true);
+  expect(statuses.at(-1)).toMatchObject({ phase: edit === 'all formulas removed' ? 'live' : 'stored', paused: false });
+  expect(sidebands).toContainEqual(expect.objectContaining({ kind: 'complete', tag: expect.objectContaining({ valid: true, inputEpoch: edit === 'shared options A-B-A' ? 3 : 1 }) }));
+  if (edit !== 'all formulas removed') { expect(calculation.status('s', 0, 2)?.result).toBe('stored'); expect(book.getActiveSheet().getSheet().getCell(0, 2)!.v).toBe(999); }
+  else expect(calculation.status('s', 0, 2)).toBeUndefined();
 });

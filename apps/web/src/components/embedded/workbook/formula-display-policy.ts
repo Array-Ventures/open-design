@@ -30,6 +30,9 @@ export class WorkbookFormulaDisplay {
   private statuses = new Map<string, WorkbookLiveCellStatus>();
   private calculated = new Map<string, { formula: string; inputSha256: string; value: Pick<ICellData, 'v' | 't' | 'p'> }>();
   private pending = false;
+  private settledGeneration = 0;
+  private inputEpoch = 0;
+  private graphGeneration = 0;
   private paused: string | null = null;
   constructor(private model: WorkbookDocument, original: IWorkbookData, initial: IWorkbookData, private runtime: FormulaAnalysisRuntime & ArrayReferenceRuntime) {
     this.original = structuredClone(original); this.initial = structuredClone(initial); this.current = structuredClone(initial);
@@ -47,7 +50,7 @@ export class WorkbookFormulaDisplay {
   private matching(raw: unknown): WorkbookCalculationTag | null {
     if (this.paused) return null;
     const parsed = workbookCalculationTagSchema.safeParse(raw);
-    return parsed.success && parsed.data.valid && parsed.data.unitId === this.current.id && parsed.data.inputSha256 === workbookCalculationInputSha256(this.current) ? parsed.data : null;
+    return parsed.success && parsed.data.valid && (parsed.data.inputEpoch ?? 0) === this.inputEpoch && parsed.data.unitId === this.current.id && parsed.data.inputSha256 === workbookCalculationInputSha256(this.current) ? parsed.data : null;
   }
   update(current: IWorkbookData, pending: boolean) {
     this.current = current; this.pending = pending && !this.paused; this.conflicts.clear();
@@ -67,8 +70,26 @@ export class WorkbookFormulaDisplay {
       this.statuses.set(coordinate, { sheetId, row, column, formula: cell.f, result: this.conflicts.has(coordinate) ? 'unavailable' : result, reason: this.paused ?? limit?.reason ?? 'pending-analysis' });
     }
   }
+  /** A host-authored mutation epoch is carried through the real RPC options,
+   * independently of worker calculation generations or repeated input hashes. */
+  expectInputEpoch(epoch: number) { this.inputEpoch = epoch; this.graph = null; }
+  isCurrentCompletion(params: { workbookCalculation?: unknown }): boolean {
+    const tag = this.matching(params.workbookCalculation);
+    return Boolean(tag && tag.generation > this.settledGeneration && tag.generation >= this.graphGeneration);
+  }
+  /** A no-result terminal message proves only that the matching graph's work
+   * finished. Stored caches stay stored; prior calculated values are not
+   * promoted to the new input digest. Duplicate/older terminals cannot settle
+   * a later mutation that happens to return to the same inputs. */
+  completeWithoutResult(params: { workbookCalculation?: unknown }): boolean {
+    const tag = this.matching(params.workbookCalculation);
+    if (!tag || tag.generation <= this.settledGeneration || !this.graph || this.graph.tag.generation !== tag.generation || this.graph.tag.inputSha256 !== tag.inputSha256) return false;
+    this.settledGeneration = tag.generation;
+    this.update(this.current, false); return true;
+  }
   graphResult(params: { result: FormulaDependencyNode[]; workbookCalculation?: unknown }) {
-    const tag = this.matching(params.workbookCalculation); if (tag) this.graph = { tag, trees: params.result };
+    const tag = this.matching(params.workbookCalculation);
+    if (tag && tag.generation >= this.graphGeneration && tag.generation >= this.settledGeneration) { this.graphGeneration = tag.generation; this.graph = { tag, trees: params.result }; }
   }
   arrayResult(params: ArrayData & { workbookCalculation?: unknown }) {
     if (!this.matching(params.workbookCalculation)) return;
@@ -107,6 +128,7 @@ export class WorkbookFormulaDisplay {
       this.statuses.set(key(cell.sheetId, cell.row, cell.column), { ...cell, result: stored && !this.conflicts.has(key(cell.sheetId, cell.row, cell.column)) ? 'stored' : 'unavailable' });
     }
     for (const sheet of Object.values(params.sourceFormulaData?.[this.current.id] ?? {})) this.derivedSources.set(sheet, tag);
+    this.settledGeneration = Math.max(this.settledGeneration, tag.generation);
     this.pending = false; return true;
   }
   rangeResult(params: { unitId: string; subUnitId: string; cellValue: FormulaCalculationResults['unitData'][string][string]; sourceFormulaData?: NonNullable<FormulaCalculationResults['sourceFormulaData']>[string][string]; workbookCalculation?: unknown }): boolean {

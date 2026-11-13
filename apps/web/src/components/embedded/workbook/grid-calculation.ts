@@ -1,3 +1,4 @@
+import type { WorkbookCalculationResultMessage } from './formula-worker-message';
 import { ICommandService, InterceptorEffectEnum, type ICellData, type IWorkbookData, type Univer } from '@univerjs/core';
 import * as engine from '@univerjs/engine-formula';
 import { INTERCEPTOR_POINT, SetRangeValuesMutation, SheetInterceptorService } from '@univerjs/sheets';
@@ -6,7 +7,7 @@ import { ownWorkbookCalculationWorker } from './calculation-worker-owner';
 import { WorkbookFormulaDisplay } from './formula-display-policy';
 import { assertWorkbookCalculationBudget, assertWorkbookCalculationMutation, isWorkbookCalculationStructuralMutation } from './formula-worker-budget';
 import { workbookCalculationState, type WorkbookCalculationState } from './calculation-state';
-import { workbookCalculationChangesInputs } from './formula-input-provenance';
+import { workbookCalculationChangesInputs, WORKBOOK_INPUT_EPOCH_OPTION } from './formula-input-provenance';
 import type { FUniver } from '@univerjs/core/facade';
 
 /** Only this disposable calculation replica receives authored cells. It cannot
@@ -21,32 +22,48 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
   const injector = univer.__getInjector(), commands = injector.get(ICommandService), functions = injector.get(engine.IFunctionService);
   const display = new WorkbookFormulaDisplay(model, original, initial, { sequenceNodesBuilder: value => api.getFormula().sequenceNodesBuilder(value), hasExecutor: name => functions.hasExecutor(name), deserializeRangeWithSheet: engine.deserializeRangeWithSheet, sequenceNodeType: engine.sequenceNodeType });
   if (!owner) display.pause('Stored results');
-  let generation: number | null = null, structuralCalculation = false;
+  let generation: number | null = null, scalarRequired = false, inputEpoch = 0;
+  let completion: Extract<WorkbookCalculationResultMessage, { kind: 'complete' }> | null = null;
   const formulas = (book: IWorkbookData) => Object.values(book.sheets).some(sheet => Object.values(sheet.cellData ?? {}).some(row => Object.values(row ?? {}).some(cell => Boolean((cell as ICellData | null | undefined)?.f))));
   const publish = () => {
     changed(workbookCalculationState(display.summary()));
+  };
+  // SDK graph publication is asynchronous, so a genuine terminal can arrive
+  // first. Retain only one candidate for this input epoch, bounded by its
+  // existing deadline, and require the matching graph before accepting it.
+  const finishWithoutResult = () => {
+    if (scalarRequired || generation === null || !completion || !display.completeWithoutResult(completion)) return;
+    owner?.deadline.complete(generation); generation = null; completion = null; publish();
   };
   const before = commands.beforeCommandExecuted((command, options) => {
     if (owner && command.id.startsWith('sheet.mutation.') && !options?.fromFormula) {
       try { assertWorkbookCalculationMutation(command, [snapshot()], SetRangeValuesMutation.id); } catch (error) { owner.deadline.fail(); throw error; }
     }
+    const changesInputs = !options?.fromFormula && (isWorkbookCalculationStructuralMutation(command.id) || command.id === SetRangeValuesMutation.id && workbookCalculationChangesInputs(command.params));
+    if (owner && changesInputs) {
+      if (!Number.isSafeInteger(++inputEpoch)) { owner.deadline.fail(); throw Error('Workbook input epoch exceeds its limit.'); }
+      // The pinned command service supplies this per-execution object; our RPC
+      // queue patch snapshots it before a compound command can reuse it.
+      options![WORKBOOK_INPUT_EPOCH_OPTION] = inputEpoch;
+      display.expectInputEpoch(inputEpoch); completion = null;
+    }
     if (owner && isWorkbookCalculationStructuralMutation(command.id) && formulas(snapshot())) {
-      generation = owner.deadline.begin(); structuralCalculation = true;
+      generation = owner.deadline.begin(); scalarRequired = true;
     }
-    // The pinned dirty-tree optimization can mark an axis edit NOT_EXECUTED
-    // when its moved cached values already equal the computed values. That is
-    // not proof for the new input digest. Force the next bounded replica pass
-    // to return verified scalar results, without accepting caches as live.
-    if (owner && structuralCalculation && command.id === engine.SetFormulaCalculationStartMutation.id) {
-      Object.assign(command.params ?? {}, { forceCalculation: true }); structuralCalculation = false;
+    if (owner && command.id === engine.SetFormulaCalculationStartMutation.id) {
+      options![WORKBOOK_INPUT_EPOCH_OPTION] = inputEpoch;
+      // Keep requiring a verified scalar pass through coalesced/restarted
+      // calculations until this structural input epoch has really completed.
+      if (scalarRequired) Object.assign(command.params ?? {}, { forceCalculation: true });
     }
+
     if (command.id === SetRangeValuesMutation.id) {
       if (options?.fromFormula) display.rangeResult(command.params as Parameters<WorkbookFormulaDisplay['rangeResult']>[0]);
       else if (owner && workbookCalculationChangesInputs(command.params) && (formulas(snapshot()) || Object.values((command.params as { cellValue?: Record<string, Record<string, ICellData>> }).cellValue ?? {}).some(row => Object.values(row).some(cell => cell?.f)))) {
-        generation = owner.deadline.begin();
+        completion = null; generation = owner.deadline.begin();
       }
     } else if (command.id === engine.SetFormulaCalculationResultMutation.id) {
-      if (display.scalarResult(command.params as Parameters<WorkbookFormulaDisplay['scalarResult']>[0]) && generation !== null) { owner?.deadline.complete(generation); generation = null; }
+      if (display.scalarResult(command.params as Parameters<WorkbookFormulaDisplay['scalarResult']>[0]) && generation !== null) { owner?.deadline.complete(generation); generation = null; completion = null; scalarRequired = false; }
       publish();
     } else if (command.id === engine.SetFormulaDependencyCalculationResultMutation.id) display.graphResult(command.params as Parameters<WorkbookFormulaDisplay['graphResult']>[0]);
     else if (command.id === engine.SetArrayFormulaDataMutation.id) display.arrayResult(command.params as Parameters<WorkbookFormulaDisplay['arrayResult']>[0]);
@@ -54,11 +71,15 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
   const after = commands.onCommandExecuted((command, options) => {
     if (command.id === SetRangeValuesMutation.id || isWorkbookCalculationStructuralMutation(command.id)) {
       const current = snapshot(), hasFormulas = formulas(current);
-      if (!hasFormulas && generation !== null) { owner?.deadline.complete(generation); generation = null; structuralCalculation = false; }
+      if (!hasFormulas && generation !== null) { owner?.deadline.complete(generation); generation = null; completion = null; scalarRequired = false; }
       display.update(current, Boolean(owner && hasFormulas && !options?.fromFormula && (isWorkbookCalculationStructuralMutation(command.id) || workbookCalculationChangesInputs(command.params)))); publish();
     }
   });
-  const unsubscribe = owner?.onResult(result => { if (result.kind === 'graph') display.graphResult(result); else display.arrayResult(result); });
+  const unsubscribe = owner?.onResult(result => {
+    if (result.kind === 'graph') { display.graphResult(result); finishWithoutResult(); }
+    else if (result.kind === 'arrays') display.arrayResult(result);
+    else if (generation !== null && !scalarRequired && display.isCurrentCompletion(result) && (!completion || result.workbookCalculation.generation >= completion.workbookCalculation.generation)) { completion = result; finishWithoutResult(); }
+  });
   const intercept = injector.get(SheetInterceptorService).intercept(INTERCEPTOR_POINT.CELL_CONTENT, {
     priority: 90, effect: InterceptorEffectEnum.Value,
     handler: (cell, location, next) => next(display.display(location.subUnitId, location.row, location.col, (cell ?? {}) as ICellData, location.rawData || undefined)),

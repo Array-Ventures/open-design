@@ -9,7 +9,7 @@ import { UniverSheetsCoreWorkerPreset } from '@univerjs/preset-sheets-core/worke
 import { SetRangeValuesMutation } from '@univerjs/sheets';
 import SheetsEnUS from '@univerjs/sheets/locale/en-US';
 import { assertWorkbookCalculationBudget, assertWorkbookCalculationMutation, isWorkbookCalculationStructuralMutation } from './formula-worker-budget';
-import { workbookWorkerInputProvenance, workbookCalculationChangesInputs } from './formula-input-provenance';
+import { workbookWorkerInputProvenance, workbookCalculationChangesInputs, WORKBOOK_INPUT_EPOCH_OPTION } from './formula-input-provenance';
 import { assertWorkbookFormulaExecution, qualifiedWorkbookFunctionOverrides } from './formula-execution-policy';
 
 let unavailable = false;
@@ -31,7 +31,7 @@ try {
     try {
       if (options?.fromFormula && isWorkbookCalculationStructuralMutation(command.id)) fail();
       assertWorkbookCalculationMutation(command, books(), SetRangeValuesMutation.id);
-      if (!options?.fromFormula && (isWorkbookCalculationStructuralMutation(command.id) || command.id === SetRangeValuesMutation.id && workbookCalculationChangesInputs(command.params))) provenance.changed();
+      if (!options?.fromFormula && (isWorkbookCalculationStructuralMutation(command.id) || command.id === SetRangeValuesMutation.id && workbookCalculationChangesInputs(command.params))) provenance.changed(Number(options?.[WORKBOOK_INPUT_EPOCH_OPTION]));
       if ([engine.SetFormulaCalculationResultMutation.id, engine.SetFormulaDependencyCalculationResultMutation.id, engine.SetArrayFormulaDataMutation.id].includes(command.id)) {
         const book = books()[0];
         if (book && command.params && typeof command.params === 'object') {
@@ -53,6 +53,7 @@ try {
         else params.cellValue = {};
       }
       if (command.id === engine.SetFormulaCalculationStartMutation.id) {
+        if (options?.[WORKBOOK_INPUT_EPOCH_OPTION] !== provenance.epoch()) fail();
         assertWorkbookFormulaExecution(books(), runtime);
         // The worker preset omits the UI-side controller that copies this flag
         // from configuration into each calculation request.
@@ -68,6 +69,14 @@ try {
   }
   injector.get(engine.ICalculateFormulaService).executionInProgressListener$.subscribe(progress => {
     if (progress.stage === 1) provenance.started(books());
+  });
+  // The pinned engine legitimately emits only a dependency graph when no
+  // formula is dirty. A tagged terminal signal ends liveness accounting, not
+  // result authority: no cached value is claimed to have been calculated.
+  injector.get(engine.ICalculateFormulaService).executionCompleteListener$.subscribe(result => {
+    if (unavailable || result.functionsExecutedState !== engine.FormulaExecutedStateType.NOT_EXECUTED) return;
+    const book = books()[0];
+    if (book) self.postMessage({ type: 'studio:workbook-calculation-worker', kind: 'complete', outcome: 'not-executed', workbookCalculation: provenance.tag(book) });
   });
   injector.get(IConfigService).setConfig(engine.ENGINE_FORMULA_RETURN_DEPENDENCY_TREE, true);
   self.postMessage({ type: 'studio:workbook-calculation-worker', kind: 'ready' });

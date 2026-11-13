@@ -453,3 +453,27 @@ materializes the coordinate. Returned geometry comes from the final bytes, not
 the temporary floor. No placeholder cells or free-form window authority are
 introduced, and ordinary plans without qualified axis ownership keep their
 existing source bounds.
+
+### Scalar worker completion ownership
+
+The pinned engine legitimately finishes an unrelated literal edit with
+`NOT_EXECUTED` and no scalar-result mutation. A typed no-result terminal ends
+the existing liveness deadline only after the matching dependency graph arrives.
+It does not promote stored formula caches into calculated values. Structural
+changes with surviving formulas instead require a fresh forced scalar pass;
+removing the last formula ends liveness without manufacturing a result.
+
+Every authored input mutation carries an explicit monotonic host input epoch
+through the pinned RPC execution options. Worker graph, scalar and no-result
+proofs echo that epoch as well as the exact input digest and worker generation.
+This rejects delayed never-settled results even after inputs change A→B→A.
+The maintained RPC patch snapshots options at queue admission, since compound
+callers may reuse the mutable execution-options object. Refreshing that pin
+requires the production-RPC shared-options regression: without the patch,
+the actual transport sent repeated epoch 3 and the worker refused the stale
+stamp; with it, the authored wire sequence is 1,2,3.
+
+Controller regressions cover out-of-order graph/terminal delivery, invalid or
+stale terminals failing to evict a current candidate, monotonic graph ownership,
+and the structural scalar requirement. The production-RPC cases separately
+exercise genuine engine no-result completion and cold structural recalculation.

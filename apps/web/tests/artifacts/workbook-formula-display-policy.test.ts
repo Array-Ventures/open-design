@@ -96,3 +96,28 @@ it.each(['="#"', '=#NAME?'])('does not classify literal/error %s as an unsupport
   expect(f.display.scalarResult({ workbookCalculation: proof, unitData: { display: { s: { 0: { 1: { v: value, t: 4 } } } } }, sourceFormulaData: { display: { s: { 0: { 1: { f: formula } } } } } })).toBe(true);
   expect(f.display.status('s', 0, 1)?.result).toBe('calculated');
 });
+
+it('settles only a fresh matching no-result graph without promoting stored caches or accepting stale/invalid terminals', () => {
+  const f = fixture(), current = structuredClone(f.initial);
+  current.sheets.s!.cellData![1] = { 0: { v: 77, t: 2 } }; f.display.update(current, true);
+  const first = tag(current);
+  expect(f.display.completeWithoutResult({ workbookCalculation: first })).toBe(false); // No matching graph.
+  expect(f.display.summary().pending).toBe(true);
+  f.display.graphResult({ workbookCalculation: first, result: graph(current) });
+  expect(f.display.completeWithoutResult({ workbookCalculation: { ...first, valid: false } })).toBe(false);
+  expect(f.display.completeWithoutResult({ workbookCalculation: { ...first, unitId: 'other' } })).toBe(false);
+  expect(f.display.completeWithoutResult({ workbookCalculation: { ...first, inputSha256: '0'.repeat(64) } })).toBe(false);
+  expect(f.display.completeWithoutResult({ workbookCalculation: { ...first, generation: 2 } })).toBe(false);
+  expect(f.display.summary().pending).toBe(true);
+  expect(f.display.completeWithoutResult({ workbookCalculation: first })).toBe(true);
+  expect(f.display.summary().pending).toBe(false);
+  expect(f.display.status('s', 0, 1)?.result).toBe('stored');
+  expect(f.display.display('s', 0, 1, { v: 999 }, current.sheets.s!.cellData![0]![1]).v).toBe(999);
+  f.display.update(current, true);
+  expect(f.display.completeWithoutResult({ workbookCalculation: first })).toBe(false); // Same digest cannot reuse a settled generation.
+  expect(f.display.summary().pending).toBe(true);
+  const second = tag(current, 2); f.display.graphResult({ workbookCalculation: second, result: graph(current) });
+  expect(f.display.completeWithoutResult({ workbookCalculation: first })).toBe(false);
+  expect(f.display.completeWithoutResult({ workbookCalculation: second })).toBe(true);
+  expect(f.display.status('s', 0, 1)?.result).toBe('stored');
+});
