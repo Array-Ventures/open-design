@@ -16,7 +16,13 @@ export function EmbeddedViewerProvider({ projectId, children }: { projectId: str
     const receive = (event: MessageEvent) => {
       if (event.source !== window.parent || event.origin !== window.location.origin) return;
       const data = event.data;
-      if (data?.type !== 'studio:host-context' || data.projectId !== projectId) return;
+      if (data?.projectId !== projectId) return;
+      // A retained iframe may outlive its host's readiness subscription.
+      if (data.type === 'studio:ready-request') {
+        window.parent.postMessage({ type: 'studio:ready', projectId }, window.location.origin);
+        return;
+      }
+      if (data.type !== 'studio:host-context') return;
       if (typeof data.viewer?.id !== 'string' || data.viewer.id.length > 200 || typeof data.viewer.name !== 'string' || data.viewer.name.length > 200) return;
       const theme = parseHostTheme(data.theme, color => CSS.supports('color', color));
       if (theme) applyHostTheme(theme, document.documentElement);
