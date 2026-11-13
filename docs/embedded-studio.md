@@ -370,7 +370,7 @@ bytes remain untouched. Runtime-reordered speaker-note arrays and export order
 remain separate fidelity requirements; background ownership does not qualify
 those broader cases.
 
-### Structural workbook editing foundation (not enabled in the UI)
+### Source-preserving workbook row and column actions
 
 Structural projections remove the derived Excel calculation chain together
 with its relationship and content-type override. This also applies when no
@@ -378,8 +378,11 @@ scalar cell edit exists: moving a constant formula keeps its spelling but
 invalidates the chain's old coordinate. The existing cell-content writer shares
 the same cleanup; empty structural plans and unrelated ZIP parts are preserved.
 
-The structural helpers establish source ownership before enabling insert/delete
-menus. `grid-structure-identity.ts` stamps editor-only row/column identities in
+The candidate exposes compact BoardUI insert/delete actions only when the source,
+current editor, calculation worker and permissions all advertise the qualified
+capability. Read-only, unsupported, saving, retired and recovery-blocked editors
+keep these actions unavailable. The structural helpers establish source ownership
+before enabling these menus. `grid-structure-identity.ts` stamps editor-only row/column identities in
 Univer's supported custom metadata. Actual pinned SDK tests prove sparse blank
 axes retain identity through insert, delete, save, undo and redo, including a
 restored cell, row height and unrelated custom metadata. Aggregate axis metadata
@@ -423,10 +426,15 @@ never trusts a large authored dimension or injects a proprietary file extension
 just to preserve an editor window. Repeated blank-window insertion/deletion and
 out-of-window formula-reference regressions cover this distinction.
 
-**Still required before exposing menus:** calculation-worker mutation bounds,
-actual SDK agreement for merged/view/formula behavior, source-bound conditional save/reopen,
-keyboard/right-click BoardUI menu interaction, and packaged light/dark visual and
-end-to-end tests. The current shipped interface keeps unsupported SDK menus off.
+The local package 94 candidate passed both light/dark browser cases with actual
+row/column insertion and deletion, SDK undo/redo, keyboard-only Shift+F10 and
+Escape, immediate post-acknowledgement menus and independent saved-XLSX checks.
+Bounded mutation/identity checks, conditional save/recovery and contained source
+qualification are covered separately. This is local qualification, not an
+installer pin or publication. Manual edge/spacing checks and an intermittent
+blank initial client bootstrap remain under investigation; the native
+`docs/workbook-structure.md` records the exact package identities and failures.
+Unsupported SDK menus remain disabled.
 
 Structural save qualification now forces content recalculation before ordinary
 dimension/style/visibility owners, which normally skip unnecessary recalculation.
@@ -441,8 +449,8 @@ whole-axis reference syntax, but that is not a calculation-fidelity claim.
 Finite qualified references may enlarge the logical preview within existing
 area/axis/work budgets; authored dimension XML is still not trusted. Unsupported
 source caches remain untouched, and the source worker repeats this qualification
-before returning any candidate bytes. Menu activation still waits for the
-independent source/worker review and complete packaged interaction qualification.
+before returning any candidate bytes. Independent source/worker review and
+packaged interaction qualification do not expand that admission matrix.
 
 Reduction admission also refuses operators on raw range arguments (for example
 `SUM(A1:A2*B1:B2)` and `SUM((A1:A2)+1)`), including grouped/unary forms. Ordinary
