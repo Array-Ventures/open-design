@@ -415,3 +415,41 @@
   .workspace :global(.deck-floating-reset) { padding: 0 4px; }
   .workspace :global(.deck-floating-reset kbd) { display: none; }
 }
+
+/* The slide rail is shell chrome; authored thumbnail colors stay inside it. */
+.workspace :global(.deck-thumbnail-rail) {
+  background: var(--color-background-secondary-default);
+  box-shadow: inset -1px 0 0 var(--color-separator-border);
+}
+.workspace :global(.deck-thumbnail-list) {
+  scrollbar-color: var(--color-foreground-icon-quaternary) transparent;
+}
+.workspace :global(.deck-thumbnail-list::-webkit-scrollbar-thumb) {
+  background-color: var(--color-foreground-icon-quaternary);
+}
+.workspace :global(.deck-thumbnail-list::-webkit-scrollbar-thumb:hover) {
+  background-color: var(--color-foreground-icon-tertiary);
+}
+.workspace :global(.deck-thumbnail-button) { color: var(--color-text-secondary); }
+.workspace :global(.deck-thumbnail-button:hover:not(:disabled)),
+.workspace :global(.deck-thumbnail-button.active) { color: var(--color-text-primary); }
+.workspace :global(.deck-thumbnail-frame) {
+  background: var(--color-background-primary-default);
+  box-shadow: inset 0 0 0 1px var(--color-separator-border);
+}
+.workspace :global(.deck-thumbnail-button:hover .deck-thumbnail-frame) {
+  box-shadow: inset 0 0 0 1px var(--color-border-button-default);
+}
+.workspace :global(.deck-thumbnail-button.active .deck-thumbnail-frame) {
+  box-shadow: inset 0 0 0 1.5px var(--color-border-focus-ring),
+    0 0 0 2px var(--color-border-focus-ring);
+}
+.workspace :global(.preview-viewport:not(.preview-viewport-desktop).comment-preview-layer-with-deck-rail .deck-thumbnail-button:hover:not(:disabled) .deck-thumbnail-number) {
+  background: var(--color-background-secondary-hover);
+}
+.workspace :global(.preview-viewport:not(.preview-viewport-desktop).comment-preview-layer-with-deck-rail .deck-thumbnail-button.active .deck-thumbnail-number) {
+  color: var(--color-text-primary);
+  background: var(--color-background-secondary-hover);
+  border-color: var(--color-border-focus-ring);
+  box-shadow: none;
+}
