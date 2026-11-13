@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { lstat, readFile, readlink } from 'node:fs/promises';
+import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 export interface BuildSourceIdentity { sourceCommit: string; sourceTreeSha256: string; dirty: boolean }
@@ -14,13 +14,28 @@ export async function captureBuildSource(root: string, allowDirty = false): Prom
   if (dirty && !allowDirty) throw new Error('Production packages require clean pinned source.');
   const hash = createHash('sha256');
   const files = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean).sort();
+  const checkedDirectories = new Set<string>();
   for (const name of files) {
-    if (name === 'apps/web/next-env.d.ts') continue;
+    // Checking the leaf alone would still follow a substituted parent directory.
+    const segments = name.split('/');
+    for (let index = 1; index < segments.length; index++) {
+      const directory = segments.slice(0, index).join('/');
+      if (checkedDirectories.has(directory)) continue;
+      try {
+        if ((await lstat(path.join(root, directory))).isSymbolicLink()) throw new Error('Authored build source must not contain symlinks.');
+        checkedDirectories.add(directory);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') break;
+        throw error;
+      }
+    }
     const file = path.join(root, name);
     try {
       const info = await lstat(file);
+      if (info.isSymbolicLink()) throw new Error('Authored build source must not contain symlinks.');
+      if (name === 'apps/web/next-env.d.ts') continue;
       hash.update(name + '\0');
-      hash.update(info.isSymbolicLink() ? await readlink(file) : await readFile(file));
+      hash.update(await readFile(file));
       hash.update('\0');
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   }

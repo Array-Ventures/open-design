@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { captureBuildSource, assertBuildSourceUnchanged } from './lib/build-source.js';
@@ -42,9 +42,26 @@ try {
   {
     const { root, git } = await fixture();
     await symlink('source.ts', path.join(root, 'entry.ts')); git('add', '.'); git('commit', '-qm', 'Source alias');
-    const source = await captureBuildSource(root);
-    await rm(path.join(root, 'entry.ts')); await symlink('different.ts', path.join(root, 'entry.ts'));
-    await assert.rejects(assertBuildSourceUnchanged(root, source), /Source changed/);
+    await assert.rejects(captureBuildSource(root), /must not contain symlinks/);
+    await assert.rejects(captureBuildSource(root, true), /must not contain symlinks/);
+  }
+  {
+    const { root } = await fixture(), source = await captureBuildSource(root);
+    await rm(path.join(root, 'source.ts')); await symlink('external.ts', path.join(root, 'source.ts'));
+    await assert.rejects(assertBuildSourceUnchanged(root, source), /must not contain symlinks/);
+  }
+  {
+    const { root } = await fixture(), source = await captureBuildSource(root);
+    await rename(path.join(root, 'apps/web'), path.join(root, 'apps/actual-web'));
+    await symlink('actual-web', path.join(root, 'apps/web'));
+    await assert.rejects(assertBuildSourceUnchanged(root, source), /must not contain symlinks/);
+  }
+  {
+    const { root } = await fixture(), source = await captureBuildSource(root);
+    await rm(path.join(root, 'apps/web/next-env.d.ts'));
+    await symlink('../../source.ts', path.join(root, 'apps/web/next-env.d.ts'));
+    await assert.rejects(captureBuildSource(root, true), /must not contain symlinks/);
+    await assert.rejects(assertBuildSourceUnchanged(root, source), /must not contain symlinks/);
   }
   {
     const { root } = await fixture(), source = await captureBuildSource(root);
@@ -53,5 +70,5 @@ try {
     await writeFile(path.join(root, 'apps/web/next-env.d.ts'), '// initial generated path\n');
     await assertBuildSourceUnchanged(root, source);
   }
-  process.stdout.write('Build-source pinning: 5 checks passed.\n');
+  process.stdout.write('Build-source pinning: 8 checks passed.\n');
 } finally { await Promise.all(roots.map(root => rm(root, { recursive: true, force: true }))); }

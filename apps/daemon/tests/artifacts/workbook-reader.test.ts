@@ -58,6 +58,23 @@ describe('workbook source reader', () => {
     await expect(readXlsxWorkbook(input)).rejects.toMatchObject({ code: 'WORKBOOK_UNSUPPORTED' });
   });
 
+  it.each(['same target', 'different target'])('refuses multiple theme owners with %s without changing the source', async target => {
+    const input = await alter(await fixture(), async zip => {
+      const name = 'xl/_rels/workbook.xml.rels', document = parseWorkbookXml(await zip.file(name)!.async('nodebuffer'));
+      const relation = Array.from(document.getElementsByTagName('Relationship')).find(node => node.getAttribute('Type')?.endsWith('/theme'))!;
+      const duplicate = relation.cloneNode(true) as typeof relation;
+      duplicate.setAttribute('Id', 'rIdDuplicateTheme');
+      if (target === 'different target') {
+        zip.file('xl/theme/theme2.xml', await zip.file('xl/theme/theme1.xml')!.async('nodebuffer'));
+        duplicate.setAttribute('Target', 'theme/theme2.xml');
+      }
+      relation.parentNode!.appendChild(duplicate); zip.file(name, writeWorkbookXml(document));
+    });
+    const before = Buffer.from(input);
+    await expect(readXlsxWorkbook(input)).rejects.toMatchObject({ code: 'WORKBOOK_UNSUPPORTED' });
+    expect(input).toEqual(before);
+  });
+
   it('reads sparse typed cells, cached formulas, formatting, ranges, dimensions and hidden sheets', async () => {
     const input = await fixture(), before = Buffer.from(input);
     const { model, parts, sheetParts } = await readXlsxWorkbook(input);

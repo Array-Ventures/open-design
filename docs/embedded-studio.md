@@ -282,8 +282,9 @@ package remains the browser acceptance gate.
 The current reader admits the canonical `xl/workbook.xml` root, canonical
 `xl/sharedStrings.xml` and `xl/styles.xml` owners when present, and worksheet
 relationships selecting `xl/worksheets/sheetN.xml`. Relocated or ambiguous
-importer parts, including canonical shared-string/style files without their
-owning relationship, return `WORKBOOK_UNSUPPORTED` before importing values.
+importer parts, canonical shared-string/style files without their owning
+relationship, and multiple theme owners return `WORKBOOK_UNSUPPORTED` before
+importing values.
 This prevents combining relationship-selected cells with a different part’s
 strings or formatting. Refusal leaves the original input bytes untouched.
 General relocated OPC support remains unfinished: it needs an import-only
@@ -301,6 +302,11 @@ pinned tree digest and includes CSV in the supported formats. A changed commit
 or source tree fails packaging rather than attributing existing output to the
 new source. Next’s generated type-reference file is excluded from the tree
 digest and companion builds restore it before checking the final identity.
+Authored source symlinks are unsupported, including symlinked parent directories
+and the generated type-reference path; both initial capture and final checking
+reject them, even in dirty development builds. Dependency links under ignored
+`node_modules` are outside this authored-tree identity. Package inventories and
+pinned dependency installation remain separate build/distribution gates.
 
 Focused source-identity regressions: `pnpm exec tsx scripts/test-build-source.ts`.
 Workbook admission regressions: `pnpm --filter @open-design/daemon exec vitest run

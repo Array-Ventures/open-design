@@ -10,6 +10,7 @@ type Relationship = { type: string; target: string; external: boolean };
 export function assertWorkbookImportLayout(parts: WorkbookParts, mainPart: string, links: ReadonlyMap<string, Relationship>): void {
   const unsupported = () => new WorkbookFormatError('This workbook uses a relocated or ambiguous importer part. Its source has not changed.', 'WORKBOOK_UNSUPPORTED');
   if (mainPart !== 'xl/workbook.xml') throw unsupported();
+  if ([...links.values()].filter(link => link.type.endsWith('/theme')).length > 1) throw unsupported();
   for (const [kind, expected] of [['sharedStrings', 'xl/sharedStrings.xml'], ['styles', 'xl/styles.xml']] as const) {
     const matching = [...links.values()].filter(link => link.type.endsWith(`/${kind}`));
     if (matching.length > 1) throw unsupported();
