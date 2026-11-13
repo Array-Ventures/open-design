@@ -19,6 +19,7 @@ export function insertionPlacement(
   start: Point,
   end: Point | null,
   element: ManualEditInsertion,
+  anchor: 'start' | 'center' = 'start',
 ): InsertionPlacement | null {
   const { rect } = surface;
   if (![...Object.values(rect), ...Object.values(start), ...(end ? Object.values(end) : []),
@@ -50,7 +51,8 @@ export function insertionPlacement(
       : element.kind === 'text' ? { width: 240, height: 48 }
       : { width: 160, height: line ? 2 : 96 };
     width = Math.min(preferred.width, surface.clientWidth); height = Math.min(preferred.height, surface.clientHeight);
-    left = Math.min(origin.x, surface.clientWidth - width); top = Math.min(origin.y, surface.clientHeight - height);
+    left = clamp(origin.x - (anchor === 'center' ? width / 2 : 0), surface.clientWidth - width);
+    top = clamp(origin.y - (anchor === 'center' ? height / 2 : 0), surface.clientHeight - height);
   }
   width = Math.min(width, surface.clientWidth - left, 4096);
   height = Math.min(height, surface.clientHeight - top, 4096);

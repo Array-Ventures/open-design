@@ -61,7 +61,7 @@ export function buildInsertionBridge(): string {
     // mixing two coordinate systems in one persisted object.
     var current = surfaceFor(chosen.element);
     if (!current || current.element !== chosen.element || JSON.stringify(current.surface) !== JSON.stringify(chosen.surface)) { cancel(); return; }
-    var placement = place(chosen.surface, gesture.start, end, request.element);
+    var placement = place(chosen.surface, gesture.start, end, request.element, end === null ? 'center' : 'start');
     clear(); suppressClick = end !== null;
     if (!placement) { post({type:'od-insert-cancelled',requestId:request.requestId}); return; }
     post({type:'od-insert-placement',requestId:request.requestId,parentId:chosen.id,placement:placement});

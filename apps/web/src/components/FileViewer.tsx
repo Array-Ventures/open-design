@@ -11,6 +11,7 @@ import { CommentListPopover, CommentReviewPage, ResolveCommentButton, useComment
 import { CommentThreadMenu } from './embedded/CommentThreadMenu';
 import { ArtifactAnnotationControls } from './embedded/ArtifactAnnotationControls';
 import { ArtifactEditControls } from './embedded/ArtifactEditControls';
+import { manualEditFloatingPanelStyle } from '../edit-mode/panel-placement';
 import { ArtifactInsertionToolbar } from './embedded/ArtifactInsertionToolbar';
 import { SpeakerNotesDrawer } from './embedded/SpeakerNotesDrawer';
 import { DashboardControls } from './embedded/DashboardControls';
@@ -1478,40 +1479,6 @@ function pickLatestShareDeployment(
     .filter((deployment): deployment is WebDeploymentInfo =>
       Boolean(deployment && shareUrlForDeployment(deployment) && deployResultState(deployment.status) !== 'failed'))
     .sort(compareDeploymentsByNewest)[0] ?? null;
-}
-
-function manualEditFloatingPanelStyle(
-  target: ManualEditTarget,
-  previewScale: number,
-  canvasSize: PreviewCanvasSize | undefined,
-): CSSProperties {
-  const scale = Number.isFinite(previewScale) && previewScale > 0 ? previewScale : 1;
-  const panelWidth = 320;
-  const preferredPanelHeight = 380;
-  const pad = 12;
-  const canvasWidth = canvasSize?.width ?? 1200;
-  const canvasHeight = canvasSize?.height ?? 800;
-  const panelHeight = Math.min(preferredPanelHeight, Math.max(260, canvasHeight - pad * 2));
-  const targetLeft = target.rect.x * scale;
-  const targetTop = target.rect.y * scale;
-  const targetRight = (target.rect.x + target.rect.width) * scale;
-  let left = targetRight + pad;
-  if (left + panelWidth > canvasWidth - pad) {
-    left = Math.max(pad, targetLeft - panelWidth - pad);
-  }
-  const top = Math.max(
-    pad,
-    Math.min(targetTop, Math.max(pad, canvasHeight - panelHeight - pad)),
-  );
-  // Height is left to the content (auto): a short inspector (e.g. typography
-  // only) should be a compact card, not a tall half-empty panel. The cap only
-  // engages for long inspectors, at which point the scroll body takes over.
-  return {
-    left,
-    top,
-    width: panelWidth,
-    maxHeight: panelHeight,
-  };
 }
 
 // Anchors the hover "edit params" affordance to the top-right corner of the
@@ -9404,6 +9371,7 @@ function HtmlViewer({
   const [selectedManualEditTarget, setSelectedManualEditTarget] = useState<ManualEditTarget | null>(null);
   const [manualEditHoverTarget, setManualEditHoverTarget] = useState<ManualEditTarget | null>(null);
   const [manualEditPageStylesOpen, setManualEditPageStylesOpen] = useState(false);
+  const [manualEditInsertionInset, setManualEditInsertionInset] = useState(64);
   const [manualEditPanelPosition, setManualEditPanelPosition] = useState<{ left: number; top: number } | null>(null);
   const [manualEditDraftDirty, setManualEditDraftDirty] = useState(false);
   const selectManualEditTargetRef = useRef<(target: ManualEditTarget | null) => Promise<void>>(async () => {});
@@ -17141,10 +17109,11 @@ function HtmlViewer({
               selectedManualEditTarget,
               overlayPreviewScale,
               previewBodySize,
+              {bottomInset:embedded ? manualEditInsertionInset : 0,position:manualEditPanelPosition},
             ),
-            ...(manualEditPanelPosition ?? {}),
           }
-        : { top: 12, right: 12, width: 320 }}
+        : { top: 12, right: 12, width: 320, maxHeight: Math.max(0,(previewBodySize?.height ?? 800) - (embedded ? manualEditInsertionInset : 0) - 24) }}
+      reservedBottom={embedded ? manualEditInsertionInset : 0}
       onFloatingPositionChange={selectedManualEditTarget ? setManualEditPanelPosition : undefined}
       onPickImage={async (pickedFile) => {
         const result = await uploadProjectFiles(projectId, [pickedFile], undefined, workspaceContext);
@@ -18352,7 +18321,7 @@ function HtmlViewer({
             </div>
       </>)}
       <div className="viewer-body" ref={previewBodyRef}>
-        {embedded && workspaceActive && manualEditMode && !viewerOnly ? <ArtifactInsertionToolbar key={`insertion:${file.name}`} source={source} busy={manualEditSaving}
+        {embedded && workspaceActive && manualEditMode && !viewerOnly ? <ArtifactInsertionToolbar key={`insertion:${file.name}`} source={source} busy={manualEditSaving || manualEditEntryHandoffPending || manualEditExitHandoffPending} onHeightChange={setManualEditInsertionInset}
           getFrame={() => iframeRef.current} getSource={() => sourceRef.current}
           onPrepare={async () => {
             if (!(await flushManualEditPanelDraft())) return false;

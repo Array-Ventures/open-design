@@ -51,6 +51,7 @@ export function ManualEditPanel({
   pageStylesEnabled = true,
   sourceControls = true,
   floatingStyle,
+  reservedBottom = 0,
   floatingClassName,
   onFloatingPositionChange,
   locked = false,
@@ -79,6 +80,7 @@ export function ManualEditPanel({
   onApplyTokenSuggestion?: (prop: keyof ManualEditStyles, value: string) => void;
   onInspectValueSelect?: (prop: ProjectDesignTokenSuggestionProp, value: string) => void;
   floatingStyle?: CSSProperties;
+  reservedBottom?: number;
   floatingClassName?: string;
   onFloatingPositionChange?: (position: { left: number; top: number }) => void;
   /** When true the panel is pinned: no dragging, and it does not reposition
@@ -163,7 +165,7 @@ export function ManualEditPanel({
     const panelRect = panel.getBoundingClientRect();
     const pad = 8;
     const maxLeft = Math.max(pad, parentRect.width - panelRect.width - pad);
-    const maxTop = Math.max(pad, parentRect.height - panelRect.height - pad);
+    const maxTop = Math.max(pad, parentRect.height - panelRect.height - pad - Math.max(0,reservedBottom));
     const ownerDocument = panel.ownerDocument;
     const prevCursor = ownerDocument.body.style.cursor;
     const prevUserSelect = ownerDocument.body.style.userSelect;

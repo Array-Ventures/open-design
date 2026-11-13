@@ -61,3 +61,30 @@ it('does not arm a canvas after preparation fails', async () => {
   expect(h.post.mock.calls.some(([data]) => data.type === 'od-insert-arm')).toBe(false);
   expect(h.onInsert).not.toHaveBeenCalled();
 });
+
+it('retires geometry on frame load and explains why the pending insertion stopped', async () => {
+  const h=harness(), first=await h.arm();
+  await act(async () => h.frame.dispatchEvent(new Event('load')));
+  expect(h.post.mock.calls.filter(([data]) => data.type === 'od-insert-arm')).toHaveLength(1);
+  expect(screen.getByRole('status').textContent).toContain('canvas refreshed');
+  await h.send({type:'od-insert-placement',requestId:first.requestId,parentId:'slide',placement:{left:10,top:20,width:240,height:48}});
+  expect(h.onInsert).not.toHaveBeenCalled();
+});
+it('reports failed preparation instead of silently dropping the chosen action', async () => {
+  const h=harness(); h.props.onPrepare.mockResolvedValue(false);
+  fireEvent.click(screen.getByRole('button',{name:'Insert text'}));
+  await waitFor(() => expect(screen.getByRole('status').textContent).toContain('not ready to insert'));
+  expect(h.onInsert).not.toHaveBeenCalled();
+});
+it('measures insertion chrome and releases its reserved space when removed', () => {
+  let resize: ResizeObserverCallback | null = null;
+  const disconnect=vi.fn(), report=vi.fn();
+  vi.stubGlobal('ResizeObserver',class {constructor(callback: ResizeObserverCallback){resize=callback;} observe(){} disconnect=disconnect;});
+  const rect=vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockReturnValue({height:96} as DOMRect);
+  const view=render(<ArtifactInsertionToolbar source="source" busy={false} getFrame={() => null} getSource={() => 'source'} onPrepare={async () => true} onInsert={async () => true} onHeightChange={report} />);
+  expect(report).toHaveBeenLastCalledWith(120);
+  rect.mockReturnValue({height:144} as DOMRect);
+  act(() => resize!([],{} as ResizeObserver)); expect(report).toHaveBeenLastCalledWith(168);
+  view.unmount(); expect(disconnect).toHaveBeenCalledOnce(); expect(report).toHaveBeenLastCalledWith(0);
+  rect.mockRestore();
+});

@@ -89,6 +89,6 @@ describe('canvas insertion bridge', () => {
     Object.defineProperty(win,'innerWidth',{value:400}); Object.defineProperty(win,'innerHeight',{value:600});
     win.document.elementFromPoint = () => section;
     arm(); win.dispatchEvent(new win.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
-    expect(posts).toContainEqual({type:'od-insert-placement',requestId:'request-1',parentId:'slide',placement:{left:190,top:190,width:240,height:48}}); win.close();
+    expect(posts).toContainEqual({type:'od-insert-placement',requestId:'request-1',parentId:'slide',placement:{left:70,top:166,width:240,height:48}}); win.close();
   });
 });

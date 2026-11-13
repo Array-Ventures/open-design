@@ -7,6 +7,16 @@ const surface: InsertionSurface = {
 };
 const text = { kind: 'text', text: 'New text' } as const;
 describe('insertion coordinates', () => {
+  it('centers keyboard insertion bounds, accounting for border, scale and scroll', () => {
+    expect(insertionPlacement({...surface,scrollLeft:30,scrollTop:240},{x:255,y:305},null,text,'center'))
+      .toEqual({left:210,top:416,width:240,height:48});
+  });
+  it('clamps centered bounds at the edge without changing click or drag anchoring', () => {
+    expect(insertionPlacement(surface,{x:105,y:205},null,text,'center'))
+      .toEqual({left:0,top:0,width:240,height:48});
+    expect(insertionPlacement(surface,{x:155,y:255},{x:255,y:305},text,'center'))
+      .toEqual({left:100,top:100,width:200,height:100});
+  });
   it('maps a scaled bordered canvas to authored CSS pixels', () => {
     expect(insertionPlacement(surface, { x: 155, y: 255 }, { x: 255, y: 305 }, text))
       .toEqual({ left: 100, top: 100, width: 200, height: 100 });
