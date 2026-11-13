@@ -53,3 +53,9 @@ describe('literal CSV preservation adapter', () => {
     expect(source.source).toBe('a,b\nc');
   });
 });
+
+it.each(['sheets', 'visibility', 'structure'] as const)('explicitly refuses unsupported CSV plan owner %s rather than dropping it', owner => {
+  const source = readCsvDocument(Buffer.from('a,b'));
+  const extra = owner === 'sheets' ? [{ sheetId: '1', name: 'New', origin: 'new' }] : owner === 'visibility' ? [{ sheetId: 'csv', visibility: 'hidden' }] : [{ sheetId: 'csv', sourceRows: 1, sourceColumns: 2, rows: [0], columns: [0, 1] }];
+  expect(() => patchCsvDocument(source, { sourceSha256: source.sourceSha256, edits: [], [owner]: extra })).toThrow('CSV cannot store');
+});

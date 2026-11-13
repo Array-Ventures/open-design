@@ -1,11 +1,12 @@
+import type { WorkbookHistoricalSheetRef } from '@open-design/contracts/runtime/workbook';
 export class WorkbookHostError extends Error {
   constructor(message: string, readonly status = 0, readonly code = 'WORKBOOK_UNAVAILABLE') { super(message); }
 }
-type Request = { action: 'prepare'; body: { operationId: string; fileName: string; format: 'workbook' | 'xlsx' | 'csv'; workbookEditPlan?: string } }
+type Request = { action: 'prepare'; body: { operationId: string; fileName: string; format: 'workbook' | 'xlsx' | 'csv'; workbookEditPlan?: string; workbookSheetSources?: WorkbookHistoricalSheetRef[] } }
   | { action: 'read-render' | 'read-preview' | 'remove-render' | 'cancel-render'; renderId: string }
   | { action: 'save'; body: { operationId: string; renderId: string } }
   | { action: 'read-save'; saveId: string }
-  | { action: 'cancel-preparation'; body: { operationId: string; preparationId: string; fileName: string; workbookEditPlan: string; renderId?: string } }
+  | { action: 'cancel-preparation'; body: { operationId: string; preparationId: string; fileName: string; workbookEditPlan: string; workbookSheetSources?: WorkbookHistoricalSheetRef[]; renderId?: string } }
   | { action: 'list-history'; fileName: string; limit?: number; cursor?: string }
   | { action: 'prepare-restore'; body: { operationId: string; fileName: string; versionId: string; versionSha256: string; sourceSha256: string } };
 

@@ -38,7 +38,7 @@ export function readCsvDocument(bytes: Uint8Array): CsvDocument {
 export function patchCsvDocument(source: CsvDocument, raw: unknown): { bytes: Buffer; model: WorkbookDocument } {
   const plan = workbookEditPlanSchema.parse(raw);
   if (plan.sourceSha256 !== source.sourceSha256) invalid('The CSV changed after these edits were prepared.');
-  if (plan.dimensions?.length || plan.styles?.length) throw new WorkbookFormatError('CSV cannot store formatting or row/column dimensions.', 'WORKBOOK_UNSUPPORTED');
+  if (plan.sheets || plan.visibility?.length || plan.structure?.length || plan.dimensions?.length || plan.styles?.length) throw new WorkbookFormatError('CSV cannot store worksheet structure, visibility, formatting or row/column dimensions.', 'WORKBOOK_UNSUPPORTED');
   const changes: { field: Field; value: string }[] = [], seen = new Set<string>();
   for (const edit of plan.edits) {
     const cell = edit.cell, key = `${cell.row}:${cell.column}`;

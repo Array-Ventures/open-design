@@ -73,6 +73,29 @@ export type WorkbookStyleEdit = z.infer<typeof workbookStyleEditSchema>;
 /** Worksheet visibility is independent of name/order/geometry. veryHidden is source-owned. */
 export const workbookVisibilityEditSchema = z.object({ sheetId: id, visibility: z.enum(['visible', 'hidden']) }).strict();
 export type WorkbookVisibilityEdit = z.infer<typeof workbookVisibilityEditSchema>;
+
+/** Source-owned final sheet projection. UI capability remains disabled until
+ * actual SDK identities, recovery and producer admission are qualified. */
+export const WORKBOOK_SHEET_ID_MAX = 65_535;
+const workbookSheetIdentity = {
+  sheetId: z.string().regex(/^[1-9][0-9]{0,4}$/).refine(value => Number(value) <= WORKBOOK_SHEET_ID_MAX, 'Worksheet identity exceeds its bounded importer limit.'),
+  name: z.string().min(1).max(31).refine(value => !/[:\\/\?*\[\]\u0000-\u001f\uFFFE\uFFFF\p{Cs}]/u.test(value) && !value.startsWith("'") && !value.endsWith("'"), 'Invalid worksheet name.'),
+};
+const workbookSourceSheetEntry = z.object({ ...workbookSheetIdentity, origin: z.enum(['source', 'new']) }).strict();
+export const workbookHistoricalSheetRefSchema = z.object({ versionId: z.string().regex(/^[A-Za-z0-9_-]{1,200}$/), versionSha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
+const workbookRestoredSheetEntry = z.object({ ...workbookSheetIdentity, origin: z.literal('restore'), template: workbookHistoricalSheetRefSchema }).strict();
+function uniqueSheetProjection(sheets: readonly {sheetId: string; name: string}[], context: z.RefinementCtx) {
+  const ids = new Set<string>(), names = new Set<string>();
+  for (const sheet of sheets) {
+    if (ids.has(sheet.sheetId) || names.has(sheet.name.toLowerCase())) context.addIssue({ code: 'custom', message: 'Duplicate worksheet identity or name.' });
+    ids.add(sheet.sheetId); names.add(sheet.name.toLowerCase());
+  }
+}
+export const workbookSourceSheetProjectionSchema = z.array(workbookSourceSheetEntry).min(1).max(WORKBOOK_MODEL_LIMITS.sheets).superRefine(uniqueSheetProjection);
+export const workbookSheetProjectionSchema = z.array(z.union([workbookSourceSheetEntry, workbookRestoredSheetEntry])).min(1).max(WORKBOOK_MODEL_LIMITS.sheets).superRefine(uniqueSheetProjection);
+export type WorkbookSheetProjection = z.infer<typeof workbookSourceSheetProjectionSchema>;
+export type WorkbookSheetPlanProjection = z.infer<typeof workbookSheetProjectionSchema>;
+export type WorkbookHistoricalSheetRef = z.infer<typeof workbookHistoricalSheetRefSchema>;
 /** Final source-axis ownership, derived from the actual SDK snapshot. Null
  * positions are inserted; omitted source positions are deleted. */
 export const workbookStructureEditSchema = z.object({ sheetId: id, sourceRows: z.number().int().min(1).max(100_000), sourceColumns: z.number().int().min(1).max(16_384),
@@ -81,7 +104,17 @@ export const workbookStructureEditSchema = z.object({ sheetId: id, sourceRows: z
   for (const [entries, count] of [[edit.rows, edit.sourceRows], [edit.columns, edit.sourceColumns]] as const) { let previous = -1; for (const origin of entries) if (origin !== null) { if (origin <= previous || origin >= count) context.addIssue({ code: 'custom', message: 'Structural origins must be unique, ordered and source-bound.' }); previous = origin; } }
 });
 export type WorkbookStructureEdit = z.infer<typeof workbookStructureEditSchema>;
-export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), styles: z.array(workbookStyleEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), visibility: z.array(workbookVisibilityEditSchema).max(WORKBOOK_MODEL_LIMITS.sheets).optional(), structure: z.array(workbookStructureEditSchema).max(WORKBOOK_MODEL_LIMITS.sheets).optional() }).strict().superRefine((plan,context)=>{
+export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), styles: z.array(workbookStyleEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), visibility: z.array(workbookVisibilityEditSchema).max(WORKBOOK_MODEL_LIMITS.sheets).optional(), structure: z.array(workbookStructureEditSchema).max(WORKBOOK_MODEL_LIMITS.sheets).optional(), sheets: workbookSheetProjectionSchema.optional() }).strict().superRefine((plan,context)=>{
+  const historical = new Map<string, string>();
+  for (const sheet of plan.sheets ?? []) if (sheet.origin === 'restore') {
+    const previous = historical.get(sheet.template.versionId);
+    if (previous && previous !== sheet.template.versionSha256) context.addIssue({ code: 'custom', message: 'Historical worksheet version has conflicting digests.' });
+    historical.set(sheet.template.versionId, sheet.template.versionSha256);
+  }
+  if (plan.sheets) {
+    const finalIds = new Set(plan.sheets.map(sheet => sheet.sheetId));
+    for (const edit of [...plan.edits, ...plan.dimensions ?? [], ...plan.styles ?? [], ...plan.visibility ?? [], ...plan.structure ?? []]) if (!finalIds.has(edit.sheetId)) context.addIssue({ code: 'custom', message: 'An edit targets a worksheet outside the final sheet projection.' });
+  }
   const structuralIds = new Set<string>(); let axes = 0;
   for (const edit of plan.structure ?? []) {
     if (structuralIds.has(edit.sheetId)) context.addIssue({ code: 'custom', message: 'Duplicate structural worksheet edit.' });
@@ -216,3 +249,10 @@ export const workbookWriteReceiptSchema = workbookWriteIdentitySchema.extend({
     || receipt.state === 'pending' && receipt.actualSha256 !== null) context.addIssue({ code: z.ZodIssueCode.custom, message: 'Workbook receipt state is inconsistent.' });
 });
 export type WorkbookWriteReceipt = z.infer<typeof workbookWriteReceiptSchema>;
+
+/** Exact stable outer references derived from the retained strict plan. */
+export function workbookSheetSourcesForPlan(plan: z.infer<typeof workbookEditPlanSchema>): WorkbookHistoricalSheetRef[] | undefined {
+  const checked = workbookEditPlanSchema.parse(plan), refs = new Map<string, WorkbookHistoricalSheetRef>();
+  for (const sheet of checked.sheets ?? []) if (sheet.origin === 'restore') refs.set(sheet.template.versionId, sheet.template);
+  return refs.size ? [...refs.values()].sort((a,b) => a.versionId < b.versionId ? -1 : a.versionId > b.versionId ? 1 : 0) : undefined;
+}

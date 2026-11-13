@@ -1,17 +1,20 @@
+import { frozenWorkbookSheetTemplates, type FrozenWorkbookSheetSource } from './sheet-sources.js';
+import { calculateWorkbookRestoredSheetEdits } from '../artifacts/workbook/sheet-restoration.js';
 import { selectedWorksheetCsv } from '../artifacts/workbook/selected-sheet-csv.js';
 import { renderCsv } from './csv.js';
 import { createHash } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { workbookEditPlanSchema, workbookPreviewSchema } from '@open-design/contracts/runtime/workbook';
+import { workbookEditPlanSchema, workbookPreviewSchema, workbookSourceSheetProjectionSchema } from '@open-design/contracts/runtime/workbook';
 import { readXlsxWorkbook } from '../artifacts/workbook/reader.js';
-import { calculateWorkbookCellEdits } from '../artifacts/workbook/calculated-patch.js';
+import { calculateWorkbookCellEdits, calculateWorkbookSheetEdits } from '../artifacts/workbook/calculated-patch.js';
 import { WorkbookFormatError } from '../artifacts/workbook/package.js';
 
 /** Called only by the existing networkless, memory-limited render container.
  * Input is the host's immutable source snapshot; workspace files are not mounted
  * writable and this worker never persists a live edit. */
-export async function renderWorkbook(output: string, input: { fileName: string; format: 'workbook' | 'xlsx' | 'csv'; dataFile?: string; sheetId?: string; workbookSourceSha256?: string; restore?: { fileName: string; sourceSha256: string; targetSha256: string } }, asset: (name: string) => Promise<Buffer>): Promise<{ file: string; mime: string }> {
+export async function renderWorkbook(output: string, input: { fileName: string; format: 'workbook' | 'xlsx' | 'csv'; dataFile?: string; sheetId?: string; workbookSourceSha256?: string; workbookSheetSources?: FrozenWorkbookSheetSource[]; restore?: { fileName: string; sourceSha256: string; targetSha256: string } }, asset: (name: string) => Promise<Buffer>): Promise<{ file: string; mime: string }> {
+  if (input.workbookSheetSources && (!/\.xlsx$/i.test(input.fileName) || !['workbook', 'xlsx'].includes(input.format) || !input.dataFile || input.restore)) throw new WorkbookFormatError('Historical worksheet assets require an XLSX edit plan.');
   if (/\.csv$/i.test(input.fileName)) return renderCsv(output, input, asset);
   if (input.format === 'csv' && (!input.sheetId || !input.workbookSourceSha256 || input.dataFile || input.restore)) throw new WorkbookFormatError('XLSX CSV output requires a selected worksheet and acknowledged source digest without edits or restore.');
   const bytes = await asset(input.fileName), sourceSha256 = createHash('sha256').update(bytes).digest('hex');
@@ -38,7 +41,12 @@ export async function renderWorkbook(output: string, input: { fileName: string; 
     if (plan.length > 16 * 1024 * 1024) throw new WorkbookFormatError('Workbook edit plan exceeds its byte limit.', 'WORKBOOK_LIMIT');
     const parsed = workbookEditPlanSchema.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(plan)));
     if (parsed.sourceSha256 !== sourceSha256) throw new WorkbookFormatError('The workbook changed after these edits were prepared. Reload it before exporting these edits.');
-    prepared = await calculateWorkbookCellEdits(source, parsed.edits, parsed.dimensions, parsed.styles, parsed.visibility, parsed.structure);
+    const templates = await frozenWorkbookSheetTemplates(parsed.sheets, input.workbookSheetSources, asset);
+    prepared = templates.length
+      ? await calculateWorkbookRestoredSheetEdits(source, parsed.sheets!, templates, parsed.edits, parsed.dimensions, parsed.styles, parsed.visibility, parsed.structure)
+      : parsed.sheets
+        ? await calculateWorkbookSheetEdits(source, workbookSourceSheetProjectionSchema.parse(parsed.sheets), parsed.edits, parsed.dimensions, parsed.styles, parsed.visibility, parsed.structure)
+        : await calculateWorkbookCellEdits(source, parsed.edits, parsed.dimensions, parsed.styles, parsed.visibility, parsed.structure);
   }
   if (input.format === 'workbook') {
     const body = Buffer.from(JSON.stringify(workbookPreviewSchema.parse({ sourceSha256, model: prepared?.model ?? source.model })));

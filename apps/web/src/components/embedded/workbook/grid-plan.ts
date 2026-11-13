@@ -10,5 +10,5 @@ export function workbookGridPlan(model: WorkbookDocument, sha256: string, initia
 
 /** Keep dirty/journal/drain admission aligned for every supported plan owner. */
 export function workbookPlanHasChanges(plan: ReturnType<typeof workbookGridPlan>): boolean {
-  return Boolean(plan.edits.length || plan.dimensions?.length || plan.styles?.length || plan.visibility?.length || plan.structure?.length);
+  return Boolean(plan.edits.length || plan.dimensions?.length || plan.styles?.length || plan.visibility?.length || plan.structure?.length || plan.sheets?.length);
 }

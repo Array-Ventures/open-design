@@ -3,6 +3,8 @@ import { DOMParser, XMLSerializer, type Document } from '@xmldom/xmldom';
 import { SaxesParser } from 'saxes';
 import { WorkbookFormatError, WORKBOOK_PACKAGE_LIMITS } from './package.js';
 
+export const WORKBOOK_XML_STRUCTURE_LIMITS = { depth: 128, nodes: 250_000 } as const;
+
 export function parseWorkbookXml(bytes: Buffer): Document {
   if (bytes.length > WORKBOOK_PACKAGE_LIMITS.partBytes) throw new WorkbookFormatError('Workbook XML exceeds its limit.', 'WORKBOOK_LIMIT');
   let text: string;
@@ -20,7 +22,7 @@ export function parseWorkbookXml(bytes: Buffer): Document {
     const parser = new SaxesParser({ xmlns: true });
     parser.on('error', error => { throw error; });
     parser.on('opentag', () => {
-      if (++depth > 128 || ++nodes > 250_000) throw new WorkbookFormatError('Workbook XML exceeds its structural limit.', 'WORKBOOK_LIMIT');
+      if (++depth > WORKBOOK_XML_STRUCTURE_LIMITS.depth || ++nodes > WORKBOOK_XML_STRUCTURE_LIMITS.nodes) throw new WorkbookFormatError('Workbook XML exceeds its structural limit.', 'WORKBOOK_LIMIT');
     });
     parser.on('closetag', () => { depth--; });
     parser.write(text).close();

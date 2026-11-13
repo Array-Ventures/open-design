@@ -41,7 +41,10 @@ describe('workbook model boundary', () => {
   it('bounds host commit metadata and keeps authority fields out of user edit plans', () => {
     const request = { operationId: '43370120-4626-43b7-ae9f-808ce5edc582', fileName: 'reports/book.xlsx', sourceSha256: 'a'.repeat(64), targetSha256: 'b'.repeat(64), actor: 'human:fixture', mode: 'reconcile' };
     expect(workbookCommitRequestSchema.parse(request)).toEqual(request);
-    for (const fileName of ['../book.xlsx', '/book.xlsx', 'a//book.xlsx', 'a/./book.xlsx', 'book.csv', 'a\\book.xlsx']) expect(workbookCommitRequestSchema.safeParse({ ...request, fileName }).success).toBe(false);
+    // Literal CSV uses this same existing conditional-save envelope. The old
+    // negative CSV expectation predates that supported source format.
+    for (const fileName of ['book.csv', 'reports/book.csv']) expect(workbookCommitRequestSchema.parse({ ...request, fileName }).fileName).toBe(fileName);
+    for (const fileName of ['../book.xlsx', '/book.xlsx', 'a//book.xlsx', 'a/./book.xlsx', 'book.txt', '../book.csv', 'a/./book.csv', 'a\\book.csv', 'a\\book.xlsx']) expect(workbookCommitRequestSchema.safeParse({ ...request, fileName }).success).toBe(false);
     expect(workbookCommitRequestSchema.safeParse({ ...request, mode: 'force' }).success).toBe(false);
     expect(workbookCommitRequestSchema.safeParse({ ...request, actor: 'untrusted actor' }).success).toBe(false);
     expect(workbookCommitRequestSchema.safeParse({ ...request, directory: '/host' }).success).toBe(false);
