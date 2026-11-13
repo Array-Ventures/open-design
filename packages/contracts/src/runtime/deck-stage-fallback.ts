@@ -132,7 +132,7 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
   ${DECK_TRANSITION_RUNTIME}
   var transitionStyle = document.createElement('style');
   transitionStyle.textContent = ${JSON.stringify(DECK_TRANSITION_CSS)};
-  document.head.appendChild(transitionStyle);
+  (document.head || document.documentElement).appendChild(transitionStyle);
 
   class OdDeckStageFallback extends HTMLElement {
     constructor() {

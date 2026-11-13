@@ -6,9 +6,9 @@ import { injectDeckStageFallback } from '@open-design/contracts/runtime/deck-sta
 type Attempt = { update: () => void; types: string[]; finish: () => void; skip: ReturnType<typeof vi.fn> };
 const documents: JSDOM[] = [];
 afterEach(() => { for (const dom of documents.splice(0)) dom.window.close(); });
-async function fixture(mode = 'magic-move', reduced = false, attributes = '') {
+async function fixture(mode = 'magic-move', reduced = false, attributes = '', removedHead = false) {
   const attempts: Attempt[] = [];
-  const dom = new JSDOM(injectDeckStageFallback(`<!doctype html><html><head></head><body><deck-stage transition="${mode}" ${attributes}><section class="slide"><h1 style="view-transition-name:authored!important">Shared title</h1></section><section class="slide"><h1>Shared title</h1></section><section class="slide"><h1>Shared title</h1></section></deck-stage></body></html>`), {
+  const dom = new JSDOM(injectDeckStageFallback(`<!doctype html><html><head></head><body>${removedHead ? '<script>document.head.remove()</script>' : ''}<deck-stage transition="${mode}" ${attributes}><section class="slide"><h1 style="view-transition-name:authored!important">Shared title</h1></section><section class="slide"><h1>Shared title</h1></section><section class="slide"><h1>Shared title</h1></section></deck-stage></body></html>`), {
     runScripts: 'dangerously', url: 'http://localhost',
     beforeParse(window) {
       Reflect.set(window, 'matchMedia', () => ({ matches: reduced }));
@@ -40,6 +40,11 @@ describe('presentation transition lifecycle', () => {
     f.attempts[0]!.finish(); await Promise.resolve();
     expect(titles[1]!.hasAttribute('style')).toBe(false);
   });
+  it('still initializes when authored content removed the head element', async () => {
+    const f = await fixture('none', false, '', true);
+    f.stage.next(); expect(f.active()).toBe(f.stage.children[1]);
+  });
+
   it('keeps navigation working when the native API is unavailable or throws', async () => {
     const f = await fixture(); Reflect.deleteProperty(f.dom.window.document, 'startViewTransition');
     f.stage.next(); expect(f.active()).toBe(f.stage.children[1]);
