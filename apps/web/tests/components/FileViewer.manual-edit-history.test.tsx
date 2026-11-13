@@ -203,6 +203,38 @@ describe('FileViewer manual edit history regressions', () => {
     });
   });
 
+  it('refreshes image fields and the reset baseline after Undo and Redo', async () => {
+    const original = '<!doctype html><html><body><img data-od-id="figure" src="original.svg" alt="Original figure"></body></html>';
+    let persisted = original;
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+      if (url.includes('/files') && init?.method === 'POST') {
+        persisted = JSON.parse(String(init.body)).content;
+        return new Response(JSON.stringify({ file: htmlPreviewFile() }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('/raw/preview.html')) return new Response(persisted);
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+    render(<FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()} liveHtml={original} />);
+    await enterManualEditMode();
+    await selectManualEditTarget({ ...heroTarget(), id: 'figure', kind: 'image', tagName: 'img', fields: { src: 'original.svg', alt: 'Original figure' } });
+    act(() => { panelState.props?.onApplyPatch({ kind: 'set-image', id: 'figure', src: 'replacement.svg', alt: 'New figure' }, 'Replace image'); });
+    await waitFor(() => expect(panelState.props?.draft.src).toBe('replacement.svg'));
+    await waitFor(() => expect(panelState.props?.busy).toBe(false));
+    act(() => { panelState.props?.onUndo(); });
+    await waitFor(() => expect(panelState.props?.draft.src).toBe('original.svg'));
+    expect(panelState.props?.draft.alt).toBe('Original figure');
+    expect(panelState.props?.selectedTarget?.fields.src).toBe('original.svg');
+    expect(panelState.props?.resetAvailable).toBe(false);
+    expect(persisted).toBe(original);
+    await waitFor(() => expect(panelState.props?.busy).toBe(false));
+    act(() => { panelState.props?.onRedo(); });
+    await waitFor(() => expect(panelState.props?.draft.src).toBe('replacement.svg'));
+    expect(panelState.props?.draft.alt).toBe('New figure');
+    expect(panelState.props?.selectedTarget?.fields.src).toBe('replacement.svg');
+    expect(panelState.props?.resetAvailable).toBe(false);
+  });
+
   it('uses the undone source snapshot for a follow-up edit after undo', async () => {
     const initialSource = '<!doctype html><html><body><h1 data-od-id="hero" style="color: #111111">Hero</h1></body></html>';
     let persistedSource = initialSource;

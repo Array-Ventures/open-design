@@ -256,6 +256,7 @@ import {
   buildSrcdoc,
   canActivateSrcDocTransport,
   htmlNeedsProjectPreviewBase,
+  htmlHasAuthoredBase,
   PREVIEW_REDIRECT_LOOP_MESSAGE,
 } from '../runtime/srcdoc';
 import { ThumbnailRailResize } from './embedded/ThumbnailRailResize';
@@ -10864,7 +10865,13 @@ function HtmlViewer({
     ),
     [currentSourceIdentity, routingHtmlSource, routingSourceIdentity],
   );
-  const requiresEmbeddedPreviewBase = embedded && !staticSnapshot && (relativeProjectAssetRefs || projectRootAssetRefs || needsProjectSrcDocBase === true);
+  const hasRelativeAuthoredSrcDocBase = useMemo(
+    () => needsProjectSrcDocBase === true && routingHtmlSource !== null && htmlHasAuthoredBase(routingHtmlSource),
+    [needsProjectSrcDocBase, routingHtmlSource],
+  );
+  // A relative authored base itself needs a scope. A document with no base
+  // and no project resources must not wait for a capability it never uses.
+  const requiresEmbeddedPreviewBase = embedded && !staticSnapshot && (relativeProjectAssetRefs || projectRootAssetRefs || hasRelativeAuthoredSrcDocBase);
   useEffect(() => {
     if (
       (workspaceContext?.workspaceType !== 'team' && !requiresEmbeddedPreviewBase)
@@ -14328,6 +14335,24 @@ function HtmlViewer({
     return `${prefix}${status}: ${saved.message}`;
   }
 
+  function refreshManualEditInspectorAfterHistory(base: string) {
+    const target = selectedManualEditTarget;
+    if (!target || selectedManualEditTargetIdRef.current !== target.id) {
+      setManualEditDraft(current => ({ ...current, fullSource: base }));
+      return;
+    }
+    const nextDraft = manualEditDraftForTarget(target, base);
+    manualEditSelectionDraftRef.current = { id: target.id, draft: nextDraft };
+    setManualEditDraft(nextDraft);
+    setSelectedManualEditTarget(current => current?.id === target.id ? {
+      ...current,
+      text: nextDraft.text,
+      fields: { ...current.fields, text: nextDraft.text, href: nextDraft.href, src: nextDraft.src, alt: nextDraft.alt },
+    } : current);
+    setManualEditDraftDirty(false);
+    setManualEditError(null);
+  }
+
   async function undoManualEdit() {
     const [latest, ...rest] = manualEditHistory;
     if (!latest) return;
@@ -14381,7 +14406,7 @@ function HtmlViewer({
       setManualEditFrozenSource(latest.beforeSource);
       setManualEditHistory(rest);
       setManualEditUndone((current) => [latest, ...current]);
-      setManualEditDraft((current) => ({ ...current, fullSource: latest.beforeSource }));
+      refreshManualEditInspectorAfterHistory(latest.beforeSource);
       finish('success');
       await onFileSaved?.();
     } catch (error) {
@@ -14446,7 +14471,7 @@ function HtmlViewer({
       setManualEditFrozenSource(latest.afterSource);
       setManualEditUndone(rest);
       setManualEditHistory((current) => [latest, ...current]);
-      setManualEditDraft((current) => ({ ...current, fullSource: latest.afterSource }));
+      refreshManualEditInspectorAfterHistory(latest.afterSource);
       finish('success');
       await onFileSaved?.();
     } catch (error) {
