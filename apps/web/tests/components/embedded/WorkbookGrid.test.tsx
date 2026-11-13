@@ -110,16 +110,20 @@ it('carries the exact dirty snapshot through terminal worker fallback and waits 
   runtime.saved.mockReturnValue(source);
   const view = render(<WorkbookGrid id="grid" title="Revenue" model={model} onSnapshot={snapshot} onReady={ready} />);
   await waitFor(() => expect(runtime.editable).toHaveBeenLastCalledWith(true));
+  const host = screen.getByRole('region', { name: 'Workbook grid' });
   const dirty = { ...source, sheets: { inputs: { cellData: { 0: { 0: { v: 42 } } } } } };
   runtime.saved.mockReturnValue(dirty);
   act(() => runtime.fail?.());
   await waitFor(() => expect(ready).toHaveBeenCalledTimes(2));
+  expect(screen.getByRole('region', { name: 'Workbook grid' })).toBe(host);
+  expect(host.isConnected).toBe(true);
   expect(snapshot).toHaveBeenCalledWith(dirty);
   expect(snapshot.mock.invocationCallOrder[0]).toBeLessThan(runtime.calculationDisposed.mock.invocationCallOrder[0]!);
   expect(runtime.createWorkbook.mock.calls[1]![0]).toEqual(dirty);
   expect(runtime.editable).toHaveBeenLastCalledWith(false);
   await act(async () => { allow(); await drained; });
   await waitFor(() => expect(runtime.editable).toHaveBeenLastCalledWith(true));
+  expect(host.children).toHaveLength(1);
   expect(runtime.calculationDisposed).toHaveBeenCalledTimes(1);
   view.unmount(); expect(runtime.dispose).toHaveBeenCalledTimes(2);
 });
@@ -250,7 +254,7 @@ it('retains CSV sizing through the real writer acknowledgement and refreshed sou
 it('retains an inert rendered canvas until the replacement renderer is ready, then releases the old kernel', async () => {
   runtime.saved.mockReturnValue(gridWorkbook(model, 'grid', 'Revenue').data);
   const editing = { onSnapshot: vi.fn(), onReady: vi.fn() };
-  const view = render(<WorkbookGrid id="grid" title="Revenue" model={model} {...editing} />);
+  const view = render(<WorkbookGrid id="grid" title="Revenue" model={model} sourceSha256={'a'.repeat(64)} {...editing} />);
   const host = screen.getByRole('region', { name: 'Workbook grid' });
   await waitFor(() => expect(runtime.listener).not.toBeNull());
   await waitFor(() => expect(host).not.toHaveAttribute('aria-busy'));
@@ -259,8 +263,10 @@ it('retains an inert rendered canvas until the replacement renderer is ready, th
   expect(previous).not.toBeNull();
   let rendered!: () => void;
   runtime.rendered = new Promise<void>(resolve => { rendered = resolve; });
-  view.rerender(<WorkbookGrid id="grid" title="Revenue" model={{ ...model }} {...editing} />);
+  view.rerender(<WorkbookGrid id="grid" title="Revenue" model={{ ...model }} sourceSha256={'b'.repeat(64)} {...editing} />);
   await waitFor(() => expect(runtime.created).toHaveBeenCalledTimes(2));
+  expect(screen.getByRole('region', { name: 'Workbook grid' })).toBe(host);
+  expect(host.isConnected).toBe(true);
   expect(previous.isConnected).toBe(true); expect(previous.inert).toBe(true);
   expect(previous).toHaveAttribute('aria-hidden', 'true');
   expect(host.children).toHaveLength(2);

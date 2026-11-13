@@ -93,6 +93,10 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
   const editable = Boolean(onSnapshot);
   useEffect(() => {
     if (!container.current) return;
+    // Retire the old menu owner while retaining the host element shared by
+    // view layers. Re-keying its wrapper detaches that host during a source
+    // acknowledgement or worker fallback and leaves the new canvas invisible.
+    setStructureOwner(null);
     reportInputError(null);
     calculationState.current = null;
     const root = document.documentElement;
@@ -274,7 +278,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
   // listeners. Disposing the kernel first would make workbook.save() invalid.
   useEffect(() => () => { views.current?.dispose(); views.current = null; }, []);
   return <div className="relative h-full min-h-0 w-full">
-    <WorkbookStructureMenu key={`${id}:${sourceSha256 ?? ""}:${kernel}`} controller={structureOwner} disabled={structureBlocked || Boolean(formatScope?.blocked) || Boolean(formatScope?.saving) || !editable}>
+    <WorkbookStructureMenu controller={structureOwner} disabled={structureBlocked || Boolean(formatScope?.blocked) || Boolean(formatScope?.saving) || !editable}>
     <div ref={container} className={cx(styles.grid, 'h-full min-h-0 w-full')} role="region" aria-label="Workbook grid" tabIndex={0} />
     </WorkbookStructureMenu>
     {error ? <div role="alert" className="absolute inset-0 bg-background-primary-default p-4 text-body-2-regular text-text-error-primary">{error}</div> : null}
