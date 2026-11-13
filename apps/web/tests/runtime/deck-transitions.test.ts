@@ -74,6 +74,33 @@ describe('presentation transition lifecycle', () => {
     expect(f.stage.index).toBe(1); expect(f.active()).toBe(f.stage.children[1]);
     expect(f.attempts).toHaveLength(0);
   });
+  it.each([false, true])('does not replay the boot index after newer host intent, animated=%s', async animated => {
+    const f = await fixture('push', false, '', false, 1);
+    const source = '<!doctype html><html><body><deck-stage><section class="slide">First</section><section class="slide">Second</section></deck-stage></body></html>';
+    const script = buildSrcdoc(source, { deck: true, initialSlideIndex: 1 }).match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/)?.[1];
+    expect(script).toBeTruthy(); f.dom.window.eval(script!);
+    f.dom.window.dispatchEvent(new f.dom.window.MessageEvent('message', { data: { type: 'od:slide', action: 'go', index: 2, userInitiated: animated } }));
+    if (animated) { f.attempts[0]!.update(); f.attempts[0]!.finish(); }
+    expect(f.active()).toBe(f.stage.children[2]);
+    await new Promise<void>(resolve => f.dom.window.setTimeout(resolve, 160));
+    expect(f.stage.index).toBe(2); expect(f.active()).toBe(f.stage.children[2]);
+  });
+
+  it.each([
+    { action:'go', index:0, protocolVersion:999 },
+    { action:'go', index:Number.NaN },
+    { action:'unknown' },
+  ])('does not cancel the boot target for malformed or unsupported navigation: %j', async navigation => {
+    const f = await fixture('push', false, '', false, 1);
+    const source = '<!doctype html><html><body><deck-stage><section class="slide">First</section><section class="slide">Second</section><section class="slide">Third</section></deck-stage></body></html>';
+    const script = buildSrcdoc(source, { deck: true, initialSlideIndex: 2 }).match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/)?.[1];
+    expect(script).toBeTruthy(); f.dom.window.eval(script!);
+    f.dom.window.dispatchEvent(new f.dom.window.MessageEvent('message', { data: { type:'od:slide', ...navigation } }));
+    await new Promise<void>(resolve => f.dom.window.setTimeout(resolve, 160));
+    expect(f.stage.index).toBe(2); expect(f.active()).toBe(f.stage.children[2]);
+    expect(f.attempts).toHaveLength(0);
+  });
+
   it('keeps load synchronization instant but animates explicit host intent', async () => {
     const f = await fixture('fade');
     f.dom.window.dispatchEvent(new f.dom.window.MessageEvent('message', { data: { type: 'od:slide', action: 'go', index: 1 } }));

@@ -4093,6 +4093,7 @@ function injectDeckBridge(
     attempt();
   }
   function go(action){
+    didRestoreInitialSlide = true;
     var navigationSequence = ++odNavigationSequence;
     var list = slides();
     if (!list.length) return;
@@ -4115,6 +4116,7 @@ function injectDeckBridge(
     }, function(){ return navigationSequence === odNavigationSequence; });
   }
   function gotoIndex(i, options){
+    didRestoreInitialSlide = true;
     var navigationSequence = ++odNavigationSequence;
     var list = slides();
     if (!list.length) return;
@@ -4233,6 +4235,11 @@ function injectDeckBridge(
     didRestoreInitialSlide = true;
     gotoIndex(initialSlideIndex, { animate: false });
   }
+  function cancelInitialSlideRestoreForInteraction(ev){
+    if (ev && ev.isTrusted === true) didRestoreInitialSlide = true;
+  }
+  document.addEventListener('pointerdown', cancelInitialSlideRestoreForInteraction, true);
+  document.addEventListener('keydown', cancelInitialSlideRestoreForInteraction, true);
   var odSlideMessageBeforeIndex = -1;
   var odDeckBridgeInstallingMessageListener = false;
   var odDeckProtocolVersion = ${artifactDeckProtocolVersion};
@@ -4289,11 +4296,14 @@ function injectDeckBridge(
   function odIsSupportedSlideMessage(data) {
     return !!data &&
       data.type === 'od:slide' &&
-      (data.protocolVersion == null || data.protocolVersion === ${DECK_PROTOCOL_VERSION});
+      (data.protocolVersion == null || data.protocolVersion === ${DECK_PROTOCOL_VERSION}) &&
+      (data.action === 'go' ? Number.isFinite(data.index) : ['next','prev','first','last'].indexOf(data.action) >= 0);
   }
   addOdSlideMessageListener(function(ev){
     var data = ev && ev.data;
     if (!odIsSupportedSlideMessage(data)) return;
+    // A newer host target is authoritative even while the boot timer is pending.
+    didRestoreInitialSlide = true;
     var before = activeIndex(slides());
     odSlideMessageBeforeIndex = before;
     setTimeout(function(){
