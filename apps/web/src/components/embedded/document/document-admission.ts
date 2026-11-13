@@ -1,4 +1,4 @@
-import { documentHtml, isEditableDocument, isDocumentLinkSupported } from './document-html';
+import { documentHtml, isEditableDocument, isDocumentLinkSupported, supportedDocumentLanguage } from './document-html';
 import { supportedDocumentImageElement } from './document-image-source';
 import { documentImportStyles, documentTextStyles } from './document-styles';
 import styles from './DocumentEditor.module.css';
@@ -87,7 +87,9 @@ export function supportedDocument(html: string, fileName: string): boolean {
   if (!isEditableDocument(html)) return false;
   const parsed = new DOMParser().parseFromString(html, 'text/html');
   const root = parsed.documentElement;
-  if (Array.from(root.attributes).some(attr => !['data-eve-document', 'data-eve-document-font', 'data-eve-document-heading-font'].includes(attr.name))) return false;
+  if (Array.from(root.attributes).some(attr => !['data-eve-document', 'data-eve-document-font', 'data-eve-document-heading-font', 'lang', 'dir'].includes(attr.name))) return false;
+  if (root.hasAttribute('lang') && !supportedDocumentLanguage(root.getAttribute('lang')!)) return false;
+  if (root.hasAttribute('dir') && !['ltr', 'rtl'].includes(root.getAttribute('dir')!)) return false;
   for (const name of ['data-eve-document-font', 'data-eve-document-heading-font']) {
     if (root.hasAttribute(name) && !['sans', 'serif'].includes(root.getAttribute(name)!)) return false;
   }

@@ -304,3 +304,27 @@ it('splits the cursor paragraph around an uploaded image without losing either t
   expect(image.closest('p')?.previousElementSibling).toHaveTextContent('Re');
   expect(image.closest('p')?.nextElementSibling).toHaveTextContent('ady');
 });
+
+
+it.each([['en', 'ltr'], ['ar', 'rtl'], ['', 'ltr']])('preserves root lang %s and dir %s through text edit, save and reopen', async (lang, dir) => {
+  const localized = { ...observed, html: observed.html.replace('<html ', `<html lang="${lang}" dir="${dir}" `) };
+  save.mockImplementation(async (_project, _file, html) => ({ html, sha256: 'saved' }));
+  const view = render(<DocumentEditor projectId="fixture" fileName="report.html" title="Report" observed={localized} onSaved={() => {}} />);
+  expect(screen.getByRole('textbox', { name: 'Report' })).toHaveAttribute('lang', lang);
+  expect(screen.getByRole('textbox', { name: 'Report' })).toHaveAttribute('dir', dir);
+  act(() => editor().update(() => {
+    $getRoot().getLastChildOrThrow().selectEnd();
+    const selection = $getSelection(); if ($isRangeSelection(selection)) selection.insertText(' reviewed');
+  }, { discrete: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save document' }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  const html = save.mock.calls[0]![2] as string;
+  const root = new DOMParser().parseFromString(html, 'text/html').documentElement;
+  expect(root.getAttribute('lang')).toBe(lang); expect(root.getAttribute('dir')).toBe(dir);
+  view.unmount(); read.mockResolvedValue({ html, sha256: 'saved' });
+  render(<DocumentSurface projectId="fixture" fileName="report.html" title="Report" fallback={<div>Read-only fallback</div>} onSaved={() => {}} />);
+  const reopened = await screen.findByRole('textbox', { name: 'Report' });
+  expect(reopened).toHaveTextContent('Ready reviewed');
+  expect(reopened).toHaveAttribute('lang', lang); expect(reopened).toHaveAttribute('dir', dir);
+  expect(screen.queryByText('Read-only fallback')).toBeNull();
+});

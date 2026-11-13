@@ -55,3 +55,21 @@ export { documentFontFamily, documentHtml } from '@open-design/contracts/runtime
 export function isEditableDocument(html: string): boolean {
   return new DOMParser().parseFromString(html, 'text/html').documentElement.getAttribute('data-eve-document') === '1';
 }
+
+
+export type DocumentRootAttributes = { lang: string | null; dir: 'ltr' | 'rtl' | null };
+/** HTML language tags include grandfathered/private-use forms; an empty tag means unknown. */
+export function supportedDocumentLanguage(value: string): boolean {
+  return value === '' || value.length <= 100 && /^[a-z]{1,8}(?:-[a-z0-9]{1,8})*$/i.test(value);
+}
+export function documentRootAttributes(html: string): DocumentRootAttributes {
+  const root = new DOMParser().parseFromString(html, 'text/html').documentElement;
+  const dir = root.getAttribute('dir');
+  return { lang: root.getAttribute('lang'), dir: dir === 'ltr' || dir === 'rtl' ? dir : null };
+}
+/** Source-owned root metadata survives every save, including unrelated text edits. */
+export function preserveDocumentRootAttributes(html: string, attributes: DocumentRootAttributes): string {
+  const escape = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
+  const suffix = `${attributes.lang !== null ? ` lang="${escape(attributes.lang)}"` : ''}${attributes.dir !== null ? ` dir="${attributes.dir}"` : ''}`;
+  return html.replace('<html', `<html${suffix}`);
+}

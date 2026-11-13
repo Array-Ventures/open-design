@@ -67,3 +67,11 @@ it.each([
   const declarations = Array.from(parsed.querySelectorAll<HTMLElement>('[style]')).map(element => ({ tag: element.tagName, raw: element.getAttribute('style'), length: element.style.length, properties: Array.from(element.style).map(name => [name, element.style.getPropertyValue(name)]) }));
   expect(supportedDocument(documentHtml('Saved', body), 'report.html'), JSON.stringify(declarations)).toBe(true);
 });
+
+
+it.each([['en', 'ltr'], ['zh-Hant-TW', 'ltr'], ['ar', 'rtl'], ['', 'ltr']])('admits supported document root language %s and direction %s', (lang, dir) => {
+  expect(supportedDocument(documentHtml('Report', '<p>Body</p>').replace('<html ', `<html lang="${lang}" dir="${dir}" `), 'report.html')).toBe(true);
+});
+it.each(['lang="en invalid"', 'dir="auto"'])('retains fallback for unsupported root metadata %s', attribute => {
+  expect(supportedDocument(documentHtml('Report', '<p>Body</p>').replace('<html ', `<html ${attribute} `), 'report.html')).toBe(false);
+});

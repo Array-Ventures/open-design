@@ -22,7 +22,7 @@ import { TableNode, TableRowNode, TableCellNode } from '@lexical/table';
 import { LinkNode } from '@lexical/link';
 import { $getRoot, $getState, $setState, $insertNodes, $setSelection, RootNode } from 'lexical';
 import { serializeMarkdownDocument } from './markdown-serialization';
-import { documentHtml, documentImport, documentFontFamily } from './document-html';
+import { documentHtml, documentImport, documentFontFamily, documentRootAttributes, preserveDocumentRootAttributes } from './document-html';
 import { documentHtmlConfig, initializeDocumentBlockIds, ensureDocumentBlockIds, documentFont, documentHeadingFont, restoreDocumentIdentityGroups } from './document-identity';
 import { saveDocumentFile, type DocumentFile } from './document-file';
 import { DocumentWriter, type DocumentWriteState } from './document-writer';
@@ -50,6 +50,8 @@ export function DocumentEditor({ feedback, onCommentDirtyChange, projectId, file
     editorState: (editor: import('lexical').LexicalEditor) => {
       const root = $getRoot(); root.select(); $insertNodes($generateNodesFromDOM(editor, documentImport(observed.html))); $setSelection(null);
       const attributes = new DOMParser().parseFromString(observed.html, 'text/html').documentElement;
+      const rootDirection = attributes.getAttribute('dir');
+      if (rootDirection === 'ltr' || rootDirection === 'rtl') root.setDirection(rootDirection);
       const font = attributes.getAttribute('data-eve-document-font');
       const headingFont = attributes.getAttribute('data-eve-document-heading-font') ?? font;
       $setState(root, documentFont, font === 'serif' ? 'serif' : 'sans');
@@ -69,6 +71,7 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
   onCommentDirtyChange?(dirty: boolean): void; feedback?: ArtifactFeedbackProps; projectId: string; fileName: string; title: string; observed: DocumentFile; owners: Map<string, string>; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void; onWriteError?(error: string | null): void;
 }) {
   const [editor] = useLexicalComposerContext();
+  const rootAttributes = useMemo(() => documentRootAttributes(observed.html), [observed.html]);
   const fade = useScrollFade();
   const [writeState, setWriteState] = useState<DocumentWriteState>({ dirty: false, saving: false, error: null });
   const [font, setFont] = useState<'sans' | 'serif'>('sans');
@@ -96,7 +99,7 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
   const dirtyChanged = useRef(onDirtyChange); dirtyChanged.current = onDirtyChange;
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const serialize = () => observed.format === 'markdown' ? serializeMarkdownDocument(editor) : documentHtml(title, $generateHtmlFromNodes(editor), $getState($getRoot(), documentFont), $getState($getRoot(), documentHeadingFont));
+    const serialize = () => observed.format === 'markdown' ? serializeMarkdownDocument(editor) : preserveDocumentRootAttributes(documentHtml(title, $generateHtmlFromNodes(editor), $getState($getRoot(), documentFont), $getState($getRoot(), documentHeadingFont)), rootAttributes);
     const initial = editor.getEditorState().read(serialize);
     const current = writer.current ??= new DocumentWriter(observed, initial, async (html, base) => {
       const result = await saveDocumentFile(projectId, fileName, html, base); saved.current(result); return result;
@@ -113,7 +116,7 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
     const unload = (event: BeforeUnloadEvent) => { if (current.state().dirty) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', unload);
     return () => { clearTimeout(timer); normalize(); stop(); current.stop(); window.removeEventListener('beforeunload', unload); };
-  }, [editor, fileName, observed, owners, projectId, title]);
+  }, [editor, fileName, observed, owners, projectId, title, rootAttributes]);
   const status = writeState.error ? 'Not saved' : writeState.saving ? 'Saving…' : writeState.dirty ? 'Unsaved changes' : 'Saved';
   return <>
     <div className="flex shrink-0 items-center justify-end gap-2 px-3 py-2 text-caption-1-regular text-text-tertiary" >
@@ -133,7 +136,7 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
     <div className="relative min-h-0 flex-1">
     <div className={styles.scroll} onScroll={fade.onScroll}>
       <div className={styles.page}>
-        <RichTextPlugin contentEditable={<ContentEditable aria-label={title} className={styles.content} style={{ fontFamily: documentFontFamily(font), '--document-heading-font': documentFontFamily(headingFont) } as CSSProperties} />}
+        <RichTextPlugin contentEditable={<ContentEditable aria-label={title} lang={rootAttributes.lang ?? undefined} dir={rootAttributes.dir ?? undefined} className={styles.content} style={{ fontFamily: documentFontFamily(font), '--document-heading-font': documentFontFamily(headingFont) } as CSSProperties} />}
           placeholder={<div className={styles.placeholder}>Start writing…</div>} ErrorBoundary={LexicalErrorBoundary} />
       </div>
     </div>
