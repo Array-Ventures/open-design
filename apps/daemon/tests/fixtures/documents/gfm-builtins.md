@@ -112,3 +112,9 @@ a & b \\
 c & d
 \end{pmatrix}
 $$
+
+## Ordinary mathematical alphabets and spacing
+
+Ordinary mathematical alphabets $\mathbf{x}$, $\mathit{x}$, $\mathrm{d}$, $\mathbb{R}$, $\mathcal{F}$, $\mathfrak{g}$, $\mathsf{x}$, $\mathtt{x}$.
+
+Ordinary spacing $x\!y$, $a\,b$ and explicit style $\displaystyle\sum_i x_i$.
