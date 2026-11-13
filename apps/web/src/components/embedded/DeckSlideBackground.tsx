@@ -45,7 +45,7 @@ export function DeckSlideBackground({ source, index, count, busy, onChange }: {
       setOpen(next);
     }}>
       <DropdownTrigger aria-label={label} aria-describedby={!eligible ? descriptionId : undefined} isDisabled={!eligible || busy}
-        className="flex w-full items-center gap-2 rounded-xl border border-border-button-default bg-background-primary-default px-3 py-2 text-body-2-regular text-text-primary disabled:cursor-default disabled:opacity-50">
+        className="flex w-full items-center justify-start gap-2 rounded-xl border border-border-button-default bg-background-primary-default px-3 py-2 text-body-2-regular text-text-primary disabled:cursor-default disabled:opacity-50">
         <span aria-hidden className="size-5 rounded-full border border-border-button-default" style={{backgroundColor:selection?.color || 'transparent'}} />
         <span>{selection?.color ? colorLabel(selection.color,t('qf.colorCustom')) : t('common.default')}</span>
       </DropdownTrigger>
