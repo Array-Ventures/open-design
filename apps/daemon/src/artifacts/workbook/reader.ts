@@ -190,7 +190,7 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
   const view = child(main, 'bookViews'), active = view ? integer(child(view, 'workbookView')?.getAttribute('activeTab') ?? null, 0) : 0;
   const names = [...parts.keys()];
   const metadata = readWorkbookMetadata(parts, main, sheets, sheetParts);
-  const model = workbookDocumentSchema.parse({ version: 1, richTextMetadata: 'verified', date1904, activeSheetId: sheets[active]?.visibility === 'visible' ? sheets[active]!.id : sheets.find(sheet => sheet.visibility === 'visible')?.id,
+  const model = workbookDocumentSchema.parse({ version: 1, worksheetVisibilityEditable: !child(main, 'workbookProtection') && !child(main, 'customWorkbookViews') && !names.some(name => name.startsWith('_xmlsignatures/') || /(?:^|\/)vbaProject\.bin$/i.test(name)), richTextMetadata: 'verified', date1904, activeSheetId: sheets[active]?.visibility === 'visible' ? sheets[active]!.id : sheets.find(sheet => sheet.visibility === 'visible')?.id,
     styles, sheets, ...metadata, ...(themeColors ? { themeColors } : {}), features: { charts: names.filter(name => /\/charts\/[^/]+\.xml$/i.test(name)).length, drawings: names.filter(name => /\/drawings\/[^/]+\.xml$/i.test(name)).length,
       externalLinks: names.filter(name => /\/externalLinks\/[^/]+\.xml$/i.test(name)).length, macros: names.some(name => /(?:^|\/)vbaProject\.bin$/i.test(name)), signed: names.some(name => name.startsWith('_xmlsignatures/')) } });
   const result = { model, parts, sheetParts };

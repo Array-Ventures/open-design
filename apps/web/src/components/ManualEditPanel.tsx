@@ -54,6 +54,9 @@ export function ManualEditPanel({
   onApplyTokenSuggestion,
   onInspectValueSelect,
   presentationSource,
+  presentationSlideIndex,
+  presentationSlideCount,
+  presentationSlideSourcePath,
   pageStylesEnabled = true,
   sourceControls = true,
   floatingStyle,
@@ -74,6 +77,9 @@ export function ManualEditPanel({
   busy?: boolean;
   resetAvailable?: boolean;
   presentationSource?: string;
+  presentationSlideIndex?: number;
+  presentationSlideCount?: number;
+  presentationSlideSourcePath?: string;
   pageStylesEnabled?: boolean;
   /** Embedded artifacts expose visual properties, never raw source editing. */
   sourceControls?: boolean;
@@ -280,9 +286,10 @@ export function ManualEditPanel({
             </>
           ) : !targetForInspector ? (
             <>
-            {presentationSource ? <DeckProperties source={presentationSource} busy={busy} onChange={(source, label) => onApplyPatch({ kind: 'set-full-source', source }, label)} /> : null}
-            <PageInspector
+            {presentationSource ? <DeckProperties source={presentationSource} busy={busy} slideIndex={presentationSlideIndex} slideCount={presentationSlideCount} slideSourcePath={presentationSlideSourcePath} onChange={(source, label) => onApplyPatch({ kind: 'set-full-source', source }, label)} /> : null}
+            {!presentationSource || pageStylesEnabled ? <PageInspector
               enabled={pageStylesEnabled}
+              hideBackground={Boolean(presentationSource)}
               onStyleChange={(styles) => {
                 const normalized = normalizeManualEditStyles(styles, { layoutEnabled: true });
                 if (!normalized.ok) {
@@ -293,7 +300,7 @@ export function ManualEditPanel({
                 onError('');
                 onStyleChange?.('__body__', normalized.styles, 'Page styles');
               }}
-            />
+            /> : null}
             </>
           ) : null}
 
@@ -583,9 +590,11 @@ function looksGeneratedIdentifier(value: string): boolean {
 
 function PageInspector({
   enabled,
+  hideBackground = false,
   onStyleChange,
 }: {
   enabled: boolean;
+  hideBackground?: boolean;
   onStyleChange: (styles: Partial<ManualEditStyles>) => void;
 }) {
   const t = useT();
@@ -615,7 +624,7 @@ function PageInspector({
       <Section title={t('manualEdit.sectionPage')}>
         {enabled ? (
           <>
-            <ColorRow label={t('manualEdit.pageBackground')} value={bg} onChange={(value) => update({ bg: value })} />
+            {hideBackground ? null : <ColorRow label={t('manualEdit.pageBackground')} value={bg} onChange={(value) => update({ bg: value })} />}
             <FontRow label={t('manualEdit.fontFamily')} value={font} onChange={(value) => update({ font: value })} />
             <UnitRow label={t('manualEdit.pageBaseSize')} value={size} onChange={(value) => update({ size: value })} unit="px" autoUnit />
           </>

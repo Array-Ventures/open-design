@@ -24,7 +24,7 @@ const DECK_SLIDE_MARKERS = [
   '.ppt-slide',
   '.slide-frame',
 ] as const;
-const DECK_EXPLICIT_SLIDE_MARKERS = [
+export const DECK_EXPLICIT_SLIDE_MARKERS = [
   '.slide',
   '.deck-slide',
   '.ppt-slide',
@@ -109,14 +109,19 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
     return false;
   }
 
-  function postSlideState(active, count) {
+  function postSlideState(active, count, slides) {
     try {
-      window.parent.postMessage({
+      var path = slides && slides[active] && slides[active].getAttribute('data-od-source-path');
+      var generation = document.documentElement.getAttribute('data-od-deck-source-generation');
+      var unique = path && slides.filter(function(slide){ return slide.getAttribute('data-od-source-path') === path; }).length === 1;
+      var state = {
         type: ${JSON.stringify(DECK_STATE_MESSAGE_TYPE)},
         protocolVersion: ${DECK_PROTOCOL_VERSION},
         active: active,
         count: count
-      }, '*');
+      };
+      if (unique && generation) { state.sourcePath = path; state.sourceGeneration = generation; }
+      window.parent.postMessage(state, '*');
     } catch (_) {}
   }
 
@@ -283,7 +288,7 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
           slide.classList.toggle('visible', on);
         }
       }
-      postSlideState(this._index, slides.length);
+      postSlideState(this._index, slides.length, slides);
       try {
         this.dispatchEvent(new CustomEvent('slidechange', {
           detail: { active: this._index, count: slides.length },

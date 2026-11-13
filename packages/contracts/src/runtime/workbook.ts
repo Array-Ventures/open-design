@@ -69,7 +69,15 @@ export const workbookStyleEditSchema = z.object({ sheetId: id, row, column,
   fillColor: z.string().regex(/^[A-Fa-f0-9]{8}$/).nullable().optional(),
 }).strict().refine(edit => edit.bold !== undefined || edit.italic !== undefined || edit.fontColor !== undefined || edit.fillColor !== undefined, 'Empty style edit.');
 export type WorkbookStyleEdit = z.infer<typeof workbookStyleEditSchema>;
-export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), styles: z.array(workbookStyleEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional() }).strict().superRefine((plan,context)=>{
+/** Worksheet visibility is independent of name/order/geometry. veryHidden is source-owned. */
+export const workbookVisibilityEditSchema = z.object({ sheetId: id, visibility: z.enum(['visible', 'hidden']) }).strict();
+export type WorkbookVisibilityEdit = z.infer<typeof workbookVisibilityEditSchema>;
+export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), styles: z.array(workbookStyleEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), visibility: z.array(workbookVisibilityEditSchema).max(WORKBOOK_MODEL_LIMITS.sheets).optional() }).strict().superRefine((plan,context)=>{
+  const visibilityIds = new Set<string>();
+  for (const edit of plan.visibility ?? []) {
+    if (visibilityIds.has(edit.sheetId)) context.addIssue({ code: 'custom', message: 'Duplicate worksheet visibility edit.' });
+    visibilityIds.add(edit.sheetId);
+  }
   let text=0,runs=0;for(const {cell}of plan.edits){text+=(typeof cell.value==='string'?cell.value.length:0)+(cell.formula?.length??0);if(cell.kind==='string'&&cell.runs){runs+=cell.runs.length;for(const run of cell.runs)text+=run.text.length+(run.font?JSON.stringify(run.font).length:0);}}
   if(text>WORKBOOK_MODEL_LIMITS.text)context.addIssue({code:'custom',message:'Workbook edit text exceeds its limit.'});
   if(runs>WORKBOOK_MODEL_LIMITS.cells)context.addIssue({code:'custom',message:'Workbook edit rich runs exceed their aggregate limit.'});
@@ -98,7 +106,7 @@ export const workbookTableSchema = z.object({ name: formulaName, sheetId: id, ra
 export type WorkbookDefinedName = z.infer<typeof workbookDefinedNameSchema>;
 export type WorkbookTable = z.infer<typeof workbookTableSchema>;
 export const workbookDocumentSchema = z.object({
-  version: z.literal(1), richTextMetadata: z.literal('verified').optional(), calculationMetadata: z.enum(['verified', 'unsupported']).optional(), sourceFormat: z.literal('csv').optional(), date1904: z.boolean(), activeSheetId: id,
+  version: z.literal(1), worksheetVisibilityEditable: z.boolean().optional(), richTextMetadata: z.literal('verified').optional(), calculationMetadata: z.enum(['verified', 'unsupported']).optional(), sourceFormat: z.literal('csv').optional(), date1904: z.boolean(), activeSheetId: id,
   themeColors: z.array(z.string().regex(/^[A-Fa-f0-9]{8}$/)).length(12).optional(),
   styles: z.array(workbookStyleSchema).min(1).max(WORKBOOK_MODEL_LIMITS.styles),
   sheets: z.array(workbookSheetSchema).min(1).max(WORKBOOK_MODEL_LIMITS.sheets),

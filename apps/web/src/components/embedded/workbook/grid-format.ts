@@ -1,7 +1,7 @@
 import type { FUniver } from '@univerjs/presets';
 import { z } from 'zod';
 
-export interface WorkbookFormatScope { projectId: string; controllerId: string; blocked: boolean }
+export interface WorkbookFormatScope { projectId: string; controllerId: string; blocked: boolean; saving?: boolean }
 const color = z.string().regex(/^#[a-fA-F0-9]{6}$/);
 export const workbookFormatActionSchema = z.discriminatedUnion('property', [
   z.object({ property: z.literal('bold'), value: z.boolean() }).strict(),

@@ -36,6 +36,10 @@ export interface DeckStateMessage {
   active: number;
   count: number;
   protocolVersion: typeof DECK_PROTOCOL_VERSION;
+  /** Preview-only source identity; index/count alone never authorize source edits. */
+  sourcePath?: string;
+  /** Exact document generation, retained across runtime DOM reordering. */
+  sourceGeneration?: string;
 }
 
 export interface DeckReadyMessage {

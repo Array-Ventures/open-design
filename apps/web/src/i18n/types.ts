@@ -5249,6 +5249,9 @@ export interface Dict {
   'manualEdit.presentationProperties': string;
   'manualEdit.sectionPage': string;
   'manualEdit.pageBackground': string;
+  'manualEdit.slideBackground': string;
+  'manualEdit.backgroundChanged': string;
+  'manualEdit.backgroundUnavailable': string;
   'manualEdit.pageBaseSize': string;
   'manualEdit.pageStylesHtmlOnly': string;
   'pluginsView.createKindPlugin': string;

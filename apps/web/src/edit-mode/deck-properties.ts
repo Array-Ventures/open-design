@@ -5,7 +5,7 @@ export type DeckAspect = '16:9' | '4:3';
 type Element = DefaultTreeAdapterTypes.Element;
 
 /** Only a single canonical stage has an unambiguous, persisted size contract. */
-function stageIn(source: string): Element | null {
+export function stageIn(source: string): Element | null {
   const stages: Element[] = [];
   function visit(node: DefaultTreeAdapterTypes.Node) {
     if ('tagName' in node && node.tagName === 'deck-stage') stages.push(node);
