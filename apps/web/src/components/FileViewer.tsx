@@ -1,3 +1,4 @@
+import { deckSlideStateFromMessage } from '../edit-mode/deck-source-identity';
 import { InspectorResizeHandle } from './embedded/InspectorResizeHandle';
 import { uploadProjectImage } from './embedded/project-image-upload';
 import { insertionImageSourceForAsset } from '../edit-mode/insertion';
@@ -396,7 +397,7 @@ function resolveChromeActionsHost(): HTMLElement | null {
 }
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
-type SlideState = { active: number; count: number };
+type SlideState = { active: number; count: number; sourcePath?: string; sourceGeneration?: string };
 type BoardTool = 'inspect' | 'pod';
 type StrokePoint = { x: number; y: number };
 export type ManualEditPendingStyleSave = {
@@ -11560,6 +11561,11 @@ function HtmlViewer({
   const srcDoc = srcDocTransport.srcDoc;
   const expectedSrcDocTransportGenerationRef = useRef(srcDocTransportGeneration);
   expectedSrcDocTransportGenerationRef.current = srcDocTransportGeneration;
+  const deckTransportMatchesPreview = previewSource !== null && srcDocTransport.sourceFingerprint === previewSourceFingerprint(previewSource);
+  const deckIdentitySource = useRef({ generation: srcDocTransportGeneration, source: deckTransportMatchesPreview ? source : null });
+  // A remount can retain the previous transport while a newer source finishes
+  // its handoff. Do not attach those newer bytes to the older document identity.
+  if (deckIdentitySource.current.generation !== srcDocTransportGeneration || deckIdentitySource.current.source === null) deckIdentitySource.current = { generation: srcDocTransportGeneration, source: deckTransportMatchesPreview ? source : null };
   useEffect(() => {
     const onStorage = (event: MessageEvent) => {
       savePreviewStorageMessage(event, srcDocPreviewIframeRef.current?.contentWindow ?? null,
@@ -12830,12 +12836,9 @@ function HtmlViewer({
     function onMessage(ev: MessageEvent) {
       if (!isOurPreviewIframeSource(ev.source)) return;
       if (!isActivePreviewIframeSource(ev.source)) return;
-      const data = ev?.data as
-        | { type?: string; active?: number; count?: number }
-        | null;
-      if (!data || data.type !== 'od:slide-state') return;
-      if (typeof data.active !== 'number' || typeof data.count !== 'number') return;
       const srcDocFrame = srcDocPreviewIframeRef.current;
+      const next = deckSlideStateFromMessage(ev.data, srcDocFrame && ev.source === srcDocFrame.contentWindow ? expectedSrcDocTransportGenerationRef.current : undefined);
+      if (!next) return;
       if (
         srcDocFrame
         && ev.source === srcDocFrame.contentWindow
@@ -12844,7 +12847,6 @@ function HtmlViewer({
         const generation = expectedSrcDocTransportGenerationRef.current;
         srcDocContentReadyRef.current = { frame: srcDocFrame, generation };
       }
-      const next = { active: data.active, count: data.count };
       setSlideStateCached(previewStateKey, next);
       setSlideState(next);
     }
@@ -17191,6 +17193,7 @@ function HtmlViewer({
       presentationSource={effectiveDeck ? source ?? undefined : undefined}
       presentationSlideIndex={effectiveDeck ? activeDeckSlideIndex : undefined}
       presentationSlideCount={effectiveDeck ? deckSlideTotal : undefined}
+      presentationSlideSourcePath={effectiveDeck && deckIdentitySource.current.source === source && slideState?.sourceGeneration === srcDocTransportGeneration ? slideState.sourcePath : undefined}
       pageStylesEnabled={manualEditPageStylesEnabled}
       onSelectTarget={(target) => {
         void selectManualEditTarget(target);

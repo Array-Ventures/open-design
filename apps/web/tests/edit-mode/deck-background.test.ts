@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
 import postcss from 'postcss';
-import { readDeckSlideBackground, setDeckSlideBackground } from '../../src/edit-mode/deck-background';
+import { deckSlideIndexForSourcePath, readDeckSlideBackground, setDeckSlideBackground } from '../../src/edit-mode/deck-background';
 
 describe('slide-local background source ownership', () => {
   it('changes only the selected opening tag, preserving source, other slides and notes', () => {
@@ -58,4 +58,17 @@ describe('slide-local background source ownership', () => {
       expect(readDeckSlideBackground(source.replace('red','var(--brand)'),0)?.color).toBe('var(--brand)');
     } finally {vi.unstubAllGlobals();}
   });
+});
+
+it('maps element-only source ancestry independently of runtime order and ignores authored reserved paths', () => {
+  const source = '<!doctype html><html><body><!-- skip --><script>window.before=true</script><deck-stage><div class="slide" data-od-source-path="path-forged">One</div> text <section data-screen-label="Two">Two</section></deck-stage></body></html>';
+  expect(deckSlideIndexForSourcePath(source,'path-1-0')).toBe(0);
+  expect(deckSlideIndexForSourcePath(source,'path-1-1')).toBe(1);
+  for (const path of ['path-forged','path-0','path-1','path-1-2','path--1','path-1-0-0']) expect(deckSlideIndexForSourcePath(source,path)).toBeNull();
+});
+it('matches the visual tree after notes are stripped without moving the source write target', () => {
+  const source = '<body><script id="speaker-notes" type="application/json">["One","Two"]</script><deck-stage><div class="slide">One</div><section class="slide">Two</section></deck-stage></body>';
+  expect(deckSlideIndexForSourcePath(source,'path-0-1')).toBe(1);
+  expect(setDeckSlideBackground(source,deckSlideIndexForSourcePath(source,'path-0-1')!,'#123456')).toBe(source.replace('class="slide">Two','class="slide" style="background-color: #123456 !important;">Two'));
+  expect(deckSlideIndexForSourcePath(source,'path-1-1')).toBeNull();
 });
