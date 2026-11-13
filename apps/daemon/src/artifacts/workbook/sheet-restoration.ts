@@ -7,7 +7,7 @@ import { calculatePreparedWorkbookSheetEdits } from './calculated-patch.js';
 
 export interface WorkbookSheetTemplateSource { sheetId: string; sourceSha256: string; bytes: Buffer }
 
-/** Source-only assembly owner. No restore field is accepted by the render wire.
+/** Source assembly owner reached by the checked frozen-asset render consumer.
  * Callers must authorize same-file history and protected per-delete identity
  * before providing assets. Every restored ID must have exactly one checked
  * template before any historical formula is admitted to final calculation.
@@ -29,7 +29,7 @@ export async function calculateWorkbookRestoredSheetEdits(source: ReadWorkbook, 
   // Membership/rels/content-types/visible selection retain the existing strict
   // owner. Restored IDs are absent births only for that package assembly step;
   // their content comes exclusively from the checked raw worksheet templates.
-  const staged = await readXlsxWorkbook(await patchWorkbookSheets(source, target.map(sheet => ({ ...sheet, origin: sheet.origin === 'restore' ? 'new' : sheet.origin })), visibility));
+  const staged = await readXlsxWorkbook(await patchWorkbookSheets(source, target.map(sheet => ({ sheetId: sheet.sheetId, name: sheet.name, origin: sheet.origin === 'restore' ? 'new' : sheet.origin })), visibility));
   const parts = new Map(staged.parts);
   for (const [id, xml] of prepared) {
     const part = staged.sheetParts.get(id);

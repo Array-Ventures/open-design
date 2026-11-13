@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { workbookSheetProjectionSchema } from '@open-design/contracts/runtime/workbook';
+import { workbookSourceSheetProjectionSchema } from '@open-design/contracts/runtime/workbook';
 import { readXlsxWorkbook, type ReadWorkbook } from './reader.js';
 import { WorkbookFormatError } from './package.js';
 import { child, children, xmlPart } from './parts.js';
@@ -22,7 +22,7 @@ export interface WorkbookSheetTemplateEntry {
 export async function prepareWorkbookSheetTemplate(current: ReadWorkbook, bytes: Buffer, expectedSha256: string, sheetId: string, target: readonly WorkbookSheetTemplateEntry[]): Promise<Buffer> {
   if (!/^[a-f0-9]{64}$/.test(expectedSha256) || createHash('sha256').update(bytes).digest('hex') !== expectedSha256) throw new WorkbookFormatError('Historical worksheet source hash does not match.');
   // Reuse the strict final name/ID bounds without accepting restore on the wire.
-  workbookSheetProjectionSchema.parse(target.map(sheet => ({ ...sheet, origin: sheet.origin === 'restore' ? 'new' : sheet.origin })));
+  workbookSourceSheetProjectionSchema.parse(target.map(sheet => ({ sheetId: sheet.sheetId, name: sheet.name, origin: sheet.origin === 'restore' ? 'new' : sheet.origin })));
   const selected = target.find(sheet => sheet.sheetId === sheetId);
   if (selected?.origin !== 'restore' || current.sheetParts.has(sheetId)) throw new WorkbookFormatError('Historical worksheet target identity is invalid.');
   const historical = await readXlsxWorkbook(bytes);

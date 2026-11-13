@@ -1,5 +1,5 @@
 import { patchWorkbookSheets, assertWorkbookSheetsSupported } from './sheet-patch.js';
-import { workbookSheetProjectionSchema, type WorkbookSheetProjection } from '@open-design/contracts/runtime/workbook';
+import { workbookSourceSheetProjectionSchema, type WorkbookSheetProjection } from '@open-design/contracts/runtime/workbook';
 import { assertWorkbookStructureSupported, patchWorkbookStructure } from './structure-patch.js';
 import { WORKBOOK_STRUCTURE_AXIS_BUDGET } from '@open-design/contracts/runtime/workbook-structure';
 import type { WorkbookStructureEdit } from '@open-design/contracts/runtime/workbook';
@@ -199,7 +199,7 @@ async function calculateContent(source: ReadWorkbook, edits: readonly WorkbookCe
 /** Complete sheet-plan calculation owner reached only after the contained
  * entry validates the frozen source digest. UI production remains disabled. */
 export async function calculateWorkbookSheetEdits(source: ReadWorkbook, sheets: WorkbookSheetProjection, edits: readonly WorkbookCellEdit[] = [], dimensions: readonly WorkbookDimensionEdit[] = [], styles: readonly WorkbookStyleEdit[] = [], visibility: readonly WorkbookVisibilityEdit[] = [], structure: readonly WorkbookStructureEdit[] = []): Promise<{ bytes: Buffer; model: WorkbookDocument }> {
-  sheets = workbookSheetProjectionSchema.parse(sheets);
+  sheets = workbookSourceSheetProjectionSchema.parse(sheets);
   assertWorkbookSheetsSupported(source);
   if (!visibility.length && sheets.length === source.model.sheets.length && sheets.every((sheet, index) => sheet.origin === 'source' && sheet.sheetId === source.model.sheets[index]!.id && sheet.name === source.model.sheets[index]!.name)) {
     if (!edits.length && !dimensions.length && !styles.length && !structure.length) return { bytes: await writeWorkbookPackage(source.parts), model: source.model };

@@ -35,3 +35,10 @@ it('retains the entire frozen sheet plan in cancellation identity without stripp
   await cancelWorkbookSavePreparation(current);
   expect(workbookHostRequest).toHaveBeenCalledWith(current.projectId, { action: 'cancel-preparation', body: { operationId: current.operationId, preparationId: current.preparationId, fileName: current.fileName, workbookEditPlan: JSON.stringify(current.plan) } }, undefined);
 });
+it('includes the same deduplicated historical sources in explicit cancellation identity', async () => {
+  const template = { versionId: 'retained-v1', versionSha256: 'c'.repeat(64) };
+  const current: WorkbookSaveAttempt = { ...attempt, plan: { sourceSha256: attempt.plan.sourceSha256, edits: [], sheets: [{ sheetId: '1', name: 'Restored', origin: 'restore', template }, { sheetId: '2', name: 'Second', origin: 'restore', template }] } };
+  vi.mocked(workbookHostRequest).mockResolvedValue(proof);
+  await cancelWorkbookSavePreparation(current);
+  expect(workbookHostRequest).toHaveBeenCalledWith(current.projectId, { action: 'cancel-preparation', body: { operationId: current.operationId, preparationId: current.preparationId, fileName: current.fileName, workbookEditPlan: JSON.stringify(current.plan), workbookSheetSources: [template] } }, undefined);
+});

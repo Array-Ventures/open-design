@@ -1,4 +1,4 @@
-import { workbookSheetProjectionSchema, WORKBOOK_SHEET_ID_MAX, workbookVisibilityEditSchema, type WorkbookSheetProjection, type WorkbookVisibilityEdit } from '@open-design/contracts/runtime/workbook';
+import { workbookSourceSheetProjectionSchema, WORKBOOK_SHEET_ID_MAX, workbookVisibilityEditSchema, type WorkbookSheetProjection, type WorkbookVisibilityEdit } from '@open-design/contracts/runtime/workbook';
 import type { Element } from '@xmldom/xmldom';
 import type { ReadWorkbook } from './reader.js';
 import { assertWorkbookStructureSupported } from './structure-patch.js';
@@ -15,7 +15,7 @@ const unsupported = (message: string): never => { throw new WorkbookFormatError(
  * No grid producer or preview capability enables these actions yet. */
 export function assertWorkbookSheetsSupported(source: ReadWorkbook): void {
   assertWorkbookStructureSupported(source);
-  workbookSheetProjectionSchema.parse(source.model.sheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name, origin: 'source' })));
+  workbookSourceSheetProjectionSchema.parse(source.model.sheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name, origin: 'source' })));
   for (const sheet of source.model.sheets) {
     if (!/^[1-9][0-9]*$/.test(sheet.id) || Number(sheet.id) > WORKBOOK_SHEET_ID_MAX) unsupported('Worksheet IDs exceed the bounded numeric importer.');
     if (sheet.visibility === 'veryHidden') unsupported('Very hidden sheets need their own sheet-action policy.');
@@ -27,7 +27,7 @@ export function assertWorkbookSheetsSupported(source: ReadWorkbook): void {
 
 export async function patchWorkbookSheets(source: ReadWorkbook, raw: WorkbookSheetProjection, visibility: readonly WorkbookVisibilityEdit[] = []): Promise<Buffer> {
   assertWorkbookSheetsSupported(source);
-  const target = workbookSheetProjectionSchema.parse(raw), originals = new Map(source.model.sheets.map(sheet => [sheet.id, sheet]));
+  const target = workbookSourceSheetProjectionSchema.parse(raw), originals = new Map(source.model.sheets.map(sheet => [sheet.id, sheet]));
   const existingOrder = source.model.sheets.filter(sheet => target.some(item => item.origin === 'source' && item.sheetId === sheet.id)).map(sheet => sheet.id);
   const surviving = target.filter(sheet => sheet.origin === 'source').map(sheet => sheet.sheetId);
   if (existingOrder.join('\0') !== surviving.join('\0')) invalid('Surviving worksheets cannot be reordered by this sheet-action plan.');

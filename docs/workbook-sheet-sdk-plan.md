@@ -242,7 +242,7 @@ still requires its independently checked template in the eventual assembler.
 
 Focused tests exercise actual ZIP-derived XML, quoted references/string literals,
 renamed survivor binding, different-ID name reuse, exact raw metadata/indices,
-source immutability, invalid hashes/IDs and continued wire refusal. They do not
+source immutability, invalid hashes/IDs and missing-descriptor refusal. They do not
 claim the outstanding actual SDK delete→ACK→Undo→save chronology or positive
 durable checkpoint/recovery/render-asset qualification.
 
@@ -272,9 +272,10 @@ applies its final authored formula/cell edits. Actual output calculation and an
 independent ExcelJS read both confirm 22. Another actual calculation returns
 `#REF!` rather than retargeting an absent historical ID to a different current ID
 with the same name. These are source-layer fixtures, not simulated proof of SDK
-Undo or receipts. Accepted restore wire fields, scoped history asset capture,
-SDK per-delete/ACK descriptors, positive draft recovery and actual contained
-execution remain unimplemented and the sheet-actions UI capability stays off.
+Undo or receipts. The next atomic wire layer carries strict historical references and scoped
+frozen asset declarations to this source owner. SDK per-delete/ACK descriptors,
+positive draft recovery and actual contained execution remain required; the
+sheet-actions UI capability stays off.
 
 A genuine 13MiB STORE XLSX reused by two restored IDs verifies distinct-asset
 budgeting and cross-restoration formula calculation. The same new regression
@@ -282,3 +283,28 @@ failed before the deduplication fix with aggregate-limit refusal. Two different
 valid archives still exceed the combined budget; a repeated digest with
 different bytes is refused. This boundary uses actual archives, not a raised
 production limit.
+
+### Atomic historical asset carrier
+
+The strict plan now accepts a `restore` entry only with its exact
+`template: {versionId, versionSha256}`. Ordinary source/new entries forbid that
+metadata. Direct ordinary sheet patch APIs retain the source/new-only schema;
+restoration must go through the complete frozen-asset owner. Conflicting digests
+for one historical version are refused. Save and explicit cancellation derive
+exact deduplicated outer references from the same retained plan, sorted in
+explicit code-point order rather than locale order.
+
+The contained worker requires declared `{versionId, versionSha256, fileName}`
+assets whose file names equal the full-SHA derived immutable path. Every needed
+inner reference must be declared and every declaration used. All referenced
+bytes are bounded and passed to the actual template assembler/calculator. CSV,
+planless and whole-file restore combinations refuse the field. Native owns
+same-canonical-file history authorization and actual immutable capture; its
+paired carrier is documented in Evebot's `docs/workbook-sheet-assets.md`.
+
+Actual worker-entry tests cover restored XLSX and preview, two restored sheets
+sharing one asset, qualified formula recalculation, raw header preservation,
+wrong version/bytes, undeclared/unused assets and refusal before output. Web tests
+cover prepare/cancel reference equality. Protected draft tests still reject a
+restore projection not derivable from the SDK snapshot and preserve the previous
+journal. These are not positive SDK/ACK recovery or real container proofs.

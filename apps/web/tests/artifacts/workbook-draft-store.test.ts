@@ -107,4 +107,8 @@ it('refuses a pending sheet projection until actual SDK derivation exists and pr
   // still refuse it: sheet-producing SDK/recovery identities are not enabled.
   await expect(saveWorkbookDraft(scope, invalid)).rejects.toThrow('does not match');
   expect((await readWorkbookDraft(scope))?.pending?.intent).toEqual(original?.pending?.intent);
+  invalid.pending!.intent.plan.sheets.push({ sheetId: '2', name: 'Restored', origin: 'restore', template: { versionId: 'retained-v1', versionSha256: 'c'.repeat(64) } });
+  expect(workbookEditPlanSchema.parse(invalid.pending!.intent.plan).sheets).toEqual(invalid.pending!.intent.plan.sheets);
+  await expect(saveWorkbookDraft(scope, invalid)).rejects.toThrow('does not match');
+  expect((await readWorkbookDraft(scope))?.pending?.intent).toEqual(original?.pending?.intent);
 });

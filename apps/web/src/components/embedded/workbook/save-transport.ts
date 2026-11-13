@@ -3,7 +3,7 @@ import type { z } from 'zod';
 import { checkedWorkbookSave as checkedSave, Save } from './save-identity';
 import { cancelWorkbookSavePreparation } from './cancel-transport';
 import { WorkbookSaveTerminalError, WorkbookSaveUnadmittedError, WorkbookSavePreparationCancelledError } from './save-terminal';
-import { workbookEditPlanSchema } from '@open-design/contracts/runtime/workbook';
+import { workbookEditPlanSchema, workbookSheetSourcesForPlan } from '@open-design/contracts/runtime/workbook';
 import { workbookHostRequest, WorkbookHostError } from './host-request';
 import { prepareWorkbookJob, workbookPollDelay, checkedWorkbookJob, WorkbookPreparationGoneError, WorkbookPreparationTerminalError } from './preview-transport';
 
@@ -59,7 +59,8 @@ async function settleWorkbookSave(attempt: WorkbookSaveAttempt, signal: AbortSig
   if (!save) {
     if (!attempt.renderId) {
       try {
-        const job = await prepareWorkbookJob(attempt.projectId, attempt.fileName, workbookSaveFormat(attempt.fileName), attempt.preparationId, signal, JSON.stringify(attempt.plan));
+        const sheetSources = workbookSheetSourcesForPlan(attempt.plan);
+        const job = await prepareWorkbookJob(attempt.projectId, attempt.fileName, workbookSaveFormat(attempt.fileName), attempt.preparationId, signal, JSON.stringify(attempt.plan), ...(sheetSources ? [sheetSources] as const : [] as const));
         attempt.renderId = job.id;
       } catch (error) {
         if (error instanceof WorkbookHostError && error.code === 'workbook_preparation_cancelled') {

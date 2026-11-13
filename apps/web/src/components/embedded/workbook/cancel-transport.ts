@@ -1,3 +1,4 @@
+import { workbookSheetSourcesForPlan } from '@open-design/contracts/runtime/workbook';
 import { z } from 'zod';
 import { workbookHostRequest, WorkbookHostError } from './host-request';
 import { checkedWorkbookSave } from './save-identity';
@@ -9,9 +10,10 @@ const admittedSchema = z.object({ state: z.literal('admitted'), save: z.unknown(
  * The caller must also check its generation before deleting its local journal. */
 export async function cancelWorkbookSavePreparation(attempt: WorkbookSaveAttempt, signal?: AbortSignal) {
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  const workbookSheetSources = workbookSheetSourcesForPlan(attempt.plan);
   const raw = await workbookHostRequest(attempt.projectId, { action: 'cancel-preparation', body: {
     operationId: attempt.operationId, preparationId: attempt.preparationId, fileName: attempt.fileName,
-    workbookEditPlan: JSON.stringify(attempt.plan), ...(attempt.renderId ? { renderId: attempt.renderId } : {}),
+    workbookEditPlan: JSON.stringify(attempt.plan), ...(workbookSheetSources ? { workbookSheetSources } : {}), ...(attempt.renderId ? { renderId: attempt.renderId } : {}),
   } }, signal);
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   const admitted = admittedSchema.safeParse(raw);
