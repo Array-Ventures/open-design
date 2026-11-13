@@ -60,7 +60,7 @@ Introduce a pure `grid-sheet-plan` owner before `gridStructuralBaseline`:
 1. Require qualified source capability and exact current kernel/source ownership;
    leave old previews/drafts on their existing strict refusal path.
 2. Derive the final ordered sheet projection from actual SDK snapshots. Validate
-   source survivors/order, appended births, names, final visible membership and
+   source survivors/order, absent births, names, final visible membership and
    aggregate budgets. Refuse unknown membership, copy and reorder.
 3. Project source and initial baselines into final membership: remove deleted
    sheets; synthesize only qualified blank births; align renamed sheet names.
@@ -124,7 +124,7 @@ capability and the real UI connect compact controls to qualified commands.
 
 ## Required correction: undoing a committed deletion
 
-The current source foundation's fresh-ID/append-only `new` policy cannot express
+The original source foundation's fresh-ID/append-only `new` policy could not express
 all real SDK undo. `RemoveSheetUndoMutationFactory` returns the old index and
 `worksheet.getConfig()`. After deleting sheet 2 and acknowledging a source with
 survivors 1 and 3, undo must reinsert **ID 2 between 1 and 3**. Renumbering that
@@ -142,7 +142,7 @@ Two restoration classes must be distinguished before producer implementation:
   page margins/header/footer and other admitted raw metadata; styles and shared
   strings also have package-level owners. A blank baseline cannot preserve them.
 
-Proposed source extension (not implemented): define `origin: new` as absent from
+Implemented source extension: `origin: new` now means absent from
 **the current source**, with a bounded, noncolliding numeric ID, rather than a
 claim that the ID never existed historically. Allow absent-sheet insertion
 positions while keeping all current survivors in exactly their relative order.
@@ -245,3 +245,9 @@ renamed survivor binding, different-ID name reuse, exact raw metadata/indices,
 source immutability, invalid hashes/IDs and continued wire refusal. They do not
 claim the outstanding actual SDK delete→ACK→Undo→save chronology or positive
 durable checkpoint/recovery/render-asset qualification.
+
+The source blank-birth replay test deletes ID 2 from an actual 1/2/3 package,
+replays a blank ID 2 between survivors, calculates/readbacks the result, and
+checks survivor values/part identities and global bytes. Reordered survivors,
+current-ID collisions and numeric overflow remain refused. This does not yet
+qualify source-backed restoration or implement the SDK high-water producer.

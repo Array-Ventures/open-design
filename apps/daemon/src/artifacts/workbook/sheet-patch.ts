@@ -28,17 +28,17 @@ export function assertWorkbookSheetsSupported(source: ReadWorkbook): void {
 export async function patchWorkbookSheets(source: ReadWorkbook, raw: WorkbookSheetProjection, visibility: readonly WorkbookVisibilityEdit[] = []): Promise<Buffer> {
   assertWorkbookSheetsSupported(source);
   const target = workbookSheetProjectionSchema.parse(raw), originals = new Map(source.model.sheets.map(sheet => [sheet.id, sheet]));
-  const maximum = Math.max(...source.model.sheets.map(sheet => Number(sheet.id)));
   const existingOrder = source.model.sheets.filter(sheet => target.some(item => item.origin === 'source' && item.sheetId === sheet.id)).map(sheet => sheet.id);
   const surviving = target.filter(sheet => sheet.origin === 'source').map(sheet => sheet.sheetId);
   if (existingOrder.join('\0') !== surviving.join('\0')) invalid('Surviving worksheets cannot be reordered by this sheet-action plan.');
-  let sawNew = false;
   for (const sheet of target) {
     if (sheet.origin === 'source') {
-      if (sawNew || !originals.has(sheet.sheetId)) invalid('Worksheet source identity or append order is invalid.');
+      if (!originals.has(sheet.sheetId)) invalid('Worksheet source identity is invalid.');
     } else {
-      sawNew = true;
-      if (originals.has(sheet.sheetId) || Number(sheet.sheetId) <= maximum) invalid('New worksheet IDs must be fresh bounded births above the source maximum.');
+      // Source absence, not the current maximum, admits an existing blank birth
+      // replayed by SDK redo. Fresh SDK allocation separately owns its monotone
+      // high-water mark; current survivors still cannot change relative order.
+      if (originals.has(sheet.sheetId)) invalid('New worksheet identity collides with a current source worksheet.');
     }
   }
   const states = new Map(target.map(sheet => [sheet.sheetId, sheet.origin === 'new' ? 'visible' : originals.get(sheet.sheetId)!.visibility]));

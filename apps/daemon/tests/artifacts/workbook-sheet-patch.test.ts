@@ -46,6 +46,22 @@ it('adds a genuinely blank sheet with stable numeric ID and source-preserving co
   const again = await readXlsxWorkbook((await calculateWorkbookSheetEdits(saved, projection(saved))).bytes);
   expect(again.sheetParts).toEqual(saved.sheetParts); expect(again.model.sheets[2]!.id).toBe('3');
 });
+it('replays an absent blank birth between surviving IDs without moving or replacing either survivor', async () => {
+  const original = await fixture();
+  const withThird = await readXlsxWorkbook((await calculateWorkbookSheetEdits(original, [...projection(original), { sheetId: '3', name: 'Last', origin: 'new' }], [{ sheetId: '3', cell: { row: 0, column: 0, kind: 'number', value: 41 } }])).bytes);
+  const deleted = await readXlsxWorkbook((await calculateWorkbookSheetEdits(withThird, projection(withThird).filter(sheet => sheet.sheetId !== '2'))).bytes);
+  const target: WorkbookSheetProjection = [{ sheetId: '1', name: "Bob's plan", origin: 'source' }, { sheetId: '2', name: 'Blank replay', origin: 'new' }, { sheetId: '3', name: 'Last', origin: 'source' }];
+  const saved = await readXlsxWorkbook((await calculateWorkbookSheetEdits(deleted, target)).bytes);
+  expect(saved.model.sheets.map(sheet => sheet.id)).toEqual(['1', '2', '3']);
+  expect(saved.model.sheets[1]!.cells).toEqual([]);
+  expect(saved.model.sheets[0]!.cells.find(cell => cell.row === 1 && cell.column === 1)?.value).toBe(12);
+  expect(saved.model.sheets[2]!.cells[0]?.value).toBe(41);
+  expect(saved.sheetParts.get('1')).toBe(deleted.sheetParts.get('1'));
+  expect(saved.sheetParts.get('3')).toBe(deleted.sheetParts.get('3'));
+  for (const part of ['xl/styles.xml', 'xl/sharedStrings.xml', 'docProps/core.xml']) expect(saved.parts.get(part)).toEqual(deleted.parts.get(part));
+  await expect(patchWorkbookSheets(deleted, [target[2]!, target[1]!, target[0]!])).rejects.toThrow('reordered');
+  await expect(patchWorkbookSheets(deleted, [{ ...target[0]!, origin: 'new' }, target[2]!])).rejects.toThrow('identity');
+});
 it('evaluates final visible membership together with visibility and refuses invalid IDs/order/names', async () => {
   const source = await fixture(), target = projection(source);
   await expect(patchWorkbookSheets(source, target.slice(0, 1), [{ sheetId: '1', visibility: 'hidden' }])).rejects.toThrow('visible');
@@ -98,14 +114,17 @@ it('keeps existing sheet IDs while combining an added sheet with real axis, dime
   expect(sheet.rowDimensions.find(row => row.index === 1)?.height).toBe(33);
   expect(saved.model.styles[sheet.cells.find(cell => cell.row === 1 && cell.column === 0)!.style!]!.font?.size).toBe(22.25);
 });
-it('proves bounded importer-ID exhaustion on actual source bytes rather than wrapping a birth ID', async () => {
+it('keeps bounded importer IDs while admitting a checked absent birth below the current maximum', async () => {
   const initial = await fixture(), parts = new Map(initial.parts), book = xmlPart(parts, 'xl/workbook.xml');
   children(child(book.documentElement!, 'sheets')!, 'sheet')[1]!.setAttribute('sheetId', '65535');
   parts.set('xl/workbook.xml', writeWorkbookXml(book));
   const source = await readXlsxWorkbook(await writeWorkbookPackage(parts));
   expect(source.model.sheets[1]!.id).toBe('65535');
   const target = projection(source); target.push({ sheetId: '3', name: 'Wrong birth', origin: 'new' });
-  await expect(patchWorkbookSheets(source, target)).rejects.toThrow('above the source maximum');
+  // This source API represents historical blank redo too; fresh allocation
+  // exhaustion belongs to the SDK high-water owner, not source absence.
+  const replay = await readXlsxWorkbook(await patchWorkbookSheets(source, target));
+  expect(replay.model.sheets.map(sheet => sheet.id)).toEqual(['1', '65535', '3']);
   target[2]!.sheetId = '65536'; await expect(patchWorkbookSheets(source, target)).rejects.toThrow();
 });
 it('refuses a deleted-sheet visibility edit, unknown plan fields and unowned reference metadata atomically', async () => {
