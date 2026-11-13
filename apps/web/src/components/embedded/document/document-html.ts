@@ -1,6 +1,7 @@
 import { documentImportStyles } from './document-styles';
 import { localDocumentImageSource, dataDocumentImageSource } from './document-image-source';
 import DOMPurify from 'dompurify';
+import { findRealTagEnd, HTML_TAG_PATTERNS } from '@open-design/contracts/runtime/html-injection-points';
 
 const tags = ['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'table', 'colgroup', 'col', 'thead', 'tbody', 'tr', 'td', 'th', 'a', 'br', 'span', 'code', 'pre', 'hr', 'img'];
 
@@ -71,5 +72,6 @@ export function documentRootAttributes(html: string): DocumentRootAttributes {
 export function preserveDocumentRootAttributes(html: string, attributes: DocumentRootAttributes): string {
   const escape = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
   const suffix = `${attributes.lang !== null ? ` lang="${escape(attributes.lang)}"` : ''}${attributes.dir !== null ? ` dir="${attributes.dir}"` : ''}`;
-  return html.replace('<html', `<html${suffix}`);
+  const end = findRealTagEnd(html, HTML_TAG_PATTERNS.htmlOpen);
+  return end < 0 ? html : html.slice(0,end - 1) + suffix + html.slice(end - 1);
 }
