@@ -84,3 +84,9 @@ The file-category tabs use the installed free BoardUI underline Tabs source.
 The embedded copy omits the unused React 19 ref prop API for React 18, reads
 React Aria's locale directly, and uses semantic inactive count surfaces. The
 Tab/TabPanel association and arrow-key navigation remain owned by React Aria.
+
+The context-menu adapter is the installed free BoardUI context-menu source,
+with relative imports and React Aria locale direction. Labels belong to callers.
+Its optional capture mode admits canvas context/keyboard gestures before an
+embedded SDK can consume bubbling events; pointer placement, long press, menus,
+arrow/typeahead navigation, dismissal and focus return remain BoardUI/React Aria.
