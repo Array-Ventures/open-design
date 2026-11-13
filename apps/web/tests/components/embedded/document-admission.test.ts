@@ -152,3 +152,40 @@ it('keeps actual inline Code TextNode exports editable with real editor styles a
 it.each(['true', 'custom', ''])('refuses unsupported inline CODE spellcheck=%s', value => {
   expect(supportedDocument(documentHtml('Code', `<p><code spellcheck="${value}">x</code></p>`), 'code.html')).toBe(false);
 });
+
+it('admits the owned saved document through Chromium canonical whitespace expansion', async () => {
+  const { readFileSync } = await import('node:fs');
+  // These are the byte-identical saved bytes from the 95 and 97 real browsers.
+  // jsdom keeps the shorthand; explicitly model Chromium's observed iterator.
+  const raw = readFileSync(`${process.cwd()}/tests/fixtures/documents/chromium-table-actions.html`, 'utf8');
+  const originalGet = CSSStyleDeclaration.prototype.getPropertyValue;
+  const originalIterator = CSSStyleDeclaration.prototype[Symbol.iterator];
+  const values = vi.spyOn(CSSStyleDeclaration.prototype, 'getPropertyValue').mockImplementation(function (this: CSSStyleDeclaration, name: string) {
+    if (originalGet.call(this, 'white-space') === 'pre-wrap') {
+      if (name === 'white-space-collapse') return 'preserve';
+      if (name === 'text-wrap-mode') return 'wrap';
+    }
+    return originalGet.call(this, name);
+  });
+  const iterator = vi.spyOn(CSSStyleDeclaration.prototype, Symbol.iterator).mockImplementation(function* (this: CSSStyleDeclaration): Generator<string, undefined, unknown> {
+    for (const name of originalIterator.call(this)) {
+      if (name === 'white-space' && originalGet.call(this, name) === 'pre-wrap') yield* ['white-space-collapse', 'text-wrap-mode'];
+      else yield name;
+    }
+    return undefined;
+  });
+  try { expect(supportedDocument(raw, 'report.html')).toBe(true); }
+  finally { iterator.mockRestore(); values.mockRestore(); }
+});
+it.each([
+  '<p style="white-space:pre-wrap">Block</p>',
+  '<span style="white-space:nowrap;white-space:pre-wrap">Override</span>',
+  '<span style="white-space:pre-wrap!important">Priority</span>',
+  '<span style="white-space:pre-wrap;white-space-collapse:collapse">Collapse</span>',
+  '<span style="white-space:pre-wrap;text-wrap-mode:nowrap">No wrap</span>',
+  '<span style="white-space:pre-wrap;text-wrap-style:balance">Balance</span>',
+  '<span style="white-space-collapse:preserve;text-wrap-mode:wrap">Unowned pair</span>',
+  '<span style="white-space:pre-wrap;position:absolute">Unknown</span>',
+])('refuses noncanonical or authored whitespace presentation: %s', body => {
+  expect(supportedDocument(documentHtml('Whitespace', body), 'report.html')).toBe(false);
+});

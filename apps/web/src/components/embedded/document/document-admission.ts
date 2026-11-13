@@ -44,6 +44,7 @@ function supportedElement(element: HTMLElement): boolean {
     if (Number(element.getAttribute('value')) !== Number(parent.getAttribute('start') ?? 1) + index) return false;
   }
   const rawStyle = element.getAttribute('style') ?? '';
+  const canonicalInlineWhitespace = inline.has(tag) && element.style.getPropertyValue('white-space') === 'pre-wrap';
   const canonicalCellBorder = ['td', 'th'].includes(tag) && /^1px solid (?:black|rgb\(0,\s*0,\s*0\))$/.test(element.style.getPropertyValue('border'));
 
   // CSSOM may expand shorthands (notably border). Validate each authored declaration
@@ -54,6 +55,10 @@ function supportedElement(element: HTMLElement): boolean {
     const name = declaration.slice(0, colon).trim().toLowerCase();
     // Check the authored shorthand before CSSOM can reset/normalize an image
     // behind a later border declaration. Only the existing none default is safe.
+    // Own only the generated shorthand, never authored longhands that could
+    // be hidden by a later reset. Chromium expands pre-wrap during enumeration.
+    if (['white-space-collapse', 'text-wrap-mode', 'text-wrap-style'].includes(name)) return false;
+    if (name === 'white-space' && (!inline.has(tag) || declaration.slice(colon + 1).trim().toLowerCase() !== 'pre-wrap')) return false;
     if (name === 'border-image' && declaration.slice(colon + 1).trim().toLowerCase() !== 'none') return false;
     const probe = document.createElement('span').style;
     probe.cssText = declaration;
@@ -65,7 +70,7 @@ function supportedElement(element: HTMLElement): boolean {
     const value = element.style.getPropertyValue(name).trim();
     if (element.style.getPropertyPriority(name)) return false;
     // Lexical's own exports add these presentation defaults, regenerated on every save.
-    if (inline.has(tag) && name === 'white-space' && value === 'pre-wrap') continue;
+    if (canonicalInlineWhitespace && ((name === 'white-space' && value === 'pre-wrap') || (name === 'white-space-collapse' && value === 'preserve') || (name === 'text-wrap-mode' && value === 'wrap'))) continue;
     if (canonicalCellBorder && name === 'border-image' && value === 'none') continue;
     // Chromium expands Lexical's border shorthand into these exact reset
     // longhands. Admit only regenerated initial defaults, never authored images.
