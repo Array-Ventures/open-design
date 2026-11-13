@@ -405,7 +405,7 @@ export function buildSrcdoc(
     : withKeydownRegistry;
   const withMotionFreeze = options.freezeMotion ? injectMotionFreeze(withFocusGuard) : withFocusGuard;
   const withDeckStageFallback = options.deck
-    ? injectDeckStageFallback(withMotionFreeze)
+    ? injectDeckStageFallback(withMotionFreeze, options.initialSlideIndex)
     : withMotionFreeze;
   const withDeckChrome = options.deck && options.hideDeckChrome
     ? injectDeckStageShadowChromeHiding(injectDeckChromeHiding(withDeckStageFallback))
@@ -3383,13 +3383,13 @@ function injectDeckBridge(
     index = Math.floor(index);
     return index >= 0 && index < list.length ? index : -1;
   }
-  function navigateViaDeckStage(list, action, index){
+  function navigateViaDeckStage(list, action, index, options){
     if (!list.length) return false;
     var stage = deckStageForSlides(list);
     if (!stage) return false;
     try {
       if (action === 'go' && typeof index === 'number' && typeof stage.goTo === 'function') {
-        stage.goTo(index);
+        stage.goTo(index, options);
       } else if (action === 'next' && typeof stage.next === 'function') {
         stage.next();
       } else if (action === 'prev' && typeof stage.prev === 'function') {
@@ -4114,12 +4114,12 @@ function injectDeckBridge(
       setTimeout(report, 280);
     }, function(){ return navigationSequence === odNavigationSequence; });
   }
-  function gotoIndex(i){
+  function gotoIndex(i, options){
     var navigationSequence = ++odNavigationSequence;
     var list = slides();
     if (!list.length) return;
     var target = Math.max(0, Math.min(list.length - 1, i));
-    if (navigateViaDeckStage(list, 'go', target)) return;
+    if (navigateViaDeckStage(list, 'go', target, options)) return;
     if (isScrollDeck(list)) { scrollGo(target); return; }
     if (activeIndex(list) === target) { report(); return; }
     // A thumbnail selection and the footer prev/next controls must enter the
@@ -4231,7 +4231,7 @@ function injectDeckBridge(
     var list = slides();
     if (!list.length) return;
     didRestoreInitialSlide = true;
-    gotoIndex(initialSlideIndex);
+    gotoIndex(initialSlideIndex, { animate: false });
   }
   var odSlideMessageBeforeIndex = -1;
   var odDeckBridgeInstallingMessageListener = false;

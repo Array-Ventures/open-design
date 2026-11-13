@@ -2,15 +2,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { injectDeckStageFallback } from '@open-design/contracts/runtime/deck-stage-fallback';
+import { buildSrcdoc } from '../../src/runtime/srcdoc';
 
 type Attempt = { update: () => void; types: string[]; finish: () => void; skip: ReturnType<typeof vi.fn> };
 const documents: JSDOM[] = [];
 afterEach(() => { for (const dom of documents.splice(0)) dom.window.close(); });
-async function fixture(mode = 'magic-move', reduced = false, attributes = '', removedHead = false) {
+async function fixture(mode = 'magic-move', reduced = false, attributes = '', removedHead = false, initialIndex?: number) {
   const attempts: Attempt[] = [];
-  const dom = new JSDOM(injectDeckStageFallback(`<!doctype html><html><head></head><body>${removedHead ? '<script>document.head.remove()</script>' : ''}<deck-stage transition="${mode}" ${attributes}><section class="slide"><h1 style="view-transition-name:authored!important">Shared title</h1></section><section class="slide"><h1>Shared title</h1></section><section class="slide"><h1>Shared title</h1></section></deck-stage></body></html>`), {
+  const messages: Array<{type?:string;active?:number}> = [];
+  const dom = new JSDOM(injectDeckStageFallback(`<!doctype html><html><head></head><body>${removedHead ? '<script>document.head.remove()</script>' : ''}<deck-stage transition="${mode}" ${attributes}><section class="slide"><h1 style="view-transition-name:authored!important">Shared title</h1></section><section class="slide"><h1>Shared title</h1></section><section class="slide"><h1>Shared title</h1></section></deck-stage></body></html>`, initialIndex), {
     runScripts: 'dangerously', url: 'http://localhost',
     beforeParse(window) {
+      Object.defineProperty(window, 'parent', {value:{postMessage:(data:{type?:string;active?:number})=>messages.push(data)}, configurable:true});
       Reflect.set(window, 'matchMedia', () => ({ matches: reduced }));
       Reflect.set(window.document, 'startViewTransition', (options: { update: () => void; types: string[] }) => {
         let finish!: () => void;
@@ -23,9 +26,9 @@ async function fixture(mode = 'magic-move', reduced = false, attributes = '', re
   });
   documents.push(dom);
   await new Promise<void>(resolve => dom.window.addEventListener('load', () => resolve(), { once: true }));
-  const stage = dom.window.document.querySelector('deck-stage') as unknown as HTMLElement & { goTo(index: number): void; index: number; next(): void; prev(): void };
+  const stage = dom.window.document.querySelector('deck-stage') as unknown as HTMLElement & { goTo(index: number, options?: { animate: boolean }): void; index: number; next(): void; prev(): void };
   const active = () => dom.window.document.querySelector('[data-od-deck-active]');
-  return { dom, stage, attempts, active };
+  return { dom, stage, attempts, active, messages };
 }
 
 describe('presentation transition lifecycle', () => {
@@ -43,6 +46,40 @@ describe('presentation transition lifecycle', () => {
   it('still initializes when authored content removed the head element', async () => {
     const f = await fixture('none', false, '', true);
     f.stage.next(); expect(f.active()).toBe(f.stage.children[1]);
+  });
+
+  it('publishes the saved initial index from its first paint and first state event', async () => {
+    const f = await fixture('push', false, '', false, 1);
+    expect(f.stage.index).toBe(1); expect(f.active()).toBe(f.stage.children[1]);
+    expect(f.attempts).toHaveLength(0);
+    const states = f.messages.filter(message => message.type === 'od:slide-state');
+    expect(states.length).toBeGreaterThan(0); expect(states.every(message => message.active === 1)).toBe(true);
+  });
+
+  it('does not reapply the boot index to a later restored stage instance', async () => {
+    const f = await fixture('push', false, '', false, 1);
+    f.stage.goTo(2, {animate:false});
+    const replacement = f.stage.cloneNode(true) as typeof f.stage;
+    f.stage.replaceWith(replacement); await Promise.resolve();
+    expect(replacement.index).toBe(2); expect(f.active()).toBe(replacement.children[2]);
+    expect(f.attempts).toHaveLength(0);
+  });
+
+  it('restores a saved initial slide through the real bridge without animating boot', async () => {
+    const f = await fixture('push');
+    const source = '<!doctype html><html><body><deck-stage><section class="slide">First</section><section class="slide">Second</section></deck-stage></body></html>';
+    const script = buildSrcdoc(source, { deck: true, initialSlideIndex: 1 }).match(/<script data-od-deck-bridge>([\s\S]*?)<\/script>/)?.[1];
+    expect(script).toBeTruthy(); f.dom.window.eval(script!);
+    await new Promise<void>(resolve => f.dom.window.setTimeout(resolve, 160));
+    expect(f.stage.index).toBe(1); expect(f.active()).toBe(f.stage.children[1]);
+    expect(f.attempts).toHaveLength(0);
+  });
+  it('keeps load synchronization instant but animates explicit host intent', async () => {
+    const f = await fixture('fade');
+    f.dom.window.dispatchEvent(new f.dom.window.MessageEvent('message', { data: { type: 'od:slide', action: 'go', index: 1 } }));
+    expect(f.active()).toBe(f.stage.children[1]); expect(f.attempts).toHaveLength(0);
+    f.dom.window.dispatchEvent(new f.dom.window.MessageEvent('message', { data: { type: 'od:slide', action: 'go', index: 2, userInitiated: true } }));
+    expect(f.attempts).toHaveLength(1); f.attempts[0]!.update(); expect(f.active()).toBe(f.stage.children[2]);
   });
 
   it('keeps navigation working when the native API is unavailable or throws', async () => {
