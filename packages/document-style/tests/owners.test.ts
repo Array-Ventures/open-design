@@ -79,3 +79,42 @@ it('proves collapsed indentation empty but retains visible highlighted whitespac
   source(`<p><span style="background-color:rgb(255,246,170);padding-inline-start:40px"><span ${attribute}="padded"> </span></span></p>`);
   expect(() => normalizeDocumentColorOwners(document,[{id:'padded',kind:'inline'}],attribute,[style],read)).toThrow();
 });
+
+it('admits ordinary GFM strike, footnote sections and only unstyled separators', () => {
+  source('<p><del>obsolete</del></p><hr><section class="footnotes footnotes-end-of-document" role="doc-endnotes"><ol><li id="fn1"><p>Note</p></li></ol></section>');
+  expect(documentColorLayoutQualified(document,[style])).toBe(true);
+  for (const attrs of ['style="color:red"','style="background:blue"','class="painted"','width="100"']) {
+    source(`<hr ${attrs}>`); expect(documentColorLayoutQualified(document,[style])).toBe(false);
+  }
+});
+const math = '<math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mfrac><mi>x</mi><mn>2</mn></mfrac><munderover><mo>∑</mo><mn>0</mn><mi>n</mi></munderover><mtable><mtr><mtd columnalign="center" style="text-align: center"><mi>y</mi></mtd></mtr></mtable></mrow><annotation encoding="application/x-tex">x/2</annotation></semantics></math>';
+it('preserves passive native MathML without inserting HTML paint wrappers', () => {
+  source(math); const before = document.body.innerHTML;
+  expect(documentColorLayoutQualified(document,[style])).toBe(true);
+  expect(normalizeDocumentColorOwners(document,[],attribute,[style],read)).toEqual([]);
+  expect(repairDocumentPrintInk(document,[style],read)).toEqual({applied:0,qualified:true});
+  expect(document.body.innerHTML).toBe(before);
+});
+it('refuses MathML paint, active/foreign owners, unknown grammar and styled HTML contexts', () => {
+  const invalid = [
+    math.replace('<mi>x','<mi mathcolor="red">x'),
+    math.replace('<mi>x','<mi href="https://fixture.test">x'),
+    math.replace('<mi>x','<mi onclick="noop()">x'),
+    math.replace('<mi>x</mi>','<maction><mi>x</mi></maction>'),
+    math.replace('<mi>x</mi>','<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
+    math.replace('encoding="application/x-tex"','encoding="text/html"'),
+    math.replace('x/2</annotation>','<mi>x</mi></annotation>'),
+    math.replace('text-align: center','text-align: center;color:red'),
+    `<span style="color:red">${math}</span>`,
+    `<span style="background:yellow">${math}</span>`,
+    `<table><tr><td style="background-color:black">${math}</td></tr></table>`,
+    '<math xmlns="http://www.w3.org/1998/Math/MathML"><mspace width="999999em"/></math>',
+  ];
+  for (const body of invalid) {
+    source(body); const before = document.body.innerHTML;
+    expect(documentColorLayoutQualified(document,[style]),body).toBe(false);
+    expect(() => normalizeDocumentColorOwners(document,[],attribute,[style],read)).toThrow();
+    expect(repairDocumentPrintInk(document,[style],read)).toEqual({applied:0,qualified:false});
+    expect(document.body.innerHTML).toBe(before);
+  }
+});

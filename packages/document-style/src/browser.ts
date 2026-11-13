@@ -45,17 +45,52 @@ export function documentTextInk(owner: HTMLElement, read: DocumentColorReader, c
   return documentContrast([0, 0, 0, 1], background) >= documentContrast([255, 255, 255, 1], background) ? 'black' : 'white';
 }
 
-const inline = new Set(['span','strong','b','em','i','u','s','code','a','sub','sup','small','mark','abbr','cite','q']);
-const tags = new Set(['html','body','main','div','p','h1','h2','h3','h4','h5','h6','blockquote','ul','ol','li','table','thead','tbody','tfoot','tr','td','th','span','strong','b','em','i','u','s','code','pre','a','img','br','colgroup','col','sub','sup','small','mark','abbr','cite','q','label','input','dl','dt','dd','caption','figure','figcaption']);
+const inline = new Set(['span','strong','b','em','i','u','s','del','code','a','sub','sup','small','mark','abbr','cite','q']);
+const tags = new Set(['html','body','main','div','p','h1','h2','h3','h4','h5','h6','blockquote','ul','ol','li','table','thead','tbody','tfoot','tr','td','th','span','strong','b','em','i','u','s','del','code','pre','a','img','br','colgroup','col','sub','sup','small','mark','abbr','cite','q','label','input','dl','dt','dd','caption','figure','figcaption','section','hr']);
 const presentation = new Set(['color','background-color','background','font-size','font-family','font-weight','font-style','text-decoration','text-align','vertical-align','white-space','width','height','aspect-ratio','padding-inline-start']);
 const htmlNamespace = 'http://www.w3.org/1999/xhtml';
+const mathNamespace = 'http://www.w3.org/1998/Math/MathML';
+const passiveMathTags = new Set(['math','semantics','mrow','msup','mi','mn','mo','msub','annotation','mfrac','munderover','msqrt','mroot','msubsup','mtext','mspace','mover','munder','mphantom','mtable','mtr','mtd']);
+/** Passive Pandoc math stays native; no links, foreign markup or paint owners. */
+function passiveDocumentMath(element: Element): boolean {
+  const tag = element.localName;
+  if (!passiveMathTags.has(tag)) return false;
+  if (tag === 'math') {
+    if (element.parentElement?.namespaceURI !== htmlNamespace) return false;
+    // Math is not a text-color owner in Word. Never silently lose an authored
+    // surrounding fill/ink, including cell backgrounds and background shorthand.
+    for (let ancestor: HTMLElement | null = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      const style = (ancestor as HTMLElement).style;
+      if (style?.getPropertyValue('color') || style?.getPropertyValue('background') || style?.getPropertyValue('background-color')) return false;
+    }
+  } else if (element.parentElement?.namespaceURI !== mathNamespace) return false;
+  if (tag === 'annotation' && element.children.length) return false;
+  for (const attribute of Array.from(element.attributes)) {
+    const { name, value } = attribute;
+    if (name === 'xmlns' && tag === 'math' && value === mathNamespace) continue;
+    if (attribute.namespaceURI) return false;
+    if (name === 'display' && tag === 'math' && /^(inline|block)$/.test(value)) continue;
+    if (name === 'mathvariant' && ['mi','mtext'].includes(tag) && value === 'normal') continue;
+    if (tag === 'mo' && ((name === 'accent' && value === 'true') || (name === 'stretchy' && /^(true|false)$/.test(value)) || (name === 'form' && /^(prefix|postfix)$/.test(value)))) continue;
+    if (tag === 'annotation' && name === 'encoding' && value === 'application/x-tex') continue;
+    if (tag === 'mfrac' && name === 'linethickness' && value === '0') continue;
+    if (tag === 'mspace' && name === 'width' && /^(?:0|[1-9]\d?)(?:\.\d{1,3})?em$/.test(value)) continue;
+    if (tag === 'mtd' && ((name === 'columnalign' && value === 'center') || (name === 'style' && /^text-align:\s*center;?$/.test(value)))) continue;
+    return false;
+  }
+  return true;
+}
+
 
 /** Unknown selectors/layout stay authored: adding wrappers must not restyle them. */
 export function documentColorLayoutQualified(document: Document, ownedStyles: readonly string[]): boolean {
   if (document.documentElement.getAttribute('data-eve-document') !== '1' || document.querySelector('link[rel~="stylesheet"]')) return false;
   if (Array.from(document.querySelectorAll('style')).some(style => !ownedStyles.includes(style.textContent ?? ''))) return false;
   for (const element of [document.documentElement, document.body, ...Array.from(document.body.querySelectorAll('*'))]) {
+    if (element.namespaceURI === mathNamespace) { if (!passiveDocumentMath(element)) return false; continue; }
     if (element.namespaceURI !== htmlNamespace || !tags.has(element.tagName.toLowerCase())) return false;
+    // Only the unstyled separator emitted by default GFM is qualified.
+    if (element.tagName === 'HR' && element.attributes.length) return false;
     const owner = element as HTMLElement;
     if (owner.tagName === 'INPUT' && ((owner as HTMLInputElement).type !== 'checkbox' || !owner.hasAttribute('disabled'))) return false;
     for (const declaration of (owner.getAttribute('style') ?? '').split(';').filter(value => value.trim())) {
