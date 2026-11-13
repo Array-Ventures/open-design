@@ -20,6 +20,9 @@ whitespace-sensitive spans, missing/duplicate owners and existing document
 exports. Actual Pandoc in the existing isolated renderer image converted the
 owned saved document to clean tables and paragraphs; a separate styled-text
 probe retained its exact repeated spaces/newline and leaked no temporary IDs.
+Review added a conservative boundary-space guard: adjacent spans and paragraph
+edges remain owned even when each span has only one space. An actual contained
+Pandoc probe retained both adjacent boundary spaces and the edge spaces exactly.
 Daemon types and repository guards are checked separately.
 
 This source change needs a new renderer build and complete UI export checks.

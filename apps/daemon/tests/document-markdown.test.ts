@@ -14,6 +14,12 @@ it('retains authored styles, attributes and whitespace that needs pre-wrap', () 
   const body = '<p><span style="white-space: pre-wrap; color:red">Color</span><span title="Keep" style="white-space: pre-wrap;">Title</span><span style="white-space: pre-wrap;">two  spaces</span><span style="white-space: pre-wrap;">line\nbreak</span></p>';
   const $ = load(documentMarkdownHtml(document(body))); expect($('span')).toHaveLength(4); expect($('span').eq(2).text()).toBe('two  spaces');
 });
+it('preserves boundary whitespace owners across adjacent spans and paragraph edges', () => {
+  const input = documentMarkdownInput(document('<p><span style="white-space: pre-wrap;">A </span><span style="white-space: pre-wrap;"> B</span></p><p><span style="white-space: pre-wrap;"> edge </span></p>'));
+  expect(input.rawSpans.size).toBe(3);
+  expect([...input.rawSpans.values()].join('')).toContain('A </span><span style="white-space: pre-wrap;"> B');
+  expect([...input.rawSpans.values()][2]).toContain('> edge </span>');
+});
 it('does not infer headers for merged, mixed, nested or already explicit table structures', () => {
   const tables = ['<tr><th colspan="2">Merged</th></tr><tr><td>A</td><td>B</td></tr>', '<tr><th>Mixed</th><td>Data</td></tr>', '<tr><th>A</th></tr><tr><td><table><tr><td>Nested</td></tr></table></td></tr>'];
   for (const table of tables) expect(load(documentMarkdownHtml(document(`<table>${table}</table>`)))('thead')).toHaveLength(0);

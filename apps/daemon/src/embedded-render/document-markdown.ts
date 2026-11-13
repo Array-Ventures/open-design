@@ -9,7 +9,7 @@ export function documentMarkdownHtml(html: string): string {
     const span = $(node);
     if (Object.keys(node.attribs).length !== 1 || !/^\s*white-space\s*:\s*pre-wrap\s*;?\s*$/i.test(span.attr('style') ?? '')) return;
     // Raw HTML remains necessary when collapsing whitespace would change text.
-    if (/[\t\r\n]| {2}/.test(span.text())) return;
+    if (/[\t\r\n]| {2}|^\s|\s$/.test(span.text())) return;
     span.replaceWith(span.contents());
   });
   $('table').each((_index, node) => {
