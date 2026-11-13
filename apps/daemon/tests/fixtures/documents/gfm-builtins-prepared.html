@@ -1,0 +1,119 @@
+<!DOCTYPE html><html data-eve-document="1" data-eve-document-font="sans" data-eve-document-heading-font="serif"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Owned ordinary GFM audit</title><style>body{margin:0;padding:64px 52px;background:Canvas;color:CanvasText;font:16px/1.5 system-ui, sans-serif}img{max-width:100%;height:auto}main{max-width:720px;margin:0 auto}p{margin:0 0 1em}h1,h2,h3,h4,h5,h6{font-family:Georgia, serif;line-height:1.25;margin:1.4em 0 .6em}h1{font-size:2em;line-height:40px;margin:24px 0 16px}h2{font-size:1.5em;line-height:32px;margin:24px 0 12px}h3{font-size:1.25em;line-height:28px;margin:24px 0 12px}main>:first-child{margin-top:0}ul,ol{padding-inline-start:24px;margin-block:16px}table{border-collapse:collapse;width:100%;margin:1em 0}td,th{border:1px solid GrayText;padding:8px;vertical-align:top}td p,th p{margin:0}th{text-align:start}blockquote{border-inline-start:3px solid GrayText;margin-inline:0;padding-inline-start:16px}a{color:LinkText}pre{overflow-x:auto;white-space:pre;padding:16px;font:14px/1.5 monospace}code{font-family:monospace}ul[__lexicallisttype="check"]{list-style:none}li[aria-checked="true"]::marker{content:"☑ "}li[aria-checked="false"]::marker{content:"☐ "}@media print{body{padding:0}table{break-inside:avoid}}</style></head><body><main><h1 id="heading-one">Heading one</h1>
+<h2 id="heading-two">Heading two</h2>
+<h3 id="heading-three">Heading three</h3>
+<h4 id="heading-four">Heading four</h4>
+<h5 id="heading-five">Heading five</h5>
+<h6 id="heading-six">Heading six</h6>
+<p>Plain paragraph with <strong>strong</strong>, <em>emphasis</em>, <del>strikethrough</del>, <code>inline code</code>, a soft break, a hard break<br>
+a second line, and an escaped *literal* &amp; entity.</p>
+<p><span class="emoji" data-emoji="smile">😄</span> and literal 😃.</p>
+<blockquote>
+<p>Block quote with a nested paragraph.</p>
+<ul>
+<li>Quoted list</li>
+</ul>
+</blockquote>
+<div class="note">
+<div class="title">
+<p>Note</p>
+</div>
+<p>Ordinary alert content.</p>
+</div>
+<div class="tip">
+<div class="title">
+<p>Tip</p>
+</div>
+<p>Helpful tip.</p>
+</div>
+<div class="important">
+<div class="title">
+<p>Important</p>
+</div>
+<p>Important content.</p>
+</div>
+<div class="warning">
+<div class="title">
+<p>Warning</p>
+</div>
+<p>Warning content.</p>
+</div>
+<div class="caution">
+<div class="title">
+<p>Caution</p>
+</div>
+<p>Caution content.</p>
+</div>
+<ul>
+<li>Tight unordered</li>
+<li>Another item
+<ul>
+<li>Nested unordered</li>
+</ul></li>
+</ul>
+<ol type="1">
+<li><p>Ordered item</p></li>
+<li><p>Next item</p></li>
+<li><p>Ordered start seven</p></li>
+<li><p>Next item</p></li>
+</ol>
+<ul>
+<li><p>Loose item paragraph.</p>
+<p>Another paragraph in the same item.</p></li>
+<li><p>Last loose item.</p></li>
+</ul>
+<ul class="task-list">
+<li><label><input type="checkbox" checked="" disabled="">Completed checklist</label></li>
+<li><label><input type="checkbox" disabled="">Pending checklist</label></li>
+</ul>
+<p><a href="https://fixture.test/owned" title="Owned title">Named link</a>, <a href="https://fixture.test/auto">https://fixture.test/auto</a>, <a href="https://fixture.test/bare">https://fixture.test/bare</a> and <a href="http://www.fixture.test">www.fixture.test</a>, <a href="mailto:owned@fixture.test">owned@fixture.test</a>.</p>
+<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=" title="Owned image title" alt="Owned image alt"></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Left</th>
+<th style="text-align: center;">Center</th>
+<th style="text-align: right;">Right</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">A</td>
+<td style="text-align: center;">B</td>
+<td style="text-align: right;">C</td>
+</tr>
+<tr>
+<td style="text-align: left;">escaped | pipe</td>
+<td style="text-align: center;"><del>deleted</del></td>
+<td style="text-align: right;"><strong>bold</strong></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<div class="sourceCode" id="cb1"><pre class="sourceCode javascript"><code class="sourceCode javascript"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> value <span class="op">=</span> <span class="dv">1</span><span class="op">;</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">console</span><span class="op">.</span><span class="fu">log</span>(value)<span class="op">;</span></span></code></pre></div>
+<pre><code>indented code
+next line</code></pre>
+<p>Footnote reference<a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a> and another<a href="#fn2" class="footnote-ref" id="fnref2" role="doc-noteref"><sup>2</sup></a>.</p>
+<p>Inline math <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>x</mi><mn>2</mn></msup><mo>+</mo><msub><mi>y</mi><mn>1</mn></msub><mo>=</mo><mi>α</mi></mrow><annotation encoding="application/x-tex">x^2 + y_1 = \alpha</annotation></semantics></math> and <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mfrac><mn>1</mn><mn>2</mn></mfrac><annotation encoding="application/x-tex">\frac{1}{2}</annotation></semantics></math>.</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>n</mi></munderover><mi>i</mi><mo>=</mo><mfrac><mrow><mi>n</mi><mo stretchy="false" form="prefix">(</mo><mi>n</mi><mo>+</mo><mn>1</mn><mo stretchy="false" form="postfix">)</mo></mrow><mn>2</mn></mfrac></mrow><annotation encoding="application/x-tex">
+\sum_{i=1}^{n} i = \frac{n(n+1)}{2}
+</annotation></semantics></math></p>
+<p>Inline GFM math <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>a</mi><mo>+</mo><mi>b</mi></mrow><annotation encoding="application/x-tex">a+b</annotation></semantics></math>.</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>x</mi><mn>2</mn></msup><mo>+</mo><msup><mi>y</mi><mn>2</mn></msup><mo>=</mo><msup><mi>z</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">x^2 + y^2 = z^2</annotation></semantics></math></p>
+<h2 id="ordinary-math-forms">Ordinary math forms</h2>
+<p><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msqrt><mi>x</mi></msqrt><annotation encoding="application/x-tex">\sqrt{x}</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mroot><mi>y</mi><mn>3</mn></mroot><annotation encoding="application/x-tex">\sqrt[3]{y}</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msubsup><mi>a</mi><mi>b</mi><mi>c</mi></msubsup><annotation encoding="application/x-tex">a_{b}^{c}</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mtext mathvariant="normal">units</mtext><annotation encoding="application/x-tex">\text{units}</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>a</mi><mspace width="1.0em"></mspace><mi>b</mi></mrow><annotation encoding="application/x-tex">a\quad b</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">(</mo><mi>x</mi><mo stretchy="true" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">\left( x \right)</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mover><mi>x</mi><mo accent="true">̂</mo></mover><annotation encoding="application/x-tex">\hat{x}</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mover><mi>x</mi><mo accent="true">‾</mo></mover><annotation encoding="application/x-tex">\bar{x}</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mover><mi>x</mi><mo accent="true">→</mo></mover><annotation encoding="application/x-tex">\vec{x}</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mover><mi>x</mi><mo accent="true">̇</mo></mover><annotation encoding="application/x-tex">\dot{x}</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mover><mover><mrow><mi>x</mi><mo>+</mo><mi>y</mi></mrow><mo accent="true">⏞</mo></mover><mi>n</mi></mover><annotation encoding="application/x-tex">\overbrace{x+y}^{n}</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><munder><munder><mrow><mi>x</mi><mo>+</mo><mi>y</mi></mrow><mo accent="true">⏟</mo></munder><mi>n</mi></munder><annotation encoding="application/x-tex">\underbrace{x+y}_{n}</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mover><mo>=</mo><mi>a</mi></mover><annotation encoding="application/x-tex">\overset{a}{=}</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><munder><mi mathvariant="normal">lim</mi><mi>x</mi></munder><annotation encoding="application/x-tex">\underset{x}{\lim}</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mphantom><mi>x</mi></mphantom><annotation encoding="application/x-tex">\phantom{x}</annotation></semantics></math>, <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">(</mo><mfrac linethickness="0"><mi>n</mi><mi>k</mi></mfrac><mo stretchy="true" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">\binom{n}{k}</annotation></semantics></math>.</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="true" form="prefix">(</mo><mtable><mtr><mtd columnalign="center" style="text-align: center"><mi>a</mi></mtd><mtd columnalign="center" style="text-align: center"><mi>b</mi></mtd></mtr><mtr><mtd columnalign="center" style="text-align: center"><mi>c</mi></mtd><mtd columnalign="center" style="text-align: center"><mi>d</mi></mtd></mtr></mtable><mo stretchy="true" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">
+\begin{pmatrix}
+a &amp; b \\
+c &amp; d
+\end{pmatrix}
+</annotation></semantics></math></p>
+<section id="footnotes" class="footnotes footnotes-end-of-document" role="doc-endnotes">
+<hr>
+<ol>
+<li id="fn1"><p>Owned footnote text.<a href="#fnref1" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn2"><p>Footnote first paragraph.</p>
+<p>Second footnote paragraph.<a href="#fnref2" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+</ol>
+</section>
+</main></body></html>

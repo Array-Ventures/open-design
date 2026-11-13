@@ -15,13 +15,17 @@ export function documentDocxSourceColors(html: string): DocumentDocxColorSource 
   do { attributeName = `data-eve-docx-color-${randomBytes(8).toString('hex')}`; }
   while ($(`[${attributeName}],[${attributeName.slice(5)}]`).length);
   const add = (kind: 'cell' | 'inline') => { if (requests.length >= 20000) return fail(); const id = String(requests.length); requests.push({ id, kind }); return id; };
-  $('td,th').each((_index, cell) => { $(cell).attr(attributeName, add('cell')); });
+  const htmlNamespace = 'http://www.w3.org/1999/xhtml';
+  // Foreign syntax (for example passive MathML) has a separate admission owner.
+  // Never insert HTML spans/attributes into it or its embedded descendants.
+  const foreign = (elements: ReturnType<typeof $>) => elements.toArray().some(parent => parent.type === 'tag' && Boolean(parent.namespace && parent.namespace !== htmlNamespace));
+  $('td,th').each((_index, cell) => { if (!foreign($(cell).add($(cell).parents()))) $(cell).attr(attributeName, add('cell')); });
   // Snapshot direct TextNodes before adding wrappers; never walk newly wrapped
   // children a second time or reinterpret source IDs as generated ownership.
   const structural = new Set(['body','main','div','table','thead','tbody','tfoot','tr','colgroup','ul','ol']);
   const text = $('body,body *').contents().toArray().filter(node => node.type === 'text' && (Boolean(node.data.trim()) || !structural.has(node.parent?.type === 'tag' ? node.parent.name : '')));
   for (const node of text) {
-    if ($(node).parents('script,style').length) continue;
+    if ($(node).parents('script,style').length || foreign($(node).parents())) continue;
     $(node).wrap(`<span ${attributeName}="${add('inline')}"></span>`);
   }
   return { html: $.html(), attributeName, requests };

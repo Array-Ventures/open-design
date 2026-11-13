@@ -60,3 +60,20 @@ it('restores collapsed TD/LI/P indentation before Pandoc while retaining the vis
   expect(output(`[${source.attributeName}="${id}"]`).text()).toBe(' ');
   expect(output('#original').length).toBe(0);
 });
+
+it('preserves the actual ordinary-GFM MathML corpus and TeX annotations exactly while annotating surrounding HTML', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const html=await readFile(new URL('./fixtures/documents/gfm-builtins-prepared.html',import.meta.url),'utf8'),before=load(html);
+  const originalMath=before('math').toArray().map(node=>before(node).toString());
+  expect(originalMath).toHaveLength(22);
+  const source=documentDocxSourceColors(html),after=load(source.html);
+  expect(after('math').toArray().map(node=>after(node).toString())).toEqual(originalMath);
+  expect(after(`math[${source.attributeName}],math [${source.attributeName}]`)).toHaveLength(0);
+  expect(after('math annotation').toArray().map(node=>after(node).text())).toEqual(before('math annotation').toArray().map(node=>before(node).text()));
+  expect(after(`h1 [${source.attributeName}]`).text()).toBe('Heading one');
+  expect(after(`section.footnotes [${source.attributeName}]`).length).toBeGreaterThan(0);
+  expect(source.requests.length).toBeGreaterThan(50);
+  const restored=load(normalizedDocumentDocxHtml(source,new Map(source.requests.map(request=>[request.id,{}]))));
+  expect(restored('math').toArray().map(node=>restored(node).toString())).toEqual(originalMath);
+  expect(restored('section.footnotes').text()).toBe(before('section.footnotes').text());
+});
