@@ -6,6 +6,9 @@ import { load } from 'cheerio';
 import JSZip from 'jszip';
 import { bundleStandaloneHtml } from '../artifacts/standalone-html.js';
 import { documentHtml, documentMetadataDirective, documentMetadataSchema } from '@open-design/contracts/runtime/document';
+import { documentDocxSourceColors, normalizedDocumentDocxHtml, resolvedDocumentDocxColorOwners } from './document-docx-source-colors.js';
+import { projectDocumentDocxColors } from './document-docx-colors.js';
+import { normalizeDocumentDocxColors } from './document-color-normalize.js';
 import { documentMarkdownInput, restoreDocumentMarkdownOwners } from './document-markdown.js';
 
 type Font = 'sans' | 'serif';
@@ -121,8 +124,15 @@ export async function exportDocument(html: string, original: string, fileName: s
     const reference = await documentReference(await pandoc(['--print-default-data-file=reference.docx']), { text: font, headings: headings === 'serif' ? 'serif' : 'sans' });
     const referencePath = path.join(directory, 'reference.docx');
     await writeFile(referencePath, reference, { flag: 'wx', mode: 0o600 });
-    const converted = await pandoc(['--sandbox', '--from=html+raw_html', '--to=docx', `--reference-doc=${referencePath}`, '--fail-if-warnings'], $.html());
+    const source = documentDocxSourceColors($.html());
+    const normalized = await normalizeDocumentDocxColors(source.html, source.requests, source.attributeName);
+    const ast = JSON.parse((await pandoc(['--sandbox', '--from=html+raw_html', '--to=json', '--fail-if-warnings'], normalizedDocumentDocxHtml(source, normalized))).toString('utf8'));
+    const owners = resolvedDocumentDocxColorOwners(ast, source, normalized);
+    const converted = await pandoc(['--sandbox', '--from=json', '--to=docx', `--reference-doc=${referencePath}`, '--fail-if-warnings'], JSON.stringify(ast));
     const zip = await JSZip.loadAsync(converted);
+    const document = zip.file('word/document.xml');
+    if (!document) throw new Error('The document converter did not produce editable Word content.');
+    zip.file('word/document.xml', projectDocumentDocxColors(await document.async('string'), owners));
     const core = zip.file('docProps/core.xml');
     if (core) { const properties = load(await core.async('string'), { xml: true }); properties('dc\\:title').text(title); zip.file('docProps/core.xml', properties.xml()); }
     const body = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });

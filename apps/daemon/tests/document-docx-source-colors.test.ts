@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { load } from 'cheerio';
-import { documentDocxSourceColors,resolvedDocumentDocxColorOwners } from '../src/embedded-render/document-docx-source-colors.js';
+import { documentDocxSourceColors,normalizedDocumentDocxHtml,resolvedDocumentDocxColorOwners } from '../src/embedded-render/document-docx-source-colors.js';
 it('annotates each original text owner once and preserves authored IDs, styling and link identity', () => {
   const source=documentDocxSourceColors('<html><body><p id="authored"><span style="color:red">A <b>B</b></span><a id="link" href="https://fixture.test">C</a></p><table><tr><td id="cell">D</td></tr></table></body></html>');
   const $=load(source.html);
@@ -38,4 +38,25 @@ it('keeps prepared disabled checklist inputs and their checked states while anno
   expect(inputs).toHaveLength(2);expect(inputs.eq(0).is('[disabled][checked]')).toBe(true);expect(inputs.eq(1).is('[disabled]:not([checked])')).toBe(true);
   expect($('label').map((_index,node)=>$(node).text()).get()).toEqual(['Completed task','Pending task']);
   expect(source.requests.map(r=>r.kind)).toEqual(['inline','inline']);
+});
+
+it('retains whitespace-only inline owners so highlighted spaces cannot silently lose their shading', () => {
+  const source=documentDocxSourceColors('<body>\n<p><span style="background-color:yellow"><b>A</b> <i>B</i></span></p>\n</body>'),$=load(source.html);
+  const wrappers=$(`[${source.attributeName}]`);
+  expect(wrappers.map((_index,node)=>$(node).text()).get()).toEqual(['A',' ','B']);
+  expect(source.requests).toHaveLength(3); // Structural indentation remains unwrapped.
+});
+
+
+it('restores collapsed TD/LI/P indentation before Pandoc while retaining the visible highlighted space owner', () => {
+  const html='<html><body><table><tr><td style="background-color:#182828">\n<p>Value</p>\n</td><td><p><span style="background-color:yellow"><b>A</b> <i>B</i></span></p></td></tr></table><ul><li>\n<p>List value</p>\n</li></ul><p>\n<span>Paragraph value</span>\n</p></body></html>';
+  const source=documentDocxSourceColors(html),$=load(source.html),resolved=new Map(source.requests.map(request=>[request.id,{}]));
+  const visibleSpace=$(`[${source.attributeName}]`).toArray().find(node=>$(node).text()===' ' && $(node).parent().attr('style')==='background-color:yellow')!;
+  const id=$(visibleSpace).attr(source.attributeName)!;resolved.set(id,{background:'FFFF00'});
+  const output=load(normalizedDocumentDocxHtml(source,resolved));
+  expect(output('td').first().html()).toBe('\n<p>Value</p>\n');
+  expect(output('li').html()).toBe('\n<p>List value</p>\n');
+  expect(output('body>p').html()).toBe('\n<span>Paragraph value</span>\n');
+  expect(output(`[${source.attributeName}="${id}"]`).text()).toBe(' ');
+  expect(output('#original').length).toBe(0);
 });
