@@ -21,7 +21,7 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
   const injector = univer.__getInjector(), commands = injector.get(ICommandService), functions = injector.get(engine.IFunctionService);
   const display = new WorkbookFormulaDisplay(model, original, initial, { sequenceNodesBuilder: value => api.getFormula().sequenceNodesBuilder(value), hasExecutor: name => functions.hasExecutor(name), deserializeRangeWithSheet: engine.deserializeRangeWithSheet, sequenceNodeType: engine.sequenceNodeType });
   if (!owner) display.pause('Stored results');
-  let generation: number | null = null;
+  let generation: number | null = null, structuralCalculation = false;
   const formulas = (book: IWorkbookData) => Object.values(book.sheets).some(sheet => Object.values(sheet.cellData ?? {}).some(row => Object.values(row ?? {}).some(cell => Boolean((cell as ICellData | null | undefined)?.f))));
   const publish = () => {
     changed(workbookCalculationState(display.summary()));
@@ -30,7 +30,16 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
     if (owner && command.id.startsWith('sheet.mutation.') && !options?.fromFormula) {
       try { assertWorkbookCalculationMutation(command, [snapshot()], SetRangeValuesMutation.id); } catch (error) { owner.deadline.fail(); throw error; }
     }
-    if (owner && isWorkbookCalculationStructuralMutation(command.id) && formulas(snapshot())) generation = owner.deadline.begin();
+    if (owner && isWorkbookCalculationStructuralMutation(command.id) && formulas(snapshot())) {
+      generation = owner.deadline.begin(); structuralCalculation = true;
+    }
+    // The pinned dirty-tree optimization can mark an axis edit NOT_EXECUTED
+    // when its moved cached values already equal the computed values. That is
+    // not proof for the new input digest. Force the next bounded replica pass
+    // to return verified scalar results, without accepting caches as live.
+    if (owner && structuralCalculation && command.id === engine.SetFormulaCalculationStartMutation.id) {
+      Object.assign(command.params ?? {}, { forceCalculation: true }); structuralCalculation = false;
+    }
     if (command.id === SetRangeValuesMutation.id) {
       if (options?.fromFormula) display.rangeResult(command.params as Parameters<WorkbookFormulaDisplay['rangeResult']>[0]);
       else if (owner && workbookCalculationChangesInputs(command.params) && (formulas(snapshot()) || Object.values((command.params as { cellValue?: Record<string, Record<string, ICellData>> }).cellValue ?? {}).some(row => Object.values(row).some(cell => cell?.f)))) {
@@ -45,7 +54,7 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
   const after = commands.onCommandExecuted((command, options) => {
     if (command.id === SetRangeValuesMutation.id || isWorkbookCalculationStructuralMutation(command.id)) {
       const current = snapshot(), hasFormulas = formulas(current);
-      if (!hasFormulas && generation !== null) { owner?.deadline.complete(generation); generation = null; }
+      if (!hasFormulas && generation !== null) { owner?.deadline.complete(generation); generation = null; structuralCalculation = false; }
       display.update(current, Boolean(owner && hasFormulas && !options?.fromFormula && (isWorkbookCalculationStructuralMutation(command.id) || workbookCalculationChangesInputs(command.params)))); publish();
     }
   });

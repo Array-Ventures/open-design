@@ -155,7 +155,7 @@ it('creates an inert stored kernel after RPC was loaded without requiring an RPC
   expect(derived).toBe(0);
 });
 
-it('calculates source-qualified row and column structural edits through production RPC and undo/redo', async () => {
+it.each([false, true])('calculates source-qualified row and column structural edits through production RPC and undo/redo (correct caches: %s)', async correctCaches => {
   vi.stubGlobal('Worker', WorkerAdapter);
   const worker = new WorkerAdapter(true, false, false, true);
   const owner = ownWorkbookCalculationWorker(() => { throw Error('Qualified structural worker became unavailable.'); }, () => worker as unknown as Worker);
@@ -170,8 +170,8 @@ it('calculates source-qualified row and column structural edits through producti
   univer.registerPlugin(formula.UniverSheetsFormulaPlugin, { notExecuteFormula: true, initialFormulaComputing: formula.CalculationMode.NO_CALCULATION });
   const api = FUniver.newAPI(univer);
   const seed = seedWorkbookStructureIdentity({ id: 'structure-rpc', name: 'Structure', appVersion: '1.4.0', locale: core.LocaleType.EN_US, sheetOrder: ['s', 't'], styles: {}, sheets: {
-    s: { id: 's', name: 'Inputs', rowCount: 8, columnCount: 6, cellData: { 1: { 1: { v: 7, t: 2 }, 2: { f: '=B2+3', v: 999, t: 2 } } } },
-    t: { id: 't', name: 'Summary', rowCount: 8, columnCount: 6, cellData: { 0: { 0: { f: '=Inputs!B2+1', v: 999, t: 2 } } } },
+    s: { id: 's', name: 'Inputs', rowCount: 8, columnCount: 6, cellData: { 1: { 1: { v: 7, t: 2 }, 2: { f: '=SUM(B2:B3)+3', v: correctCaches ? 10 : 999, t: 2 } } } },
+    t: { id: 't', name: 'Summary', rowCount: 8, columnCount: 6, cellData: { 0: { 0: { f: '=Inputs!B2+1', v: correctCaches ? 8 : 999, t: 2 } } } },
   } } as core.IWorkbookData, 'a'.repeat(64));
   book = api.createWorkbook(seed); book.setEditable(true);
   univer.__getInjector().get(core.IUniverInstanceService).focusUnit(book.getId());
@@ -189,22 +189,37 @@ it('calculates source-qualified row and column structural edits through producti
   };
   expect(workbookDocumentSchema.parse(model)).toEqual(model);
   const calculation = attachWorkbookCalculation(univer, api, model, seed, book.save(), () => book!.save(), owner, () => {}); closers.push(() => calculation.dispose());
+  const notifications: unknown[] = [];
   const commands = univer.__getInjector().get(core.ICommandService), tags: { valid: boolean; digest: string }[] = [];
-  const observe = commands.beforeCommandExecuted(command => { if (command.id === engine.SetFormulaCalculationResultMutation.id) { const tag = workbookCalculationTagSchema.parse((command.params as { workbookCalculation: unknown }).workbookCalculation); tags.push({ valid: tag.valid && tag.inputSha256 === workbookCalculationInputSha256(book!.save()), digest: tag.inputSha256 }); } }); closers.push(() => observe.dispose());
+  const observe = commands.beforeCommandExecuted(command => { if (command.id === engine.SetFormulaCalculationNotificationMutation.id && notifications.length < 128) notifications.push(command.params); if (command.id === engine.SetFormulaCalculationResultMutation.id) { const tag = workbookCalculationTagSchema.parse((command.params as { workbookCalculation: unknown }).workbookCalculation); tags.push({ valid: tag.valid && tag.inputSha256 === workbookCalculationInputSha256(book!.save()), digest: tag.inputSha256 }); } }); closers.push(() => observe.dispose());
   const sheet = book.getActiveSheet();
   const settled = async (change: () => void | Promise<unknown>) => {
     const end = new Promise<void>((resolve, reject) => { const timer = setTimeout(() => { listener.dispose(); reject(Error('Structural RPC did not settle.')); }, 5000); const listener = api.getFormula().calculationEnd((state: number) => { if (state === 3) { clearTimeout(timer); listener.dispose(); resolve(); } }); });
     await change(); const digest = workbookCalculationInputSha256(book!.save());
-    await vi.waitFor(() => expect(tags.some(tag => tag.valid && tag.digest === digest)).toBe(true)); await end;
+    await vi.waitFor(() => expect(tags.some(tag => tag.valid && tag.digest === digest), JSON.stringify(notifications)).toBe(true)); await end;
   };
+  // A real RPC barrier lets the preceding createInstance reach the replica
+  // without warming its formula graph through a literal edit.
+  await univer.__getInjector().get(rpc.IRemoteInstanceService).whenReady();
+  // The first operation in the real UI may be a context action, before any
+  // literal edit has warmed the worker's formula dependency graph.
+  await settled(() => { commands.syncExecuteCommand(sheets.InsertRowByRangeCommand.id, { unitId: book!.getId(), subUnitId: 's', range: { startRow: 1, endRow: 1, startColumn: 0, endColumn: 5 }, direction: core.Direction.UP }); });
+  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[2]?.[2]?.v).toBe(10); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.v).toBe(8); });
+  await settled(() => api.undo());
+  await settled(() => {
+    commands.syncExecuteCommand(sheets.InsertRowByRangeCommand.id, { unitId: book!.getId(), subUnitId: 's', range: { startRow: 1, endRow: 1, startColumn: 0, endColumn: 5 }, direction: core.Direction.UP });
+    commands.syncExecuteCommand(sheets.InsertColByRangeCommand.id, { unitId: book!.getId(), subUnitId: 's', range: { startRow: 0, endRow: 8, startColumn: 1, endColumn: 1 }, direction: core.Direction.LEFT });
+  });
+  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[2]?.[3]?.v).toBe(10); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.v).toBe(8); });
+  await settled(() => api.undo()); await settled(() => api.undo());
   await settled(() => { sheet.getRange('B2').setValue(8); });
   await vi.waitFor(() => expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.v).toBe(9));
   await settled(() => { sheet.insertRowsBefore(1, 1); });
-  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[2]?.[2]?.f).toBe('=B3+3'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.f).toBe('=Inputs!B3+1'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.v).toBe(9); expect(calculation.status('s', 2, 2)?.result).toBe('calculated'); });
+  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[2]?.[2]?.f).toBe('=SUM(B3:B4)+3'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.f).toBe('=Inputs!B3+1'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.v).toBe(9); expect(calculation.status('s', 2, 2)?.result).toBe('calculated'); });
   await settled(() => { sheet.insertColumnsBefore(1, 1); });
-  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[2]?.[3]?.f).toBe('=C3+3'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.f).toBe('=Inputs!C3+1'); expect(calculation.status('s', 2, 3)?.result).toBe('calculated'); });
+  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[2]?.[3]?.f).toBe('=SUM(C3:C4)+3'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.f).toBe('=Inputs!C3+1'); expect(calculation.status('s', 2, 3)?.result).toBe('calculated'); });
   await settled(() => { sheet.deleteRows(1, 1); }); await settled(() => { sheet.deleteColumns(1, 1); });
-  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[1]?.[2]?.f).toBe('=B2+3'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.f).toBe('=Inputs!B2+1'); expect(calculation.status('s', 1, 2)?.result).toBe('calculated'); });
+  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[1]?.[2]?.f).toBe('=SUM(B2:B3)+3'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.f).toBe('=Inputs!B2+1'); expect(calculation.status('s', 1, 2)?.result).toBe('calculated'); });
   await settled(() => api.undo()); await settled(() => api.undo());
   await vi.waitFor(() => expect(calculation.status('s', 2, 3)?.result).toBe('calculated'));
   await settled(() => api.redo()); await settled(() => api.redo());
