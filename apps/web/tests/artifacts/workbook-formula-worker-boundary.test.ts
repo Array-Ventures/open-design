@@ -7,7 +7,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { ownWorkbookCalculationWorker } from '../../src/components/embedded/workbook/calculation-worker-owner';
 import { workbookGridEdits } from '../../src/components/embedded/workbook/grid-edits';
 import { attachWorkbookCalculation } from '../../src/components/embedded/workbook/grid-calculation';
-import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import { workbookDocumentSchema, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { workbookCalculationInputSha256, workbookCalculationTagSchema } from '../../src/components/embedded/workbook/formula-input-provenance';
 import { workbookCalculationDeadline } from '../../src/components/embedded/workbook/formula-worker-deadline';
 import { assertWorkbookCalculationBudget, assertWorkbookCalculationMutation } from '../../src/components/embedded/workbook/formula-worker-budget';
@@ -175,7 +175,19 @@ it('calculates source-qualified row and column structural edits through producti
   } } as core.IWorkbookData, 'a'.repeat(64));
   book = api.createWorkbook(seed); book.setEditable(true);
   univer.__getInjector().get(core.IUniverInstanceService).focusUnit(book.getId());
-  const model = { version: 1, calculationMetadata: 'supported', worksheetStructureEditable: true, sheets: Object.values(seed.sheets).map(sheet => ({ id: sheet.id, arrayFormulas: [], cells: [] })) } as unknown as WorkbookDocument;
+  const model: WorkbookDocument = {
+    version: 1, date1904: false, activeSheetId: 's', calculationMetadata: 'verified', worksheetStructureEditable: true,
+    styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
+    sheets: Object.entries(seed.sheets).map(([id, sheet]) => ({
+      id, name: sheet.name!, rowCount: sheet.rowCount!, columnCount: sheet.columnCount!, visibility: 'visible',
+      frozenRows: 0, frozenColumns: 0, merges: [], rowDimensions: [], columnDimensions: [], arrayFormulas: [],
+      cells: Object.entries(sheet.cellData ?? {}).flatMap(([row, entries]) => Object.entries(entries ?? {}).map(([column, raw]) => {
+        const cell = raw as core.ICellData;
+        return { row: Number(row), column: Number(column), kind: 'number' as const, value: Number(cell.v), ...(cell.f ? { formula: cell.f } : {}) };
+      })),
+    })),
+  };
+  expect(workbookDocumentSchema.parse(model)).toEqual(model);
   const calculation = attachWorkbookCalculation(univer, api, model, seed, book.save(), () => book!.save(), owner, () => {}); closers.push(() => calculation.dispose());
   const commands = univer.__getInjector().get(core.ICommandService), tags: { valid: boolean; digest: string }[] = [];
   const observe = commands.beforeCommandExecuted(command => { if (command.id === engine.SetFormulaCalculationResultMutation.id) { const tag = workbookCalculationTagSchema.parse((command.params as { workbookCalculation: unknown }).workbookCalculation); tags.push({ valid: tag.valid && tag.inputSha256 === workbookCalculationInputSha256(book!.save()), digest: tag.inputSha256 }); } }); closers.push(() => observe.dispose());
