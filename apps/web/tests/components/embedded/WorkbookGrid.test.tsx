@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { legacyWorkbookWrite } from '../../fixtures/workbook-write-result';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useState } from 'react';
@@ -236,7 +237,7 @@ it('retains CSV sizing through the real writer acknowledgement and refreshed sou
         expect(intent.plan).not.toHaveProperty('dimensions');
         const next = structuredClone(source); next.sourceSha256 = 'b'.repeat(64);
         next.model.sheets[0]!.cells = intent.plan.edits.map(edit => edit.cell);
-        return next;
+        return legacyWorkbookWrite(next);
       }, () => {}, accept, journal); ready();
     }} />;
   }

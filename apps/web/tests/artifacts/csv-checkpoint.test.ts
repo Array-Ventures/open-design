@@ -1,3 +1,4 @@
+import { legacyWorkbookWrite } from '../fixtures/workbook-write-result';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 import { CellValueType, type IWorkbookData } from '@univerjs/presets';
@@ -20,7 +21,7 @@ it('protects a resized CSV literal save, roundtrips its pending identity, and re
   const stored = await readWorkbookDraft(scope); expect(stored?.pending?.intent.renderId).toBe(renderId);
   expect(stored?.pending?.intent.plan.dimensions).toBeUndefined(); expect(stored?.pending?.snapshot.sheets.csv!.rowData![0]!.h).toBe(40);
   expect(decodeWorkbookDraft(encodeWorkbookDraft(scope, stored!), scope)).toEqual(stored);
-  const resumed = new WorkbookWriter(source, initial, async intent => { observed.push(structuredClone(intent)); return { ...source, sourceSha256: 'b'.repeat(64) }; }, () => {}, undefined, { save: state => saveWorkbookDraft(scope, state), restored: stored! });
+  const resumed = new WorkbookWriter(source, initial, async intent => { observed.push(structuredClone(intent)); return legacyWorkbookWrite({ ...source, sourceSha256: 'b'.repeat(64) }); }, () => {}, undefined, { save: state => saveWorkbookDraft(scope, state), restored: stored! });
   await resumed.flush(); expect(resumed.state()).toEqual({ dirty: false, saving: false, error: null });
   expect(observed[1]).toEqual({ ...observed[0], renderId }); expect(await readWorkbookDraft(scope)).toBeNull(); await resumed.close();
 });

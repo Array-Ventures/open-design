@@ -31,7 +31,7 @@ export class WorkbookWriter {
   private recoveryConflict = false;
   private error: string | null = null;
   constructor(source: Preview, initial: IWorkbookData,
-    private write: (intent: WorkbookWriteIntent, checkpoint: () => Promise<void>) => Promise<Preview | WorkbookWriteResult>,
+    private write: (intent: WorkbookWriteIntent, checkpoint: () => Promise<void>) => Promise<WorkbookWriteResult>,
     private changed: (state: WorkbookWriteState) => void,
     private accepted?: (source: Preview, snapshot: IWorkbookData) => void, private journal?: WorkbookJournal) {
     this.source = source; this.acknowledged = structuredClone(initial); this.desired = structuredClone(initial);
@@ -92,8 +92,8 @@ export class WorkbookWriter {
         await this.persist(); if (!this.active) return;
         const pending = this.pending, written = await this.write(pending.intent, () => this.persist());
         if (!this.active) return;
-        const source = 'preview' in written ? written.preview : written;
-        const acknowledgement = workbookSaveAcknowledgementSchema.parse('preview' in written ? written.acknowledgement : { kind: 'unavailable', reason: 'legacy-receipt' });
+        const source = written.preview;
+        const acknowledgement = workbookSaveAcknowledgementSchema.parse(written.acknowledgement);
         if (acknowledgement.kind === 'history') {
           const proof = acknowledgement.provenance;
           if (proof.operationId !== pending.intent.id || proof.renderId !== pending.intent.renderId || proof.sourceSha256 !== this.source.sourceSha256 || proof.targetSha256 !== source.sourceSha256) throw Error('The workbook acknowledgement does not match its owned save.');

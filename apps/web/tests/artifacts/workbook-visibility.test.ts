@@ -1,3 +1,4 @@
+import { legacyWorkbookWrite } from '../fixtures/workbook-write-result';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ICommandService, IUniverInstanceService, LocaleType, Univer } from '@univerjs/core';
 import { FUniver } from '@univerjs/core/facade';
@@ -83,7 +84,7 @@ it('checks parent origin, controller, source, read-only and blocked state and om
 it('journals visibility-only writes before admission and retries the identical intent after uncertain transport', async () => {
   const model = source(), initial = data(model), desired = structuredClone(initial); desired.sheets.b!.hidden = 1;
   const saved: (WorkbookCheckpoint | null)[] = [], intents: WorkbookWriteIntent[] = [];
-  const write = vi.fn(async (intent: WorkbookWriteIntent) => { intents.push(intent); expect(saved.at(-1)?.pending?.intent.id).toBe(intent.id); if (intents.length === 1) throw new Error('Response lost'); return { sourceSha256: 'b'.repeat(64), model: { ...model, sheets: model.sheets.map(sheet => sheet.id === 'b' ? { ...sheet, visibility: 'hidden' as const } : sheet) } }; });
+  const write = vi.fn(async (intent: WorkbookWriteIntent) => { intents.push(intent); expect(saved.at(-1)?.pending?.intent.id).toBe(intent.id); if (intents.length === 1) throw new Error('Response lost'); return legacyWorkbookWrite({ sourceSha256: 'b'.repeat(64), model: { ...model, sheets: model.sheets.map(sheet => sheet.id === 'b' ? { ...sheet, visibility: 'hidden' as const } : sheet) } }); });
   const writer = new WorkbookWriter({ sourceSha256: sha, model }, initial, write, () => {}, undefined, { save: async checkpoint => { saved.push(structuredClone(checkpoint)); } });
   writer.update(desired); expect(writer.state().dirty).toBe(true); await writer.flush();
   const checkpoint = writer.checkpoint(); await writer.close();
