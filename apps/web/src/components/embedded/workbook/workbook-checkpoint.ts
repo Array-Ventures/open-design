@@ -13,6 +13,7 @@ const checkpoint = z.object({ version: z.literal(1), source: workbookPreviewSche
   pending: z.object({ intent, snapshot, acknowledgement: workbookSaveAcknowledgementSchema.optional() }).strict().nullable(),
   sourceAcknowledgement: workbookSaveAcknowledgementSchema.optional(),
   sheetDeletions: z.array(workbookSourceDeleteContextSchema).max(4096).optional(),
+  sheetActionConflict: z.literal(true).optional(),
 }).strict();
 const record = z.object({ version: z.literal(1), scope: workbookDraftScopeSchema, checkpoint, updatedAt: z.number().int().nonnegative() }).strict();
 export function workbookDraftArtifactKey(scope: Omit<WorkbookDraftScope, 'draftId'>): string {

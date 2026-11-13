@@ -264,6 +264,8 @@ it.each(['storage', 'lease', 'newer-edit', 'close'] as const)('refuses SDK mutat
   if (reason === 'storage') gate.reject(Error('Device quota failed')); else gate.resolve();
   await rejected; await closing;
   expect(calls).toBe(0); expect(f.book.getSheetBySheetId('2')).not.toBeNull(); expect(writer.checkpoint().sheetDeletions).toEqual([old]);
+  expect(writer.checkpoint().sheetActionConflict).toBeUndefined();
+  if (reason === 'newer-edit') expect(writer.state().error).toBeNull();
   expect(f.history.getUndoRedoStatus(f.book.getId())).toEqual(afterUser); expect(f.history.pitchTopUndoElement()).toBe(userTop);
   if (reason === 'newer-edit') expect(writer.checkpoint().desired.sheets['1']!.cellData![0]![0]!.v).toBe(20);
   else { expect(afterUser).toEqual(before); expect(userTop).toBe(top); }
@@ -277,4 +279,70 @@ it('rejects a conflicting recovered source before storing or invoking the SDK ac
   });
   await expect(writer.protectSheetDeletion(context, deletionSnapshot(f.checkpoint), () => { calls++; return f.book.save(); })).rejects.toThrow('recovered workbook source');
   expect(saves).toBe(0); expect(calls).toBe(0); expect(writer.checkpoint()).toEqual(f.checkpoint); await writer.close();
+});
+
+it.each(['mismatch', 'throw'] as const)('fences later saves after a real SDK post-command %s and retains the protected pre-command recovery', async reason => {
+  const f = fixture(), context = captureWorkbookSourceDeletion(scope, f.checkpoint, '2'); let writes = 0;
+  const records: WorkbookCheckpoint[] = [];
+  const writer = new WorkbookWriter(f.checkpoint.source, f.checkpoint.acknowledged, async () => { writes++; throw Error('Remote must not run'); }, () => {}, undefined, {
+    isCurrent: () => true, validate: candidate => { serializeWorkbookDraft(scope, candidate); }, save: async candidate => { if (candidate) records.push(structuredClone(candidate)); },
+  });
+  await expect(writer.protectSheetDeletion(context, deletionSnapshot(f.checkpoint), () => {
+    stampWorkbookSourceDeletion(f.unit.getSheetBySheetId('2')!, context.descriptor);
+    f.commands.syncExecuteCommand(RemoveSheetCommand.id, { unitId: f.book.getId(), subUnitId: '2' });
+    f.book.getSheetBySheetId('1')!.getRange('A1').setValue(99);
+    writer.update(f.book.save()); // A real command observer may fire before return.
+    if (reason === 'throw') throw Error('SDK failed after mutation');
+    return f.book.save();
+  })).rejects.toThrow();
+  const history = f.history.getUndoRedoStatus(f.book.getId()), top = f.history.pitchTopUndoElement();
+  writer.update(f.book.save()); await writer.flush();
+  expect(writes).toBe(0);
+  expect(writer.state()).toMatchObject({ dirty: true, error: expect.stringContaining('recovery') });
+  expect(writer.checkpoint().desired).toEqual(f.checkpoint.desired);
+  expect(writer.checkpoint().sheetDeletions).toEqual([context]); expect(writer.checkpoint().source).toEqual(f.checkpoint.source);
+  expect(records.every(record => Boolean(record.desired.sheets['2']) && record.desired.sheets['1']!.cellData![0]![0]!.v === 12)).toBe(true);
+  expect(f.history.getUndoRedoStatus(f.book.getId())).toEqual(history); expect(f.history.pitchTopUndoElement()).toBe(top);
+  const decoded = decodeWorkbookDraft(JSON.parse(serializeWorkbookDraft(scope, records.at(-1)!)), scope);
+  expect(decoded.sheetActionConflict).toBe(true);
+  const recovered = new WorkbookWriter(decoded.source, decoded.acknowledged, async () => { writes++; throw Error('No recovered remote write'); }, () => {}, undefined, { restored: decoded, save: async () => {} });
+  recovered.update(f.book.save()); await recovered.flush();
+  expect(writes).toBe(0); expect(recovered.state()).toMatchObject({ dirty: true, error: expect.stringContaining('recovery') }); expect(recovered.checkpoint().desired).toEqual(f.checkpoint.desired);
+  await recovered.close(); await writer.close();
+});
+
+it('retains prior durable recovery when persisting the post-command quarantine itself fails', async () => {
+  const f = fixture(); f.book.getSheetBySheetId('1')!.getRange('A1').setValue(20); f.checkpoint.desired = f.book.save();
+  const context = captureWorkbookSourceDeletion(scope, f.checkpoint, '2'); let writes = 0; const records: WorkbookCheckpoint[] = [];
+  const writer = new WorkbookWriter(f.checkpoint.source, f.checkpoint.acknowledged, async () => { writes++; throw Error('No remote write'); }, () => {}, undefined, {
+    isCurrent: () => true, validate: candidate => { serializeWorkbookDraft(scope, candidate); },
+    save: async candidate => { if (candidate?.sheetActionConflict) throw Error('Device quota after SDK failure'); if (candidate) records.push(structuredClone(candidate)); },
+  });
+  writer.update(f.checkpoint.desired);
+  await expect(writer.protectSheetDeletion(context, deletionSnapshot(f.checkpoint), () => {
+    stampWorkbookSourceDeletion(f.unit.getSheetBySheetId('2')!, context.descriptor);
+    f.commands.syncExecuteCommand(RemoveSheetCommand.id, { unitId: f.book.getId(), subUnitId: '2' });
+    f.book.getSheetBySheetId('1')!.getRange('A1').setValue(99); writer.update(f.book.save()); throw Error('SDK failed');
+  })).rejects.toThrow('recovery');
+  writer.update(f.book.save()); await writer.flush(); expect(writes).toBe(0);
+  expect(writer.checkpoint().sheetActionConflict).toBe(true); expect(writer.checkpoint().desired).toEqual(f.checkpoint.desired);
+  const durable = decodeWorkbookDraft(JSON.parse(serializeWorkbookDraft(scope, records.at(-1)!)), scope);
+  expect(durable.sheetActionConflict).toBeUndefined(); // That transaction failed; do not invent durable proof.
+  expect(durable.desired).toEqual(f.checkpoint.desired); expect(durable.sheetDeletions).toEqual([context]);
+  expect(durable.desired.sheets['1']!.cellData![0]![0]!.v).toBe(20); expect(durable.desired.sheets['2']).toBeDefined(); await writer.close();
+});
+it('refuses flush while protection is pending instead of saving an older dirty source', async () => {
+  const f = fixture(); f.book.getSheetBySheetId('1')!.getRange('A1').setValue(20); f.checkpoint.desired = f.book.save();
+  const context = captureWorkbookSourceDeletion(scope, f.checkpoint, '2'), gate = protectionGate(), started = protectionGate(); let writes = 0;
+  const writer = new WorkbookWriter(f.checkpoint.source, f.checkpoint.acknowledged, async () => { writes++; throw Error('No early remote write'); }, () => {}, undefined, {
+    isCurrent: () => true, validate: candidate => { serializeWorkbookDraft(scope, candidate); },
+    save: async candidate => { if (candidate?.sheetDeletions?.length) { started.resolve(); await gate.promise; } },
+  });
+  writer.update(f.checkpoint.desired);
+  const protectedAction = writer.protectSheetDeletion(context, deletionSnapshot(f.checkpoint), () => {
+    stampWorkbookSourceDeletion(f.unit.getSheetBySheetId('2')!, context.descriptor);
+    f.commands.syncExecuteCommand(RemoveSheetCommand.id, { unitId: f.book.getId(), subUnitId: '2' }); return f.book.save();
+  });
+  await started.promise; await writer.flush(); expect(writes).toBe(0); expect(writer.checkpoint().pending).toBeNull();
+  gate.resolve(); await protectedAction; expect(writer.checkpoint().desired.sheets['1']!.cellData![0]![0]!.v).toBe(20); await writer.close();
 });

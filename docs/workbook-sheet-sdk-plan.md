@@ -627,3 +627,43 @@ passed. No live controller or UI control is installed. Permission, worker/editor
 readiness, actual history reachability/Undo outer gates, restored/birth sources
 and recovered server receipt validation remain required before activation.
 Final full repository typecheck and guard also passed on this barrier source.
+
+### Corrective checkpoint: quarantine unexpected protected SDK outcomes
+
+Independent review found that the previous barrier surfaced callback mismatch or
+throw but still allowed a later ordinary grid update/Save to submit that rejected
+SDK state. Two actual SDK regressions (Remove plus unexpected cell mutation, and
+Remove then throw) each called the remote writer against the prior code. They now
+remain fenced with zero remote calls after subsequent update/flush and recovery.
+
+The existing checkpoint carries an optional sticky `sheetActionConflict: true`.
+Writer preserves the protected pre-command source/desired and rooted contexts,
+sets dirty/error, and refuses new writes or ordinary update-based clearing. The
+same fence survives strict decode and Writer reconstruction. Observer updates are
+suppressed only within the synchronous protected callback, before verification;
+unexpected SDK snapshots are never published as saveable recovery data. Once a
+callback has run, mismatch or throw quarantines before storage or Save can admit
+that state. Flush also refuses while context protection is pending rather than
+racing a write of the older dirty state. Pre-callback refusals do not set the
+fence and still preserve usable newer edits.
+
+Quarantine persistence uses the existing journal. If that later transaction also
+fails, the in-memory fence remains and the earlier actual durable pre-command
+checkpoint still retains the legitimate prior edits and selected context. Tests
+explicitly report the absent durable flag in that failed-write case rather than
+inventing recovery proof. After a reload the uncertain mutated SDK instance is
+not reconstructed from that earlier checkpoint. A successful quarantine write
+retains the sticky flag across reload. Actual SDK history is retained in the live
+instance, not silently popped or serialized as a replacement history mechanism.
+
+No generic clear operation is exposed. Future deliberate recovery UX must reset
+the actual editor/kernel from the protected pre-command desired state under fresh
+source/permission validation before clearing the fence; it must preserve earlier
+legitimate edits rather than require discarding them. That recovery UX and the
+full live controller remain unqualified, so controls remain OFF.
+
+Validation: 66 focused context/Writer/recovery/editor tests passed; final 21
+context cases additionally assert nonsticky pre-command refusal. Final web types,
+full repository typecheck, guard and diff check passed. The two original failing
+regressions are retained in the source tests. No runtime, model, image, production,
+publication or pin changes were made.

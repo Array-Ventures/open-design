@@ -17,6 +17,7 @@ export interface WorkbookCheckpoint {
   pending: { intent: WorkbookWriteIntent; snapshot: IWorkbookData; acknowledgement?: WorkbookSaveAcknowledgement } | null;
   sourceAcknowledgement?: WorkbookSaveAcknowledgement;
   sheetDeletions?: WorkbookSourceDeleteContext[];
+  sheetActionConflict?: true;
 }
 export interface WorkbookJournal { save(checkpoint: WorkbookCheckpoint | null): Promise<void>; validate?(checkpoint: WorkbookCheckpoint): void; isCurrent?(): boolean; restored?: WorkbookCheckpoint }
 /** Serializes edits against acknowledged bytes. A failed/uncertain intent keeps
@@ -29,6 +30,9 @@ export class WorkbookWriter {
   private pending: WorkbookCheckpoint['pending'] = null;
   private sourceAcknowledgement: WorkbookSaveAcknowledgement | undefined;
   private sheetDeletions: WorkbookSourceDeleteContext[] = [];
+  private sheetActionConflict = false;
+  private executingProtectedCommand = false;
+  private readonly sheetActionConflictMessage = 'The worksheet command needs recovery. Keep the workbook open and recover the protected pre-command draft before saving.';
   private protection: Promise<void> | null = null;
   private revision = 0;
   private running: Promise<void> | null = null;
@@ -43,33 +47,37 @@ export class WorkbookWriter {
     this.source = source; this.acknowledged = structuredClone(initial); this.desired = structuredClone(initial);
     if (journal?.restored) {
       const restored = structuredClone(journal.restored);
-      this.source = restored.source; this.acknowledged = restored.acknowledged; this.desired = restored.desired; this.pending = restored.pending; this.sourceAcknowledgement = restored.sourceAcknowledgement; this.sheetDeletions = restored.sheetDeletions ?? [];
+      this.source = restored.source; this.acknowledged = restored.acknowledged; this.desired = restored.desired; this.pending = restored.pending; this.sourceAcknowledgement = restored.sourceAcknowledgement; this.sheetDeletions = restored.sheetDeletions ?? []; this.sheetActionConflict = restored.sheetActionConflict === true;
       if (source.sourceSha256 !== restored.source.sourceSha256) {
         this.recoveryConflict = !restored.pending;
         this.error = 'Recovered edits belong to an earlier workbook version. Keep this draft while checking the save status.';
       }
+      if (this.sheetActionConflict) this.error = this.sheetActionConflictMessage;
     }
   }
   private plan() { return workbookGridPlan(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired, this.sheetDeletions); }
   state(): WorkbookWriteState {
-    let dirty = Boolean(this.pending || this.running || this.protection);
+    let dirty = Boolean(this.pending || this.running || this.protection || this.sheetActionConflict);
     try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
     return { dirty, saving: this.running !== null || this.protection !== null, error: this.error };
   }
   update(snapshot: IWorkbookData) {
-    if (!this.active) return;
+    if (!this.active || this.executingProtectedCommand) return;
+    // Once a protected SDK command diverges, preserve the prior recovery branch.
+    // Ordinary observer updates are not deliberate recovery/reset authority.
+    if (this.sheetActionConflict) { this.error = this.sheetActionConflictMessage; this.publish(); return; }
     this.revision++; this.desired = structuredClone(snapshot);
     try { this.plan(); if (!this.pending && !this.recoveryConflict) this.error = null; }
     catch (error) { this.error = error instanceof Error ? error.message : 'The workbook changes could not be validated.'; }
     this.publish();
     void this.persist().catch(error => { if (this.active) { this.error = this.persistenceError(error); this.publish(); } });
   }
-  checkpoint(): WorkbookCheckpoint { return structuredClone({ version: 1, source: this.source, acknowledged: this.acknowledged, desired: this.desired, pending: this.pending, ...(this.sourceAcknowledgement ? { sourceAcknowledgement: this.sourceAcknowledgement } : {}), ...(this.sheetDeletions.length ? { sheetDeletions: this.sheetDeletions } : {}) }); }
+  checkpoint(): WorkbookCheckpoint { return structuredClone({ version: 1, source: this.source, acknowledged: this.acknowledged, desired: this.desired, pending: this.pending, ...(this.sourceAcknowledgement ? { sourceAcknowledgement: this.sourceAcknowledgement } : {}), ...(this.sheetDeletions.length ? { sheetDeletions: this.sheetDeletions } : {}), ...(this.sheetActionConflict ? { sheetActionConflict: true as const } : {}) }); }
   /** Synchronous context-pool admission through the real draft encoder.
    * A command owner must separately validate its post-command snapshot before
    * executing. This retains data, not Delete/Undo or historical authority. */
   private prospectiveDeletionContexts(raw: WorkbookSourceDeleteContext): WorkbookSourceDeleteContext[] {
-    if (!this.active || this.pending || this.running || this.protection || !this.journal?.validate) throw Error('Protected worksheet deletion is not ready.');
+    if (!this.active || this.sheetActionConflict || this.pending || this.running || this.protection || !this.journal?.validate) throw Error('Protected worksheet deletion is not ready.');
     const context = workbookSourceDeleteContextSchema.parse(raw);
     if (context.sourceSha256 !== this.source.sourceSha256) throw Error('The deletion source changed.');
     const previous = this.sheetDeletions.find(value => value.descriptor.token === context.descriptor.token);
@@ -89,6 +97,7 @@ export class WorkbookWriter {
   protectSheetDeletion(raw: WorkbookSourceDeleteContext, prospective: IWorkbookData, execute: () => IWorkbookData): Promise<void> {
     if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
     const run = async () => {
+      if (this.sheetActionConflict) throw Error(this.sheetActionConflictMessage);
       if (this.recoveryConflict) throw Error('The recovered workbook source is not ready for worksheet actions.');
       if (!this.journal?.validate || !this.journal.isCurrent?.()) throw Error('The workbook recovery lease is no longer current.');
       const candidate = this.prospectiveDeletionContexts(raw), source = this.source, revision = this.revision;
@@ -106,8 +115,24 @@ export class WorkbookWriter {
       // Old roots remain untouched on all pre-command refusals. After invoking
       // SDK, retain the durably protected candidate even if SDK itself throws.
       this.sheetDeletions = candidate;
-      const actual = execute(); this.update(actual);
-      if (canonicalCommentJson(actual) !== canonicalCommentJson(snapshot)) throw Error('The worksheet command changed its protected snapshot. Keep the workbook open.');
+      let actual: IWorkbookData;
+      this.executingProtectedCommand = true;
+      try {
+        actual = execute();
+        if (canonicalCommentJson(actual) !== canonicalCommentJson(snapshot)) throw Error('The worksheet command changed its protected snapshot.');
+      } catch {
+        this.executingProtectedCommand = false;
+        this.sheetActionConflict = true;
+        this.desired = checkpoint.desired;
+        this.error = this.sheetActionConflictMessage;
+        // Persist the sticky fence with the same protected pre-command data.
+        // If storage now fails, that earlier durable checkpoint still survives;
+        // the uncertain SDK state must never become an admitted save intent.
+        try { await this.persist(); } catch { /* Keep the in-memory fence. */ }
+        this.publish();
+        throw Error(this.sheetActionConflictMessage);
+      } finally { this.executingProtectedCommand = false; }
+      this.update(actual);
     };
     const promise = run(); this.protection = promise; this.publish();
     void promise.finally(() => { if (this.protection === promise) this.protection = null; this.publish(); }).catch(() => {});
@@ -119,14 +144,15 @@ export class WorkbookWriter {
     if (!this.journal) return;
     let dirty = Boolean(this.pending);
     try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
-    const checkpoint = dirty || this.sheetDeletions.length || this.sourceAcknowledgement?.kind === 'history' ? this.checkpoint() : null;
+    const checkpoint = dirty || this.sheetActionConflict || this.sheetDeletions.length || this.sourceAcknowledgement?.kind === 'history' ? this.checkpoint() : null;
     const next = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
     this.persistence = next;
     try { await next; }
     catch (error) { throw new Error(this.persistenceError(error)); }
   }
   flush(): Promise<void> {
-    if (!this.active) return Promise.resolve();
+    if (!this.active || this.protection) return Promise.resolve();
+    if (this.sheetActionConflict) { this.error = this.sheetActionConflictMessage; this.publish(); return Promise.resolve(); }
     if (this.running) return this.running;
     // Defer work until running is assigned, including synchronous failures.
     this.running = Promise.resolve().then(() => this.drain()).finally(() => { this.running = null; this.publish(); });
@@ -136,6 +162,7 @@ export class WorkbookWriter {
     let replacedCancelledPreparation = false;
     while (this.active) {
       try {
+        if (this.sheetActionConflict) throw Error(this.sheetActionConflictMessage);
         if (!this.pending) {
           if (this.recoveryConflict) throw new Error('This recovered draft is based on an older workbook. Keep a copy before reloading the current file.');
           const plan = this.plan(); if (!workbookPlanHasChanges(plan)) { this.error = null; return; }
