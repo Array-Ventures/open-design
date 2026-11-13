@@ -175,3 +175,36 @@ it('refuses unsupported calculation semantics with genuine cached formulas befor
     await expect(patchWorkbookStructure(rejected, [{ sheetId: sheet.id, sourceRows: sheet.rowCount, sourceColumns: sheet.columnCount, rows: insert(sheet.rowCount, 1), columns: Array.from({ length: sheet.columnCount }, (_, index) => index) }])).rejects.toThrow('calculation');
   }
 });
+
+it.each(['dimensions', 'styles', 'combined'] as const)('materializes ACK-owned tail %s through the real structural calculation/readback chain without moving cells again', async mode => {
+  const source = await fixture(), sheet = source.model.sheets[0]!;
+  const inserted = await calculateWorkbookCellEdits(source, [], [], [], [], [{ sheetId: sheet.id, sourceRows: sheet.rowCount, sourceColumns: sheet.columnCount, rows: insert(sheet.rowCount, 1), columns: insert(sheet.columnCount, 1) }]);
+  const refreshed = await readXlsxWorkbook(inserted.bytes), current = refreshed.model.sheets[0]!;
+  expect(current).toMatchObject({ rowCount: 100, columnCount: 26 });
+  const identity = { sheetId: sheet.id, sourceRows: 101, sourceColumns: 27, rows: Array.from({ length: 101 }, (_, index) => index), columns: Array.from({ length: 27 }, (_, index) => index) };
+  const dimensions = mode === 'styles' ? [] : [{ sheetId: sheet.id, axis: 'row' as const, index: 100, size: 27 }, { sheetId: sheet.id, axis: 'column' as const, index: 26, size: 18 }];
+  const styles = mode === 'dimensions' ? [] : [{ sheetId: sheet.id, row: 100, column: 26, fontSize: 22.25, bold: true }];
+  await expect(calculateWorkbookCellEdits(refreshed, [], dimensions, styles)).rejects.toThrow('outside');
+  const result = await calculateWorkbookCellEdits(refreshed, [], dimensions, styles, [], [identity]);
+  expect(result.model.sheets[0]).toMatchObject({ rowCount: 101, columnCount: 27 });
+  if (dimensions.length) expect(result.model.sheets[0]!.rowDimensions).toContainEqual(expect.objectContaining({ index: 100, height: 27 }));
+  if (dimensions.length) expect(result.model.sheets[0]!.columnDimensions).toContainEqual(expect.objectContaining({ index: 26, width: 18 }));
+  const styled = result.model.sheets[0]!.cells.find(cell => cell.row === 100 && cell.column === 26)!;
+  if (styles.length) expect(result.model.styles[styled.style!]!.font).toMatchObject({ size: 22.25, bold: true });
+  const independent = new ExcelJS.Workbook(); await independent.xlsx.load(Uint8Array.from(result.bytes).buffer);
+  expect(independent.getWorksheet('Budget')!.getCell('C3').value).toBe(12);
+  expect(independent.getWorksheet('Budget')!.getCell('D4').value).toEqual({ formula: 'SUM($C$3:C4)', result: 12 });
+  expect(independent.getWorksheet("Bob's plan")!.getCell('A1').value).toEqual({ formula: 'Budget!$C$3', result: 12 });
+  if (dimensions.length) expect(independent.getWorksheet('Budget')!.getRow(101).height).toBe(27);
+  if (dimensions.length) expect(independent.getWorksheet('Budget')!.getColumn(27).width).toBe(18);
+  const reopened = await readXlsxWorkbook(result.bytes);
+  const lastRow = children(child(xmlPart(reopened.parts, 'xl/worksheets/sheet1.xml').documentElement!, 'sheetData')!, 'row').find(row => row.getAttribute('r') === '101')!;
+  expect(children(lastRow, 'c').map(cell => cell.getAttribute('r'))).toEqual(styles.length ? ['AA101'] : []); // No placeholder cells for axis-only edits.
+  for (const [part, bytes] of refreshed.parts) if (part !== 'xl/worksheets/sheet1.xml' && (!styles.length || part !== 'xl/styles.xml')) expect(reopened.parts.get(part), part).toEqual(bytes);
+  const later = await calculateWorkbookCellEdits(reopened, [], [{ sheetId: sheet.id, axis: 'row', index: 100, size: 29 }]);
+  expect(later.model.sheets[0]!.cells.find(cell => cell.row === 2 && cell.column === 2)?.value).toBe(12);
+  expect(later.model.sheets[0]!.cells.find(cell => cell.row === 3 && cell.column === 3)?.formula).toBe('=SUM($C$3:C4)');
+  expect(later.model.sheets[0]!.rowDimensions).toContainEqual(expect.objectContaining({ index: 100, height: 29 }));
+  await expect(calculateWorkbookCellEdits(refreshed, [], [{ sheetId: sheet.id, axis: 'row', index: 101, size: 27 }], [], [], [identity])).rejects.toThrow('outside');
+  await expect(calculateWorkbookCellEdits(refreshed, [], [], [{ sheetId: sheet.id, row: 0, column: 27, fontSize: 22 }], [], [identity])).rejects.toThrow('outside');
+});

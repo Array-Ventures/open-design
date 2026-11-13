@@ -1,4 +1,5 @@
-import { patchWorkbookStructure } from './structure-patch.js';
+import { assertWorkbookStructureSupported, patchWorkbookStructure } from './structure-patch.js';
+import { WORKBOOK_STRUCTURE_AXIS_BUDGET } from '@open-design/contracts/runtime/workbook-structure';
 import type { WorkbookStructureEdit } from '@open-design/contracts/runtime/workbook';
 import { patchWorkbookVisibility } from './visibility-patch.js';
 import type { Document, Element } from '@xmldom/xmldom';
@@ -98,19 +99,41 @@ async function writeCalculatedCaches(source: ReadWorkbook, model: WorkbookDocume
   return writeWorkbookPackage(output);
 }
 
+/** Only called after the structural XML writer has validated these projections.
+ * A bounded logical window can exceed sparse XML's materialized dimensions.
+ * Keep that authority through reparses until the real style/dimension owner
+ * writes the requested coordinate; never add placeholder cells or return it as
+ * source geometry when the output bytes do not actually materialize it. */
+async function readStructuralWindow(bytes: Buffer, structure: readonly WorkbookStructureEdit[]): Promise<ReadWorkbook> {
+  const source = await readXlsxWorkbook(bytes);
+  if (!source.model.worksheetStructureEditable) throw new WorkbookFormatError('This structural edit exceeds its qualified source/calculation boundary.', 'WORKBOOK_UNSUPPORTED');
+  for (const edit of structure) {
+    const sheet = source.model.sheets.find(sheet => sheet.id === edit.sheetId)!;
+    sheet.rowCount = Math.max(sheet.rowCount, edit.rows.length);
+    sheet.columnCount = Math.max(sheet.columnCount, edit.columns.length);
+  }
+  const axes = source.model.sheets.reduce((sum, sheet) => sum + sheet.rowCount + sheet.columnCount, 0);
+  if (!Number.isSafeInteger(axes) || axes > WORKBOOK_STRUCTURE_AXIS_BUDGET) throw new WorkbookFormatError('Structural dimensions exceed their metadata limit.', 'WORKBOOK_LIMIT');
+  assertWorkbookStructureSupported(source);
+  return source;
+}
+
 /** Internal transaction preparation. The caller must persist these bytes with
  * conditional binary history/receipts; this helper never writes workspace files.
  * Parser and calculation execution must be isolated before API exposure. */
 export async function calculateWorkbookCellEdits(source: ReadWorkbook, edits: readonly WorkbookCellEdit[], dimensions: readonly WorkbookDimensionEdit[] = [], styles: readonly WorkbookStyleEdit[] = [], visibility: readonly WorkbookVisibilityEdit[] = [], structure: readonly WorkbookStructureEdit[] = []): Promise<{ bytes: Buffer; model: WorkbookDocument }> {
   if (structure.length) {
-    const prepared = await readXlsxWorkbook(await patchWorkbookStructure(source, structure));
-    if (!prepared.model.worksheetStructureEditable) throw new WorkbookFormatError('This structural edit exceeds its qualified source/calculation boundary.', 'WORKBOOK_UNSUPPORTED');
+    const prepared = await readStructuralWindow(await patchWorkbookStructure(source, structure), structure);
     // Geometry invalidated every formula cache. Force the content calculator
     // even for dimension/style/visibility-only follow-ups; those normal owners
     // intentionally skip calculation when geometry has not changed.
     assertCalculationSupported(prepared);
     const calculated = await calculateContent(prepared, edits, verifiedDynamicArrayOwners(prepared));
-    const result = dimensions.length || styles.length || visibility.length ? await calculateWorkbookCellEdits(await readXlsxWorkbook(calculated.bytes), [], dimensions, styles, visibility) : calculated;
+    let bytes = calculated.bytes;
+    if (dimensions.length) bytes = await patchWorkbookDimensions(await readStructuralWindow(bytes, structure), dimensions);
+    if (styles.length) bytes = await patchWorkbookStyles(await readStructuralWindow(bytes, structure), styles);
+    if (visibility.length) bytes = await patchWorkbookVisibility(await readStructuralWindow(bytes, structure), visibility);
+    const result = { bytes, model: (await readXlsxWorkbook(bytes)).model };
     if (!result.model.worksheetStructureEditable) throw new WorkbookFormatError('Combined structural edits require qualified scalar source content.', 'WORKBOOK_UNSUPPORTED');
     return result;
   }

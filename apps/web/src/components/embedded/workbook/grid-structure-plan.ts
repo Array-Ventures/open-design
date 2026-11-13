@@ -8,9 +8,10 @@ import { gridStructureIdentity, hasWorkbookStructureIdentity, stripWorkbookStruc
  * ordinary scalar/style/dimension deltas are then expressed in final coordinates. */
 export function gridStructuralBaseline(model: WorkbookDocument, sourceSha256: string, initial: IWorkbookData, current: IWorkbookData) {
   const before = stripWorkbookStructureIdentity(initial), after = stripWorkbookStructureIdentity(current);
+  const logicalWindows: { sheetId: string; sourceRows: number; sourceColumns: number; rowCount: number; columnCount: number }[] = [];
   // Older protected drafts retain scalar editing. Missing identity is never
   // interpreted as deletion of all source axes, and never enables the menu.
-  if (!model.worksheetStructureEditable || !hasWorkbookStructureIdentity(initial) || !hasWorkbookStructureIdentity(current)) return { model, before, after, structure: [] as WorkbookStructureEdit[] };
+  if (!model.worksheetStructureEditable || !hasWorkbookStructureIdentity(initial) || !hasWorkbookStructureIdentity(current)) return { model, before, after, structure: [] as WorkbookStructureEdit[], logicalWindows };
   const maps = gridStructureIdentity(initial, current, sourceSha256), next = structuredClone(model), structure: WorkbookStructureEdit[] = [];
   for (const sheet of next.sheets) {
     const old = before.sheets[sheet.id]!;
@@ -19,6 +20,7 @@ export function gridStructuralBaseline(model: WorkbookDocument, sourceSha256: st
       // An acknowledged SDK window can retain inserted blank tail axes that
       // a fresh source preview does not materialize. Its validated identities
       // still own those coordinates; unchanged dimensions are not new edits.
+      if (old.rowCount! > sheet.rowCount || old.columnCount! > sheet.columnCount) logicalWindows.push({ sheetId: sheet.id, sourceRows: sheet.rowCount, sourceColumns: sheet.columnCount, rowCount: old.rowCount!, columnCount: old.columnCount! });
       sheet.rowCount = Math.max(sheet.rowCount, old.rowCount!);
       sheet.columnCount = Math.max(sheet.columnCount, old.columnCount!);
       continue;
@@ -45,5 +47,5 @@ export function gridStructuralBaseline(model: WorkbookDocument, sourceSha256: st
     sheet.columnDimensions = sheet.columnDimensions.flatMap(entry => { const index = columns.point(entry.index); return index === null ? [] : [{ ...entry, index }]; });
     structure.push({ sheetId: sheet.id, sourceRows: rows.sourceCount, sourceColumns: columns.sourceCount, rows: map.rows, columns: map.columns });
   }
-  return { model: next, before, after, structure };
+  return { model: next, before, after, structure, logicalWindows };
 }

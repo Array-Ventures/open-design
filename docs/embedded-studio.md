@@ -442,3 +442,14 @@ Reduction admission also refuses operators on raw range arguments (for example
 `SUM(A1:A2*B1:B2)` and `SUM((A1:A2)+1)`), including grouped/unary forms. Ordinary
 scalar arithmetic outside a completed reduction remains supported. The source
 worker independently rejects iterative/display-rounded calculation metadata.
+
+Acknowledged structural drafts can retain blank SDK axes beyond the fresh XML
+reader's materialized window. A clean acknowledged window is not a new edit.
+When a later style or dimension edit needs one of those validated coordinates,
+the plan carries an identity structural projection instead of another insertion.
+The contained writer retains that projection's bounded window only through its
+calculation/formatting reparses; the real requested XML style or dimension then
+materializes the coordinate. Returned geometry comes from the final bytes, not
+the temporary floor. No placeholder cells or free-form window authority are
+introduced, and ordinary plans without qualified axis ownership keep their
+existing source bounds.

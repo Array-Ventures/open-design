@@ -139,6 +139,14 @@ export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string,
       if (!same(next,originals.get(coordinate))) edits.push({sheetId:sheet.id,cell:next});
     }
   }
+  // Clean ACK windows are not edits. Carry their validated ownership only
+  // when formatting needs a coordinate the fresh XML has not materialized yet.
+  for (const window of projected.logicalWindows) {
+    const needsWindow = styles.some(edit => edit.sheetId === window.sheetId && (edit.row >= window.sourceRows || edit.column >= window.sourceColumns))
+      || dimensions.some(edit => edit.sheetId === window.sheetId && edit.index >= (edit.axis === 'row' ? window.sourceRows : window.sourceColumns));
+    if (needsWindow) projected.structure.push({ sheetId: window.sheetId, sourceRows: window.rowCount, sourceColumns: window.columnCount,
+      rows: Array.from({ length: window.rowCount }, (_, index) => index), columns: Array.from({ length: window.columnCount }, (_, index) => index) });
+  }
   if (!Object.values(current.sheets).some(sheet => sheet.hidden === undefined || sheet.hidden === WorksheetHiddenState.VISIBLE)) fail('Keep at least one worksheet visible.');
   return workbookEditPlanSchema.parse({ sourceSha256, edits, ...(dimensions.length ? { dimensions } : {}), ...(styles.length ? { styles } : {}), ...(visibility.length ? { visibility } : {}), ...(projected.structure.length ? { structure: projected.structure } : {}) });
 }

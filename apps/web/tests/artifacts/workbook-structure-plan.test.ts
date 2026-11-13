@@ -64,3 +64,21 @@ it('keeps acknowledged blank-axis metadata beyond the source reader window clean
   const oversized = structuredClone(acknowledged); oversized.sheets.a!.rowCount = 100_001;
   expect(() => workbookGridEdits(refreshed, 'b'.repeat(64), acknowledged, oversized)).toThrow('limit');
 });
+
+it('carries only needed ACK-owned tail formatting windows as identity projections while keeping clean ACKs empty', () => {
+  const { source, book, sheet } = fixture(); sheet.insertRowsBefore(1, 1); sheet.insertColumnsBefore(1, 1);
+  const acknowledged = book.save(), refreshed = structuredClone(source);
+  refreshed.sheets[0]!.cells[0]!.row = 2; refreshed.sheets[0]!.cells[0]!.column = 2;
+  const current = structuredClone(acknowledged);
+  current.sheets.a!.rowData![100]!.h = 36;
+  current.sheets.a!.columnData![26]!.w = 131;
+  current.sheets.a!.cellData![100] = { 26: { s: { fs: 22.25 } } };
+  const plan = workbookGridEdits(refreshed, 'b'.repeat(64), acknowledged, current);
+  expect(plan.structure).toEqual([{ sheetId: 'a', sourceRows: 101, sourceColumns: 27, rows: Array.from({ length: 101 }, (_, index) => index), columns: Array.from({ length: 27 }, (_, index) => index) }]);
+  expect(plan.dimensions).toContainEqual({ sheetId: 'a', axis: 'row', index: 100, size: 27 });
+  expect(plan.dimensions).toContainEqual({ sheetId: 'a', axis: 'column', index: 26, size: 18 });
+  expect(plan.styles).toEqual([{ sheetId: 'a', row: 100, column: 26, fontSize: 22.25 }]);
+  expect(workbookGridEdits(refreshed, 'b'.repeat(64), acknowledged, acknowledged)).toEqual({ sourceSha256: 'b'.repeat(64), edits: [] });
+  const inside = structuredClone(acknowledged); inside.sheets.a!.rowData![2]!.h = 36;
+  expect(workbookGridEdits(refreshed, 'b'.repeat(64), acknowledged, inside).structure).toBeUndefined();
+});
