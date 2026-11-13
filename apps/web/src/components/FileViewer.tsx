@@ -14933,7 +14933,7 @@ function HtmlViewer({
     if (!workspaceActive || !inTabPresent || !effectiveDeck) return;
     const frame = presentOverlayRef.current?.querySelector('iframe');
     frame?.contentWindow?.postMessage(
-      { type: 'od:slide', action: 'go', index: activeDeckSlideIndex },
+      { type: 'od:slide', action: 'go', index: activeDeckSlideIndex, userInitiated: true },
       '*',
     );
   }, [inTabPresent, effectiveDeck, activeDeckSlideIndex, workspaceActive]);
@@ -14954,13 +14954,16 @@ function HtmlViewer({
       const data = ev.data as { type?: string; active?: number; count?: number } | null;
       if (!data || data.type !== 'od:slide-state') return;
       if (typeof data.active !== 'number' || typeof data.count !== 'number') return;
+      const previousActive = htmlPreviewSlideState.get(previewStateKey)?.active;
       const next = { active: data.active, count: data.count };
       setSlideStateCached(previewStateKey, next);
       setSlideState(next);
+      // Keep the retained preview on the last presented slide when the overlay closes.
+      if (previousActive !== next.active) postSlide('go', next.active);
     }
     window.addEventListener('message', onOverlaySlideState);
     return () => window.removeEventListener('message', onOverlaySlideState);
-  }, [inTabPresent, effectiveDeck, previewStateKey, workspaceActive]);
+  }, [inTabPresent, effectiveDeck, previewStateKey, workspaceActive, useUrlLoadPreview]);
 
   // The Esc hint is a momentary confirmation, not a persistent chrome: fade it
   // out a few seconds after the presentation starts. (closeInTabPresentation

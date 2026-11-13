@@ -117,6 +117,17 @@ describe('presentation transition lifecycle', () => {
     expect(g.stage.querySelectorAll('[style*="od-deck-object"]')).toHaveLength(0);
   });
 
+  it('keeps an active transition when an idempotent target is echoed', async () => {
+    const f = await fixture(); f.stage.goTo(1);
+    f.stage.goTo(1, {animate:false});
+    expect(f.attempts).toHaveLength(1); expect(f.attempts[0]!.skip).not.toHaveBeenCalled();
+    f.attempts[0]!.update(); f.stage.goTo(1);
+    expect(f.attempts).toHaveLength(1); expect(f.attempts[0]!.skip).not.toHaveBeenCalled();
+    f.attempts[0]!.finish(); await Promise.resolve();
+    expect(f.active()).toBe(f.stage.children[1]);
+    expect(f.stage.querySelectorAll('[style*="od-deck-object"]')).toHaveLength(0);
+  });
+
   it('keeps the newest rapid navigation and ignores superseded callbacks', async () => {
     const f = await fixture(); f.stage.next(); f.stage.next();
     expect(f.attempts[0]!.skip).toHaveBeenCalledOnce();

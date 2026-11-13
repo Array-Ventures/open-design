@@ -316,6 +316,7 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
     }
 
     go(action, index, animate) {
+      var previousIndex = this._index;
       var slides = this._collectSlides();
       if (!slides.length) return;
       if (action === 'go' && Number.isFinite(index)) {
@@ -330,6 +331,8 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
         this._index = slides.length - 1;
       }
       this._index = Math.max(0, Math.min(slides.length - 1, this._index));
+      // Host echoes must not cancel a transition to the same logical target.
+      if (this._transition && this._index === previousIndex) return;
       if (animate === false) { this._cancelTransition(); this._apply(); return; }
       var previous = slides.find(function(slide) { return slide.hasAttribute(ACTIVE_ATTR); });
       runDeckTransition(this, previous, slides[this._index], this._apply.bind(this));

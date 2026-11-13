@@ -5307,7 +5307,7 @@ describe('FileViewer SVG artifacts', () => {
     workspaceShell.remove();
   });
 
-  it('closes deck in-tab presentation when the present iframe forwards Escape', async () => {
+  it('mirrors deck presentation navigation and closes on forwarded Escape', async () => {
     const file = baseFile({
       name: 'deck.html',
       path: 'deck.html',
@@ -5333,6 +5333,9 @@ describe('FileViewer SVG artifacts', () => {
       />,
     );
 
+    const preview = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;
+    act(() => window.dispatchEvent(new MessageEvent('message', {source:preview.contentWindow,data:{type:'od:slide-state',active:0,count:2}})));
+
     fireEvent.click(screen.getByRole('button', { name: /present/i }));
     fireEvent.click(screen.getByRole('menuitem', { name: /in this tab/i }));
 
@@ -5342,6 +5345,14 @@ describe('FileViewer SVG artifacts', () => {
       return nextFrame!;
     });
     expect(container.querySelector('.html-viewer.is-tab-present')).toBeTruthy();
+    const previewPost = vi.spyOn(preview.contentWindow!, 'postMessage'), overlayPost = vi.spyOn(frame.contentWindow!, 'postMessage');
+    act(() => window.dispatchEvent(new MessageEvent('message', {source:frame.contentWindow,data:{type:'od:slide-state',active:1,count:2}})));
+    expect(previewPost).toHaveBeenCalledWith({type:'od:slide',action:'go',index:1,userInitiated:true}, '*');
+    expect(overlayPost).toHaveBeenCalledWith({type:'od:slide',action:'go',index:1,userInitiated:true}, '*');
+    const navigationCount = () => previewPost.mock.calls.filter(([data]) => data?.type === 'od:slide').length;
+    const count = navigationCount();
+    act(() => window.dispatchEvent(new MessageEvent('message', {source:frame.contentWindow,data:{type:'od:slide-state',active:1,count:2}})));
+    expect(navigationCount()).toBe(count);
 
     window.dispatchEvent(new MessageEvent('message', {
       data: { type: 'od:present-escape' },
