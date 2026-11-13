@@ -1,6 +1,7 @@
 'use client';
 
 import { DocumentComments } from './DocumentComments';
+import { DocumentTableActions } from './DocumentTableActions';
 import type { ArtifactFeedbackProps } from '../LiveArtifactFeedbackPreview';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
@@ -28,6 +29,7 @@ import { saveDocumentFile, type DocumentFile } from './document-file';
 import { DocumentWriter, type DocumentWriteState } from './document-writer';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
 import { DocumentImageNode, DocumentImageScope } from './DocumentImageNode';
+import { DocumentTextContrast } from './DocumentTextContrast';
 import { DocumentOutline } from './DocumentOutline';
 import { DocumentToolbar } from './DocumentToolbar';
 import styles from './DocumentEditor.module.css';
@@ -61,6 +63,7 @@ export function DocumentEditor({ feedback, onCommentDirtyChange, projectId, file
   return <div className={styles.editor} data-testid="document-editor">
     {failure ? <div role="alert" className="p-3 text-body-2-regular text-text-error-primary">{failure}</div> : null}
     <DocumentImageScope.Provider value={imageScope}><LexicalComposer initialConfig={initialConfig}>
+      <DocumentTextContrast />
       <DocumentBody onCommentDirtyChange={onCommentDirtyChange} feedback={feedback} projectId={projectId} fileName={fileName} title={title} observed={observed} owners={owners} onSaved={onSaved} onDirtyChange={onDirtyChange} onWriteError={onWriteError} />
       <HistoryPlugin /><ListPlugin /><CheckListPlugin /><TablePlugin hasHorizontalScroll /><LinkPlugin />
     </LexicalComposer></DocumentImageScope.Provider>
@@ -136,8 +139,8 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
     <div className="relative min-h-0 flex-1">
     <div className={styles.scroll} onScroll={fade.onScroll}>
       <div className={styles.page}>
-        <RichTextPlugin contentEditable={<ContentEditable aria-label={title} lang={rootAttributes.lang ?? undefined} dir={rootAttributes.dir ?? undefined} className={styles.content} style={{ fontFamily: documentFontFamily(font), '--document-heading-font': documentFontFamily(headingFont) } as CSSProperties} />}
-          placeholder={<div className={styles.placeholder}>Start writing…</div>} ErrorBoundary={LexicalErrorBoundary} />
+        <DocumentTableActions enabled={editing && !commentsOpen}><RichTextPlugin contentEditable={<ContentEditable aria-label={title} lang={rootAttributes.lang ?? undefined} dir={rootAttributes.dir ?? undefined} className={styles.content} style={{ fontFamily: documentFontFamily(font), '--document-heading-font': documentFontFamily(headingFont) } as CSSProperties} />}
+          placeholder={<div className={styles.placeholder}>Start writing…</div>} ErrorBoundary={LexicalErrorBoundary} /></DocumentTableActions>
       </div>
     </div>
     {feedback ? <DocumentComments onOpenChange={setCommentsOpen} onDirtyChange={onCommentDirtyChange} projectId={projectId} fileName={fileName} feedback={feedback} /> : null}

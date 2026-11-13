@@ -492,6 +492,20 @@ Controller regressions cover out-of-order graph/terminal delivery, invalid or
 stale terminals failing to evict a current candidate, monotonic graph ownership,
 and the structural scalar requirement. The production-RPC cases separately
 exercise genuine engine no-result completion and cold structural recalculation.
+### Structured document table actions
+
+The bounded Lexical table context menu and its ownership/persistence guarantees
+are documented in [document-table-actions.md](document-table-actions.md).
+It reuses the free embedded BoardUI menu adapter while preserving the workbook
+keyboard capture and source-reset behavior. Its browser/visual qualification remains a separate gate.
+
+
+### Markdown code export ownership
+
+[document-markdown-code.md](document-markdown-code.md) records the native fenced
+code normalization, whole-code HTML fallbacks, actual contained Pandoc evidence
+and the remaining inline-code whitespace import limitation.
+
 
 ## Sheet actions: source foundation only
 

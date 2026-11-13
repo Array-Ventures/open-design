@@ -15,6 +15,7 @@ import { chromium } from 'playwright-core';
 import { injectDeckStageFallback } from '@open-design/contracts/runtime/deck-stage-fallback';
 import { bundleStandaloneHtml } from '../artifacts/standalone-html.js';
 import { buildScreenshotPdf, buildScreenshotPptx, type SlideImage } from '../deck-export.js';
+import { repairDocumentPdfColors } from './document-color-normalize.js';
 import { prepareDocument, exportDocument, documentPrintCss, documentPrintOptions } from './documents.js';
 import { RenderInput } from './input.js';
 import { renderWorkbook } from './workbooks.js';
@@ -113,9 +114,14 @@ export async function renderSnapshot(source: string, output: string, value: unkn
       if (unavailable.size) throw new Error('Bundle all HyperFrames resources locally before exporting.');
       return captured;
     }
-    await page.addStyleTag({ content: '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important}' });
+    const stillStyle = '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important}';
+    await page.addStyleTag({ content: stillStyle });
     if (unavailable.size) throw new Error('Required resources are unavailable. Bundle remote fonts, scripts and assets into the project before exporting.');
-    if (document && input.format === 'pdf') await page.addStyleTag({ content: documentPrintCss });
+    if (document && input.format === 'pdf') {
+      await page.addStyleTag({ content: documentPrintCss });
+      await repairDocumentPdfColors(page, html, [documentPrintCss, stillStyle]);
+      if (unavailable.size) throw new Error('Required print resources are unavailable. Bundle document fonts and images locally before exporting.');
+    }
     const images: SlideImage[] = [];
     if (deck) {
       // The live preview scales a logical deck to its panel. An export captures

@@ -10,6 +10,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    // Admission enumerates owned CSS exports; the default proxy has no keys.
+    css: { include: [/DocumentEditor\.module\.css$/] },
     include: ['tests/**/*.test.{ts,tsx}'],
     // Keep this above the shared Testing Library asyncUtilTimeout so failed
     // waits retain Testing Library's assertion/DOM diagnostics.

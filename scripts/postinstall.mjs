@@ -19,6 +19,7 @@ const localDevelopment = Object.freeze({
     "packages/release",
     "packages/contracts",
     "packages/deck-export",
+    "packages/document-style",
     "packages/standalone",
     "packages/components",
     "packages/platform",
