@@ -15,10 +15,13 @@ export interface WorkbookSheetTemplateSource { sheetId: string; sourceSha256: st
 export async function calculateWorkbookRestoredSheetEdits(source: ReadWorkbook, target: readonly WorkbookSheetTemplateEntry[], templates: readonly WorkbookSheetTemplateSource[], edits: readonly WorkbookCellEdit[] = [], dimensions: readonly WorkbookDimensionEdit[] = [], styles: readonly WorkbookStyleEdit[] = [], visibility: readonly WorkbookVisibilityEdit[] = [], structure: readonly WorkbookStructureEdit[] = []) {
   const restored = new Set(target.filter(sheet => sheet.origin === 'restore').map(sheet => sheet.sheetId));
   if (!restored.size || templates.length !== restored.size || templates.length > 64) throw new WorkbookFormatError('Historical worksheet template ownership is incomplete.');
-  const admitted = new Set<string>(); let total = 0;
+  const admitted = new Set<string>(), assets = new Map<string, Buffer>(); let total = 0;
   for (const template of templates) {
     if (!restored.has(template.sheetId) || admitted.has(template.sheetId)) throw new WorkbookFormatError('Historical worksheet template ownership is ambiguous.');
-    admitted.add(template.sheetId); total += template.bytes.length;
+    admitted.add(template.sheetId);
+    const prior = assets.get(template.sourceSha256);
+    if (prior && !prior.equals(template.bytes)) throw new WorkbookFormatError('Historical worksheet asset digest has inconsistent bytes.');
+    if (!prior) { assets.set(template.sourceSha256, template.bytes); total += template.bytes.length; }
     if (!Number.isSafeInteger(total) || total > WORKBOOK_PACKAGE_LIMITS.archiveBytes) throw new WorkbookFormatError('Historical worksheet templates exceed their aggregate limit.', 'WORKBOOK_LIMIT');
   }
   const prepared = new Map<string, Buffer>();

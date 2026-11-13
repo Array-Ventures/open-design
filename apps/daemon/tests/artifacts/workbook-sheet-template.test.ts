@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import ExcelJS from 'exceljs-community';
+import JSZip from 'jszip';
 import { expect, it } from 'vitest';
 import { readXlsxWorkbook } from '../../src/artifacts/workbook/reader.js';
 import { patchWorkbookSheets } from '../../src/artifacts/workbook/sheet-patch.js';
@@ -8,6 +9,7 @@ import { child, children, xmlPart } from '../../src/artifacts/workbook/parts.js'
 import { workbookSheetProjectionSchema } from '@open-design/contracts/runtime/workbook';
 import { calculateWorkbookRestoredSheetEdits } from '../../src/artifacts/workbook/sheet-restoration.js';
 import { calculateWorkbookCellEdits } from '../../src/artifacts/workbook/calculated-patch.js';
+import { WORKBOOK_PACKAGE_LIMITS } from '../../src/artifacts/workbook/package.js';
 
 async function fixture() {
   const book = new ExcelJS.Workbook();
@@ -96,3 +98,28 @@ it('calculates a missing historical identity as REF even when its name belongs t
   const result = await calculateWorkbookRestoredSheetEdits(current, [{ sheetId: '1', name: 'Inputs', origin: 'source' }, { sheetId: '2', name: 'Restored', origin: 'restore' }, { sheetId: '4', name: 'Other old', origin: 'source' }], [{ sheetId: '2', bytes, sourceSha256: sha }]);
   expect(result.model.sheets[1]!.cells.find(cell => cell.row === 1 && cell.column === 1)).toMatchObject({ formula: '=#REF!+Inputs!A1', kind: 'error', value: '#REF!' });
 });
+it('checks one shared archive budget for two restored worksheets with cross-sheet formulas', async () => {
+  const { bytes: original, historical } = await fixture();
+  // STORE makes this a genuine admitted >half-budget XLSX without random data
+  // or a huge worksheet calculation area. Two sheet templates share its bytes.
+  const zip = await JSZip.loadAsync(original);
+  zip.file('docProps/core.xml', `<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:description>${'x'.repeat(13 * 1024 * 1024)}</dc:description></cp:coreProperties>`);
+  const bytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'STORE' });
+  expect(bytes.length).toBeGreaterThan(WORKBOOK_PACKAGE_LIMITS.archiveBytes / 2);
+  expect(bytes.length).toBeLessThan(WORKBOOK_PACKAGE_LIMITS.archiveBytes);
+  const sha = createHash('sha256').update(bytes).digest('hex');
+  const current = await readXlsxWorkbook(await patchWorkbookSheets(historical, [{ sheetId: '1', name: 'Inputs', origin: 'source' }]));
+  const target: WorkbookSheetTemplateEntry[] = [{ sheetId: '1', name: 'Inputs', origin: 'source' }, { sheetId: '2', name: 'Restored', origin: 'restore' }, { sheetId: '3', name: 'Restored other', origin: 'restore' }];
+  const assets = ['2', '3'].map(sheetId => ({ sheetId, bytes, sourceSha256: sha }));
+  const result = await calculateWorkbookRestoredSheetEdits(current, target, assets);
+  expect(result.model.sheets[1]!.cells.find(cell => cell.row === 1 && cell.column === 1)).toMatchObject({ formula: "='Restored other'!A1+Inputs!A1", value: 12 });
+  expect(result.model.sheets[2]!.cells[0]?.value).toBe(10);
+  // A different valid archive (same worksheet content, different ZIP comment)
+  // consumes its own actual bytes before either template is parsed.
+  const otherBytes = await zip.generateAsync({ type: 'nodebuffer', compression: 'STORE', comment: 'Distinct checked archive' });
+  const otherSha = createHash('sha256').update(otherBytes).digest('hex');
+  expect(otherSha).not.toBe(sha);
+  await expect(calculateWorkbookRestoredSheetEdits(current, target, [assets[0]!, { ...assets[1]!, bytes: otherBytes, sourceSha256: otherSha }])).rejects.toThrow('aggregate');
+  const changed = Buffer.from(bytes); changed[0] = changed[0]! ^ 1;
+  await expect(calculateWorkbookRestoredSheetEdits(current, target, [assets[0]!, { ...assets[1]!, bytes: changed }])).rejects.toThrow('inconsistent');
+}, 30_000);

@@ -257,8 +257,10 @@ qualify source-backed restoration or implement the SDK high-water producer.
 `calculateWorkbookRestoredSheetEdits` composes those templates with the existing
 membership/relationship/content-type/view writer. It requires exactly one
 SHA-checked, resource-qualified template for every restored ID and refuses
-duplicate/missing/undeclared owners before final calculation. Historical input
-archives together are bounded by the existing workbook archive-byte limit.
+duplicate/missing/undeclared owners before final calculation. Distinct historical input
+archives together are bounded by the existing workbook archive-byte limit;
+multiple restored sheets sharing one exact digest/byte asset count it once.
+Inconsistent bytes under a shared digest are refused before assembly.
 Only selected raw worksheet parts are inserted; current globals and unrelated
 worksheets retain their own owners. The assembled package is actually reparsed,
 source-qualified, calculated with final authored cell edits and optional axis/
@@ -273,3 +275,10 @@ with the same name. These are source-layer fixtures, not simulated proof of SDK
 Undo or receipts. Accepted restore wire fields, scoped history asset capture,
 SDK per-delete/ACK descriptors, positive draft recovery and actual contained
 execution remain unimplemented and the sheet-actions UI capability stays off.
+
+A genuine 13MiB STORE XLSX reused by two restored IDs verifies distinct-asset
+budgeting and cross-restoration formula calculation. The same new regression
+failed before the deduplication fix with aggregate-limit refusal. Two different
+valid archives still exceed the combined budget; a repeated digest with
+different bytes is refused. This boundary uses actual archives, not a raised
+production limit.
