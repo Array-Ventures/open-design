@@ -308,3 +308,9 @@ wrong version/bytes, undeclared/unused assets and refusal before output. Web tes
 cover prepare/cancel reference equality. Protected draft tests still reject a
 restore projection not derivable from the SDK snapshot and preserve the previous
 journal. These are not positive SDK/ACK recovery or real container proofs.
+
+The implemented API permits an explicitly authored, authorized same-file
+selected-history template restore. Host ACL and compatible resources do not
+prove a prior SDK Delete command. Automatic Undo remains unavailable until the
+producer can prove and persist its protected per-delete/ACK kernel identity;
+this source API must not be presented as that lineage guarantee.

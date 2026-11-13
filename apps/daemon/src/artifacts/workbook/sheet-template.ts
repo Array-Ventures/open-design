@@ -13,15 +13,17 @@ export interface WorkbookSheetTemplateEntry {
   origin: 'source' | 'new' | 'restore';
 }
 
-/** Standalone source owner, not an accepted render field or history authorizer.
- * The future consumer must first authorize the same canonical file/version and
- * qualify the protected per-delete kernel identity. Compatible global resources
- * alone never grant lineage. Raw XML indices remain owned by their checked
- * historical prefix; the reader's compacted model styles are not transplanted.
+/** Raw XML owner called by the declared frozen-asset assembler. The host
+ * authorizes the selected same-file historical version; this helper checks its
+ * bytes/resources/worksheet identity. An explicit authorized template request
+ * is not proof of an SDK Delete command. A future automatic Undo producer must
+ * separately qualify protected per-delete kernel identity; compatible resources
+ * alone never grant lineage. Raw XML indices retain their historical prefix,
+ * never the reader's compacted model style indices.
  */
 export async function prepareWorkbookSheetTemplate(current: ReadWorkbook, bytes: Buffer, expectedSha256: string, sheetId: string, target: readonly WorkbookSheetTemplateEntry[]): Promise<Buffer> {
   if (!/^[a-f0-9]{64}$/.test(expectedSha256) || createHash('sha256').update(bytes).digest('hex') !== expectedSha256) throw new WorkbookFormatError('Historical worksheet source hash does not match.');
-  // Reuse the strict final name/ID bounds without accepting restore on the wire.
+  // Reuse ordinary projection name/ID bounds; the assembler owns template refs.
   workbookSourceSheetProjectionSchema.parse(target.map(sheet => ({ sheetId: sheet.sheetId, name: sheet.name, origin: sheet.origin === 'restore' ? 'new' : sheet.origin })));
   const selected = target.find(sheet => sheet.sheetId === sheetId);
   if (selected?.origin !== 'restore' || current.sheetParts.has(sheetId)) throw new WorkbookFormatError('Historical worksheet target identity is invalid.');

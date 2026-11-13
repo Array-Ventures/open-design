@@ -44,7 +44,7 @@ it('retains raw historical metadata/indices and binds references by exact final 
   for (const cell of cells.filter(cell => child(cell, 'f'))) { expect(child(cell, 'v')).toBeUndefined(); expect(cell.hasAttribute('t')).toBe(false); }
   for (const [name, body] of retained) expect(current.parts.get(name)!.equals(body)).toBe(true);
   expect(createHash('sha256').update(bytes).digest('hex')).toBe(sha);
-  expect(workbookSheetProjectionSchema.safeParse(target).success).toBe(false); // no wire capability exposed
+  expect(workbookSheetProjectionSchema.safeParse(target).success).toBe(false); // Bare source fixtures omit the required historical wire descriptor.
 });
 it('does not retarget a removed historical ID to a new different ID with the old name', async () => {
   const { bytes, historical, sha } = await fixture();

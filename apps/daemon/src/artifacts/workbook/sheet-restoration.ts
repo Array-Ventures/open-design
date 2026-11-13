@@ -8,9 +8,10 @@ import { calculatePreparedWorkbookSheetEdits } from './calculated-patch.js';
 export interface WorkbookSheetTemplateSource { sheetId: string; sourceSha256: string; bytes: Buffer }
 
 /** Source assembly owner reached by the checked frozen-asset render consumer.
- * Callers must authorize same-file history and protected per-delete identity
- * before providing assets. Every restored ID must have exactly one checked
- * template before any historical formula is admitted to final calculation.
+ * The host authorizes explicit same-file historical template requests. This is
+ * not automatic SDK Undo or proof of a prior Delete; that future producer needs
+ * protected per-delete ownership. Every restored ID must have exactly one
+ * checked template before historical formulas enter final calculation.
  */
 export async function calculateWorkbookRestoredSheetEdits(source: ReadWorkbook, target: readonly WorkbookSheetTemplateEntry[], templates: readonly WorkbookSheetTemplateSource[], edits: readonly WorkbookCellEdit[] = [], dimensions: readonly WorkbookDimensionEdit[] = [], styles: readonly WorkbookStyleEdit[] = [], visibility: readonly WorkbookVisibilityEdit[] = [], structure: readonly WorkbookStructureEdit[] = []) {
   const restored = new Set(target.filter(sheet => sheet.origin === 'restore').map(sheet => sheet.sheetId));
