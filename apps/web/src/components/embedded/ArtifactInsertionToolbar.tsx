@@ -13,6 +13,7 @@ interface Props {
   projectId: string; fileName: string;
   source: string | null; busy: boolean;
   onHeightChange?(height: number): void;
+  reservedInlineEnd?: number;
   onProperties?(): Promise<void>;
   getFrame(): HTMLIFrameElement | null;
   getSource(): string | null;
@@ -133,7 +134,7 @@ export function ArtifactInsertionToolbar(props: Props) {
     finally { preparing.current = false; if (alive.current) setPending(false); }
   };
   const disabled = props.busy || pending || retry.current !== null || imageState === 'uploading';
-  return <div ref={toolbar} className="pointer-events-none absolute inset-x-3 bottom-3 z-30 flex flex-col items-center gap-2" data-testid="artifact-insertion-toolbar">
+  return <div ref={toolbar} className="pointer-events-none absolute inset-x-3 bottom-3 z-30 flex flex-col items-center gap-2" style={props.reservedInlineEnd ? { insetInlineEnd: props.reservedInlineEnd + 12 } : undefined} data-testid="artifact-insertion-toolbar">
     {status ? <div role="status" className="pointer-events-auto max-w-full rounded-lg bg-background-secondary-default px-3 py-2 text-caption-1-regular text-text-secondary shadow-sm">{status}</div> : null}
     <div role="toolbar" aria-label="Canvas insertion" className="pointer-events-auto flex max-w-full items-center gap-1 rounded-2xl border border-border-button-default bg-background-secondary-default p-1 shadow-sm">
       <Button variant="ghost" size="small" iconOnly leadingIcon={RiText} aria-label="Insert text" title="Insert text" disabled={disabled} aria-pressed={active === 'text'} className={cx(DOCUMENT_ICON_BUTTON,active === 'text' && 'bg-accent-100 text-accent-700')} onClick={() => void arm({kind:'text',text:'Text'})} />

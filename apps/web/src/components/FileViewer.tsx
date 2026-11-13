@@ -18459,7 +18459,7 @@ function HtmlViewer({
             </div>
       </>)}
       <div className="viewer-body" ref={previewBodyRef}>
-        {embedded && workspaceActive && manualEditMode && !viewerOnly ? <ArtifactInsertionToolbar key={`insertion:${projectId}:${file.name}`} projectId={projectId} fileName={file.name} source={source} busy={manualEditSaving || manualEditEntryHandoffPending || manualEditExitHandoffPending} onHeightChange={setManualEditInsertionInset}
+        {embedded && workspaceActive && manualEditMode && !viewerOnly ? <ArtifactInsertionToolbar key={`insertion:${projectId}:${file.name}`} projectId={projectId} fileName={file.name} source={source} busy={manualEditSaving || manualEditEntryHandoffPending || manualEditExitHandoffPending} onHeightChange={setManualEditInsertionInset} reservedInlineEnd={dockedPresentationProperties ? presentationInspectorLayoutWidth : undefined}
           onProperties={effectiveDeck ? async () => { await selectManualEditTarget(null); } : undefined}
           getFrame={() => iframeRef.current} getSource={() => sourceRef.current}
           onPrepare={async () => {
