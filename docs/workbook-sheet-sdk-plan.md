@@ -589,3 +589,41 @@ nine baseline contract tests passed, plus final web typecheck, full repository
 typecheck and guard. The original actual SDK Delete projection test failed
 against the prior same-membership planner. No model, browser, container or
 production calls were made for this checkpoint.
+
+### Development checkpoint: awaited current-source Delete barrier
+
+`WorkbookWriter.protectSheetDeletion` is a separate awaited admission boundary;
+`retainSheetDeletion` remains non-authoritative synchronous pool retention. The
+barrier derives the exact post-command plan and validates its complete prospective
+pending checkpoint through the existing encoder/byte bound. It then writes only
+the current checkpoint plus candidate context through the existing journal queue.
+The temporary prospective UUIDs are not a remote operation, pending reservation
+or new journal. Later real saves still revalidate current storage/CAS normally;
+this does not promise future capacity for unknown receipt/history metadata.
+
+After that actual journal write succeeds, active writer/source identity, desired
+revision, pending/running state and the current recovery-session lease must still
+match before invoking a synchronous SDK callback. Candidate roots are published
+only at this point. Storage, ownership, close or newer-edit refusal never calls
+SDK and leaves the old in-memory pool and newer desired edits intact. A candidate
+which already reached storage before session withdrawal may remain redundant
+protected data; it grants no command or historical authority. Once SDK is invoked,
+the durable candidate remains rooted even if SDK throws, and a returned snapshot
+mismatch is surfaced rather than being silently accepted. Conflicting recovered
+sources refuse before storage. `close()` drains this barrier before lease release.
+
+The real recovery session supplies a current-session predicate which withdraws
+immediately on unmount while leaving legitimate journal shutdown drains possible;
+the editor preserves this predicate in its existing wrapper. Tests use explicit
+journal-entry handshakes, actual pinned SDK Remove and real SDK history. They prove
+no callback/history change before durability and under storage rejection, lost
+session, close or newer-edit races, plus preservation of the resulting genuine
+Undo descriptor. The recovery hook's predicate is checked across actual unmount.
+A first test's single-microtask assumption was corrected to the explicit storage
+handshake, with unchanged durability assertions.
+
+Validation: 62 focused context/Writer/recovery/editor tests and final web types
+passed. No live controller or UI control is installed. Permission, worker/editor
+readiness, actual history reachability/Undo outer gates, restored/birth sources
+and recovered server receipt validation remain required before activation.
+Final full repository typecheck and guard also passed on this barrier source.

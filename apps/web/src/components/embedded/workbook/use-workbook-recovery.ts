@@ -41,7 +41,7 @@ export function useWorkbookRecovery(scope: Scope, enabled: boolean, drain: () =>
       const restored = draftId ? await readWorkbookDraft(target) : null;
       if (draftId && !restored) throw Error('This draft is no longer available. Reopen the workbook to refresh the list.');
       if (signal.aborted) return;
-      const session: Session = { scope: target, lease, journal: { validate: checkpoint => { serializeWorkbookDraft(target, checkpoint); }, save: checkpoint => saveWorkbookDraft(target, checkpoint), ...(restored ? { restored } : {}) } };
+      const session: Session = { scope: target, lease, journal: { isCurrent: () => !signal.aborted && owned.current === session, validate: checkpoint => { serializeWorkbookDraft(target, checkpoint); }, save: checkpoint => saveWorkbookDraft(target, checkpoint), ...(restored ? { restored } : {}) } };
       owned.current = session; lease = null;
       setState(current => ({ ...current, busy: false, error: null, session }));
     } catch (error) {

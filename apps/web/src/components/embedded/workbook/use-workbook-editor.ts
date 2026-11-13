@@ -110,7 +110,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
           ? { previous: publishedSource, target: saved.source, snapshot: saved.snapshot, acknowledgement: saved.acknowledgement, controllerId, journal: ownedJournal } : undefined;
         current.current.onAcknowledged(saved.source, ticket); publishedSource = saved.source;
       }
-    }, (source, snapshot, acknowledgement) => { historyContinuity &&= acknowledgement.kind === 'history'; acknowledged = { source, snapshot, acknowledgement }; }, ownedJournal ? { save: ownedJournal.save, ...(ownedJournal.validate ? { validate: ownedJournal.validate } : {}), restored: recovery } : undefined);
+    }, (source, snapshot, acknowledgement) => { historyContinuity &&= acknowledgement.kind === 'history'; acknowledged = { source, snapshot, acknowledgement }; }, ownedJournal ? { save: ownedJournal.save, ...(ownedJournal.validate ? { validate: ownedJournal.validate } : {}), ...(ownedJournal.isCurrent ? { isCurrent: ownedJournal.isCurrent } : {}), restored: recovery } : undefined);
     const next = writer.current.state(); stateRef.current = next; setState(next); current.current.onDirtyChange?.(next.dirty);
   }, [projectId, fileName, sourceIdentity, journal, closeWriter]);
   useEffect(() => {

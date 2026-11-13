@@ -24,9 +24,11 @@ it('claims a distinct new editor branch and writes only inside its account and a
   const hook = renderHook(() => useWorkbookRecovery(scope, true, async () => {}));
   await waitFor(() => expect(hook.result.current.session).not.toBeNull());
   const session = hook.result.current.session!;
+  expect(session.journal.isCurrent?.()).toBe(true);
   expect(session.scope).toEqual({ ...scope, draftId: expect.any(String) });
   expect(session.scope.draftId).not.toBe(draftId);
   await session.journal.save(null); expect(save).toHaveBeenCalledWith(session.scope, null);
+  hook.unmount(); expect(session.journal.isCurrent?.()).toBe(false);
 });
 it('prompts before reading a retained branch and refuses a branch still owned by another tab', async () => {
   list.mockResolvedValue([head]); acquire.mockResolvedValue(null);

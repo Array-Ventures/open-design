@@ -1,3 +1,4 @@
+import { canonicalCommentJson } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import { associateWorkbookSourceDeletion, workbookSourceDeleteContextSchema, type WorkbookSourceDeleteContext } from './sheet-delete-context';
 import { workbookSaveAcknowledgementSchema, type WorkbookSaveAcknowledgement } from './save-provenance';
 import { workbookGridPlan, workbookPlanHasChanges } from './grid-plan';
@@ -17,7 +18,7 @@ export interface WorkbookCheckpoint {
   sourceAcknowledgement?: WorkbookSaveAcknowledgement;
   sheetDeletions?: WorkbookSourceDeleteContext[];
 }
-export interface WorkbookJournal { save(checkpoint: WorkbookCheckpoint | null): Promise<void>; validate?(checkpoint: WorkbookCheckpoint): void; restored?: WorkbookCheckpoint }
+export interface WorkbookJournal { save(checkpoint: WorkbookCheckpoint | null): Promise<void>; validate?(checkpoint: WorkbookCheckpoint): void; isCurrent?(): boolean; restored?: WorkbookCheckpoint }
 /** Serializes edits against acknowledged bytes. A failed/uncertain intent keeps
  * its exact plan and identity; edits made during it are rebased only after its
  * receipt and refreshed model agree. This class never owns or remounts a grid. */
@@ -28,6 +29,8 @@ export class WorkbookWriter {
   private pending: WorkbookCheckpoint['pending'] = null;
   private sourceAcknowledgement: WorkbookSaveAcknowledgement | undefined;
   private sheetDeletions: WorkbookSourceDeleteContext[] = [];
+  private protection: Promise<void> | null = null;
+  private revision = 0;
   private running: Promise<void> | null = null;
   private active = true;
   private persistence = Promise.resolve();
@@ -49,13 +52,13 @@ export class WorkbookWriter {
   }
   private plan() { return workbookGridPlan(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired, this.sheetDeletions); }
   state(): WorkbookWriteState {
-    let dirty = Boolean(this.pending || this.running);
+    let dirty = Boolean(this.pending || this.running || this.protection);
     try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
-    return { dirty, saving: this.running !== null, error: this.error };
+    return { dirty, saving: this.running !== null || this.protection !== null, error: this.error };
   }
   update(snapshot: IWorkbookData) {
     if (!this.active) return;
-    this.desired = structuredClone(snapshot);
+    this.revision++; this.desired = structuredClone(snapshot);
     try { this.plan(); if (!this.pending && !this.recoveryConflict) this.error = null; }
     catch (error) { this.error = error instanceof Error ? error.message : 'The workbook changes could not be validated.'; }
     this.publish();
@@ -65,17 +68,50 @@ export class WorkbookWriter {
   /** Synchronous context-pool admission through the real draft encoder.
    * A command owner must separately validate its post-command snapshot before
    * executing. This retains data, not Delete/Undo or historical authority. */
-  retainSheetDeletion(raw: WorkbookSourceDeleteContext): void {
-    if (!this.active || this.pending || this.running || !this.journal?.validate) throw Error('Protected worksheet deletion is not ready.');
+  private prospectiveDeletionContexts(raw: WorkbookSourceDeleteContext): WorkbookSourceDeleteContext[] {
+    if (!this.active || this.pending || this.running || this.protection || !this.journal?.validate) throw Error('Protected worksheet deletion is not ready.');
     const context = workbookSourceDeleteContextSchema.parse(raw);
     if (context.sourceSha256 !== this.source.sourceSha256) throw Error('The deletion source changed.');
     const previous = this.sheetDeletions.find(value => value.descriptor.token === context.descriptor.token);
-    if (previous) { if (JSON.stringify(previous) !== JSON.stringify(context)) throw Error('The deletion context cannot be replaced.'); return; }
+    if (previous) { if (JSON.stringify(previous) !== JSON.stringify(context)) throw Error('The deletion context cannot be replaced.'); return this.sheetDeletions; }
     if (this.sheetDeletions.length >= 4096) throw Error('The worksheet deletion recovery limit was reached.');
     const candidate = [...this.sheetDeletions, structuredClone(context)];
     this.journal.validate({ ...this.checkpoint(), sheetDeletions: candidate });
-    this.sheetDeletions = candidate;
+    return candidate;
+  }
+  retainSheetDeletion(raw: WorkbookSourceDeleteContext): void {
+    this.sheetDeletions = this.prospectiveDeletionContexts(raw);
     void this.persist().catch(error => { if (this.active) { this.error = this.persistenceError(error); this.publish(); } });
+  }
+  /** Current-source Delete only. The future controller supplies the exact
+   * post-command snapshot, then runs the real synchronous SDK command here.
+   * No remote save intent is reserved and no authority comes from metadata. */
+  protectSheetDeletion(raw: WorkbookSourceDeleteContext, prospective: IWorkbookData, execute: () => IWorkbookData): Promise<void> {
+    if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
+    const run = async () => {
+      if (this.recoveryConflict) throw Error('The recovered workbook source is not ready for worksheet actions.');
+      if (!this.journal?.validate || !this.journal.isCurrent?.()) throw Error('The workbook recovery lease is no longer current.');
+      const candidate = this.prospectiveDeletionContexts(raw), source = this.source, revision = this.revision;
+      const snapshot = structuredClone(prospective);
+      if (snapshot.sheets[raw.descriptor.sheetId] || snapshot.sheetOrder.includes(raw.descriptor.sheetId)) throw Error('The prospective worksheet deletion changed.');
+      const plan = workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, candidate);
+      const checkpoint = { ...this.checkpoint(), sheetDeletions: candidate };
+      // Same decoder and exact byte limit as real pending storage. These local
+      // identities validate the prospective shape, not a future save reservation.
+      this.journal.validate({ ...checkpoint, desired: snapshot, pending: { snapshot, intent: { id: crypto.randomUUID(), preparationId: crypto.randomUUID(), previewId: crypto.randomUUID(), renderId: crypto.randomUUID(), plan } } });
+      const durable = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
+      this.persistence = durable;
+      await durable;
+      if (!this.active || this.source !== source || this.revision !== revision || this.pending || this.running || !this.journal.isCurrent()) throw Error('The workbook changed while protecting its worksheet action.');
+      // Old roots remain untouched on all pre-command refusals. After invoking
+      // SDK, retain the durably protected candidate even if SDK itself throws.
+      this.sheetDeletions = candidate;
+      const actual = execute(); this.update(actual);
+      if (canonicalCommentJson(actual) !== canonicalCommentJson(snapshot)) throw Error('The worksheet command changed its protected snapshot. Keep the workbook open.');
+    };
+    const promise = run(); this.protection = promise; this.publish();
+    void promise.finally(() => { if (this.protection === promise) this.protection = null; this.publish(); }).catch(() => {});
+    return promise;
   }
   recoveredSnapshot(): IWorkbookData { return structuredClone(this.desired); }
   private persistenceError(_error: unknown) { return 'This draft could not be protected on this device. Keep the workbook open and try saving again.'; }
@@ -163,6 +199,7 @@ export class WorkbookWriter {
    * possible checkpoint callback and queued transaction has settled. */
   async close(): Promise<void> {
     this.dispose();
+    await this.protection?.catch(() => {});
     await this.running?.catch(() => {});
     await this.persistence.catch(() => {});
   }
