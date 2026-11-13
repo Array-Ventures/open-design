@@ -1,3 +1,4 @@
+import { seedWorkbookStructureIdentity, ownWorkbookAxisIdentity } from '../../src/components/embedded/workbook/grid-structure-identity';
 import { createRequire } from 'node:module';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -129,6 +130,10 @@ it('terminates an actual pinned-worker executor that stops yielding while the ma
   book.getActiveSheet().getRange('A1').setValue(19);
   expect(book.save().sheets.s!.cellData![0]![0]!.v).toBe(19);
   await failed; expect(deadline.begin()).toBeNull();
+  // This fixture deliberately kills the executor before it can send its terminal
+  // notification. Close that progress lifecycle locally: the pinned UI plugin's
+  // dispose does not cancel its START timer. This supplies no calculated values.
+  univer.__getInjector().get(core.ICommandService).syncExecuteCommand(engine.SetFormulaCalculationNotificationMutation.id, { functionsExecutedState: engine.FormulaExecutedStateType.STOP_EXECUTION }, { onlyLocal: true });
 });
 
 it('creates an inert stored kernel after RPC was loaded without requiring an RPC channel', async () => {
@@ -148,4 +153,69 @@ it('creates an inert stored kernel after RPC was loaded without requiring an RPC
   expect(book.save().sheets.s!.cellData![0]![0]!.v).toBe(7);
   expect(book.save().sheets.s!.cellData![0]![1]!.v).toBe(999);
   expect(derived).toBe(0);
+});
+
+it('calculates source-qualified row and column structural edits through production RPC and undo/redo', async () => {
+  vi.stubGlobal('Worker', WorkerAdapter);
+  const worker = new WorkerAdapter(true, false, false, true);
+  const owner = ownWorkbookCalculationWorker(() => { throw Error('Qualified structural worker became unavailable.'); }, () => worker as unknown as Worker);
+  closers.push(() => owner.dispose()); expect(await owner.loaded).toBe(true);
+  const English = pinned('@univerjs/preset-sheets-core/locales/en-US');
+  const univer = new core.Univer({ locale: core.LocaleType.EN_US, locales: { [core.LocaleType.EN_US]: English.default ?? English } }); closers.push(() => univer.dispose());
+  let book: ReturnType<FUniver['createWorkbook']> | undefined;
+  const identities = ownWorkbookAxisIdentity(univer, () => book?.save(), () => true); closers.push(() => identities.dispose());
+  univer.registerPlugin(rpc.UniverRPCMainThreadPlugin, { workerURL: worker as unknown as Worker });
+  univer.registerPlugin(engine.UniverFormulaEnginePlugin, { notExecuteFormula: true });
+  univer.registerPlugin(sheets.UniverSheetsPlugin, { notExecuteFormula: true });
+  univer.registerPlugin(formula.UniverSheetsFormulaPlugin, { notExecuteFormula: true, initialFormulaComputing: formula.CalculationMode.NO_CALCULATION });
+  const api = FUniver.newAPI(univer);
+  const seed = seedWorkbookStructureIdentity({ id: 'structure-rpc', name: 'Structure', appVersion: '1.4.0', locale: core.LocaleType.EN_US, sheetOrder: ['s', 't'], styles: {}, sheets: {
+    s: { id: 's', name: 'Inputs', rowCount: 8, columnCount: 6, cellData: { 1: { 1: { v: 7, t: 2 }, 2: { f: '=B2+3', v: 999, t: 2 } } } },
+    t: { id: 't', name: 'Summary', rowCount: 8, columnCount: 6, cellData: { 0: { 0: { f: '=Inputs!B2+1', v: 999, t: 2 } } } },
+  } } as core.IWorkbookData, 'a'.repeat(64));
+  book = api.createWorkbook(seed); book.setEditable(true);
+  univer.__getInjector().get(core.IUniverInstanceService).focusUnit(book.getId());
+  const model = { version: 1, calculationMetadata: 'supported', worksheetStructureEditable: true, sheets: Object.values(seed.sheets).map(sheet => ({ id: sheet.id, arrayFormulas: [], cells: [] })) } as unknown as WorkbookDocument;
+  const calculation = attachWorkbookCalculation(univer, api, model, seed, book.save(), () => book!.save(), owner, () => {}); closers.push(() => calculation.dispose());
+  const commands = univer.__getInjector().get(core.ICommandService), tags: { valid: boolean; digest: string }[] = [];
+  const observe = commands.beforeCommandExecuted(command => { if (command.id === engine.SetFormulaCalculationResultMutation.id) { const tag = workbookCalculationTagSchema.parse((command.params as { workbookCalculation: unknown }).workbookCalculation); tags.push({ valid: tag.valid && tag.inputSha256 === workbookCalculationInputSha256(book!.save()), digest: tag.inputSha256 }); } }); closers.push(() => observe.dispose());
+  const sheet = book.getActiveSheet();
+  const settled = async (change: () => void | Promise<unknown>) => {
+    const end = new Promise<void>((resolve, reject) => { const timer = setTimeout(() => { listener.dispose(); reject(Error('Structural RPC did not settle.')); }, 5000); const listener = api.getFormula().calculationEnd((state: number) => { if (state === 3) { clearTimeout(timer); listener.dispose(); resolve(); } }); });
+    await change(); const digest = workbookCalculationInputSha256(book!.save());
+    await vi.waitFor(() => expect(tags.some(tag => tag.valid && tag.digest === digest)).toBe(true)); await end;
+  };
+  await settled(() => { sheet.getRange('B2').setValue(8); });
+  await vi.waitFor(() => expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.v).toBe(9));
+  await settled(() => { sheet.insertRowsBefore(1, 1); });
+  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[2]?.[2]?.f).toBe('=B3+3'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.f).toBe('=Inputs!B3+1'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.v).toBe(9); expect(calculation.status('s', 2, 2)?.result).toBe('calculated'); });
+  await settled(() => { sheet.insertColumnsBefore(1, 1); });
+  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[2]?.[3]?.f).toBe('=C3+3'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.f).toBe('=Inputs!C3+1'); expect(calculation.status('s', 2, 3)?.result).toBe('calculated'); });
+  await settled(() => { sheet.deleteRows(1, 1); }); await settled(() => { sheet.deleteColumns(1, 1); });
+  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[1]?.[2]?.f).toBe('=B2+3'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.f).toBe('=Inputs!B2+1'); expect(calculation.status('s', 1, 2)?.result).toBe('calculated'); });
+  await settled(() => api.undo()); await settled(() => api.undo());
+  await vi.waitFor(() => expect(calculation.status('s', 2, 3)?.result).toBe('calculated'));
+  await settled(() => api.redo()); await settled(() => api.redo());
+  await vi.waitFor(() => expect(calculation.status('s', 1, 2)?.result).toBe('calculated'));
+  await settled(() => { sheet.getRange('B2').setValue(20); });
+  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[1]?.[2]?.v).toBe(23); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.v).toBe(21); });
+  expect(tags.length).toBeGreaterThanOrEqual(10); expect(tags.every(tag => tag.valid)).toBe(true);
+  expect(book.save().sheets.s!.rowCount).toBe(8); expect(book.save().sheets.s!.columnCount).toBe(6);
+});
+
+it('refuses structural allocation beyond prospective area, axis, identity and range budgets', () => {
+  const seed = seedWorkbookStructureIdentity({ id: 'budget', name: 'Budget', appVersion: '1.4.0', locale: core.LocaleType.EN_US, styles: {}, sheetOrder: ['s'], sheets: { s: { id: 's', name: 'Sheet', rowCount: 1000, columnCount: 100, cellData: {} } } } as core.IWorkbookData, 'a'.repeat(64));
+  const command = { id: 'sheet.mutation.insert-row', params: { unitId: 'budget', subUnitId: 's', range: { startRow: 1, endRow: 1, startColumn: 0, endColumn: 99 } } };
+  expect(() => assertWorkbookCalculationMutation(command, [seed], sheets.SetRangeValuesMutation.id)).toThrow('budget');
+  const axisBound = seedWorkbookStructureIdentity({ id: 'budget', name: 'Budget', appVersion: '1.4.0', locale: core.LocaleType.EN_US, styles: {}, sheetOrder: ['s'], sheets: { s: { id: 's', name: 'Sheet', rowCount: 99998, columnCount: 1, cellData: {} } } } as core.IWorkbookData, 'a'.repeat(64));
+  expect(() => assertWorkbookCalculationMutation({ ...command, params: { ...command.params, range: { startRow: 1, endRow: 2, startColumn: 0, endColumn: 0 } } }, [axisBound], sheets.SetRangeValuesMutation.id)).toThrow('budget');
+  expect(() => assertWorkbookCalculationMutation({ id: 'sheet.mutation.insert-col', params: { ...command.params, range: { startRow: 0, endRow: 999, startColumn: 1, endColumn: 1 } } }, [seed], sheets.SetRangeValuesMutation.id)).toThrow('budget');
+  const small = seedWorkbookStructureIdentity({ id: 'budget', name: 'Budget', appVersion: '1.4.0', locale: core.LocaleType.EN_US, styles: {}, sheetOrder: ['s'], sheets: { s: { id: 's', name: 'Sheet', rowCount: 8, columnCount: 6, cellData: {} } } } as core.IWorkbookData, 'a'.repeat(64));
+  const valid = { ...command, params: { ...command.params, range: { ...command.params.range, endColumn: 5 } } };
+  expect(() => assertWorkbookCalculationMutation(valid, [small], sheets.SetRangeValuesMutation.id)).not.toThrow();
+  const broken = structuredClone(small); delete broken.sheets.s!.rowData![0]!.custom;
+  expect(() => assertWorkbookCalculationMutation(valid, [broken], sheets.SetRangeValuesMutation.id)).toThrow('ownership');
+  expect(() => assertWorkbookCalculationMutation({ ...valid, params: { ...valid.params, unitId: 'foreign' } }, [small], sheets.SetRangeValuesMutation.id)).toThrow('identity');
+  expect(() => assertWorkbookCalculationMutation({ ...valid, params: { ...valid.params, range: { ...valid.params.range, endColumn: 2 } } }, [small], sheets.SetRangeValuesMutation.id)).toThrow('bounds');
+  expect(() => assertWorkbookCalculationMutation({ id: 'sheet.mutation.remove-rows', params: { ...valid.params, range: { ...valid.params.range, startRow: 0, endRow: 7 } } }, [small], sheets.SetRangeValuesMutation.id)).toThrow('budget');
 });

@@ -4,7 +4,7 @@ import { INTERCEPTOR_POINT, SetRangeValuesMutation, SheetInterceptorService } fr
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { ownWorkbookCalculationWorker } from './calculation-worker-owner';
 import { WorkbookFormulaDisplay } from './formula-display-policy';
-import { assertWorkbookCalculationBudget, assertWorkbookCalculationMutation } from './formula-worker-budget';
+import { assertWorkbookCalculationBudget, assertWorkbookCalculationMutation, isWorkbookCalculationStructuralMutation } from './formula-worker-budget';
 import { workbookCalculationState, type WorkbookCalculationState } from './calculation-state';
 import { workbookCalculationChangesInputs } from './formula-input-provenance';
 import type { FUniver } from '@univerjs/core/facade';
@@ -30,6 +30,7 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
     if (owner && command.id.startsWith('sheet.mutation.') && !options?.fromFormula) {
       try { assertWorkbookCalculationMutation(command, [snapshot()], SetRangeValuesMutation.id); } catch (error) { owner.deadline.fail(); throw error; }
     }
+    if (owner && isWorkbookCalculationStructuralMutation(command.id) && formulas(snapshot())) generation = owner.deadline.begin();
     if (command.id === SetRangeValuesMutation.id) {
       if (options?.fromFormula) display.rangeResult(command.params as Parameters<WorkbookFormulaDisplay['rangeResult']>[0]);
       else if (owner && workbookCalculationChangesInputs(command.params) && (formulas(snapshot()) || Object.values((command.params as { cellValue?: Record<string, Record<string, ICellData>> }).cellValue ?? {}).some(row => Object.values(row).some(cell => cell?.f)))) {
@@ -42,10 +43,10 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
     else if (command.id === engine.SetArrayFormulaDataMutation.id) display.arrayResult(command.params as Parameters<WorkbookFormulaDisplay['arrayResult']>[0]);
   });
   const after = commands.onCommandExecuted((command, options) => {
-    if (command.id === SetRangeValuesMutation.id) {
+    if (command.id === SetRangeValuesMutation.id || isWorkbookCalculationStructuralMutation(command.id)) {
       const current = snapshot(), hasFormulas = formulas(current);
       if (!hasFormulas && generation !== null) { owner?.deadline.complete(generation); generation = null; }
-      display.update(current, Boolean(owner && hasFormulas && !options?.fromFormula && workbookCalculationChangesInputs(command.params))); publish();
+      display.update(current, Boolean(owner && hasFormulas && !options?.fromFormula && (isWorkbookCalculationStructuralMutation(command.id) || workbookCalculationChangesInputs(command.params)))); publish();
     }
   });
   const unsubscribe = owner?.onResult(result => { if (result.kind === 'graph') display.graphResult(result); else display.arrayResult(result); });

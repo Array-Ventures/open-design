@@ -1,3 +1,5 @@
+import { assertWorkbookStructureIdentity, hasWorkbookStructureIdentity } from './grid-structure-identity';
+import { WORKBOOK_STRUCTURE_AXIS_BUDGET } from '@open-design/contracts/runtime/workbook-structure';
 import { assertWorkbookVisibilityMutation, WORKSHEET_VISIBILITY_MUTATION } from './grid-visibility-policy';
 import type { ICellData, IWorkbookData } from '@univerjs/presets';
 import { WORKBOOK_MODEL_LIMITS } from '@open-design/contracts/runtime/workbook';
@@ -35,14 +37,42 @@ export function assertWorkbookCalculationBudget(books: readonly IWorkbookData[],
     }
   }
 }
+const structuralMutations = new Map<string, { axis: 'row' | 'column'; insert: boolean }>([
+  ['sheet.mutation.insert-row', { axis: 'row', insert: true }],
+  ['sheet.mutation.insert-col', { axis: 'column', insert: true }],
+  ['sheet.mutation.remove-rows', { axis: 'row', insert: false }],
+  ['sheet.mutation.remove-col', { axis: 'column', insert: false }],
+]);
+export function isWorkbookCalculationStructuralMutation(id: string): boolean { return structuralMutations.has(id); }
+/** Source-qualified editor ownership is required in addition to bounded geometry.
+ * The prospective check runs before the SDK allocates or shifts any cells. */
+function assertStructuralMutation(command: WorkbookCalculationMutation, books: readonly IWorkbookData[]): void {
+  const shape = structuralMutations.get(command.id)!;
+  const params = command.params as { unitId?: string; subUnitId?: string; range?: { startRow?: number; endRow?: number; startColumn?: number; endColumn?: number } } | undefined;
+  const book = books.length === 1 ? books[0] : undefined;
+  if (!book || !hasWorkbookStructureIdentity(book)) throw new WorkbookCalculationBudgetError('Structural workbook changes need a separate calculation adapter.');
+  try { assertWorkbookStructureIdentity(book); } catch { throw new WorkbookCalculationBudgetError('Structural workbook ownership is invalid.'); }
+  const sheet = params?.subUnitId ? book.sheets[params.subUnitId] : undefined, range = params?.range;
+  if (!params || params.unitId !== book.id || !sheet || !range) throw new WorkbookCalculationBudgetError('Structural workbook mutation identity is unavailable.');
+  const rows = sheet.rowCount!, columns = sheet.columnCount!;
+  const start = shape.axis === 'row' ? range.startRow : range.startColumn, end = shape.axis === 'row' ? range.endRow : range.endColumn;
+  const otherStart = shape.axis === 'row' ? range.startColumn : range.startRow, otherEnd = shape.axis === 'row' ? range.endColumn : range.endRow;
+  const count = shape.axis === 'row' ? rows : columns, otherCount = shape.axis === 'row' ? columns : rows;
+  if (![start, end, otherStart, otherEnd].every(Number.isSafeInteger) || start! < 0 || end! < start! || start! > count || !shape.insert && end! >= count || otherStart !== 0 || otherEnd !== otherCount - 1) throw new WorkbookCalculationBudgetError('Structural workbook range exceeds its registered bounds.');
+  const delta = (end! - start! + 1) * (shape.insert ? 1 : -1), next = count + delta;
+  const axes = Object.values(book.sheets).reduce((sum, item) => sum + item.rowCount! + item.columnCount!, delta);
+  const area = Object.values(book.sheets).reduce((sum, item) => sum + item.rowCount! * item.columnCount!, delta * otherCount);
+  if (!Number.isSafeInteger(next) || next < 1 || next > (shape.axis === 'row' ? WORKBOOK_MODEL_LIMITS.rows : WORKBOOK_MODEL_LIMITS.columns) || !Number.isSafeInteger(axes) || axes > WORKBOOK_STRUCTURE_AXIS_BUDGET || !Number.isSafeInteger(area) || area > WORKBOOK_MODEL_LIMITS.cells) throw new WorkbookCalculationBudgetError('Structural workbook changes exceed their calculation budget.');
+}
 export interface WorkbookCalculationMutation {
   id: string; params?: unknown;
 }
-/** Only the pinned scalar/range mutation is admitted as a sheet write in this
- * calculation replica. Structural commands must not grow its registered bounds
- * through paste, insertion, count changes or a future unreviewed mutation. */
+/** Scalar/range writes stay within registered geometry. Only four pinned axis
+ * mutations may change it, for source-qualified identity-stamped workbooks and
+ * within prospective area/axis budgets; unknown geometry mutations fail closed. */
 export function assertWorkbookCalculationMutation(command: WorkbookCalculationMutation, books: readonly IWorkbookData[], rangeMutationId: string): void {
   assertWorkbookCalculationBudget(books);
+  if (isWorkbookCalculationStructuralMutation(command.id)) { assertStructuralMutation(command, books); return; }
   if (command.id === WORKSHEET_VISIBILITY_MUTATION) {
     if (books.length !== 1) throw new WorkbookCalculationBudgetError('Workbook visibility identity is unavailable.');
     assertWorkbookVisibilityMutation(command.params, books[0]!); return;
