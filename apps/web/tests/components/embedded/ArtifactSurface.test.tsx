@@ -5,7 +5,7 @@ import type { Project, ProjectFile } from '../../../src/types';
 import type { EmbeddedDashboardSummary } from '../../../src/components/embedded/dashboards';
 vi.mock('../../../src/components/FileViewer', () => ({ FileViewer: ({ file }: { file: ProjectFile }) => <div data-testid="app-preview">{file.name}</div>, LiveArtifactViewer: () => <div data-testid="dashboard-preview">Rendered snapshot</div> }));
 vi.mock('../../../src/components/embedded/useMotionTransport', () => ({ useMotionTransport: () => {} }));
-vi.mock('../../../src/components/embedded/workbook/WorkbookSurface', () => ({ WorkbookSurface: ({ fileName }: { fileName: string }) => <div data-testid="workbook-preview">{fileName}</div> }));
+vi.mock('../../../src/components/embedded/workbook/WorkbookSurface', () => ({ WorkbookSurface: ({ fileName, sourceStamp }: { fileName: string; sourceStamp: string }) => <div data-testid="workbook-preview" data-source-stamp={sourceStamp}>{fileName}</div> }));
 vi.mock('../../../src/components/embedded/document/DocumentSurface', () => ({ DocumentSurface: ({ fileName, onDirtyChange }: { fileName: string; onDirtyChange(dirty: boolean): void }) => <div data-testid="document-preview">{fileName}<button onClick={() => onDirtyChange(true)}>Unsaved document edit</button><button onClick={() => onDirtyChange(false)}>Saved document edit</button></div> }));
 import * as restoreDiscovery from '../../../src/components/embedded/workbook/use-missing-workbook-restores';
 import { ArtifactSurface } from '../../../src/components/embedded/ArtifactSurface';
@@ -63,4 +63,16 @@ it('keeps another live artifact and its dirty draft mounted until recovery is ex
     fireEvent.click(recovery); expect(screen.getByTestId('workbook-preview')).toHaveTextContent('missing.xlsx');
     fireEvent.click(screen.getByRole('button', { name: 'Back to artifact' })); expect(screen.getByTestId('document-preview')).toHaveTextContent('index.html');
   } finally { cleanup(); discovery.mockRestore(); }
+});
+
+// File stat timestamps can be preserved by external generators; host refresh is authoritative.
+it('refreshes a workbook on a new generation even when its file stats are unchanged', async () => {
+  const workbook = { ...file('book.xlsx'), mtime: 100, size: 200 } as ProjectFile;
+  const props = { project: { ...project, metadata: { kind: 'other', embeddedArtifactKind: 'workbook' } } as Project, files: [workbook], dashboards: [], fileName: null, onRefresh: async () => {}, feedback: {} };
+  const view = render(<ArtifactSurface {...props} generation={1} />);
+  const preview = await screen.findByTestId('workbook-preview');
+  const stamp = preview.getAttribute('data-source-stamp');
+  view.rerender(<ArtifactSurface {...props} generation={2} />);
+  expect(screen.getByTestId('workbook-preview')).toBe(preview);
+  expect(preview.getAttribute('data-source-stamp')).not.toBe(stamp);
 });

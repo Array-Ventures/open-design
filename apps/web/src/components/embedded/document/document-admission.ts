@@ -1,0 +1,79 @@
+import { documentHtml, isEditableDocument, isDocumentLinkSupported } from './document-html';
+import { supportedDocumentImageElement } from './document-image-source';
+import { documentImportStyles, documentTextStyles } from './document-styles';
+import styles from './DocumentEditor.module.css';
+
+const tags = new Set(['main', 'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'table', 'colgroup', 'col', 'thead', 'tbody', 'tr', 'td', 'th', 'a', 'br', 'span', 'code', 'pre', 'img']);
+const inline = new Set(['span', 'strong', 'b', 'em', 'i', 'u', 's', 'code']);
+const attributes: Record<string, string[]> = {
+  a: ['href', 'title', 'target', 'rel'], img: ['src', 'alt', 'title', 'width', 'height'],
+  td: ['colspan', 'rowspan'], th: ['colspan', 'rowspan', 'scope'], ol: ['start'],
+  li: ['value', 'role', 'tabindex', 'aria-checked'], ul: ['__lexicallisttype'],
+  pre: ['spellcheck', 'data-language', 'data-highlight-language'], span: ['data-eve-document-image'],
+};
+const editorClasses = new Set(Object.values(styles).flatMap(value => value.split(/\s+/)));
+function supportedElement(element: HTMLElement): boolean {
+  const tag = element.tagName.toLowerCase();
+  if (!tags.has(tag)) return false;
+  for (const attribute of Array.from(element.attributes)) {
+    if (attribute.name === 'class' && attribute.value.split(/\s+/).every(value => editorClasses.has(value))) continue;
+    if (!['style', 'dir', 'data-od-id', ...(attributes[tag] ?? [])].includes(attribute.name)) return false;
+  }
+  // Unknown declarations (including invalid CSS that the DOM parser discards) must not vanish on save.
+  if (element.hasAttribute('dir') && !['ltr', 'rtl'].includes(element.getAttribute('dir')!)) return false;
+  if (element.hasAttribute('data-od-id') && !/^[A-Za-z0-9_-]{1,100}$/.test(element.getAttribute('data-od-id')!)) return false;
+  if (tag === 'a' && element.hasAttribute('target') && element.getAttribute('target') !== '_blank') return false;
+  if (tag === 'a' && element.hasAttribute('rel') && element.getAttribute('rel') !== 'noopener noreferrer') return false;
+  if (['main', 'div'].includes(tag) && element.attributes.length) return false;
+  if (element.hasAttribute('role') && element.getAttribute('role') !== 'checkbox') return false;
+  if (element.hasAttribute('tabindex') && element.getAttribute('tabindex') !== '-1') return false;
+  if (element.hasAttribute('aria-checked') && !['true', 'false'].includes(element.getAttribute('aria-checked')!)) return false;
+  if (element.hasAttribute('__lexicallisttype') && element.getAttribute('__lexicallisttype') !== 'check') return false;
+  if (element.hasAttribute('scope') && element.getAttribute('scope') !== 'col') return false;
+  if (element.hasAttribute('data-eve-document-image') && (element.getAttribute('data-eve-document-image') !== '1' || element.children.length !== 1 || element.firstElementChild?.tagName !== 'IMG' || element.textContent?.trim())) return false;
+  if (element.hasAttribute('data-od-id') && inline.has(tag) && !element.hasAttribute('data-eve-document-image')) return false;
+  for (const name of ['colspan', 'rowspan', 'start', 'value']) {
+    if (element.hasAttribute(name) && !/^[1-9]\d*$/.test(element.getAttribute(name)!)) return false;
+  }
+  const rawStyle = element.getAttribute('style') ?? '';
+  if (rawStyle.split(';').filter(value => value.trim()).length !== element.style.length) return false;
+  for (const name of Array.from(element.style)) {
+    const value = element.style.getPropertyValue(name).trim();
+    if (element.style.getPropertyPriority(name)) return false;
+    // Lexical's own exports add these presentation defaults, regenerated on every save.
+    if (inline.has(tag) && name === 'white-space' && value === 'pre-wrap') continue;
+    if (['td', 'th'].includes(tag) && name === 'border' && value === '1px solid black') continue;
+    const pattern = documentImportStyles.get(name);
+    if (!pattern?.test(value)) return false;
+    if (documentTextStyles.has(name) && !inline.has(tag) && !(name === 'background-color' && ['td', 'th'].includes(tag))) return false;
+    if (['text-align', 'padding-inline-start'].includes(name) && (inline.has(tag) || ['img', 'br', 'col', 'colgroup'].includes(tag))) return false;
+    if (['font-weight', 'font-style', 'text-decoration'].includes(name) && !inline.has(tag)) return false;
+    if (name === 'aspect-ratio' && tag !== 'img') return false;
+    if (name === 'width' && !['col', 'td', 'th'].includes(tag)) return false;
+    if (name === 'height' && tag !== 'tr') return false;
+    if (name === 'vertical-align' && !['td', 'th'].includes(tag)) return false;
+  }
+  return true;
+}
+
+/** Unsupported authored presentation stays in its original viewer; editing must never silently strip it. */
+export function supportedDocument(html: string, fileName: string): boolean {
+  if (!isEditableDocument(html)) return false;
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+  const root = parsed.documentElement;
+  if (Array.from(root.attributes).some(attr => !['data-eve-document', 'data-eve-document-font', 'data-eve-document-heading-font'].includes(attr.name))) return false;
+  for (const name of ['data-eve-document-font', 'data-eve-document-heading-font']) {
+    if (root.hasAttribute(name) && !['sans', 'serif'].includes(root.getAttribute(name)!)) return false;
+  }
+  if (parsed.body.attributes.length) return false;
+  const canonical = new DOMParser().parseFromString(documentHtml('', '', root.getAttribute('data-eve-document-font') === 'serif' ? 'serif' : 'sans', root.getAttribute('data-eve-document-heading-font') === 'sans' ? 'sans' : 'serif'), 'text/html');
+  for (const element of Array.from(parsed.head.children)) {
+    if (element.tagName === 'TITLE' && !element.attributes.length) continue;
+    if (element.tagName === 'STYLE' && !element.attributes.length && element.textContent === canonical.querySelector('style')?.textContent) continue;
+    if (element.tagName === 'META' && Array.from(canonical.head.querySelectorAll('meta')).some(meta => meta.outerHTML === element.outerHTML)) continue;
+    return false;
+  }
+  return Array.from(parsed.body.querySelectorAll<HTMLElement>('*')).every(supportedElement)
+    && Array.from(parsed.body.querySelectorAll('a[href]')).every(link => isDocumentLinkSupported(link.getAttribute('href')!))
+    && Array.from(parsed.body.querySelectorAll('img')).every(image => supportedDocumentImageElement(image, fileName));
+}

@@ -32,3 +32,24 @@ it('initializes deterministic missing IDs without stealing a later source-owned 
     ensureDocumentBlockIds(owners); expect($getState(original, documentBlockId)).toBe('doc-source-0');
   }, { discrete: true });
 });
+
+it('round-trips supported authored inline typography through Lexical', async () => {
+  const { $generateNodesFromDOM, $generateHtmlFromNodes } = await import('@lexical/html');
+  const { documentImport } = await import('../../../src/components/embedded/document/document-html');
+  const { documentHtmlConfig } = await import('../../../src/components/embedded/document/document-identity');
+  const editor = createEditor({ html: documentHtmlConfig(), onError: error => { throw error; } });
+  editor.update(() => {
+    $getRoot().append(...$generateNodesFromDOM(editor, documentImport('<p><span style="color:rgb(10, 20, 30);font-size:22px;font-family:Georgia">Keep <strong style="color:blue">inner</strong></span></p>')));
+  }, { discrete: true });
+  editor.getEditorState().read(() => {
+    const output = new DOMParser().parseFromString($generateHtmlFromNodes(editor), 'text/html');
+    const spans = Array.from(output.querySelectorAll('span'));
+    const outer = spans.find(span => span.textContent === 'Keep ');
+    const inner = spans.find(span => span.textContent === 'inner');
+    expect(outer?.style.color).toBe('rgb(10, 20, 30)');
+    expect(outer?.style.fontSize).toBe('22px');
+    expect(outer?.style.fontFamily).toBe('Georgia');
+    expect(inner?.style.color).toBe('blue');
+    expect(inner?.style.fontSize).toBe('22px');
+  });
+});

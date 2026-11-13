@@ -1,4 +1,5 @@
-import { $getState, $getRoot, $isElementNode, $setState, createState, ParagraphNode, type DOMConversionMap, type HTMLConfig, type Klass, type LexicalNode } from 'lexical';
+import { documentTextStyles } from './document-styles';
+import { $getState, $getRoot, $isElementNode, $setState, createState, ParagraphNode, $isTextNode, TextNode, type DOMConversionMap, type HTMLConfig, type Klass, type LexicalNode } from 'lexical';
 import { DocumentImageNode } from './DocumentImageNode';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { CodeNode } from '@lexical/code';
@@ -13,7 +14,7 @@ export function documentHtmlConfig(): HTMLConfig {
   const imports: DOMConversionMap = {};
   const exports: NonNullable<HTMLConfig['export']> = new Map();
   const candidates = new Map<string, NonNullable<DOMConversionMap[string]>[]>();
-  for (const Block of blocks) {
+  for (const Block of [...blocks, TextNode]) {
     for (const [tag, convert] of Object.entries(Block.importDOM?.() ?? {})) {
       const list = candidates.get(tag) ?? []; list.push(convert); candidates.set(tag, list);
     }
@@ -34,8 +35,27 @@ export function documentHtmlConfig(): HTMLConfig {
     if (!conversion) return null;
     return { ...conversion, conversion: dom => {
       const output = conversion.conversion(dom);
+      // Preserve supported authored inline styles while retaining Lexical's format conversion.
+      if (output && element instanceof HTMLElement && ['span', 'strong', 'b', 'em', 'i', 'u', 's', 'code'].includes(tag)) {
+        const original = output.forChild;
+        output.forChild = (child, parent) => {
+          const converted = original ? original(child, parent) : child;
+          if ($isTextNode(converted)) {
+            const style = document.createElement('span').style;
+            for (const [name, pattern] of documentTextStyles) {
+              const value = element.style.getPropertyValue(name);
+              if (pattern.test(value)) style.setProperty(name, value);
+            }
+            // Inner authored spans take precedence over inherited outer styles.
+            const own = document.createElement('span').style; own.cssText = converted.getStyle();
+            for (const name of Array.from(own)) style.setProperty(name, own.getPropertyValue(name));
+            converted.setStyle(style.cssText);
+          }
+          return converted;
+        };
+      }
       const nodes = output?.node ? Array.isArray(output.node) ? output.node : [output.node] : [];
-      for (const node of nodes) $setState(node, documentBlockId, documentBlockId.parse(element.getAttribute('data-od-id')));
+      for (const node of nodes.filter(node => !$isTextNode(node))) $setState(node, documentBlockId, documentBlockId.parse(element.getAttribute('data-od-id')));
       return output;
     } };
   };

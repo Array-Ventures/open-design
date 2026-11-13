@@ -15,6 +15,9 @@ vi.mock('../../../src/components/embedded/document/DocumentEditor', async () => 
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); state.mounts = 0; state.editor = null; actor.id = 'person-a'; });
 it.each([
+  '<html data-eve-document="1"><head><style>p{color:red}</style></head><body><p>Authored styling</p></body></html>',
+  '<html data-eve-document="1"><body style="background:red"><p>Authored body</p></body></html>',
+  '<html data-eve-document="1"><body><p class="custom">Authored class</p></body></html>',
   '<html data-eve-document="1"><body><a href="ftp://example.test/file">Unsupported link</a></body></html>',
   '<html data-eve-document="1"><body><img src="picture.png" srcset="other.png 2x"></body></html>',
   '<html data-eve-document="1"><body><img src="../outside.png"></body></html>',
