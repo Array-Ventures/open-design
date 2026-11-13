@@ -14155,7 +14155,7 @@ function HtmlViewer({
     }
   }
 
-  async function applyManualEdit(patch: ManualEditPatch, label: string): Promise<boolean> {
+  async function applyManualEdit(patch: ManualEditPatch, label: string, expectedInsertionSource?: string): Promise<boolean> {
     const startedAt = performance.now();
     let resultTracked = false;
     const finish = (
@@ -14183,6 +14183,11 @@ function HtmlViewer({
       if (!result.ok) {
         setManualEditError(result.error ?? 'Could not apply edit.');
         finish('failed', 'patch_invalid');
+        return false;
+      }
+      if (patch.kind === 'insert-element' && expectedInsertionSource !== undefined && baseSource !== expectedInsertionSource && !result.unchanged) {
+        setManualEditError('The artifact changed before insertion was confirmed. Review the current content before placing a new object.');
+        finish('failed', 'source_conflict');
         return false;
       }
       if (!(await confirmManualEditHistorySource(
@@ -18355,9 +18360,9 @@ function HtmlViewer({
             setManualEditPageStylesOpen(false);
             return true;
           }}
-          onInsert={async (patch, label) => {
+          onInsert={async (patch, label, expectedSource) => {
             pendingManualInsertSelectionRef.current = patch.id;
-            const saved = await applyManualEdit(patch, label);
+            const saved = await applyManualEdit(patch, label, expectedSource);
             if (!saved && pendingManualInsertSelectionRef.current === patch.id) pendingManualInsertSelectionRef.current = null;
             return saved;
           }} /> : null}

@@ -36,9 +36,11 @@ it('keeps the same insertion identity on a failed save retry', async () => {
   const onInsert = vi.fn(async (_patch: ManualEditInsertionPatch) => false), h = harness(onInsert), armed = await h.arm();
   await h.send({type:'od-insert-placement',requestId:armed.requestId,parentId:'slide',placement:{left:10,top:20,width:240,height:48}});
   expect(screen.getByRole('status').textContent).toContain('Could not save');
+  h.change('<section>Source changed while save was uncertain</section>');
   fireEvent.click(screen.getByRole('button',{name:'Retry insertion save'}));
   await waitFor(() => expect(onInsert).toHaveBeenCalledTimes(2));
   expect(onInsert.mock.calls[1]![0]).toEqual(onInsert.mock.calls[0]![0]);
+  expect(onInsert).toHaveBeenNthCalledWith(2,onInsert.mock.calls[0]![0],'Insert text','<section>Source A</section>');
   expect((screen.getByRole('button',{name:'Insert text'}) as HTMLButtonElement).disabled).toBe(true);
 });
 it('retires a request after source replacement or frame navigation', async () => {

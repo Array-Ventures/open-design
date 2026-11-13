@@ -12,7 +12,7 @@ interface Props {
   getFrame(): HTMLIFrameElement | null;
   getSource(): string | null;
   onPrepare(): Promise<boolean>;
-  onInsert(patch: ManualEditInsertionPatch, label: string): Promise<boolean>;
+  onInsert(patch: ManualEditInsertionPatch, label: string, expectedSource: string): Promise<boolean>;
 }
 /** Visible only in Edit. Content remains in the source-owning canvas and uses
  * its conditional writer/history; the toolbar never writes files itself. */
@@ -20,7 +20,7 @@ export function ArtifactInsertionToolbar(props: Props) {
   const current = useRef(props);
   useLayoutEffect(() => { current.current = props; });
   const request = useRef<Request | null>(null);
-  const retry = useRef<ManualEditInsertionPatch | null>(null);
+  const retry = useRef<{patch: ManualEditInsertionPatch; source: string} | null>(null);
   const [active, setActive] = useState<ManualEditInsertion['kind'] | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -37,10 +37,10 @@ export function ArtifactInsertionToolbar(props: Props) {
     retry.current = null;
     setActive(null); setStatus(null);
   };
-  const save = async (patch: ManualEditInsertionPatch) => {
-    setPending(true); retry.current = patch; setStatus('Saving…');
+  const save = async (patch: ManualEditInsertionPatch, expectedSource: string) => {
+    setPending(true); retry.current = {patch, source: expectedSource}; setStatus('Saving…');
     try {
-      const ok = await current.current.onInsert(patch, patch.element.kind === 'shape' ? `Insert ${patch.element.shape}` : `Insert ${patch.element.kind}`);
+      const ok = await current.current.onInsert(patch, patch.element.kind === 'shape' ? `Insert ${patch.element.shape}` : `Insert ${patch.element.kind}`, expectedSource);
       if (!alive.current) return;
       if (ok) { retry.current = null; setStatus(null); }
       else setStatus('Could not save insertion. Retry or cancel.');
@@ -67,7 +67,7 @@ export function ArtifactInsertionToolbar(props: Props) {
       request.current = null;
       if (ackTimer.current) clearTimeout(ackTimer.current);
       ackTimer.current = null; setActive(null);
-      void save(parsed.data);
+      void save(parsed.data, attempt.source);
     };
     window.addEventListener('message',receive);
     return () => {
@@ -119,7 +119,7 @@ export function ArtifactInsertionToolbar(props: Props) {
           {(['rectangle','ellipse','triangle','line','arrow'] as const).map(shape => <DropdownItem key={shape} onSelect={() => void arm({kind:'shape',shape})}>{shape[0]!.toUpperCase()+shape.slice(1)}</DropdownItem>)}
         </DropdownPopover>
       </Dropdown>
-      {retry.current ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry insertion save" title="Retry save" disabled={props.busy || pending} className={DOCUMENT_ICON_BUTTON} onClick={() => { const patch = retry.current; if (patch) void save(patch); }} /> : null}
+      {retry.current ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry insertion save" title="Retry save" disabled={props.busy || pending} className={DOCUMENT_ICON_BUTTON} onClick={() => { const attempt = retry.current; if (attempt) void save(attempt.patch, attempt.source); }} /> : null}
       {active || retry.current ? <Button variant="ghost" size="small" iconOnly leadingIcon={RiCloseLine} aria-label="Cancel insertion" title="Cancel insertion" disabled={props.busy || pending} className={DOCUMENT_ICON_BUTTON} onClick={cancel} /> : null}
     </div>
   </div>;
