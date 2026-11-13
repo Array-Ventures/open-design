@@ -865,6 +865,21 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 
+  it('reports resolved styles after clearing an inline override', () => {
+    const posts: Array<{ type?: string; id?: string; version?: number; ok?: boolean; styles?: { color?: string } }> = [];
+    const dom = new JSDOM(`<html><body style="color:#111111"><div data-od-id="shape" style="color:#2368c4">Shape</div>${buildManualEditBridge(true)}</body></html>`, { runScripts: 'dangerously', url: 'http://localhost', pretendToBeVisual: true });
+    dom.window.parent.postMessage = ((message: unknown) => { posts.push(message as typeof posts[number]); }) as typeof dom.window.parent.postMessage;
+    const element = dom.window.document.querySelector('[data-od-id="shape"]')!;
+    const before = dom.window.getComputedStyle(element).color;
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', { source: dom.window.parent, data: { type: 'od-edit-preview-style', id: 'shape', version: 7, styles: { color: '' } } }));
+    const ack = posts.find(message => message.type === 'od-edit-preview-style-applied');
+    expect(ack).toMatchObject({ id: 'shape', version: 7, ok: true });
+    expect(ack?.styles?.color).toBe('rgb(17, 17, 17)');
+    expect(ack?.styles?.color).toBe(dom.window.getComputedStyle(element).color);
+    expect(ack?.styles?.color).not.toBe(before);
+    dom.window.close();
+  });
+
   it('acks live preview style patches by id and version', () => {
     const bridge = buildManualEditBridge(true);
 

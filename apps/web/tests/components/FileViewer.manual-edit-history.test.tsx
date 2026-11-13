@@ -105,6 +105,21 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** Mutable fixture file shared by the history inspector regressions. */
+function stubHistoryFileSource(original: string) {
+  let persisted = original;
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+    if (url.includes('/files') && init?.method === 'POST') {
+      persisted = JSON.parse(String(init.body)).content;
+      return new Response(JSON.stringify({ file: htmlPreviewFile() }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.includes('/raw/preview.html')) return new Response(persisted);
+    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }));
+  return () => persisted;
+}
+
 describe('FileViewer manual edit history regressions', () => {
   it('flushes pending style edits before activating draw mode from manual edit', async () => {
     const initialSource = '<!doctype html><html><body><h1 data-od-id="hero" style="color: #111111">Hero</h1></body></html>';
@@ -205,16 +220,7 @@ describe('FileViewer manual edit history regressions', () => {
 
   it('refreshes image fields and the reset baseline after Undo and Redo', async () => {
     const original = '<!doctype html><html><body><img data-od-id="figure" src="original.svg" alt="Original figure"></body></html>';
-    let persisted = original;
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
-      if (url.includes('/files') && init?.method === 'POST') {
-        persisted = JSON.parse(String(init.body)).content;
-        return new Response(JSON.stringify({ file: htmlPreviewFile() }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
-      if (url.includes('/raw/preview.html')) return new Response(persisted);
-      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
-    }));
+    const readPersisted = stubHistoryFileSource(original);
     render(<FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()} liveHtml={original} />);
     await enterManualEditMode();
     await selectManualEditTarget({ ...heroTarget(), id: 'figure', kind: 'image', tagName: 'img', fields: { src: 'original.svg', alt: 'Original figure' } });
@@ -226,13 +232,43 @@ describe('FileViewer manual edit history regressions', () => {
     expect(panelState.props?.draft.alt).toBe('Original figure');
     expect(panelState.props?.selectedTarget?.fields.src).toBe('original.svg');
     expect(panelState.props?.resetAvailable).toBe(false);
-    expect(persisted).toBe(original);
+    expect(readPersisted()).toBe(original);
     await waitFor(() => expect(panelState.props?.busy).toBe(false));
     act(() => { panelState.props?.onRedo(); });
     await waitFor(() => expect(panelState.props?.draft.src).toBe('replacement.svg'));
     expect(panelState.props?.draft.alt).toBe('New figure');
     expect(panelState.props?.selectedTarget?.fields.src).toBe('replacement.svg');
     expect(panelState.props?.resetAvailable).toBe(false);
+  });
+
+  it('uses a versioned browser acknowledgement when Undo restores an inherited style', async () => {
+    const original = '<!doctype html><html><body style="color:#111111"><h1 data-od-id="hero">Hero</h1></body></html>';
+    const readPersisted = stubHistoryFileSource(original);
+    render(<FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()} liveHtml={original} />);
+    await enterManualEditMode();await selectManualEditTarget();
+    act(() => { panelState.props?.onApplyPatch({ kind: 'set-style', id: 'hero', styles: { color: '#2368c4' } }, 'Change color'); });
+    await waitFor(() => expect(readPersisted()).toContain('rgb(35, 104, 196)'));
+    await waitFor(() => expect(panelState.props?.busy).toBe(false));
+    act(() => { panelState.props?.onExit?.(); });
+    await waitFor(() => expect(screen.queryByTestId('mock-manual-edit-panel')).toBeNull());
+    await selectManualEditTarget({ ...heroTarget(), styles: { ...emptyManualEditStyles(), color: '#2368c4' } });
+    const frame = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;
+    let restoredVersion = 0;
+    vi.spyOn(frame.contentWindow!, 'postMessage').mockImplementation(message => {
+      if (message.type !== 'od-edit-preview-style' || message.styles.color !== '') return;
+      restoredVersion = message.version;
+      queueMicrotask(() => window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: { type: 'od-edit-preview-style-applied', id: 'hero', version: restoredVersion, ok: true, styles: { ...emptyManualEditStyles(), color: 'rgb(17, 17, 17)' } } })));
+    });
+    act(() => { panelState.props?.onUndo(); });
+    await waitFor(() => expect(panelState.props?.draft.styles.color).toBe('#111111'));
+    expect(restoredVersion).toBeGreaterThan(0);expect(readPersisted()).toBe(original);
+    expect(panelState.props?.resetAvailable).toBe(false);
+    act(() => window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: { type: 'od-edit-preview-style-applied', id: 'hero', version: restoredVersion - 1, ok: true, styles: { ...emptyManualEditStyles(), color: '#ff0000' } } })));
+    expect(panelState.props?.draft.styles.color).toBe('#111111');
+    act(() => { panelState.props?.onDraftChange({ ...panelState.props.draft, text: 'New human draft' }); });
+    act(() => window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: { type: 'od-edit-preview-style-applied', id: 'hero', version: restoredVersion, ok: true, styles: { ...emptyManualEditStyles(), color: '#ff0000' } } })));
+    expect(panelState.props?.draft.text).toBe('New human draft');
+    expect(panelState.props?.draft.styles.color).toBe('#111111');
   });
 
   it('uses the undone source snapshot for a follow-up edit after undo', async () => {

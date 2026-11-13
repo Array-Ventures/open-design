@@ -903,7 +903,7 @@ export function buildManualEditBridge(enabled: boolean): string {
         if (typeof value !== 'string' || value.trim() === '') el.style.removeProperty(cssName);
         else el.style.setProperty(cssName, value.trim());
       }
-      window.parent.postMessage({ type: 'od-edit-preview-style-applied', id: id, version: Number(version) || 0, ok: true }, '*');
+      window.parent.postMessage({ type: 'od-edit-preview-style-applied', id: id, version: Number(version) || 0, ok: true, styles: stylesFor(el) }, '*');
     } catch (e) {
       window.parent.postMessage({ type: 'od-edit-preview-style-applied', id: id, version: Number(version) || 0, ok: false, error: e && e.message ? String(e.message) : 'Could not apply preview styles' }, '*');
     }

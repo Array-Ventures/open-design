@@ -9382,6 +9382,11 @@ function HtmlViewer({
   const pendingManualInsertSelectionRef = useRef<string | null>(null);
   const selectedManualEditTargetIdRef = useRef<string | null>(null);
   const manualEditSelectionDraftRef = useRef<{ id: string; draft: ManualEditDraft } | null>(null);
+  const manualEditHistoryInspectorRef = useRef<{
+    id: string; source: string; version: number; frame: HTMLIFrameElement | null;
+    generation: string | null; keys: Array<keyof ManualEditStyles>;
+    resolved: Partial<ManualEditStyles> | null;
+  } | null>(null);
   // Tracks the iframe's in-flight inline text edit. `finishManualEditTextSession`
   // posts the explicit finish and resolves only after the iframe acks AND the
   // resulting commit has been applied, so exit/dismiss/cancel never tear down
@@ -13394,6 +13399,23 @@ function HtmlViewer({
         && data.type !== 'od-edit-text-commit'
         && data.type !== 'od-edit-text-session'
       ) return;
+      if (data.type === 'od-edit-preview-style-applied') {
+        const pending = manualEditHistoryInspectorRef.current;
+        if (!pending || !data.ok || data.id !== pending.id || data.version !== pending.version
+          || ev.source !== pending.frame?.contentWindow || iframeRef.current !== pending.frame
+          || expectedSrcDocTransportGenerationRef.current !== pending.generation
+          || sourceRef.current !== pending.source || selectedManualEditTargetIdRef.current !== pending.id
+          || manualEditLiveStylesRef.current.get(pending.id)?.version !== pending.version
+          || !data.styles || typeof data.styles !== 'object') return;
+        const resolved: Partial<ManualEditStyles> = {};
+        for (const key of pending.keys) {
+          if (typeof data.styles[key] !== 'string') return;
+          resolved[key] = data.styles[key];
+        }
+        pending.resolved = resolved;
+        refreshManualEditInspectorAfterHistory(pending.source);
+        return;
+      }
       if (data.type === 'od-edit-targets' && Array.isArray(data.targets)) {
         setManualEditTargets(data.targets);
         const insertedId = pendingManualInsertSelectionRef.current;
@@ -14074,6 +14096,7 @@ function HtmlViewer({
     savedSource: string,
     patch: ManualEditPatch,
   ): ManualEditPatch {
+    manualEditHistoryInspectorRef.current = null;
     const restoredStyles = manualEditHistoryStyleSnapshot(savedSource, patch);
     if (patch.kind !== 'set-style' || !restoredStyles) return patch;
     const version = nextManualEditPreviewVersion();
@@ -14082,6 +14105,13 @@ function HtmlViewer({
       styles: { ...previousPreview?.styles, ...restoredStyles },
       version,
     });
+    if (selectedManualEditTargetIdRef.current === patch.id) {
+      manualEditHistoryInspectorRef.current = {
+        id: patch.id, source: savedSource, version, frame: iframeRef.current,
+        generation: expectedSrcDocTransportGenerationRef.current,
+        keys: Object.keys(restoredStyles) as Array<keyof ManualEditStyles>, resolved: null,
+      };
+    }
     previewStyleToIframe(patch.id, restoredStyles, version);
     if (selectedManualEditTargetIdRef.current === patch.id) {
       setManualEditDraft((current) => ({
@@ -14341,12 +14371,16 @@ function HtmlViewer({
       setManualEditDraft(current => ({ ...current, fullSource: base }));
       return;
     }
-    const nextDraft = manualEditDraftForTarget(target, base);
+    const pending = manualEditHistoryInspectorRef.current;
+    const resolved = pending?.id === target.id && pending.source === base ? pending.resolved : null;
+    const refreshed = resolved ? { ...target, styles: { ...target.styles, ...resolved } } : target;
+    const nextDraft = manualEditDraftForTarget(refreshed, base);
     manualEditSelectionDraftRef.current = { id: target.id, draft: nextDraft };
     setManualEditDraft(nextDraft);
     setSelectedManualEditTarget(current => current?.id === target.id ? {
       ...current,
       text: nextDraft.text,
+      styles: refreshed.styles,
       fields: { ...current.fields, text: nextDraft.text, href: nextDraft.href, src: nextDraft.src, alt: nextDraft.alt },
     } : current);
     setManualEditDraftDirty(false);
@@ -17123,6 +17157,7 @@ function HtmlViewer({
         void selectManualEditTarget(target);
       }}
       onDraftChange={(draft) => {
+        manualEditHistoryInspectorRef.current = null;
         setManualEditDraft(draft);
         setManualEditDraftDirty(Boolean(selectedManualEditTarget));
       }}

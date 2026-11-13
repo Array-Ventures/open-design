@@ -164,6 +164,8 @@ export interface ManualEditPreviewAppliedMessage {
   id: string;
   version: number;
   ok: boolean;
+  /** Resolved values after this exact preview style version was applied. */
+  styles?: ManualEditStyles;
   error?: string;
 }
 
