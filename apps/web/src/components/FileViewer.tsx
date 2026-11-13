@@ -13848,6 +13848,19 @@ function HtmlViewer({
     // fingerprint latch above retires on an actual external source change.
     if (!embedded || urlLoadPreviewSupportedWithoutManualEdit) {
       manualEditPersistedDocumentRef.current = null;
+    } else if (livePreviewSource !== null) {
+      // Structural edits already rebuild the frozen preview from saved bytes.
+      // Retain that exact revision on exit as well as bridge-painted styles;
+      // metadata-only watcher pulses must not replace it during navigation.
+      const rendered = committedSrcDocTransportRef.current;
+      const fingerprint = previewSourceFingerprint(livePreviewSource);
+      if (rendered.sourceFingerprint === fingerprint) {
+        manualEditPersistedDocumentRef.current = {
+          sourceFingerprint: fingerprint,
+          reloadKey,
+          transportGeneration: rendered.generation,
+        };
+      }
     }
     setManualEditMode(false);
     return true;
