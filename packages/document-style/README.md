@@ -16,3 +16,10 @@ stylesheet and bounded inline presentation. Unknown authored selectors/layout
 refuse Word normalization. PDF preserves the original layout but declines ink
 repair. Quoted semicolons in inline declarations are conservatively refused,
 not silently dropped. This is a current boundary, not full custom-CSS fidelity.
+
+Default Markdown strike, footnote sections and unstyled horizontal rules retain
+native semantics. Passive Pandoc MathML uses a bounded tag/attribute grammar and
+stays outside HTML text/color annotation. Math with authored surrounding ink or
+fill is refused for Word because that paint has no qualified native owner; PDF
+keeps the original markup and declines repair. Unknown MathML, foreign content,
+active attributes and styled separators remain outside this boundary.
