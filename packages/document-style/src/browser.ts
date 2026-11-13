@@ -88,7 +88,7 @@ export function documentColorLayoutQualified(document: Document, ownedStyles: re
   if (Array.from(document.querySelectorAll('style')).some(style => !ownedStyles.includes(style.textContent ?? ''))) return false;
   for (const element of [document.documentElement, document.body, ...Array.from(document.body.querySelectorAll('*'))]) {
     if (element.namespaceURI === mathNamespace) { if (!passiveDocumentMath(element)) return false; continue; }
-    if (element.namespaceURI !== htmlNamespace || !tags.has(element.tagName.toLowerCase())) return false;
+    if (element.namespaceURI !== htmlNamespace || element.parentElement?.namespaceURI === mathNamespace || !tags.has(element.tagName.toLowerCase())) return false;
     // Only the unstyled separator emitted by default GFM is qualified.
     if (element.tagName === 'HR' && element.attributes.length) return false;
     const owner = element as HTMLElement;

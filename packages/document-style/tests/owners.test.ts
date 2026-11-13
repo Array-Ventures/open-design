@@ -101,6 +101,7 @@ it('refuses MathML paint, active/foreign owners, unknown grammar and styled HTML
     math.replace('<mi>x','<mi href="https://fixture.test">x'),
     math.replace('<mi>x','<mi onclick="noop()">x'),
     math.replace('<mi>x</mi>','<maction><mi>x</mi></maction>'),
+    math.replace('<mi>x</mi>','<mtext><span>foreign HTML</span></mtext>'),
     math.replace('<mi>x</mi>','<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
     math.replace('encoding="application/x-tex"','encoding="text/html"'),
     math.replace('x/2</annotation>','<mi>x</mi></annotation>'),
