@@ -107,13 +107,15 @@ export interface ContextMenuTriggerProps {
   /** Withdraw an open menu when its underlying canvas/source is replaced. */
   resetKey?: unknown;
   /** Recheck a live canvas owner before accepting the opening gesture. */
-  onBeforeOpen?: () => boolean;
+  onBeforeOpen?: (target: EventTarget | null, keyboard: boolean) => boolean;
   onOpenChange?: (isOpen: boolean) => void;
+  /** A contenteditable owner may anchor keyboard openings at its selected cell. */
+  getKeyboardAnchor?: () => Element | null;
   /** The wrapper is `display: contents`, so it adds no box; a class here can give it one. */
   className?: string;
 }
 
-export function ContextMenuTrigger({ children, isDisabled = false, capture = false, resetKey, onBeforeOpen, onOpenChange, className }: ContextMenuTriggerProps) {
+export function ContextMenuTrigger({ children, isDisabled = false, capture = false, resetKey, onBeforeOpen, onOpenChange, getKeyboardAnchor, className }: ContextMenuTriggerProps) {
   const id = useId();
   const direction = useLocale().direction;
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -199,20 +201,20 @@ export function ContextMenuTrigger({ children, isDisabled = false, capture = fal
       return;
     }
     if (isDisabled || event.defaultPrevented || !event.currentTarget.contains(event.target as Node)) return;
-    if (onBeforeOpen?.() === false) return;
+    if (onBeforeOpen?.(event.target, false) === false) return;
     event.preventDefault();
     if (openRef.current) return;
     // Some keyboard-made events carry no position.
-    if (event.clientX === 0 && event.clientY === 0) openFrom(event.target as Element);
+    if (event.clientX === 0 && event.clientY === 0) openFrom(getKeyboardAnchor?.() ?? (event.target as Element));
     else openAt(event.clientX, event.clientY, true);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement> | globalThis.KeyboardEvent) => {
     if (isDisabled || event.defaultPrevented || !boundaryRef.current?.contains(event.target as Node)) return;
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
-    if (onBeforeOpen?.() === false) return;
+    if (onBeforeOpen?.(event.target, true) === false) return;
     event.preventDefault();
-    openFrom(event.target as Element);
+    openFrom(getKeyboardAnchor?.() ?? (event.target as Element));
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -224,7 +226,7 @@ export function ContextMenuTrigger({ children, isDisabled = false, capture = fal
       y,
       timer: window.setTimeout(() => {
         press.current = null;
-        if (!openRef.current && onBeforeOpen?.() !== false) openAt(x, y, true);
+        if (!openRef.current && onBeforeOpen?.(event.target, false) !== false) openAt(x, y, true);
       }, LONG_PRESS_MS),
     };
   };

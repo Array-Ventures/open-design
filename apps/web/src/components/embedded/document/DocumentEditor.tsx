@@ -1,6 +1,7 @@
 'use client';
 
 import { DocumentComments } from './DocumentComments';
+import { DocumentTableActions } from './DocumentTableActions';
 import type { ArtifactFeedbackProps } from '../LiveArtifactFeedbackPreview';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
@@ -136,8 +137,8 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
     <div className="relative min-h-0 flex-1">
     <div className={styles.scroll} onScroll={fade.onScroll}>
       <div className={styles.page}>
-        <RichTextPlugin contentEditable={<ContentEditable aria-label={title} lang={rootAttributes.lang ?? undefined} dir={rootAttributes.dir ?? undefined} className={styles.content} style={{ fontFamily: documentFontFamily(font), '--document-heading-font': documentFontFamily(headingFont) } as CSSProperties} />}
-          placeholder={<div className={styles.placeholder}>Start writing…</div>} ErrorBoundary={LexicalErrorBoundary} />
+        <DocumentTableActions enabled={editing && !commentsOpen}><RichTextPlugin contentEditable={<ContentEditable aria-label={title} lang={rootAttributes.lang ?? undefined} dir={rootAttributes.dir ?? undefined} className={styles.content} style={{ fontFamily: documentFontFamily(font), '--document-heading-font': documentFontFamily(headingFont) } as CSSProperties} />}
+          placeholder={<div className={styles.placeholder}>Start writing…</div>} ErrorBoundary={LexicalErrorBoundary} /></DocumentTableActions>
       </div>
     </div>
     {feedback ? <DocumentComments onOpenChange={setCommentsOpen} onDirtyChange={onCommentDirtyChange} projectId={projectId} fileName={fileName} feedback={feedback} /> : null}
