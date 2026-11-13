@@ -36,3 +36,16 @@ Pinned ExcelJS truncates font sizes through its integer reader, so an independen
 Python ZIP/XML check follows the emitted survivor cell's XF/font index and
 requires the exact `22.25` size. This avoids treating that reader limitation as
 proof of fractional-size loss or allowing it to hide a source-writer regression.
+
+## Main integration qualification
+
+The source branch merged fork main `8dac5a69` without conflicts. The original
+style-guard implementation and independent readback test are unchanged from
+`085806ca`; this refresh incorporates the reviewed document/readiness baseline,
+not a new style policy. On that integrated tree, ten distinct daemon suites
+passed 96 cases: restored style ownership, sheet templates, sheet asset rendering,
+style patches, workbook rendering, structural patches, sheet patches, resource
+continuity, structural calculation chains and calculation proof. Full workspace
+root typecheck (including daemon) and repository guard passed after a frozen
+install. These are author source/worker checks; no new immutable renderer,
+contained pair, runtime activation or publication was performed.
