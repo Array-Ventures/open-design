@@ -11,10 +11,20 @@ it('binds authored values, types and exact formulas but never formula caches or 
 });
 it('invalidates a calculation if an input changes away and back during execution', () => {
   const provenance = workbookWorkerInputProvenance(); expect(provenance.tag(book).valid).toBe(false); provenance.started([book]);
-  expect(provenance.tag(book).valid).toBe(true); provenance.changed(); provenance.changed();
+  expect(provenance.tag(book).valid).toBe(true); provenance.changed(1); provenance.changed(2);
   expect(provenance.tag(book)).toMatchObject({ valid: false, generation: 1 }); provenance.started([book]); expect(provenance.tag(book)).toMatchObject({ valid: true, generation: 2 });
 });
 it('recognizes actual value/formula clears while excluding style-only mutations', () => {
   expect(workbookCalculationChangesInputs({ cellValue: { 0: { 0: { s: 'style' } } } })).toBe(false);
   for (const params of [{ cellValue: null }, { cellValue: { 0: { 0: null } } }, { cellValue: { 0: { 0: { f: '=1' } } } }, { cellValue: { 0: { 0: { v: 2 } } } }]) expect(workbookCalculationChangesInputs(params)).toBe(true);
+});
+
+it('echoes explicit input epochs and rejects stale, missing and unsafe mutation stamps', () => {
+  const provenance = workbookWorkerInputProvenance();
+  provenance.changed(3); provenance.started([book]);
+  expect(provenance.tag(book)).toMatchObject({ inputEpoch: 3, valid: true });
+  for (const epoch of [3, 2, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) expect(() => provenance.changed(epoch)).toThrow('epoch');
+  expect(provenance.epoch()).toBe(3);
+  provenance.changed(7); expect(provenance.tag(book).valid).toBe(false);
+  provenance.started([book]); expect(provenance.tag(book)).toMatchObject({ inputEpoch: 7, valid: true });
 });

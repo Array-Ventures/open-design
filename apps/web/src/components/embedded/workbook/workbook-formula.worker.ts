@@ -1,3 +1,4 @@
+import { assertWorkbookStructureIdentity } from './grid-structure-identity';
 // Worker-safe pinned APIs only: no browser UI preset, application fetches,
 // project paths, credentials, workspace writes or XLSX serialization.
 import { IConfigService, ICommandService, IUniverInstanceService, LocaleType, RANGE_TYPE, Univer, UniverInstanceType, type Workbook } from '@univerjs/core';
@@ -7,8 +8,8 @@ import '@univerjs/engine-formula/facade';
 import { UniverSheetsCoreWorkerPreset } from '@univerjs/preset-sheets-core/worker';
 import { SetRangeValuesMutation } from '@univerjs/sheets';
 import SheetsEnUS from '@univerjs/sheets/locale/en-US';
-import { assertWorkbookCalculationBudget, assertWorkbookCalculationMutation } from './formula-worker-budget';
-import { workbookWorkerInputProvenance, workbookCalculationChangesInputs } from './formula-input-provenance';
+import { assertWorkbookCalculationBudget, assertWorkbookCalculationMutation, isWorkbookCalculationStructuralMutation } from './formula-worker-budget';
+import { workbookWorkerInputProvenance, workbookCalculationChangesInputs, WORKBOOK_INPUT_EPOCH_OPTION } from './formula-input-provenance';
 import { assertWorkbookFormulaExecution, qualifiedWorkbookFunctionOverrides } from './formula-execution-policy';
 
 let unavailable = false;
@@ -28,8 +29,9 @@ try {
   commands.beforeCommandExecuted((command, options) => {
     if (unavailable) fail();
     try {
+      if (options?.fromFormula && isWorkbookCalculationStructuralMutation(command.id)) fail();
       assertWorkbookCalculationMutation(command, books(), SetRangeValuesMutation.id);
-      if (command.id === SetRangeValuesMutation.id && !options?.fromFormula && workbookCalculationChangesInputs(command.params)) provenance.changed();
+      if (!options?.fromFormula && (isWorkbookCalculationStructuralMutation(command.id) || command.id === SetRangeValuesMutation.id && workbookCalculationChangesInputs(command.params))) provenance.changed(Number(options?.[WORKBOOK_INPUT_EPOCH_OPTION]));
       if ([engine.SetFormulaCalculationResultMutation.id, engine.SetFormulaDependencyCalculationResultMutation.id, engine.SetArrayFormulaDataMutation.id].includes(command.id)) {
         const book = books()[0];
         if (book && command.params && typeof command.params === 'object') {
@@ -51,6 +53,7 @@ try {
         else params.cellValue = {};
       }
       if (command.id === engine.SetFormulaCalculationStartMutation.id) {
+        if (options?.[WORKBOOK_INPUT_EPOCH_OPTION] !== provenance.epoch()) fail();
         assertWorkbookFormulaExecution(books(), runtime);
         // The worker preset omits the UI-side controller that copies this flag
         // from configuration into each calculation request.
@@ -58,7 +61,7 @@ try {
       }
     } catch { fail(); }
   });
-  commands.onCommandExecuted(() => { try { assertWorkbookCalculationBudget(books()); } catch { fail(); } });
+  commands.onCommandExecuted(command => { try { const current = books(); assertWorkbookCalculationBudget(current); if (isWorkbookCalculationStructuralMutation(command.id)) for (const book of current) assertWorkbookStructureIdentity(book); } catch { fail(); } });
   const preset = UniverSheetsCoreWorkerPreset({ formula: { function: qualifiedWorkbookFunctionOverrides(engine) } });
   for (const entry of preset.plugins) {
     const [plugin, options] = Array.isArray(entry) ? entry : [entry];
@@ -66,6 +69,14 @@ try {
   }
   injector.get(engine.ICalculateFormulaService).executionInProgressListener$.subscribe(progress => {
     if (progress.stage === 1) provenance.started(books());
+  });
+  // The pinned engine legitimately emits only a dependency graph when no
+  // formula is dirty. A tagged terminal signal ends liveness accounting, not
+  // result authority: no cached value is claimed to have been calculated.
+  injector.get(engine.ICalculateFormulaService).executionCompleteListener$.subscribe(result => {
+    if (unavailable || result.functionsExecutedState !== engine.FormulaExecutedStateType.NOT_EXECUTED) return;
+    const book = books()[0];
+    if (book) self.postMessage({ type: 'studio:workbook-calculation-worker', kind: 'complete', outcome: 'not-executed', workbookCalculation: provenance.tag(book) });
   });
   injector.get(IConfigService).setConfig(engine.ENGINE_FORMULA_RETURN_DEPENDENCY_TREE, true);
   self.postMessage({ type: 'studio:workbook-calculation-worker', kind: 'ready' });

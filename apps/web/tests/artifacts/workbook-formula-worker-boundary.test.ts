@@ -1,3 +1,4 @@
+import { seedWorkbookStructureIdentity, ownWorkbookAxisIdentity } from '../../src/components/embedded/workbook/grid-structure-identity';
 import { createRequire } from 'node:module';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -6,8 +7,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { ownWorkbookCalculationWorker } from '../../src/components/embedded/workbook/calculation-worker-owner';
 import { workbookGridEdits } from '../../src/components/embedded/workbook/grid-edits';
 import { attachWorkbookCalculation } from '../../src/components/embedded/workbook/grid-calculation';
-import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
-import { workbookCalculationInputSha256, workbookCalculationTagSchema } from '../../src/components/embedded/workbook/formula-input-provenance';
+import { workbookDocumentSchema, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import { WORKBOOK_INPUT_EPOCH_OPTION, workbookCalculationInputSha256, workbookCalculationTagSchema } from '../../src/components/embedded/workbook/formula-input-provenance';
 import { workbookCalculationDeadline } from '../../src/components/embedded/workbook/formula-worker-deadline';
 import { assertWorkbookCalculationBudget, assertWorkbookCalculationMutation } from '../../src/components/embedded/workbook/formula-worker-budget';
 const packageRoot = realpathSync(fileURLToPath(new URL('../../node_modules/@univerjs/preset-sheets-core/package.json', import.meta.url)));
@@ -25,12 +26,21 @@ const closers: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of closers.splice(0).reverse()) await close(); vi.unstubAllGlobals(); });
 class WorkerAdapter {
   readonly thread: NodeWorker;
+  readonly sentInputEpochs: number[] = [];
   private listeners = new Map<EventListener, (data: unknown) => void>();
   constructor(budget = false, execution = false, stall = false, production = false) {
     this.thread = new NodeWorker(new URL('../fixtures/workbook-formula-rpc-worker.ts', import.meta.url), { workerData: { packageRoot, stall, productionEntry: production ? fileURLToPath(new URL('../../src/components/embedded/workbook/workbook-formula.worker.ts', import.meta.url)) : undefined, executionModule: execution ? fileURLToPath(new URL('../../src/components/embedded/workbook/formula-execution-policy.ts', import.meta.url)) : undefined, budgetModule: budget ? fileURLToPath(new URL('../../src/components/embedded/workbook/formula-worker-budget.ts', import.meta.url)) : undefined }, execArgv: ['--experimental-transform-types', '--no-warnings'], resourceLimits: { maxOldGenerationSizeMb: 192, maxYoungGenerationSizeMb: 32 } });
     closers.push(async () => { await this.thread.terminate(); }); }
   terminate() { void this.thread.terminate(); }
-  postMessage(data: unknown) { this.thread.postMessage(data); }
+  postMessage(data: unknown) {
+    const inspect = (value: unknown, depth = 0): void => {
+      if (depth > 12 || !value || typeof value !== 'object') return;
+      const record = value as Record<string, unknown>;
+      if (typeof record[WORKBOOK_INPUT_EPOCH_OPTION] === 'number') this.sentInputEpochs.push(record[WORKBOOK_INPUT_EPOCH_OPTION] as number);
+      for (const nested of Object.values(record)) inspect(nested, depth + 1);
+    };
+    inspect(data); this.thread.postMessage(data);
+  }
   addEventListener(type: string, listener: EventListener) { if (type !== 'message') return; const handler = (data: unknown) => { listener({ data } as MessageEvent); }; this.listeners.set(listener, handler); this.thread.on('message', handler); }
   removeEventListener(_type: string, listener: EventListener) { const handler = this.listeners.get(listener); if (handler) this.thread.off('message', handler); this.listeners.delete(listener); }
   async ready() { await new Promise<void>((resolve, reject) => { const timer = setTimeout(() => reject(Error('Owned RPC worker did not start.')), 5000); this.thread.once('error', reject); const listen = (data: { fixtureReady?: boolean; type?: string; kind?: string }) => { if (data.fixtureReady || data.type === 'studio:workbook-calculation-worker' && data.kind === 'ready') { clearTimeout(timer); this.thread.off('message', listen); resolve(); } }; this.thread.on('message', listen); }); }
@@ -129,6 +139,10 @@ it('terminates an actual pinned-worker executor that stops yielding while the ma
   book.getActiveSheet().getRange('A1').setValue(19);
   expect(book.save().sheets.s!.cellData![0]![0]!.v).toBe(19);
   await failed; expect(deadline.begin()).toBeNull();
+  // This fixture deliberately kills the executor before it can send its terminal
+  // notification. Close that progress lifecycle locally: the pinned UI plugin's
+  // dispose does not cancel its START timer. This supplies no calculated values.
+  univer.__getInjector().get(core.ICommandService).syncExecuteCommand(engine.SetFormulaCalculationNotificationMutation.id, { functionsExecutedState: engine.FormulaExecutedStateType.STOP_EXECUTION }, { onlyLocal: true });
 });
 
 it('creates an inert stored kernel after RPC was loaded without requiring an RPC channel', async () => {
@@ -148,4 +162,135 @@ it('creates an inert stored kernel after RPC was loaded without requiring an RPC
   expect(book.save().sheets.s!.cellData![0]![0]!.v).toBe(7);
   expect(book.save().sheets.s!.cellData![0]![1]!.v).toBe(999);
   expect(derived).toBe(0);
+});
+
+it.each([false, true])('calculates source-qualified row and column structural edits through production RPC and undo/redo (correct caches: %s)', async correctCaches => {
+  vi.stubGlobal('Worker', WorkerAdapter);
+  const worker = new WorkerAdapter(true, false, false, true);
+  const owner = ownWorkbookCalculationWorker(() => { throw Error('Qualified structural worker became unavailable.'); }, () => worker as unknown as Worker);
+  closers.push(() => owner.dispose()); expect(await owner.loaded).toBe(true);
+  const English = pinned('@univerjs/preset-sheets-core/locales/en-US');
+  const univer = new core.Univer({ locale: core.LocaleType.EN_US, locales: { [core.LocaleType.EN_US]: English.default ?? English } }); closers.push(() => univer.dispose());
+  let book: ReturnType<FUniver['createWorkbook']> | undefined;
+  const identities = ownWorkbookAxisIdentity(univer, () => book?.save(), () => true); closers.push(() => identities.dispose());
+  univer.registerPlugin(rpc.UniverRPCMainThreadPlugin, { workerURL: worker as unknown as Worker });
+  univer.registerPlugin(engine.UniverFormulaEnginePlugin, { notExecuteFormula: true });
+  univer.registerPlugin(sheets.UniverSheetsPlugin, { notExecuteFormula: true });
+  univer.registerPlugin(formula.UniverSheetsFormulaPlugin, { notExecuteFormula: true, initialFormulaComputing: formula.CalculationMode.NO_CALCULATION });
+  const api = FUniver.newAPI(univer);
+  const seed = seedWorkbookStructureIdentity({ id: 'structure-rpc', name: 'Structure', appVersion: '1.4.0', locale: core.LocaleType.EN_US, sheetOrder: ['s', 't'], styles: {}, sheets: {
+    s: { id: 's', name: 'Inputs', rowCount: 8, columnCount: 6, cellData: { 1: { 1: { v: 7, t: 2 }, 2: { f: '=SUM(B2:B3)+3', v: correctCaches ? 10 : 999, t: 2 } } } },
+    t: { id: 't', name: 'Summary', rowCount: 8, columnCount: 6, cellData: { 0: { 0: { f: '=Inputs!B2+1', v: correctCaches ? 8 : 999, t: 2 } } } },
+  } } as core.IWorkbookData, 'a'.repeat(64));
+  book = api.createWorkbook(seed); book.setEditable(true);
+  univer.__getInjector().get(core.IUniverInstanceService).focusUnit(book.getId());
+  const model: WorkbookDocument = {
+    version: 1, date1904: false, activeSheetId: 's', calculationMetadata: 'verified', worksheetStructureEditable: true,
+    styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
+    sheets: Object.entries(seed.sheets).map(([id, sheet]) => ({
+      id, name: sheet.name!, rowCount: sheet.rowCount!, columnCount: sheet.columnCount!, visibility: 'visible',
+      frozenRows: 0, frozenColumns: 0, merges: [], rowDimensions: [], columnDimensions: [], arrayFormulas: [],
+      cells: Object.entries(sheet.cellData ?? {}).flatMap(([row, entries]) => Object.entries(entries ?? {}).map(([column, raw]) => {
+        const cell = raw as core.ICellData;
+        return { row: Number(row), column: Number(column), kind: 'number' as const, value: Number(cell.v), ...(cell.f ? { formula: cell.f } : {}) };
+      })),
+    })),
+  };
+  expect(workbookDocumentSchema.parse(model)).toEqual(model);
+  const calculation = attachWorkbookCalculation(univer, api, model, seed, book.save(), () => book!.save(), owner, () => {}); closers.push(() => calculation.dispose());
+  const notifications: unknown[] = [];
+  const commands = univer.__getInjector().get(core.ICommandService), tags: { valid: boolean; digest: string }[] = [];
+  const observe = commands.beforeCommandExecuted(command => { if (command.id === engine.SetFormulaCalculationNotificationMutation.id && notifications.length < 128) notifications.push(command.params); if (command.id === engine.SetFormulaCalculationResultMutation.id) { const tag = workbookCalculationTagSchema.parse((command.params as { workbookCalculation: unknown }).workbookCalculation); tags.push({ valid: tag.valid && tag.inputSha256 === workbookCalculationInputSha256(book!.save()), digest: tag.inputSha256 }); } }); closers.push(() => observe.dispose());
+  const sheet = book.getActiveSheet();
+  const settled = async (change: () => void | Promise<unknown>) => {
+    const end = new Promise<void>((resolve, reject) => { const timer = setTimeout(() => { listener.dispose(); reject(Error('Structural RPC did not settle.')); }, 5000); const listener = api.getFormula().calculationEnd((state: number) => { if (state === 3) { clearTimeout(timer); listener.dispose(); resolve(); } }); });
+    await change(); const digest = workbookCalculationInputSha256(book!.save());
+    await vi.waitFor(() => expect(tags.some(tag => tag.valid && tag.digest === digest), JSON.stringify(notifications)).toBe(true)); await end;
+  };
+  // A real RPC barrier lets the preceding createInstance reach the replica
+  // without warming its formula graph through a literal edit.
+  await univer.__getInjector().get(rpc.IRemoteInstanceService).whenReady();
+  // The first operation in the real UI may be a context action, before any
+  // literal edit has warmed the worker's formula dependency graph.
+  await settled(() => { commands.syncExecuteCommand(sheets.InsertRowByRangeCommand.id, { unitId: book!.getId(), subUnitId: 's', range: { startRow: 1, endRow: 1, startColumn: 0, endColumn: 5 }, direction: core.Direction.UP }); });
+  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[2]?.[2]?.v).toBe(10); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.v).toBe(8); });
+  await settled(() => api.undo());
+  await settled(() => {
+    commands.syncExecuteCommand(sheets.InsertRowByRangeCommand.id, { unitId: book!.getId(), subUnitId: 's', range: { startRow: 1, endRow: 1, startColumn: 0, endColumn: 5 }, direction: core.Direction.UP });
+    commands.syncExecuteCommand(sheets.InsertColByRangeCommand.id, { unitId: book!.getId(), subUnitId: 's', range: { startRow: 0, endRow: 8, startColumn: 1, endColumn: 1 }, direction: core.Direction.LEFT });
+  });
+  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[2]?.[3]?.v).toBe(10); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.v).toBe(8); });
+  await settled(() => api.undo()); await settled(() => api.undo());
+  await settled(() => { sheet.getRange('B2').setValue(8); });
+  await vi.waitFor(() => expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.v).toBe(9));
+  await settled(() => { sheet.insertRowsBefore(1, 1); });
+  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[2]?.[2]?.f).toBe('=SUM(B3:B4)+3'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.f).toBe('=Inputs!B3+1'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.v).toBe(9); expect(calculation.status('s', 2, 2)?.result).toBe('calculated'); });
+  await settled(() => { sheet.insertColumnsBefore(1, 1); });
+  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[2]?.[3]?.f).toBe('=SUM(C3:C4)+3'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.f).toBe('=Inputs!C3+1'); expect(calculation.status('s', 2, 3)?.result).toBe('calculated'); });
+  await settled(() => { sheet.deleteRows(1, 1); }); await settled(() => { sheet.deleteColumns(1, 1); });
+  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[1]?.[2]?.f).toBe('=SUM(B2:B3)+3'); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.f).toBe('=Inputs!B2+1'); expect(calculation.status('s', 1, 2)?.result).toBe('calculated'); });
+  await settled(() => api.undo()); await settled(() => api.undo());
+  await vi.waitFor(() => expect(calculation.status('s', 2, 3)?.result).toBe('calculated'));
+  await settled(() => api.redo()); await settled(() => api.redo());
+  await vi.waitFor(() => expect(calculation.status('s', 1, 2)?.result).toBe('calculated'));
+  await settled(() => { sheet.getRange('B2').setValue(20); });
+  await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[1]?.[2]?.v).toBe(23); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.v).toBe(21); });
+  expect(tags.length).toBeGreaterThanOrEqual(10); expect(tags.every(tag => tag.valid)).toBe(true);
+  expect(book.save().sheets.s!.rowCount).toBe(8); expect(book.save().sheets.s!.columnCount).toBe(6);
+});
+
+it('refuses structural allocation beyond prospective area, axis, identity and range budgets', () => {
+  const seed = seedWorkbookStructureIdentity({ id: 'budget', name: 'Budget', appVersion: '1.4.0', locale: core.LocaleType.EN_US, styles: {}, sheetOrder: ['s'], sheets: { s: { id: 's', name: 'Sheet', rowCount: 1000, columnCount: 100, cellData: {} } } } as core.IWorkbookData, 'a'.repeat(64));
+  const command = { id: 'sheet.mutation.insert-row', params: { unitId: 'budget', subUnitId: 's', range: { startRow: 1, endRow: 1, startColumn: 0, endColumn: 99 } } };
+  expect(() => assertWorkbookCalculationMutation(command, [seed], sheets.SetRangeValuesMutation.id)).toThrow('budget');
+  const axisBound = seedWorkbookStructureIdentity({ id: 'budget', name: 'Budget', appVersion: '1.4.0', locale: core.LocaleType.EN_US, styles: {}, sheetOrder: ['s'], sheets: { s: { id: 's', name: 'Sheet', rowCount: 99998, columnCount: 1, cellData: {} } } } as core.IWorkbookData, 'a'.repeat(64));
+  expect(() => assertWorkbookCalculationMutation({ ...command, params: { ...command.params, range: { startRow: 1, endRow: 2, startColumn: 0, endColumn: 0 } } }, [axisBound], sheets.SetRangeValuesMutation.id)).toThrow('budget');
+  expect(() => assertWorkbookCalculationMutation({ id: 'sheet.mutation.insert-col', params: { ...command.params, range: { startRow: 0, endRow: 999, startColumn: 1, endColumn: 1 } } }, [seed], sheets.SetRangeValuesMutation.id)).toThrow('budget');
+  const small = seedWorkbookStructureIdentity({ id: 'budget', name: 'Budget', appVersion: '1.4.0', locale: core.LocaleType.EN_US, styles: {}, sheetOrder: ['s'], sheets: { s: { id: 's', name: 'Sheet', rowCount: 8, columnCount: 6, cellData: {} } } } as core.IWorkbookData, 'a'.repeat(64));
+  const valid = { ...command, params: { ...command.params, range: { ...command.params.range, endColumn: 5 } } };
+  expect(() => assertWorkbookCalculationMutation(valid, [small], sheets.SetRangeValuesMutation.id)).not.toThrow();
+  const broken = structuredClone(small); delete broken.sheets.s!.rowData![0]!.custom;
+  expect(() => assertWorkbookCalculationMutation(valid, [broken], sheets.SetRangeValuesMutation.id)).toThrow('ownership');
+  expect(() => assertWorkbookCalculationMutation({ ...valid, params: { ...valid.params, unitId: 'foreign' } }, [small], sheets.SetRangeValuesMutation.id)).toThrow('identity');
+  expect(() => assertWorkbookCalculationMutation({ ...valid, params: { ...valid.params, range: { ...valid.params.range, endColumn: 2 } } }, [small], sheets.SetRangeValuesMutation.id)).toThrow('bounds');
+  expect(() => assertWorkbookCalculationMutation({ id: 'sheet.mutation.remove-rows', params: { ...valid.params, range: { ...valid.params.range, startRow: 0, endRow: 7 } } }, [small], sheets.SetRangeValuesMutation.id)).toThrow('budget');
+});
+
+it.each(['unrelated literal', 'all formulas removed', 'shared options A-B-A'] as const)('keeps a healthy production RPC worker after no-result completion: %s', async edit => {
+  vi.stubGlobal('Worker', WorkerAdapter);
+  let rejectCompletion: ((cause: Error) => void) | undefined;
+  const worker = new WorkerAdapter(true, false, false, true), unavailable = vi.fn(() => rejectCompletion?.(Error(`Owned RPC unavailable; sent input epochs: ${worker.sentInputEpochs.join(',')}`)));
+  const owner = ownWorkbookCalculationWorker(unavailable, () => worker as unknown as Worker);
+  closers.push(() => owner.dispose()); expect(await owner.loaded).toBe(true);
+  const English = pinned('@univerjs/preset-sheets-core/locales/en-US');
+  const univer = new core.Univer({ locale: core.LocaleType.EN_US, locales: { [core.LocaleType.EN_US]: English.default ?? English } }); closers.push(() => univer.dispose());
+  univer.registerPlugin(rpc.UniverRPCMainThreadPlugin, { workerURL: worker as unknown as Worker });
+  univer.registerPlugin(engine.UniverFormulaEnginePlugin, { notExecuteFormula: true }); univer.registerPlugin(sheets.UniverSheetsPlugin, { notExecuteFormula: true });
+  univer.registerPlugin(formula.UniverSheetsFormulaPlugin, { notExecuteFormula: true, initialFormulaComputing: formula.CalculationMode.NO_CALCULATION });
+  const api = FUniver.newAPI(univer), book = api.createWorkbook({ id: 'no-result', name: 'No result', sheetOrder: ['s'], styles: {}, sheets: { s: { id: 's', name: 'Inputs', rowCount: 100, columnCount: 20, cellData: { 0: { 0: { v: 2, t: 2 }, 2: { f: '=A1+3', v: 999, t: 2 } } } } } });
+  const original = book.save(), model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 's', calculationMetadata: 'verified', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 's', name: 'Inputs', visibility: 'visible', rowCount: 100, columnCount: 20, frozenRows: 0, frozenColumns: 0, merges: [], rowDimensions: [], columnDimensions: [], arrayFormulas: [], cells: [{ row: 0, column: 0, kind: 'number', value: 2 }, { row: 0, column: 2, kind: 'number', value: 999, formula: '=A1+3' }] }] };
+  expect(workbookDocumentSchema.parse(model)).toEqual(model);
+  const deadline = workbookCalculationDeadline(worker, () => { owner.dispose(); unavailable(); }, 500); closers.push(() => deadline.dispose());
+  const statuses: { phase: string }[] = [];
+  const calculation = attachWorkbookCalculation(univer, api, model, original, original, () => book.save(), { ...owner, deadline }, value => statuses.push(value)); closers.push(() => calculation.dispose());
+  const sidebands: unknown[] = []; const sideband = owner.onResult(result => sidebands.push({ kind: result.kind, tag: result.workbookCalculation, ...('result' in result ? { trees: result.result.length } : {}), digest: workbookCalculationInputSha256(book.save()) })); closers.push(sideband);
+  const commands = univer.__getInjector().get(core.ICommandService), scalar = vi.fn();
+  const observe = commands.beforeCommandExecuted(command => { if (command.id === engine.SetFormulaCalculationResultMutation.id) scalar(); }); closers.push(() => observe.dispose());
+  await univer.__getInjector().get(rpc.IRemoteInstanceService).whenReady();
+  const terminal = new Promise<number>((resolve, reject) => { rejectCompletion = reject; const timer = setTimeout(() => { listener.dispose(); reject(Error('Owned no-result RPC did not finish.')); }, 5000); const listener = api.getFormula().calculationEnd((state: number) => { clearTimeout(timer); listener.dispose(); resolve(state); }); });
+  if (edit === 'shared options A-B-A') {
+    const options = {};
+    for (const value of [77, 78, 77]) commands.syncExecuteCommand(sheets.SetRangeValuesMutation.id, { unitId: book.getId(), subUnitId: 's', cellValue: { 0: { 3: { v: value, t: 2 } } } }, options);
+  } else book.getActiveSheet().getRange(edit === 'unrelated literal' ? 'D1' : 'C1').setValue(77);
+  const epochProof = edit === 'shared options A-B-A' ? vi.waitFor(() => expect(worker.sentInputEpochs.slice(0, 3)).toEqual([1, 2, 3])) : Promise.resolve();
+  const [state] = await Promise.all([terminal, epochProof]); expect(state).toBe(engine.FormulaExecutedStateType.NOT_EXECUTED);
+  expect(scalar).not.toHaveBeenCalled();
+  // This real wait witnesses the owned deadline across an independently running
+  // Node worker; faking only one event loop would collapse the RPC/timeout race.
+  await new Promise(resolve => setTimeout(resolve, 650));
+  expect(unavailable, JSON.stringify(sidebands)).not.toHaveBeenCalled(); expect(owner.ready).toBe(true);
+  expect(statuses.at(-1)).toMatchObject({ phase: edit === 'all formulas removed' ? 'live' : 'stored', paused: false });
+  expect(sidebands).toContainEqual(expect.objectContaining({ kind: 'complete', tag: expect.objectContaining({ valid: true, inputEpoch: edit === 'shared options A-B-A' ? 3 : 1 }) }));
+  if (edit !== 'all formulas removed') { expect(calculation.status('s', 0, 2)?.result).toBe('stored'); expect(book.getActiveSheet().getSheet().getCell(0, 2)!.v).toBe(999); }
+  else expect(calculation.status('s', 0, 2)).toBeUndefined();
 });

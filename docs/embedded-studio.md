@@ -369,3 +369,126 @@ selected slide's raw opening-tag style attribute; notes and unrelated source
 bytes remain untouched. Runtime-reordered speaker-note arrays and export order
 remain separate fidelity requirements; background ownership does not qualify
 those broader cases.
+
+### Source-preserving workbook row and column actions
+
+Structural projections remove the derived Excel calculation chain together
+with its relationship and content-type override. This also applies when no
+scalar cell edit exists: moving a constant formula keeps its spelling but
+invalidates the chain's old coordinate. The existing cell-content writer shares
+the same cleanup; empty structural plans and unrelated ZIP parts are preserved.
+
+The candidate exposes compact BoardUI insert/delete actions only when the source,
+current editor, calculation worker and permissions all advertise the qualified
+capability. Read-only, unsupported, saving, retired and recovery-blocked editors
+keep these actions unavailable. The structural helpers establish source ownership
+before enabling these menus. `grid-structure-identity.ts` stamps editor-only row/column identities in
+Univer's supported custom metadata. Actual pinned SDK tests prove sparse blank
+axes retain identity through insert, delete, save, undo and redo, including a
+restored cell, row height and unrelated custom metadata. Aggregate axis metadata
+is bounded at 100,000 entries; it is not allocated for a million-row workbook.
+
+`workbook-structure.ts` validates a monotone partial source→current mapping;
+inserted axes are null, deleted source axes are absent, and reorder/duplicate
+ownership is rejected. Inserted axes receive stable editor-generation birth IDs
+before the SDK records redo parameters, so the next save can map relative to an
+acknowledged inserted axis without rewriting or losing pending cell edits. `structure-formulas.ts` uses the pinned lexer and range
+parser for actual references, absolute flags, quoted sheet names and whole-axis
+ranges. It leaves quoted strings unchanged, shrinks surviving ranges and emits
+`#REF!` when a referenced range is completely deleted. It does not regex-replace
+A1-looking text throughout a formula. The lexer also labels bare defined names
+and table prefixes as functions; admission distinguishes real calls and refuses
+those unsupported references.
+
+The source-only `structure-patch.ts` preservation primitive moves retained cell
+XML with its style/shared-string identities, row/column dimension metadata and
+supported merged ranges, updates selection/scroll references, and leaves unrelated
+ZIP members byte-identical. Column ranges split around inserted columns rather
+than giving those columns an unintended source style or hidden state. Formula
+caches are removed before the existing contained calculation/CAS path may admit
+an output. The strict structural plan now reaches the contained preparation/calculation
+path and the existing conditional save protocol; the primitive itself still
+cannot persist a live workbook.
+
+Initial exclusions are explicit: named/table/external/3-D references; arrays and
+shared formula groups; macros/signatures; charts/drawings/comments/pivots;
+frozen/split panes; protected or unknown coordinate-bearing metadata; deleting
+a surviving merged range's anchor; and reference growth outside Excel limits.
+These need qualified owners or an action-level refusal before any SDK mutation.
+
+The reader advertises structural capability only after independent source/part
+inspection and a bounded metadata budget. Plans include the acknowledged SDK
+window sizes as well as origin maps: a blank 100-row reader window may represent
+a 101-row inserted or 99-row deleted SDK grid after saving. The source worker
+requires those declared sizes to cover all retained content/dimensions/merges,
+and shifts valid Excel coordinates beyond that window as a virtual tail. It
+never trusts a large authored dimension or injects a proprietary file extension
+just to preserve an editor window. Repeated blank-window insertion/deletion and
+out-of-window formula-reference regressions cover this distinction.
+
+The local package 94 candidate passed both light/dark browser cases with actual
+row/column insertion and deletion, SDK undo/redo, keyboard-only Shift+F10 and
+Escape, immediate post-acknowledgement menus and independent saved-XLSX checks.
+Bounded mutation/identity checks, conditional save/recovery and contained source
+qualification are covered separately. This is local qualification, not an
+installer pin or publication. Manual menu checks passed light/dark at wide and 390-pixel widths, including
+padding and bounded edge flipping. An intermittent blank initial client bootstrap
+remains under investigation; the native
+`docs/workbook-structure.md` records the exact package identities and failures.
+Unsupported SDK menus remain disabled.
+
+Structural save qualification now forces content recalculation before ordinary
+dimension/style/visibility owners, which normally skip unnecessary recalculation.
+A regression combines structural-only insertion with inherited height, bold and
+a hidden summary sheet and independently reopens correct formula caches.
+
+The scalar admission boundary reuses the existing qualified execution-kernel
+set. Bounded ranges are accepted only inside qualified scalar reductions;
+whole-axis formulas, unknown kernels, broadcasting, text concatenation, spills
+and array literals remain unsupported. The geometry formatter can transform
+whole-axis reference syntax, but that is not a calculation-fidelity claim.
+Finite qualified references may enlarge the logical preview within existing
+area/axis/work budgets; authored dimension XML is still not trusted. Unsupported
+source caches remain untouched, and the source worker repeats this qualification
+before returning any candidate bytes. Independent source/worker review and
+packaged interaction qualification do not expand that admission matrix.
+
+Reduction admission also refuses operators on raw range arguments (for example
+`SUM(A1:A2*B1:B2)` and `SUM((A1:A2)+1)`), including grouped/unary forms. Ordinary
+scalar arithmetic outside a completed reduction remains supported. The source
+worker independently rejects iterative/display-rounded calculation metadata.
+
+Acknowledged structural drafts can retain blank SDK axes beyond the fresh XML
+reader's materialized window. A clean acknowledged window is not a new edit.
+When a later style or dimension edit needs one of those validated coordinates,
+the plan carries an identity structural projection instead of another insertion.
+The contained writer retains that projection's bounded window only through its
+calculation/formatting reparses; the real requested XML style or dimension then
+materializes the coordinate. Returned geometry comes from the final bytes, not
+the temporary floor. No placeholder cells or free-form window authority are
+introduced, and ordinary plans without qualified axis ownership keep their
+existing source bounds.
+
+### Scalar worker completion ownership
+
+The pinned engine legitimately finishes an unrelated literal edit with
+`NOT_EXECUTED` and no scalar-result mutation. A typed no-result terminal ends
+the existing liveness deadline only after the matching dependency graph arrives.
+It does not promote stored formula caches into calculated values. Structural
+changes with surviving formulas instead require a fresh forced scalar pass;
+removing the last formula ends liveness without manufacturing a result.
+
+Every authored input mutation carries an explicit monotonic host input epoch
+through the pinned RPC execution options. Worker graph, scalar and no-result
+proofs echo that epoch as well as the exact input digest and worker generation.
+This rejects delayed never-settled results even after inputs change A→B→A.
+The maintained RPC patch snapshots options at queue admission, since compound
+callers may reuse the mutable execution-options object. Refreshing that pin
+requires the production-RPC shared-options regression: without the patch,
+the actual transport sent repeated epoch 3 and the worker refused the stale
+stamp; with it, the authored wire sequence is 1,2,3.
+
+Controller regressions cover out-of-order graph/terminal delivery, invalid or
+stale terminals failing to evict a current candidate, monotonic graph ownership,
+and the structural scalar requirement. The production-RPC cases separately
+exercise genuine engine no-result completion and cold structural recalculation.

@@ -3,14 +3,16 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import type { WorkbookStructureSource } from '../../../src/components/embedded/workbook/grid-structure-actions';
 import { WorkbookSurface } from '../../../src/components/embedded/workbook/WorkbookSurface';
 import * as drafts from '../../../src/components/embedded/workbook/draft-store';
 import { WorkbookHostError } from '../../../src/components/embedded/workbook/host-request';
-const source = vi.hoisted(() => ({ load: vi.fn(), viewer: 'person-one' as string | null, mounts: 0, authorize: vi.fn(), locks: new Set<string>(), lockNames: [] as string[] }));
+const source = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn(), viewer: 'person-one' as string | null, mounts: 0, authorize: vi.fn(), locks: new Set<string>(), lockNames: [] as string[] }));
 // These tests predate durable drafts/history. Supply the real guarded recovery
 // dependencies rather than bypassing them; only the host/preview boundaries
 // and spreadsheet renderer remain deterministic fixture seams.
 vi.mock('../../../src/components/embedded/workbook/preview-transport', async original => ({ ...await original<object>(), loadWorkbookPreview: source.load }));
+vi.mock('../../../src/components/embedded/workbook/save-transport', async original => ({ ...await original<object>(), saveWorkbook: source.save }));
 vi.mock('../../../src/components/embedded/workbook/host-request', async original => ({ ...await original<object>(), workbookHostRequest: source.authorize }));
 vi.mock('../../../src/components/embedded/workbook/draft-store', async original => {
   const actual = await original<typeof import('../../../src/components/embedded/workbook/draft-store')>();
@@ -22,15 +24,65 @@ vi.mock('../../../src/components/embedded/workbook/WorkbookGrid', async () => {
   const { gridWorkbook } = await import('../../../src/components/embedded/workbook/grid-model');
   const { CellValueType } = await import('@univerjs/presets');
   type Snapshot = ReturnType<typeof gridWorkbook>['data'];
-  return { WorkbookGrid: ({ id, title, model, onReady, onSnapshot }: { id: string; title: string; model: WorkbookDocument; onReady(snapshot: Snapshot): Promise<void>; onSnapshot(snapshot: Snapshot): void }) => {
+  return { WorkbookGrid: ({ id, title, model, onReady, onSnapshot, structureBlocked, structureSource }: { id: string; title: string; model: WorkbookDocument; onReady(snapshot: Snapshot): Promise<void>; onSnapshot(snapshot: Snapshot): void; structureBlocked?: boolean; structureSource?: () => WorkbookStructureSource | null }) => {
     const [mount] = useState(() => ++source.mounts);
     useEffect(() => { void onReady(gridWorkbook(model, id, title).data); }, [id, model, onReady]);
-    return <div data-testid="loaded-grid">{title}:{mount}<button onClick={() => {
+    return <div data-testid="loaded-grid" data-structure-blocked={String(structureBlocked)} data-structure-source={structureSource?.()?.model.worksheetStructureEditable ? 'qualified' : 'unavailable'}>{title}:{mount}<button onClick={() => {
       const changed = gridWorkbook(model, id, title).data;
       const sheet = changed.sheets!.inputs!; sheet.cellData ??= {}; sheet.cellData[0] ??= {}; sheet.cellData[0]![0] = { v: 42, t: CellValueType.NUMBER };
       onSnapshot(changed);
     }}>Edit fixture cell</button></div>;
   } };
+});
+it.each(['verified', 'conflict', 'mismatch'] as const)('clears a refresh-during-save error only after a verified ACK: %s', async outcome => {
+  const qualified: WorkbookDocument = { ...structuredClone(model), worksheetStructureEditable: true, calculationMetadata: 'verified' };
+  const before = { sourceSha256: 'a'.repeat(64), model: qualified };
+  const nextModel = structuredClone(qualified);
+  nextModel.sheets[0]!.cells = [{ row: 0, column: 0, kind: 'number', value: 42 }];
+  const saved = { sourceSha256: 'b'.repeat(64), model: nextModel };
+  source.load.mockResolvedValueOnce(before).mockResolvedValueOnce(saved)
+    .mockResolvedValueOnce(outcome === 'mismatch' ? { ...saved, sourceSha256: 'c'.repeat(64) } : saved);
+  let finish!: (value: { targetSha256: string }) => void, reject!: (reason: Error) => void;
+  source.save.mockImplementationOnce(() => new Promise((resolve, fail) => { finish = resolve; reject = fail; }));
+  const published = vi.spyOn(window.parent, 'postMessage');
+  const dirty = vi.fn(), onSaved = vi.fn();
+  const view = render(<WorkbookSurface {...props} onDirtyChange={dirty} onSaved={onSaved} />);
+  await screen.findByTestId('loaded-grid');
+  await waitFor(() => expect(screen.getByTestId('loaded-grid')).toHaveAttribute('data-structure-source', 'qualified'));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit fixture cell' }));
+  await waitFor(() => expect(dirty).toHaveBeenLastCalledWith(true));
+  const state = published.mock.calls.map(([message]) => message).reverse().find(message => message.type === 'studio:workbook-state' && message.dirty);
+  expect(state).toBeDefined();
+  await act(async () => { window.dispatchEvent(new MessageEvent('message', { source: window.parent, origin: window.location.origin,
+    data: { type: 'studio:workbook-control', projectId: props.projectId, controllerId: state.controllerId, action: 'save' } })); });
+  await waitFor(() => expect(source.save).toHaveBeenCalledOnce());
+  // The server's changed file becomes visible to refresh polling before its
+  // save reply reaches this editor. The real writer/journal remains dirty.
+  view.rerender(<WorkbookSurface {...props} sourceStamp="2:1201" onDirtyChange={dirty} onSaved={onSaved} />);
+  const retry = await screen.findByRole('button', { name: 'Retry loading workbook' });
+  expect(retry).toHaveAttribute('title', expect.stringContaining('refreshed while you have unsaved changes'));
+  expect(screen.getByTestId('loaded-grid')).toHaveAttribute('data-structure-blocked', 'true');
+  expect(screen.getByTestId('loaded-grid')).toHaveAttribute('data-structure-source', 'unavailable');
+  if (outcome === 'conflict') await act(async () => reject(new WorkbookHostError('Source changed', 409)));
+  else await act(async () => finish({ targetSha256: saved.sourceSha256 }));
+  await waitFor(() => {
+    const latest = published.mock.calls.map(([message]) => message).reverse().find(message => message.type === 'studio:workbook-state');
+    expect(latest.saving).toBe(false);
+    expect(latest.error === null).toBe(outcome === 'verified');
+  });
+  if (outcome === 'verified') {
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Retry loading workbook' })).toBeNull());
+    expect(screen.getByTestId('loaded-grid')).toHaveAttribute('data-structure-blocked', 'false');
+    expect(screen.getByTestId('loaded-grid')).toHaveAttribute('data-structure-source', 'qualified');
+    expect(onSaved).toHaveBeenCalledOnce();
+    expect(dirty).toHaveBeenLastCalledWith(false);
+  } else {
+    expect(screen.getByRole('button', { name: 'Retry loading workbook' })).toBe(retry);
+    expect(screen.getByTestId('loaded-grid')).toHaveAttribute('data-structure-blocked', 'true');
+    expect(screen.getByTestId('loaded-grid')).toHaveAttribute('data-structure-source', 'unavailable');
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(dirty).toHaveBeenLastCalledWith(true);
+  }
 });
 const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 'inputs', styles: [{}], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false }, sheets: [{ id: 'inputs', name: 'Inputs', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
 const props = { projectId: '18a8301a-b6e1-4001-8000-c967b1eab222', fileName: 'book.xlsx', title: 'Revenue', sourceStamp: '1:1200' };

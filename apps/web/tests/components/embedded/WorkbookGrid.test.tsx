@@ -49,7 +49,7 @@ beforeEach(() => {
   runtime.navigationShortcut.mockReturnValue({ dispose: runtime.navigationShortcutOff });
   runtime.events = []; runtime.workers = []; runtime.inputs = []; runtime.richInputs = [];
   runtime.live = false; runtime.fail = null; runtime.rendered = Promise.resolve();
-  runtime.createWorkbook.mockReturnValue({ onSelectionChange: () => ({ dispose: runtime.selectionOff }), getWorkbookPermission: () => ({ canEdit: () => true }), setActiveSheet: runtime.activeSheet, setEditable: runtime.editable, save: runtime.saved, getActiveSheet: () => ({ getSheetId: () => 'inputs', getMaxRows: () => 100, getMaxColumns: () => 26, getSelection: () => ({ getActiveRange: () => ({ getRange: () => ({ startRow: 5, endRow: 5, startColumn: 2, endColumn: 2 }) }) }), getRange: runtime.getRange, setActiveRange: runtime.select, setActiveSelection: runtime.firstCell, scrollToCell: runtime.scrollToCell }) });
+  runtime.createWorkbook.mockReturnValue({ getId: () => 'grid', onSelectionChange: () => ({ dispose: runtime.selectionOff }), getWorkbookPermission: () => ({ canEdit: () => true }), setActiveSheet: runtime.activeSheet, setEditable: runtime.editable, save: runtime.saved, getActiveSheet: () => ({ getSheetId: () => 'inputs', getMaxRows: () => 100, getMaxColumns: () => 26, getSelection: () => ({ getActiveRange: () => ({ getRange: () => ({ startRow: 5, endRow: 5, startColumn: 2, endColumn: 2 }), getCellDatas: () => [[{}]], getCellStyleData: () => ({}) }) }), getRange: runtime.getRange, setActiveRange: runtime.select, setActiveSelection: runtime.firstCell, scrollToCell: runtime.scrollToCell }) });
   runtime.getRange.mockReturnValue({ boundWorksheet: 'inputs' });
   runtime.saved.mockReturnValue({ id: 'current-grid-state' });
 });
@@ -110,16 +110,20 @@ it('carries the exact dirty snapshot through terminal worker fallback and waits 
   runtime.saved.mockReturnValue(source);
   const view = render(<WorkbookGrid id="grid" title="Revenue" model={model} onSnapshot={snapshot} onReady={ready} />);
   await waitFor(() => expect(runtime.editable).toHaveBeenLastCalledWith(true));
+  const host = screen.getByRole('region', { name: 'Workbook grid' });
   const dirty = { ...source, sheets: { inputs: { cellData: { 0: { 0: { v: 42 } } } } } };
   runtime.saved.mockReturnValue(dirty);
   act(() => runtime.fail?.());
   await waitFor(() => expect(ready).toHaveBeenCalledTimes(2));
+  expect(screen.getByRole('region', { name: 'Workbook grid' })).toBe(host);
+  expect(host.isConnected).toBe(true);
   expect(snapshot).toHaveBeenCalledWith(dirty);
   expect(snapshot.mock.invocationCallOrder[0]).toBeLessThan(runtime.calculationDisposed.mock.invocationCallOrder[0]!);
   expect(runtime.createWorkbook.mock.calls[1]![0]).toEqual(dirty);
   expect(runtime.editable).toHaveBeenLastCalledWith(false);
   await act(async () => { allow(); await drained; });
   await waitFor(() => expect(runtime.editable).toHaveBeenLastCalledWith(true));
+  expect(host.children).toHaveLength(1);
   expect(runtime.calculationDisposed).toHaveBeenCalledTimes(1);
   view.unmount(); expect(runtime.dispose).toHaveBeenCalledTimes(2);
 });
@@ -250,7 +254,7 @@ it('retains CSV sizing through the real writer acknowledgement and refreshed sou
 it('retains an inert rendered canvas until the replacement renderer is ready, then releases the old kernel', async () => {
   runtime.saved.mockReturnValue(gridWorkbook(model, 'grid', 'Revenue').data);
   const editing = { onSnapshot: vi.fn(), onReady: vi.fn() };
-  const view = render(<WorkbookGrid id="grid" title="Revenue" model={model} {...editing} />);
+  const view = render(<WorkbookGrid id="grid" title="Revenue" model={model} sourceSha256={'a'.repeat(64)} {...editing} />);
   const host = screen.getByRole('region', { name: 'Workbook grid' });
   await waitFor(() => expect(runtime.listener).not.toBeNull());
   await waitFor(() => expect(host).not.toHaveAttribute('aria-busy'));
@@ -259,8 +263,10 @@ it('retains an inert rendered canvas until the replacement renderer is ready, th
   expect(previous).not.toBeNull();
   let rendered!: () => void;
   runtime.rendered = new Promise<void>(resolve => { rendered = resolve; });
-  view.rerender(<WorkbookGrid id="grid" title="Revenue" model={{ ...model }} {...editing} />);
+  view.rerender(<WorkbookGrid id="grid" title="Revenue" model={{ ...model }} sourceSha256={'b'.repeat(64)} {...editing} />);
   await waitFor(() => expect(runtime.created).toHaveBeenCalledTimes(2));
+  expect(screen.getByRole('region', { name: 'Workbook grid' })).toBe(host);
+  expect(host.isConnected).toBe(true);
   expect(previous.isConnected).toBe(true); expect(previous.inert).toBe(true);
   expect(previous).toHaveAttribute('aria-hidden', 'true');
   expect(host.children).toHaveLength(2);
@@ -358,4 +364,27 @@ it('registers first-cell navigation with readiness and editor-focus guards and r
   expect(command.handler()).toBe(false);
   expect(runtime.navigationShortcutOff).toHaveBeenCalledTimes(1);
   expect(runtime.navigationCommandOff).toHaveBeenCalledTimes(1);
+});
+
+it('owns structural mutation admission through startup, source-ready input, saving and retirement', async () => {
+  runtime.live = true;
+  let ready!: () => void; const startup = new Promise<void>(resolve => { ready = resolve; });
+  const ordinary = runtime.createWorkbook.getMockImplementation()!;
+  runtime.createWorkbook.mockImplementation(input => { runtime.saved.mockReturnValue(structuredClone(input)); return ordinary(input); });
+  const scope = { projectId: '11111111-1111-4111-8111-111111111111', controllerId: '22222222-2222-4222-8222-222222222222', blocked: false, saving: false };
+  const qualified: WorkbookDocument = { ...model, calculationMetadata: 'verified', worksheetStructureEditable: true, sheets: model.sheets.map(sheet => ({ ...sheet, arrayFormulas: [] })) };
+  const source = () => ({ model: qualified, sourceSha256: 'a'.repeat(64), acknowledged: runtime.saved() });
+  const view = render(<WorkbookGrid id="grid" title="Structure" model={qualified} onSnapshot={vi.fn()} sourceSha256={'a'.repeat(64)} formatScope={scope} structureBlocked={false} structureSource={source} onReady={() => startup} />);
+  await waitFor(() => expect(runtime.visibilityBefore).toHaveBeenCalledTimes(2));
+  const admit = runtime.visibilityBefore.mock.calls[1]![0];
+  const command = () => ({ id: 'sheet.mutation.insert-row', params: { unitId: 'grid', subUnitId: 'inputs', range: { startRow: 1, endRow: 1, startColumn: 0, endColumn: 25 } } });
+  expect(() => admit(command())).toThrow('not ready');
+  await act(async () => ready()); await waitFor(() => expect(runtime.editable).toHaveBeenLastCalledWith(true));
+  expect(() => admit(command())).not.toThrow();
+  expect(runtime.workers).toHaveLength(0);
+  expect(runtime.register.mock.calls.some(([plugin]) => plugin === 'UniverSheetsFormulaPlugin')).toBe(true);
+  expect(runtime.fail).not.toBeNull();
+  view.rerender(<WorkbookGrid id="grid" title="Structure" model={qualified} onSnapshot={vi.fn()} sourceSha256={'a'.repeat(64)} formatScope={{ ...scope, saving: true }} structureBlocked={false} structureSource={source} onReady={() => startup} />);
+  expect(() => admit(command())).toThrow('not ready');
+  view.unmount(); expect(() => admit(command())).toThrow('not ready'); expect(runtime.visibilityBeforeOff).toHaveBeenCalledTimes(2);
 });

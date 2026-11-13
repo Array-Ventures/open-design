@@ -1,3 +1,5 @@
+import { assertWorkbookStructureSupported } from './structure-patch.js';
+import { WORKBOOK_STRUCTURE_AXIS_BUDGET } from '@open-design/contracts/runtime/workbook-structure';
 import { assertWorkbookImportLayout } from './import-layout.js';
 import StylesXform from 'exceljs-community/lib/xlsx/xform/style/styles-xform.js';
 import { Readable } from 'node:stream';
@@ -211,6 +213,16 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
     if (!(error instanceof WorkbookFormatError)) throw error;
     model.calculationMetadata = 'unsupported';
     for (const sheet of model.sheets) for (const owner of sheet.arrayFormulas ?? []) owner.calculation = 'unsupported';
+  }
+  const axes = model.sheets.reduce((total, sheet) => total + sheet.rowCount + sheet.columnCount, 0);
+  model.worksheetStructureEditable = false;
+  if (axes <= WORKBOOK_STRUCTURE_AXIS_BUDGET) {
+    try {
+      const required = assertWorkbookStructureSupported(result), geometry = model.sheets.map(sheet => ({ sheet, rows: Math.max(sheet.rowCount, required.get(sheet.id)!.rows), columns: Math.max(sheet.columnCount, required.get(sheet.id)!.columns) }));
+      const area = geometry.reduce((sum, value) => sum + value.rows * value.columns, 0), axisCount = geometry.reduce((sum, value) => sum + value.rows + value.columns, 0);
+      if (area <= 100_000 && axisCount <= WORKBOOK_STRUCTURE_AXIS_BUDGET) { for (const value of geometry) { value.sheet.rowCount = value.rows; value.sheet.columnCount = value.columns; } model.worksheetStructureEditable = true; }
+    }
+    catch { /* This workbook stays editable through its already qualified owners. */ }
   }
   return result;
 }

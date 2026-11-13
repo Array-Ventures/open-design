@@ -8,6 +8,7 @@ export const workbookCalculationMessageSchema = z.discriminatedUnion('kind', [
   z.object({ ...base, kind: z.literal('ready') }),
   z.object({ ...base, kind: z.literal('unavailable') }),
   z.object({ ...base, kind: z.literal('graph'), workbookCalculation: workbookCalculationTagSchema, result: z.array(tree).max(10_000) }),
+  z.object({ ...base, kind: z.literal('complete'), outcome: z.literal('not-executed'), workbookCalculation: workbookCalculationTagSchema }),
   z.object({ ...base, kind: z.literal('arrays'), workbookCalculation: workbookCalculationTagSchema, arrayFormulaRange: z.record(z.string(), z.record(z.string(), z.record(z.string(), z.record(z.string(), range)))).optional() }),
 ]);
-export type WorkbookCalculationResultMessage = Extract<z.infer<typeof workbookCalculationMessageSchema>, { kind: 'graph' | 'arrays' }>;
+export type WorkbookCalculationResultMessage = Extract<z.infer<typeof workbookCalculationMessageSchema>, { kind: 'graph' | 'arrays' | 'complete' }>;

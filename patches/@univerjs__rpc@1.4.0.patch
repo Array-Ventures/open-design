@@ -1,0 +1,45 @@
+diff --git a/lib/cjs/index.js b/lib/cjs/index.js
+index d91425a312e07fe3f1ec81635a7c798524ede7bf..934a66c2a81a40d60716c3f02ba63330c9598bc9 100644
+--- a/lib/cjs/index.js
++++ b/lib/cjs/index.js
+@@ -51,7 +51,9 @@ let DataSyncPrimaryController = class DataSyncPrimaryController extends _univerj
+ 		});
+ 	}
+ 	async syncMutation(commandInfo, options) {
+-		const sync = () => this._remoteReady.then(() => this._remoteInstanceService.syncMutation({ mutationInfo: commandInfo }, options));
++		// Preserve per-execution metadata when callers reuse an options object.
++		const admittedOptions = options == null ? options : { ...options };
++		const sync = () => this._remoteReady.then(() => this._remoteInstanceService.syncMutation({ mutationInfo: commandInfo }, admittedOptions));
+ 		const result = this._syncMutationQueue.then(sync, sync);
+ 		this._syncMutationQueue = result.catch(() => false);
+ 		return result;
+diff --git a/lib/es/index.js b/lib/es/index.js
+index 8769b11cf69e95b6cbf0d1320377db513ca83786..32b9a0dccda16fd6b8fee53456f07d6cc82a6453 100644
+--- a/lib/es/index.js
++++ b/lib/es/index.js
+@@ -50,7 +50,9 @@ let DataSyncPrimaryController = class DataSyncPrimaryController extends RxDispos
+ 		});
+ 	}
+ 	async syncMutation(commandInfo, options) {
+-		const sync = () => this._remoteReady.then(() => this._remoteInstanceService.syncMutation({ mutationInfo: commandInfo }, options));
++		// Preserve per-execution metadata when callers reuse an options object.
++		const admittedOptions = options == null ? options : { ...options };
++		const sync = () => this._remoteReady.then(() => this._remoteInstanceService.syncMutation({ mutationInfo: commandInfo }, admittedOptions));
+ 		const result = this._syncMutationQueue.then(sync, sync);
+ 		this._syncMutationQueue = result.catch(() => false);
+ 		return result;
+diff --git a/lib/index.js b/lib/index.js
+index 8769b11cf69e95b6cbf0d1320377db513ca83786..32b9a0dccda16fd6b8fee53456f07d6cc82a6453 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -50,7 +50,9 @@ let DataSyncPrimaryController = class DataSyncPrimaryController extends RxDispos
+ 		});
+ 	}
+ 	async syncMutation(commandInfo, options) {
+-		const sync = () => this._remoteReady.then(() => this._remoteInstanceService.syncMutation({ mutationInfo: commandInfo }, options));
++		// Preserve per-execution metadata when callers reuse an options object.
++		const admittedOptions = options == null ? options : { ...options };
++		const sync = () => this._remoteReady.then(() => this._remoteInstanceService.syncMutation({ mutationInfo: commandInfo }, admittedOptions));
+ 		const result = this._syncMutationQueue.then(sync, sync);
+ 		this._syncMutationQueue = result.catch(() => false);
+ 		return result;

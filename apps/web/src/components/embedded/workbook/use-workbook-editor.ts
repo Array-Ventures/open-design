@@ -1,3 +1,4 @@
+import { workbookGridPlan, workbookPlanHasChanges } from './grid-plan';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
@@ -64,8 +65,18 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     const attempts = new Map<string, { save: ReturnType<typeof newWorkbookSaveAttempt>; previewId: string }>();
     let acknowledged: Preview | null = null;
     const ownedJournal = scope.journal;
-    const matching = (candidate: WriterHandoff | null | undefined) => candidate && sameWriterScope(candidate.scope, scope)
-      && candidate.checkpoint.source.sourceSha256 === source.sourceSha256 ? candidate.checkpoint : undefined;
+    const matching = (candidate: WriterHandoff | null | undefined) => {
+      if (!candidate || !sameWriterScope(candidate.scope, scope) || candidate.checkpoint.source.sourceSha256 !== source.sourceSha256) return undefined;
+      const checkpoint = candidate.checkpoint;
+      // An acknowledged clean kernel replacement needs the fresh SDK baseline,
+      // including its new source/axis identities. Only real dirty or unresolved
+      // checkpoints may replace that baseline; invalid protected drafts stay.
+      if (!checkpoint.pending) {
+        try { if (!workbookPlanHasChanges(workbookGridPlan(checkpoint.source.model, checkpoint.source.sourceSha256, checkpoint.acknowledged, checkpoint.desired))) return undefined; }
+        catch { /* Preserve an unsupported or conflicted draft for recovery. */ }
+      }
+      return checkpoint;
+    };
     const recovery = matching(resume.current) ?? matching(carried) ?? (ownedJournal && !restored.current.has(ownedJournal) ? ownedJournal.restored : undefined);
     resume.current = null;
     if (ownedJournal) restored.current.add(ownedJournal);

@@ -73,7 +73,21 @@ export type WorkbookStyleEdit = z.infer<typeof workbookStyleEditSchema>;
 /** Worksheet visibility is independent of name/order/geometry. veryHidden is source-owned. */
 export const workbookVisibilityEditSchema = z.object({ sheetId: id, visibility: z.enum(['visible', 'hidden']) }).strict();
 export type WorkbookVisibilityEdit = z.infer<typeof workbookVisibilityEditSchema>;
-export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), styles: z.array(workbookStyleEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), visibility: z.array(workbookVisibilityEditSchema).max(WORKBOOK_MODEL_LIMITS.sheets).optional() }).strict().superRefine((plan,context)=>{
+/** Final source-axis ownership, derived from the actual SDK snapshot. Null
+ * positions are inserted; omitted source positions are deleted. */
+export const workbookStructureEditSchema = z.object({ sheetId: id, sourceRows: z.number().int().min(1).max(100_000), sourceColumns: z.number().int().min(1).max(16_384),
+  rows: z.array(row.nullable()).min(1).max(100_000), columns: z.array(column.nullable()).min(1).max(16_384),
+}).strict().superRefine((edit, context) => {
+  for (const [entries, count] of [[edit.rows, edit.sourceRows], [edit.columns, edit.sourceColumns]] as const) { let previous = -1; for (const origin of entries) if (origin !== null) { if (origin <= previous || origin >= count) context.addIssue({ code: 'custom', message: 'Structural origins must be unique, ordered and source-bound.' }); previous = origin; } }
+});
+export type WorkbookStructureEdit = z.infer<typeof workbookStructureEditSchema>;
+export const workbookEditPlanSchema = z.object({ sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), edits: z.array(workbookCellEditSchema).max(WORKBOOK_MODEL_LIMITS.cells), dimensions: z.array(workbookDimensionEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), styles: z.array(workbookStyleEditSchema).max(WORKBOOK_MODEL_LIMITS.cells).optional(), visibility: z.array(workbookVisibilityEditSchema).max(WORKBOOK_MODEL_LIMITS.sheets).optional(), structure: z.array(workbookStructureEditSchema).max(WORKBOOK_MODEL_LIMITS.sheets).optional() }).strict().superRefine((plan,context)=>{
+  const structuralIds = new Set<string>(); let axes = 0;
+  for (const edit of plan.structure ?? []) {
+    if (structuralIds.has(edit.sheetId)) context.addIssue({ code: 'custom', message: 'Duplicate structural worksheet edit.' });
+    structuralIds.add(edit.sheetId); axes += edit.rows.length + edit.columns.length + edit.sourceRows + edit.sourceColumns;
+  }
+  if (axes > 200_000) context.addIssue({ code: 'custom', message: 'Structural identity budget exceeded.' });
   const visibilityIds = new Set<string>();
   for (const edit of plan.visibility ?? []) {
     if (visibilityIds.has(edit.sheetId)) context.addIssue({ code: 'custom', message: 'Duplicate worksheet visibility edit.' });
@@ -107,7 +121,7 @@ export const workbookTableSchema = z.object({ name: formulaName, sheetId: id, ra
 export type WorkbookDefinedName = z.infer<typeof workbookDefinedNameSchema>;
 export type WorkbookTable = z.infer<typeof workbookTableSchema>;
 export const workbookDocumentSchema = z.object({
-  version: z.literal(1), worksheetVisibilityEditable: z.boolean().optional(), richTextMetadata: z.literal('verified').optional(), calculationMetadata: z.enum(['verified', 'unsupported']).optional(), sourceFormat: z.literal('csv').optional(), date1904: z.boolean(), activeSheetId: id,
+  version: z.literal(1), worksheetStructureEditable: z.boolean().optional(), worksheetVisibilityEditable: z.boolean().optional(), richTextMetadata: z.literal('verified').optional(), calculationMetadata: z.enum(['verified', 'unsupported']).optional(), sourceFormat: z.literal('csv').optional(), date1904: z.boolean(), activeSheetId: id,
   themeColors: z.array(z.string().regex(/^[A-Fa-f0-9]{8}$/)).length(12).optional(),
   styles: z.array(workbookStyleSchema).min(1).max(WORKBOOK_MODEL_LIMITS.styles),
   sheets: z.array(workbookSheetSchema).min(1).max(WORKBOOK_MODEL_LIMITS.sheets),

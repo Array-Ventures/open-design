@@ -1,3 +1,4 @@
+import { gridStructuralBaseline } from './grid-structure-plan';
 import { CellValueType, WorksheetHiddenState, type ICellData, type IWorkbookData } from '@univerjs/presets';
 import { workbookEditPlanSchema, type WorkbookCell, type WorkbookDimensionEdit, type WorkbookDocument, type WorkbookStyleEdit, type WorkbookVisibilityEdit } from '@open-design/contracts/runtime/workbook';
 
@@ -93,6 +94,8 @@ function scalar(cell: ICellData, original: WorkbookCell | undefined, row: number
  * the source package. Unsupported mutations block the whole save, not just the
  * unsupported cells, so a successful save cannot silently discard an edit. */
 export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string, initial: IWorkbookData, current: IWorkbookData) {
+  const projected = gridStructuralBaseline(model, sourceSha256, initial, current);
+  model = projected.model; initial = projected.before; current = projected.after;
   if (!same(initial.sheetOrder, current.sheetOrder) || !same(Object.keys(initial.sheets).sort(), Object.keys(current.sheets).sort())) fail('Sheet structure changed. Keep this workbook open; these changes cannot be saved yet.');
   if (!unchangedStyles(initial.styles, current.styles) || initial.dateSystem !== current.dateSystem) fail('Workbook formatting changed. Keep this workbook open; these changes cannot be saved yet.');
   const edits: { sheetId: string; cell: WorkbookCell }[] = [];
@@ -136,6 +139,14 @@ export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string,
       if (!same(next,originals.get(coordinate))) edits.push({sheetId:sheet.id,cell:next});
     }
   }
+  // Clean ACK windows are not edits. Carry their validated ownership only
+  // when formatting needs a coordinate the fresh XML has not materialized yet.
+  for (const window of projected.logicalWindows) {
+    const needsWindow = styles.some(edit => edit.sheetId === window.sheetId && (edit.row >= window.sourceRows || edit.column >= window.sourceColumns))
+      || dimensions.some(edit => edit.sheetId === window.sheetId && edit.index >= (edit.axis === 'row' ? window.sourceRows : window.sourceColumns));
+    if (needsWindow) projected.structure.push({ sheetId: window.sheetId, sourceRows: window.rowCount, sourceColumns: window.columnCount,
+      rows: Array.from({ length: window.rowCount }, (_, index) => index), columns: Array.from({ length: window.columnCount }, (_, index) => index) });
+  }
   if (!Object.values(current.sheets).some(sheet => sheet.hidden === undefined || sheet.hidden === WorksheetHiddenState.VISIBLE)) fail('Keep at least one worksheet visible.');
-  return workbookEditPlanSchema.parse({ sourceSha256, edits, ...(dimensions.length ? { dimensions } : {}), ...(styles.length ? { styles } : {}), ...(visibility.length ? { visibility } : {}) });
+  return workbookEditPlanSchema.parse({ sourceSha256, edits, ...(dimensions.length ? { dimensions } : {}), ...(styles.length ? { styles } : {}), ...(visibility.length ? { visibility } : {}), ...(projected.structure.length ? { structure: projected.structure } : {}) });
 }

@@ -23,6 +23,8 @@ await build({
     "./src/runtime/deck-protocol.ts",
     "./src/runtime/document.ts",
     "./src/runtime/workbook.ts",
+    "./src/runtime/workbook-structure.ts",
+    "./src/runtime/workbook-formula-policy.ts",
     "./src/runtime/delimited-text.ts",
     "./src/runtime/preview-observability.ts",
     "./src/runtime/preview-build-focus.ts",
