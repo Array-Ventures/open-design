@@ -45,9 +45,9 @@ export function documentImport(html: string): Document {
     link.setAttribute('target', '_blank');
     link.setAttribute('rel', 'noopener noreferrer');
   }
-  const document = new DOMParser().parseFromString('<!doctype html><html><body></body></html>', 'text/html');
-  document.body.append(document.importNode(fragment, true));
-  return document;
+  const imported = new DOMParser().parseFromString('<!doctype html><html><body></body></html>', 'text/html');
+  imported.body.append(imported.importNode(fragment, true));
+  return imported;
 }
 
 export { documentFontFamily, documentHtml } from '@open-design/contracts/runtime/document';
