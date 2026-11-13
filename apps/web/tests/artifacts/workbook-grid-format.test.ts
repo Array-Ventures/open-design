@@ -31,6 +31,10 @@ it('executes genuine pinned formatting commands, creates sparse style plans and 
   expect(postMessage.mock.lastCall?.[0]).toMatchObject({ error: null, bold: true });
   expect(workbookGridEdits(model, 'a'.repeat(64), initial, book.save()).styles).toEqual([{ sheetId: 's', row: 1, column: 1, bold: true }]);
   await api.undo(); expect(workbookGridEdits(model, 'a'.repeat(64), initial, book.save()).styles).toBeUndefined();
+  message({ property: 'fontSize', value: 22.5 });
+  expect(postMessage.mock.lastCall?.[0]).toMatchObject({ fontSize: 22.5 });
+  expect(workbookGridEdits(model, 'a'.repeat(64), initial, book.save()).styles).toEqual([{ sheetId: 's', row: 1, column: 1, fontSize: 22.5 }]);
+  await api.undo(); expect(workbookGridEdits(model, 'a'.repeat(64), initial, book.save()).styles).toBeUndefined();
   message({ property: 'italic', value: true }); message({ property: 'fontColor', value: '#123456' }); message({ property: 'fillColor', value: '#abcdef' });
   const plan = workbookGridEdits(model, 'a'.repeat(64), initial, book.save());
   expect(plan.edits).toEqual([]); expect(plan.styles).toEqual([{ sheetId: 's', row: 1, column: 1, italic: true, fontColor: 'FF123456', fillColor: 'FFabcdef' }]);

@@ -36,6 +36,12 @@ function resolvedStyle(cell: ICellData, styles: IWorkbookData['styles'], inherit
 function styleDelta(a: Record<string, unknown>, b: Record<string, unknown>): Partial<WorkbookStyleEdit> {
   const result: Partial<WorkbookStyleEdit> = {};
   const remainderA = { ...a }, remainderB = { ...b };
+  if (b.fs !== undefined && (typeof b.fs !== 'number' || !Number.isFinite(b.fs) || b.fs <= 0 || b.fs > 512)) return fail('This font size cannot be saved.');
+  if (!same(a.fs, b.fs)) {
+    if (typeof b.fs !== 'number') return fail('This font size cannot be saved.');
+    result.fontSize = b.fs;
+  }
+  delete remainderA.fs; delete remainderB.fs;
   for (const [key, property] of [['bl', 'bold'], ['it', 'italic']] as const) {
     if (!same(a[key], b[key])) {
       if (b[key] !== undefined && b[key] !== null && b[key] !== 0 && b[key] !== 1) fail('This font change cannot be saved yet.');
