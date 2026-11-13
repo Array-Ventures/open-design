@@ -67,11 +67,11 @@ it('reconciles every workbook view independently', async () => {
   expect(selected.find(view => view.getAttribute('workbookViewId') === '0')?.getAttribute('tabSelected')).toBe('1');
 });
 it.each([
-  [{ sheetId: '1', visibility: 'hidden' }, { sheetId: '2', visibility: 'hidden' }],
-  [{ sheetId: '4', visibility: 'visible' }],
-  [{ sheetId: 'unknown', visibility: 'hidden' }],
-  [{ sheetId: '1', visibility: 'hidden' }, { sheetId: '1', visibility: 'visible' }],
-] as const)('refuses invalid visibility plans without mutating source parts (%j)', async edits => {
+  { edits: [{ sheetId: '1', visibility: 'hidden' }, { sheetId: '2', visibility: 'hidden' }] },
+  { edits: [{ sheetId: '4', visibility: 'visible' }] },
+  { edits: [{ sheetId: 'unknown', visibility: 'hidden' }] },
+  { edits: [{ sheetId: '1', visibility: 'hidden' }, { sheetId: '1', visibility: 'visible' }] },
+] as const)('refuses invalid visibility plans without mutating source parts ($edits)', async ({ edits }) => {
   const source = await fixture(), before = [...source.parts].map(([name, bytes]) => [name, Buffer.from(bytes)]);
   await expect(patchWorkbookVisibility(source, edits)).rejects.toThrow();
   expect([...source.parts]).toEqual(before);
