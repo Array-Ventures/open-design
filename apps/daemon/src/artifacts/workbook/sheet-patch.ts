@@ -86,9 +86,15 @@ export async function patchWorkbookSheets(source: ReadWorkbook, raw: WorkbookShe
   }
   for (const entry of entries) if (!finalIds.has(entry.getAttribute('sheetId')!)) container.removeChild(entry);
   const firstVisible = target.findIndex(sheet => states.get(sheet.sheetId) === 'visible');
-  const views = child(root, 'bookViews');
-  for (const view of views ? children(views, 'workbookView') : []) for (const attribute of ['activeTab', 'firstSheet']) if (view.hasAttribute(attribute)) {
-    const oldIndex = Number(view.getAttribute(attribute));
+  let views = child(root, 'bookViews');
+  if (firstVisible > 0 && (!views || !children(views, 'workbookView').length)) {
+    if (!views) { views = newElement(root, 'bookViews'); root.insertBefore(views, container); }
+    views.appendChild(newElement(views, 'workbookView'));
+  }
+  for (const view of views ? children(views, 'workbookView') : []) for (const attribute of ['activeTab', 'firstSheet']) {
+    // OOXML defaults both omitted indices to zero. Map that implicit source
+    // identity too, otherwise a surviving hidden sheet can become index zero.
+    const oldIndex = view.hasAttribute(attribute) ? Number(view.getAttribute(attribute)) : 0;
     if (!Number.isSafeInteger(oldIndex) || oldIndex < 0 || oldIndex >= source.model.sheets.length) invalid('Workbook view sheet index is invalid.');
     const index = target.findIndex(sheet => sheet.sheetId === source.model.sheets[oldIndex]!.id && states.get(sheet.sheetId) === 'visible');
     view.setAttribute(attribute, String(index < 0 ? firstVisible : index));

@@ -132,3 +132,40 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
  print(json.dumps({'sheets':sheets,'formula':a1.findtext('{*}f'),'kind':a1.get('t'),'cache':a1.findtext('{*}v'),'titles':titles,'deleted':'xl/worksheets/sheet1.xml' not in z.namelist(),'new':'xl/worksheets/sheet3.xml' in z.namelist()}))`], { input: result.bytes, encoding: 'utf8' }));
   expect(proof).toEqual({ sheets: [['2', 'Summary'], ['3', "Fresh's sheet"]], formula: '#REF!+1', kind: 'e', cache: '#REF!', titles: ['Summary', "Fresh's sheet"], deleted: true, new: true });
 });
+it.each(['attribute', 'xml-space', 'nested', 'count-attribute', 'variant-attribute', 'vector-attribute', 'label-attribute', 'variant-text'])('refuses unowned title-vector metadata without erasing it: %s', shape => {
+  return (async () => {
+    const source = await fixture(), parts = new Map(source.parts), document = xmlPart(parts, 'docProps/app.xml');
+    const root = document.documentElement!, titles = child(root, 'TitlesOfParts')!, heading = child(root, 'HeadingPairs')!;
+    const elements = (node: typeof root) => Array.from(node.childNodes).filter((item): item is typeof root => item.nodeType === 1);
+    const vector = elements(titles)[0]!, name = elements(vector)[0]!, variants = elements(elements(heading)[0]!);
+    if (shape === 'attribute') name.setAttribute('custom', 'keep');
+    if (shape === 'xml-space') name.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+    if (shape === 'nested') { name.textContent = ''; const nested = document.createElementNS(name.namespaceURI, 'vt:lpstr'); nested.textContent = source.model.sheets[0]!.name; name.appendChild(nested); }
+    if (shape === 'count-attribute') elements(variants[1]!)[0]!.setAttribute('custom', 'keep');
+    if (shape === 'variant-attribute') variants[0]!.setAttribute('custom', 'keep');
+    if (shape === 'vector-attribute') vector.setAttribute('custom', 'keep');
+    if (shape === 'label-attribute') elements(variants[0]!)[0]!.setAttribute('custom', 'keep');
+    if (shape === 'variant-text') variants[0]!.appendChild(document.createTextNode('unowned'));
+    const bytes = writeWorkbookXml(document); parts.set('docProps/app.xml', bytes);
+    const altered = await readXlsxWorkbook(await writeWorkbookPackage(parts)), target = projection(altered); target[0]!.name = 'Renamed';
+    await expect(patchWorkbookSheets(altered, target)).rejects.toThrow('metadata');
+    expect(altered.parts.get('docProps/app.xml')).toEqual(bytes);
+  })();
+});
+it.each([false, true])('materializes implicit workbook view defaults when the first surviving sheet is hidden (missing views=%s)', async missing => {
+  const initial = await fixture(), parts = new Map(initial.parts), document = xmlPart(parts, 'xl/workbook.xml'), root = document.documentElement!;
+  let views = child(root, 'bookViews');
+  if (!views) { views = document.createElementNS(root.namespaceURI, 'bookViews'); root.insertBefore(views, child(root, 'sheets')!); }
+  let view = children(views, 'workbookView')[0];
+  if (!view) { view = document.createElementNS(root.namespaceURI, 'workbookView'); views.appendChild(view); }
+  view.removeAttribute('activeTab'); view.removeAttribute('firstSheet');
+  if (missing) root.removeChild(views);
+  parts.set('xl/workbook.xml', writeWorkbookXml(document));
+  const source = await readXlsxWorkbook(await writeWorkbookPackage(parts)), target = projection(source).slice(1); target.push({ sheetId: '3', name: 'Visible new', origin: 'new' });
+  const saved = await readXlsxWorkbook((await calculateWorkbookSheetEdits(source, target, [], [], [], [{ sheetId: '2', visibility: 'hidden' }])).bytes);
+  const savedViews = child(xmlPart(saved.parts, 'xl/workbook.xml').documentElement!, 'bookViews');
+  expect(savedViews).toBeDefined();
+  const savedView = children(savedViews!, 'workbookView')[0]!;
+  expect(savedView.getAttribute('activeTab')).toBe('1'); expect(savedView.getAttribute('firstSheet')).toBe('1');
+  expect(saved.model.activeSheetId).toBe('3');
+});
