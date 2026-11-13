@@ -3,7 +3,8 @@ import type { BaseFunction, IFunctionNames, ErrorType } from '@univerjs/preset-s
 import { WorkbookCalculationBudgetError } from './formula-worker-budget';
 /** Reviewed scalar/reduction kernels only. This is an execution capability
  * allowlist, not a claim that all functions recognized by Univer are safe. */
-export const QUALIFIED_WORKBOOK_FUNCTIONS: ReadonlySet<string> = new Set(['PLUS', 'MINUS', 'MULTIPLY', 'DIVIDED', 'POWER', 'COMPARE', 'CUBE', 'SUM', 'SUMIF', 'SUMIFS', 'MIN', 'MAX', 'COUNT', 'COUNTA', 'COUNTIF', 'COUNTIFS', 'AVERAGE', 'AVERAGEIF', 'AVERAGEIFS', 'IF', 'IFERROR', 'AND', 'OR', 'NOT', 'ABS', 'ROUND', 'ROUNDDOWN', 'ROUNDUP', 'INT', 'MOD', 'SIGN', 'SQRT']);
+export { QUALIFIED_WORKBOOK_FUNCTIONS } from '@open-design/contracts/runtime/workbook-formula-policy';
+import { QUALIFIED_WORKBOOK_FUNCTIONS } from '@open-design/contracts/runtime/workbook-formula-policy';
 export interface WorkbookExecutionLexer {
   sequenceNodesBuilder(formula: string): readonly (string | { nodeType: number; token: string })[] | undefined;
   deserializeRangeWithSheet(token: string): { unitId: string; sheetName: string; range: { startRow: number; endRow: number; startColumn: number; endColumn: number; rangeType?: number } };

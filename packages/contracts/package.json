@@ -129,6 +129,10 @@
     "./runtime/workbook-structure": {
       "types": "./dist/runtime/workbook-structure.d.ts",
       "default": "./dist/runtime/workbook-structure.mjs"
+    },
+    "./runtime/workbook-formula-policy": {
+      "types": "./dist/runtime/workbook-formula-policy.d.ts",
+      "default": "./dist/runtime/workbook-formula-policy.mjs"
     }
   },
   "scripts": {

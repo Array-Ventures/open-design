@@ -73,17 +73,17 @@ it('maps view selections when cells are deleted and keeps XML selection indexes 
 });
 
 it('preserves blank editor windows across repeated writes without confusing the reader minimum with source identity', async () => {
-  const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('Sparse'); sheet.getCell('A1').value = { formula: 'A101', result: 0 }; sheet.getCell('B2').value = 12;
+  const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('Sparse'); sheet.getCell('A1').value = { formula: 'A50', result: 0 }; sheet.getCell('B2').value = 12;
   let source = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer()));
   const columns = Array.from({ length: 26 }, (_, index) => index);
   source = await readXlsxWorkbook(await patchWorkbookStructure(source, [{ sheetId: '1', sourceRows: 100, sourceColumns: 26, rows: insert(100, 1), columns }]));
-  expect(source.model.sheets[0]!.rowCount).toBe(100); expect(source.model.sheets[0]!.cells.find(cell => cell.formula)?.formula).toBe('=A102');
+  expect(source.model.sheets[0]!.rowCount).toBe(100); expect(source.model.sheets[0]!.cells.find(cell => cell.formula)?.formula).toBe('=A51');
   source = await readXlsxWorkbook(await patchWorkbookStructure(source, [{ sheetId: '1', sourceRows: 101, sourceColumns: 26, rows: remove(101, 1), columns }]));
-  expect(source.model.sheets[0]!.cells.find(cell => cell.formula)?.formula).toBe('=A101');
+  expect(source.model.sheets[0]!.cells.find(cell => cell.formula)?.formula).toBe('=A50');
   source = await readXlsxWorkbook(await patchWorkbookStructure(source, [{ sheetId: '1', sourceRows: 100, sourceColumns: 26, rows: remove(100, 1), columns }]));
-  expect(source.model.sheets[0]!.cells.find(cell => cell.formula)?.formula).toBe('=A100');
+  expect(source.model.sheets[0]!.cells.find(cell => cell.formula)?.formula).toBe('=A49');
   source = await readXlsxWorkbook(await patchWorkbookStructure(source, [{ sheetId: '1', sourceRows: 99, sourceColumns: 26, rows: remove(99, 1), columns }]));
-  expect(source.model.sheets[0]!.cells.find(cell => cell.formula)?.formula).toBe('=A99');
+  expect(source.model.sheets[0]!.cells.find(cell => cell.formula)?.formula).toBe('=A48');
 });
 it('recalculates and saves the source-preserving structural intermediate before admitting ordinary final-coordinate edits', async () => {
   const source = await fixture(), sheet = source.model.sheets[0]!;
@@ -92,4 +92,27 @@ it('recalculates and saves the source-preserving structural intermediate before 
   expect(prepared.model.sheets[0]!.cells.find(cell => cell.row === 3 && cell.column === 2)).toMatchObject({ formula: '=SUM($B$3:B4)', kind: 'number', value: 24 });
   expect(prepared.model.sheets[1]!.cells[0]).toMatchObject({ formula: '=Budget!$B$3', kind: 'number', value: 24 });
   const independent = new ExcelJS.Workbook(); await independent.xlsx.load(Uint8Array.from(prepared.bytes).buffer); expect(independent.getWorksheet('Budget')!.getCell('C4').result).toBe(24);
+});
+
+it('qualifies only bounded executable scalar sources and expands finite referenced cells without trusting authored dimensions', async () => {
+  const book = new ExcelJS.Workbook(), sheet = book.addWorksheet('Bounds'); sheet.getCell('A1').value = { formula: 'A101', result: 0 };
+  const qualified = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer()));
+  expect(qualified.model.sheets[0]!.rowCount).toBe(101); expect(qualified.model.worksheetStructureEditable).toBe(true);
+  for (const formula of ['DOESNOTEXIST(A1)', 'SUM(A:A)', 'IF(TRUE,A2:A3,1)', 'A2:A3+1', 'SEQUENCE(3)', 'A1048576']) {
+    sheet.getCell('A1').value = { formula, result: 55 };
+    const source = await readXlsxWorkbook(Buffer.from(await book.xlsx.writeBuffer()));
+    expect(source.model.worksheetStructureEditable, formula).toBe(false);
+    expect(source.model.sheets[0]!.cells.find(cell => cell.formula)?.value, formula).toBe(55);
+    await expect(patchWorkbookStructure(source, [{ sheetId: '1', sourceRows: source.model.sheets[0]!.rowCount, sourceColumns: 26, rows: insert(source.model.sheets[0]!.rowCount, 1), columns: Array.from({ length: 26 }, (_, index) => index) }]), formula).rejects.toThrow();
+  }
+});
+
+it('recalculates structural-only writes before inherited dimensions, formatting or visibility owners skip unnecessary ordinary calculation', async () => {
+  const source = await fixture(), sheet = source.model.sheets[0]!;
+  const prepared = await calculateWorkbookCellEdits(source, [], [{ sheetId: sheet.id, axis: 'row', index: 1, size: 30 }], [{ sheetId: sheet.id, row: 1, column: 0, bold: true }], [{ sheetId: source.model.sheets[1]!.id, visibility: 'hidden' }], [{ sheetId: sheet.id, sourceRows: 100, sourceColumns: 26, rows: insert(100, 1), columns: Array.from({ length: 26 }, (_, index) => index) }]);
+  expect(prepared.model.sheets[0]!.cells.find(cell => cell.formula)).toMatchObject({ formula: '=SUM($B$3:B4)', kind: 'number', value: 12 });
+  expect(prepared.model.sheets[1]!.cells[0]).toMatchObject({ formula: '=Budget!$B$3', kind: 'number', value: 12 });
+  expect(prepared.model.sheets[1]!.visibility).toBe('hidden');
+  expect(prepared.model.sheets[0]!.rowDimensions.find(row => row.index === 1)?.height).toBe(30);
+  const independent = new ExcelJS.Workbook(); await independent.xlsx.load(Uint8Array.from(prepared.bytes).buffer); expect(independent.getWorksheet('Budget')!.getCell('C4').result).toBe(12);
 });

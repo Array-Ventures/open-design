@@ -5,7 +5,7 @@ import type { ReadWorkbook } from './reader.js';
 import { address, child, children, range, relationships, xmlPart } from './parts.js';
 import { WorkbookFormatError, writeWorkbookPackage } from './package.js';
 import { writeWorkbookXml } from './xml.js';
-import { workbookStructuralFormula, type WorkbookSheetProjection } from './structure-formulas.js';
+import { workbookStructuralFormula, workbookStructuralFormulaBounds, type WorkbookSheetProjection } from './structure-formulas.js';
 
 const unsupported = (message: string): never => { throw new WorkbookFormatError(message, 'WORKBOOK_UNSUPPORTED'); };
 function elements(parent: Element): Element[] { return Array.from(parent.childNodes).filter((node): node is Element => node.nodeType === 1); }
@@ -23,7 +23,7 @@ function projectedRange(value: string, projection: WorkbookSheetProjection) {
 /** Fail closed before offering structural commands, and repeat this inspection
  * inside the contained writer. Unknown coordinate owners cannot be preserved by
  * merely shifting cells. These exclusions are deliberate capability boundaries. */
-export function assertWorkbookStructureSupported(source: ReadWorkbook): void {
+export function assertWorkbookStructureSupported(source: ReadWorkbook): Map<string, { rows: number; columns: number }> {
   const book = xmlPart(source.parts, 'xl/workbook.xml').documentElement!;
   const owned = new Set(['[Content_Types].xml', '_rels/.rels', 'xl/workbook.xml', 'xl/_rels/workbook.xml.rels', ...source.sheetParts.values()]);
   for (const link of relationships(source.parts, 'xl/workbook.xml').values()) {
@@ -35,6 +35,7 @@ export function assertWorkbookStructureSupported(source: ReadWorkbook): void {
   // non-coordinate document properties and the explicitly owned parts above.
   for (const part of source.parts.keys()) if (!owned.has(part) && !part.startsWith('docProps/')) unsupported('This workbook package has unowned structural metadata.');
   const features = source.model.features;
+  if (source.model.sheets.reduce((sum, sheet) => sum + sheet.rowCount * sheet.columnCount, 0) > WORKBOOK_MODEL_LIMITS.cells) unsupported('This workbook exceeds the qualified structural calculation area.');
   const bookChildren = new Set(['fileVersion', 'workbookPr', 'bookViews', 'sheets', 'definedNames', 'calcPr']);
   if (elements(book).some(node => node.namespaceURI !== book.namespaceURI || !bookChildren.has(node.localName!))) unsupported('This workbook has unsupported structural metadata.');
   const names = child(book, 'definedNames'); if (names && elements(names).length) unsupported('Defined names need a qualified structural writer.');
@@ -70,10 +71,9 @@ export function assertWorkbookStructureSupported(source: ReadWorkbook): void {
   }
   // Even otherwise untouched formula cells can refer to a moved sheet. The
   // pinned lexer rejects named/table/external/unknown references independently.
-  const identity = new Map<string, WorkbookSheetProjection>();
-  for (const sheet of source.model.sheets) for (const cell of sheet.cells) if (cell.formula) workbookStructuralFormula(cell.formula, sheet.id, source.model.sheets, identity);
+  return workbookStructuralFormulaBounds(source.model.sheets);
 }
-function projectionFor(source: ReadWorkbook, edits: readonly WorkbookStructureEdit[]) {
+function projectionFor(source: ReadWorkbook, edits: readonly WorkbookStructureEdit[], required: ReadonlyMap<string, { rows: number; columns: number }>) {
   const result = new Map<string, WorkbookSheetProjection>(); let axes = 0;
   for (const edit of edits) {
     const sheet = source.model.sheets.find(sheet => sheet.id === edit.sheetId);
@@ -82,9 +82,11 @@ function projectionFor(source: ReadWorkbook, edits: readonly WorkbookStructureEd
     if (axes > 200_000) throw new WorkbookFormatError('Structural identity budget exceeded.', 'WORKBOOK_LIMIT');
     const ownedRows = sheet.merges.reduce((max, merge) => Math.max(max, merge.endRow + 1), sheet.rowDimensions.reduce((max, row) => Math.max(max, row.index + 1), sheet.cells.reduce((max, cell) => Math.max(max, cell.row + 1), 1)));
     const ownedColumns = sheet.merges.reduce((max, merge) => Math.max(max, merge.endColumn + 1), sheet.columnDimensions.reduce((max, column) => Math.max(max, column.index + 1), sheet.cells.reduce((max, cell) => Math.max(max, cell.column + 1), 1)));
-    if (edit.sourceRows < ownedRows || edit.sourceColumns < ownedColumns) throw new WorkbookFormatError('Structural source window does not cover the retained worksheet.');
+    if (edit.sourceRows < Math.max(ownedRows, required.get(sheet.id)!.rows) || edit.sourceColumns < Math.max(ownedColumns, required.get(sheet.id)!.columns)) throw new WorkbookFormatError('Structural source window does not cover the retained worksheet.');
     result.set(sheet.id, { rows: workbookAxisProjection(edit.sourceRows, edit.rows, WORKBOOK_MODEL_LIMITS.rows), columns: workbookAxisProjection(edit.sourceColumns, edit.columns, WORKBOOK_MODEL_LIMITS.columns) });
   }
+  const area = source.model.sheets.reduce((sum, sheet) => { const target = result.get(sheet.id); return sum + (target?.rows.targetCount ?? sheet.rowCount) * (target?.columns.targetCount ?? sheet.columnCount); }, 0);
+  if (!Number.isSafeInteger(area) || area > WORKBOOK_MODEL_LIMITS.cells) throw new WorkbookFormatError('Structural changes exceed the qualified calculation area.', 'WORKBOOK_LIMIT');
   return result;
 }
 function nearest(index: number, projection: WorkbookAxisProjection): number {
@@ -115,7 +117,7 @@ function patchViews(root: Element, projection: WorkbookSheetProjection) {
  * for byte. Source content/style IDs and rich/shared strings move with cells.
  * This primitive is not persisted until calculation and the existing CAS save. */
 export async function patchWorkbookStructure(source: ReadWorkbook, edits: readonly WorkbookStructureEdit[]): Promise<Buffer> {
-  assertWorkbookStructureSupported(source); const projections = projectionFor(source, edits), output = new Map(source.parts);
+  const required = assertWorkbookStructureSupported(source), projections = projectionFor(source, edits, required), output = new Map(source.parts);
   for (const sheet of source.model.sheets) {
     const part = source.sheetParts.get(sheet.id)!, document: Document = xmlPart(source.parts, part), root = document.documentElement!, projection = projections.get(sheet.id);
     const data = child(root, 'sheetData'); let changed = Boolean(projection), previousRow = -1;

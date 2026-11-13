@@ -405,3 +405,19 @@ out-of-window formula-reference regressions cover this distinction.
 actual SDK agreement for merged/view/formula behavior, source-bound conditional save/reopen,
 keyboard/right-click BoardUI menu interaction, and packaged light/dark visual and
 end-to-end tests. The current shipped interface keeps unsupported SDK menus off.
+
+Structural save qualification now forces content recalculation before ordinary
+dimension/style/visibility owners, which normally skip unnecessary recalculation.
+A regression combines structural-only insertion with inherited height, bold and
+a hidden summary sheet and independently reopens correct formula caches.
+
+The scalar admission boundary reuses the existing qualified execution-kernel
+set. Bounded ranges are accepted only inside qualified scalar reductions;
+whole-axis formulas, unknown kernels, broadcasting, text concatenation, spills
+and array literals remain unsupported. The geometry formatter can transform
+whole-axis reference syntax, but that is not a calculation-fidelity claim.
+Finite qualified references may enlarge the logical preview within existing
+area/axis/work budgets; authored dimension XML is still not trusted. Unsupported
+source caches remain untouched, and the source worker repeats this qualification
+before returning any candidate bytes. Menu activation still waits for the
+independent source/worker review and complete packaged interaction qualification.

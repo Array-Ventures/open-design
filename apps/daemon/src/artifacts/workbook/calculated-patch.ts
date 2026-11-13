@@ -104,7 +104,15 @@ async function writeCalculatedCaches(source: ReadWorkbook, model: WorkbookDocume
 export async function calculateWorkbookCellEdits(source: ReadWorkbook, edits: readonly WorkbookCellEdit[], dimensions: readonly WorkbookDimensionEdit[] = [], styles: readonly WorkbookStyleEdit[] = [], visibility: readonly WorkbookVisibilityEdit[] = [], structure: readonly WorkbookStructureEdit[] = []): Promise<{ bytes: Buffer; model: WorkbookDocument }> {
   if (structure.length) {
     const prepared = await readXlsxWorkbook(await patchWorkbookStructure(source, structure));
-    return calculateWorkbookCellEdits(prepared, edits, dimensions, styles, visibility);
+    if (!prepared.model.worksheetStructureEditable) throw new WorkbookFormatError('This structural edit exceeds its qualified source/calculation boundary.', 'WORKBOOK_UNSUPPORTED');
+    // Geometry invalidated every formula cache. Force the content calculator
+    // even for dimension/style/visibility-only follow-ups; those normal owners
+    // intentionally skip calculation when geometry has not changed.
+    assertCalculationSupported(prepared);
+    const calculated = await calculateContent(prepared, edits, verifiedDynamicArrayOwners(prepared));
+    const result = dimensions.length || styles.length || visibility.length ? await calculateWorkbookCellEdits(await readXlsxWorkbook(calculated.bytes), [], dimensions, styles, visibility) : calculated;
+    if (!result.model.worksheetStructureEditable) throw new WorkbookFormatError('Combined structural edits require qualified scalar source content.', 'WORKBOOK_UNSUPPORTED');
+    return result;
   }
   if (visibility.length) {
     // Navigation-only changes neither require nor invalidate formula results.
