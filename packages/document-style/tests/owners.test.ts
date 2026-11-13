@@ -130,3 +130,22 @@ it('preserves ordinary mathematical alphabets and bounded negative spacing witho
     expect(documentColorLayoutQualified(document,[style])).toBe(false);
   }
 });
+it('qualifies the finite passive producer families while refusing nonproducer styling and unbounded geometry', () => {
+  const wrap = (body: string) => `<math xmlns="http://www.w3.org/1998/Math/MathML">${body}</math>`;
+  for (const body of [
+    '<mstyle displaystyle="true"><mfrac><mn>1</mn><mn>2</mn></mfrac></mstyle>',
+    '<mstyle displaystyle="false"><mi>x</mi></mstyle>',
+    ...['box','updiagonalstrike','downdiagonalstrike','updiagonalstrike downdiagonalstrike'].map(notation => `<menclose notation="${notation}"><mi>x</mi></menclose>`),
+    '<mo minsize="180%" maxsize="180%" stretchy="true" form="infix" accent="false">|</mo>',
+    ...['left','right','center'].map(align => `<mtable><mtr><mtd columnalign="${align}" style="text-align: ${align}${align === 'center' ? '' : `; padding-${align}: 0`}"><mi>x</mi></mtd></mtr></mtable>`),
+    ...['bold','bold-sans-serif','sans-serif-bold-italic','bold-script','bold-fraktur','sans-serif-italic'].flatMap(variant => ['mi','mn','mo','mtext'].map(tag => `<${tag} mathvariant="${variant}">x</${tag}>`)),
+  ]) { source(wrap(body)); expect(documentColorLayoutQualified(document,[style]),body).toBe(true); }
+  for (const body of [
+    '<mstyle mathcolor="red"><mi>x</mi></mstyle>', '<mstyle displaystyle="yes"/>',
+    '<menclose notation="circle"/>', '<menclose notation="box" style="color:red"/>',
+    '<mo minsize="180%" maxsize="200%" stretchy="true">(</mo>',
+    '<mo minsize="180%" maxsize="180%">(</mo>',
+    '<mo minsize="999999%" maxsize="999999%" stretchy="true">(</mo>',
+    '<mtd style="text-align:left; padding-left:1"/>', '<mtd style="text-align:left; color:red"/>',
+  ]) { source(wrap(body)); expect(documentColorLayoutQualified(document,[style]),body).toBe(false); }
+});

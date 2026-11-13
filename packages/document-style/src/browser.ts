@@ -50,7 +50,7 @@ const tags = new Set(['html','body','main','div','p','h1','h2','h3','h4','h5','h
 const presentation = new Set(['color','background-color','background','font-size','font-family','font-weight','font-style','text-decoration','text-align','vertical-align','white-space','width','height','aspect-ratio','padding-inline-start']);
 const htmlNamespace = 'http://www.w3.org/1999/xhtml';
 const mathNamespace = 'http://www.w3.org/1998/Math/MathML';
-const passiveMathTags = new Set(['math','semantics','mrow','msup','mi','mn','mo','msub','annotation','mfrac','munderover','msqrt','mroot','msubsup','mtext','mspace','mover','munder','mphantom','mtable','mtr','mtd']);
+const passiveMathTags = new Set(['math','semantics','mrow','msup','mi','mn','mo','msub','annotation','mfrac','munderover','msqrt','mroot','msubsup','mtext','mspace','mover','munder','mphantom','mtable','mtr','mtd','mstyle','menclose']);
 /** Passive Pandoc math stays native; no links, foreign markup or paint owners. */
 function passiveDocumentMath(element: Element): boolean {
   const tag = element.localName;
@@ -65,17 +65,22 @@ function passiveDocumentMath(element: Element): boolean {
     }
   } else if (element.parentElement?.namespaceURI !== mathNamespace) return false;
   if (tag === 'annotation' && element.children.length) return false;
+  const minimum = element.getAttribute('minsize'), maximum = element.getAttribute('maxsize');
+  if ((minimum !== null || maximum !== null) && (tag !== 'mo' || minimum !== maximum || !/^[1-9]\d{0,2}%$/.test(minimum ?? '') || element.getAttribute('stretchy') !== 'true')) return false;
   for (const attribute of Array.from(element.attributes)) {
     const { name, value } = attribute;
     if (name === 'xmlns' && tag === 'math' && value === mathNamespace) continue;
     if (attribute.namespaceURI) return false;
     if (name === 'display' && tag === 'math' && /^(inline|block)$/.test(value)) continue;
-    if (name === 'mathvariant' && ['mi','mtext'].includes(tag) && ['normal','bold-italic','italic','double-struck','script','fraktur','sans-serif','monospace'].includes(value)) continue;
-    if (tag === 'mo' && ((name === 'accent' && value === 'true') || (name === 'stretchy' && /^(true|false)$/.test(value)) || (name === 'form' && /^(prefix|postfix)$/.test(value)))) continue;
+    if (name === 'mathvariant' && ['mi','mn','mo','mtext'].includes(tag) && ['normal','bold','bold-italic','italic','double-struck','script','fraktur','sans-serif','monospace','bold-sans-serif','sans-serif-bold-italic','bold-script','bold-fraktur','sans-serif-italic'].includes(value)) continue;
+    if (tag === 'mo' && ((name === 'accent' && /^(true|false)$/.test(value)) || (name === 'stretchy' && /^(true|false)$/.test(value)) || (name === 'form' && /^(prefix|postfix|infix)$/.test(value)))) continue;
+    if (tag === 'mo' && ['minsize','maxsize'].includes(name)) continue;
+    if (tag === 'mstyle' && name === 'displaystyle' && /^(true|false)$/.test(value)) continue;
+    if (tag === 'menclose' && name === 'notation' && ['box','updiagonalstrike','downdiagonalstrike','updiagonalstrike downdiagonalstrike'].includes(value)) continue;
     if (tag === 'annotation' && name === 'encoding' && value === 'application/x-tex') continue;
     if (tag === 'mfrac' && name === 'linethickness' && value === '0') continue;
     if (tag === 'mspace' && name === 'width' && /^-?(?:0|[1-9]\d?)(?:\.\d{1,3})?em$/.test(value)) continue;
-    if (tag === 'mtd' && ((name === 'columnalign' && value === 'center') || (name === 'style' && /^text-align:\s*center;?$/.test(value)))) continue;
+    if (tag === 'mtd' && ((name === 'columnalign' && /^(left|center|right)$/.test(value)) || (name === 'style' && /^(?:text-align:\s*center;?|text-align:\s*left(?:;\s*padding-left:\s*0)?;?|text-align:\s*right(?:;\s*padding-right:\s*0)?;?)$/.test(value)))) continue;
     return false;
   }
   return true;
