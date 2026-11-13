@@ -1,3 +1,4 @@
+import { assertWorkbookImportLayout } from './import-layout.js';
 import StylesXform from 'exceljs-community/lib/xlsx/xform/style/styles-xform.js';
 import { Readable } from 'node:stream';
 import ExcelJS from 'exceljs-community';
@@ -70,6 +71,7 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
   const main = xmlPart(parts, mainPart).documentElement;
   if (!main || main.localName !== 'workbook' || !MAIN_NAMESPACES.has(main.namespaceURI ?? '')) throw new WorkbookFormatError('Invalid workbook root.');
   const links = relationships(parts, mainPart);
+  assertWorkbookImportLayout(parts, mainPart, links);
   const theme = [...links.values()].find(link => link.type.endsWith('/theme'));
   if (theme?.external) throw new WorkbookFormatError('External workbook themes are not supported.', 'WORKBOOK_UNSUPPORTED');
   const themeColors = theme ? readWorkbookTheme(parts, theme.target) : undefined;

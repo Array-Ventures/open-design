@@ -1,3 +1,4 @@
+import { captureBuildSource, assertBuildSourceUnchanged } from './lib/build-source.js';
 import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -9,7 +10,9 @@ import { gunzipSync } from 'node:zlib';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const output = path.resolve(process.argv[2] ?? path.join(root, '.tmp', 'embedded-render'));
 if (output === root || root.startsWith(output + path.sep)) throw new Error('Use a dedicated build directory');
-await mkdir(output, { recursive: true });
+const sourceIdentity = await captureBuildSource(root);
+await mkdir(path.dirname(output), { recursive: true });
+await mkdir(output);
 // Worker imports resolve shared package exports, so refresh their compiled
 // dependency closure before bundling the isolated runtime.
 execFileSync('corepack', ['pnpm', '--filter', '@open-design/daemon^...', '--workspace-concurrency=1', 'run', '--if-present', 'build'], { cwd: root, stdio: 'inherit' });
@@ -48,7 +51,7 @@ for (const directory of packages) {
 }
 const worker = await readFile(path.join(output, 'worker.mjs'));
 const sha256 = createHash('sha256').update(worker).digest('hex');
-const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim().length > 0;
-await writeFile(path.join(output, 'provenance.json'), JSON.stringify({ schemaVersion: 1, sourceCommit, dirty, workerSha256: sha256, editablePptx: { version: '2.0.1', vendorSha256: createHash('sha256').update(pptxBundle).digest('hex'), converterSha256: createHash('sha256').update(await readFile(path.join(output, 'deck-export.iife.js'))).digest('hex') }, playwright: JSON.parse(await readFile(path.join(playwright, 'package.json'), 'utf8')).version, hyperframes: { version: JSON.parse(await readFile(path.join(hyperframes, 'package.json'), 'utf8')).version, runtimeSha256: createHash('sha256').update(await readFile(path.join(output, 'hyperframe.runtime.iife.js'))).digest('hex') }, formats: ['html', 'pdf', 'image', 'pptx', 'mp4', 'webm', 'mp3', 'wav', 'hyperframes', 'docx', 'markdown', 'workbook', 'xlsx'] }, null, 2) + '\n');
+await assertBuildSourceUnchanged(root, sourceIdentity);
+const { sourceCommit, sourceTreeSha256, dirty } = sourceIdentity;
+await writeFile(path.join(output, 'provenance.json'), JSON.stringify({ schemaVersion: 1, sourceCommit, sourceTreeSha256, dirty, workerSha256: sha256, editablePptx: { version: '2.0.1', vendorSha256: createHash('sha256').update(pptxBundle).digest('hex'), converterSha256: createHash('sha256').update(await readFile(path.join(output, 'deck-export.iife.js'))).digest('hex') }, playwright: JSON.parse(await readFile(path.join(playwright, 'package.json'), 'utf8')).version, hyperframes: { version: JSON.parse(await readFile(path.join(hyperframes, 'package.json'), 'utf8')).version, runtimeSha256: createHash('sha256').update(await readFile(path.join(output, 'hyperframe.runtime.iife.js'))).digest('hex') }, formats: ['html', 'pdf', 'image', 'pptx', 'mp4', 'webm', 'mp3', 'wav', 'hyperframes', 'docx', 'markdown', 'workbook', 'xlsx', 'csv'] }, null, 2) + '\n');
 process.stdout.write(`Render bundle: ${output}\nWorker SHA256: ${sha256}\n`);

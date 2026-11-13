@@ -28,6 +28,36 @@ async function alter(input: Buffer, change: (zip: JSZip) => Promise<void> | void
   const zip = await JSZip.loadAsync(input); await change(zip); return zip.generateAsync({ type: 'nodebuffer' });
 }
 describe('workbook source reader', () => {
+  it.each(['root', 'sharedStrings', 'styles', 'worksheet'] as const)('refuses mixed canonical and relationship-selected %s parts before importing values', async kind => {
+    const input = await alter(await fixture(), async zip => {
+      const relName = kind === 'root' ? '_rels/.rels' : 'xl/_rels/workbook.xml.rels';
+      const document = parseWorkbookXml(await zip.file(relName)!.async('nodebuffer'));
+      const type = kind === 'root' ? 'officeDocument' : kind;
+      const relation = Array.from(document.getElementsByTagName('Relationship')).find(node => node.getAttribute('Type')?.endsWith('/' + type))!;
+      const selected = kind === 'root' ? 'custom/workbook.xml' : kind === 'worksheet' ? 'xl/custom/sheet.xml' : `xl/custom/${kind}.xml`;
+      const canonical = kind === 'root' ? 'xl/workbook.xml' : kind === 'worksheet' ? 'xl/worksheets/sheet1.xml' : kind === 'styles' ? 'xl/styles.xml' : 'xl/sharedStrings.xml';
+      zip.file(selected, await zip.file(canonical)!.async('nodebuffer'));
+      if (kind === 'root') zip.file('custom/_rels/workbook.xml.rels', await zip.file('xl/_rels/workbook.xml.rels')!.async('nodebuffer'));
+      if (kind === 'sharedStrings') {
+        const strings = await zip.file(selected)!.async('string');
+        zip.file(selected, strings.replace('Quarterly inputs', 'Different relationship-owned text'));
+      }
+      relation.setAttribute('Target', kind === 'root' ? selected : selected.slice(3));
+      zip.file(relName, writeWorkbookXml(document));
+    });
+    const before = Buffer.from(input);
+    await expect(readXlsxWorkbook(input)).rejects.toMatchObject({ code: 'WORKBOOK_UNSUPPORTED' });
+    expect(input).toEqual(before);
+  });
+  it.each(['sharedStrings', 'styles'])('refuses an unowned canonical %s part that the importer would still consume', async kind => {
+    const input = await alter(await fixture(), async zip => {
+      const name = 'xl/_rels/workbook.xml.rels', document = parseWorkbookXml(await zip.file(name)!.async('nodebuffer'));
+      const relation = Array.from(document.getElementsByTagName('Relationship')).find(node => node.getAttribute('Type')?.endsWith('/' + kind))!;
+      relation.parentNode!.removeChild(relation); zip.file(name, writeWorkbookXml(document));
+    });
+    await expect(readXlsxWorkbook(input)).rejects.toMatchObject({ code: 'WORKBOOK_UNSUPPORTED' });
+  });
+
   it('reads sparse typed cells, cached formulas, formatting, ranges, dimensions and hidden sheets', async () => {
     const input = await fixture(), before = Buffer.from(input);
     const { model, parts, sheetParts } = await readXlsxWorkbook(input);

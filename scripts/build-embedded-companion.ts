@@ -1,3 +1,4 @@
+import { captureBuildSource, assertBuildSourceUnchanged } from './lib/build-source.js';
 import { detachPackageHardlinks, requirePackageDirectory } from './lib/package-hardlinks.js';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -15,27 +16,8 @@ const output = path.resolve(values.out);
 if (output === root || root.startsWith(output + path.sep)) throw new Error('Use a dedicated output directory.');
 try { await lstat(output); throw new Error('Build output already exists; choose a fresh directory.'); }
 catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-const git = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
-const sourceCommit = git('rev-parse', 'HEAD');
-const dirty = git('status', '--porcelain').length > 0;
-if (dirty && !values['allow-dirty']) throw new Error('Production companion packages require a clean pinned fork commit. --allow-dirty is for isolated development only.');
-async function sourceDigest() {
-const sourceHash = createHash('sha256');
-for (const name of execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean).sort()) {
-  // Next rewrites this generated type-reference file for each dist directory;
-  // it is not authored runtime source and is restored after the build.
-  if (name === 'apps/web/next-env.d.ts') continue;
-  const file = path.join(root, name);
-  try {
-    const info = await lstat(file);
-    sourceHash.update(name + '\0');
-    sourceHash.update(info.isSymbolicLink() ? await readlink(file) : await readFile(file));
-    sourceHash.update('\0');
-  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-}
-  return sourceHash.digest('hex');
-}
-const sourceTreeSha256 = await sourceDigest();
+const sourceIdentity = await captureBuildSource(root, values['allow-dirty']);
+const { sourceCommit, sourceTreeSha256, dirty } = sourceIdentity;
 const env = { ...process.env, OD_EMBEDDED_STUDIO: '1', OD_STUDIO_BASE_PATH: '/studio', OD_WEB_OUTPUT_MODE: 'standalone', OD_WEB_DIST_DIR: '.next-embedded-package', OD_EMBEDDED_BUILD_ID: sourceTreeSha256 };
 const pnpm = (...args: string[]) => execFileSync('corepack', ['pnpm', ...args], { cwd: root, env, stdio: 'inherit' });
 const nextEnvironmentFile = path.join(root, 'apps/web/next-env.d.ts');
@@ -116,7 +98,7 @@ try {
   // Copied bundles and resource trees must not retain cache aliases either.
   await detachPackageHardlinks(staging);
   await inventory(staging);
-  if (await sourceDigest() !== sourceTreeSha256) throw new Error('Source files changed during the companion build. Build again from stable source.');
+  await assertBuildSourceUnchanged(root, sourceIdentity);
   const identity = { schemaVersion: 1, bridgeVersion: 1, sourceCommit, sourceTreeSha256, dirty, nodeMajor: 24, platform: process.platform, architecture: process.arch, entries: { daemon: 'apps/daemon/dist/cli.js', web: 'web/apps/web/server.js' }, files };
   for (const entry of Object.values(identity.entries)) if (!files[entry]) throw new Error(`Missing companion entrypoint: ${entry}`);
   const buildId = createHash('sha256').update(JSON.stringify(identity)).digest('hex');

@@ -276,3 +276,33 @@ pointer callback. The grid now republishes formatting and export metadata after
 that completed view operation, without creating an edit checkpoint. Nine focused
 selection/format/resource tests, guard and workspace types pass. A fresh paired
 package remains the browser acceptance gate.
+
+## Workbook package ownership boundary
+
+The current reader admits the canonical `xl/workbook.xml` root, canonical
+`xl/sharedStrings.xml` and `xl/styles.xml` owners when present, and worksheet
+relationships selecting `xl/worksheets/sheetN.xml`. Relocated or ambiguous
+importer parts, including canonical shared-string/style files without their
+owning relationship, return `WORKBOOK_UNSUPPORTED` before importing values.
+This prevents combining relationship-selected cells with a different part’s
+strings or formatting. Refusal leaves the original input bytes untouched.
+General relocated OPC support remains unfinished: it needs an import-only
+normalized view and relationship-derived ownership in every source writer;
+reserializing the original workbook through the importer is not a substitute.
+
+## Build source provenance
+
+Companion and renderer packaging share a source identity captured before build
+work and checked again before the receipt is written. The identity includes
+HEAD, clean/dirty state and authored-tree SHA256, including untracked source in
+explicitly allowed development companion builds. Production renderer packaging
+requires clean source and a fresh output directory; its provenance records the
+pinned tree digest and includes CSV in the supported formats. A changed commit
+or source tree fails packaging rather than attributing existing output to the
+new source. Next’s generated type-reference file is excluded from the tree
+digest and companion builds restore it before checking the final identity.
+
+Focused source-identity regressions: `pnpm exec tsx scripts/test-build-source.ts`.
+Workbook admission regressions: `pnpm --filter @open-design/daemon exec vitest run
+tests/artifacts/workbook-reader.test.ts`. These commands are validation gates,
+not a claim that the current snapshot has passed them.
