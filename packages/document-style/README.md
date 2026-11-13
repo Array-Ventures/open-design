@@ -23,3 +23,7 @@ stays outside HTML text/color annotation. Math with authored surrounding ink or
 fill is refused for Word because that paint has no qualified native owner; PDF
 keeps the original markup and declines repair. Unknown MathML, foreign content,
 active attributes and styled separators remain outside this boundary.
+This is not universal TeX/MathML support: spacing is bounded to signed values
+below 100em with at most three decimal places, and scaled delimiters require
+matching positive integer min/max percentages below 1000% with stretchy enabled.
+Only the finite passive font/layout forms of the qualified producer are allowed.
