@@ -1,3 +1,4 @@
+import { assertWorkbookSourceSnapshotInputs } from './source-snapshot-inputs';
 import type { ICellData, IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { workbookFormulaPolicy, preserveWorkbookFormulaResults, type FormulaAnalysisRuntime, type FormulaCalculationResults, type FormulaDependencyNode, type WorkbookFormulaPolicy } from './formula-result-policy';
@@ -47,18 +48,8 @@ export class WorkbookFormulaDisplay {
    */
   rebaseSource(model: WorkbookDocument, original: IWorkbookData, acknowledged: IWorkbookData) {
     if (model.sourceFormat === 'csv' || model.calculationMetadata === 'unsupported' || model.sheets.some(sheet => !sheet.arrayFormulas || sheet.arrayFormulas.length)) throw Error('Source rebasing requires qualified scalar workbook ownership.');
-    const nextOriginal = structuredClone(original), nextInitial = structuredClone(acknowledged);
-    if (original.id !== this.current.id || acknowledged.id !== this.current.id || JSON.stringify(original.sheetOrder) !== JSON.stringify(acknowledged.sheetOrder)) throw Error('The acknowledged workbook identity changed.');
-    for (const [id, sheet] of Object.entries(nextOriginal.sheets)) {
-      const ack = acknowledged.sheets[id];
-      if (!ack || !Number.isSafeInteger(ack.rowCount) || !Number.isSafeInteger(ack.columnCount) || ack.rowCount! < 1 || ack.columnCount! < 1) throw Error('The acknowledged worksheet window is invalid.');
-      for (const [row, cells] of Object.entries(sheet.cellData ?? {})) for (const [column, raw] of Object.entries(cells ?? {})) {
-        const cell = raw as ICellData | null;
-        if (cell && (cell.f || cached(cell)) && (Number(row) >= ack.rowCount! || Number(column) >= ack.columnCount!)) throw Error('Source content lies outside the acknowledged window.');
-      }
-      sheet.rowCount = ack.rowCount; sheet.columnCount = ack.columnCount;
-    }
-    if (workbookCalculationInputSha256(nextOriginal) !== workbookCalculationInputSha256(acknowledged)) throw Error('Saved source inputs differ from the acknowledged snapshot.');
+    assertWorkbookSourceSnapshotInputs(original, acknowledged, this.current.id);
+    const nextInitial = structuredClone(acknowledged);
     // Do not adopt normalized view extents as stored source geometry, mutate SDK
     // inputs, promote cached values or reset the worker's stale-message floors.
     this.model = model; this.original = structuredClone(original); this.initial = nextInitial;

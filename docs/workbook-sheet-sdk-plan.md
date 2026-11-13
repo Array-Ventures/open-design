@@ -409,3 +409,30 @@ pending restored-sheet ownership, same operation/receipt and exact history
 assets. Live own-ACK handoff, separately, must retain actual Undo/Redo across
 saves. These are distinct guarantees; the new query provides live reachability
 only, not durable Undo stacks.
+
+
+### Development checkpoint: selected source-deletion capture
+
+`sheet-delete-context.ts` captures only a currently source-present scalar sheet:
+its typed source sheet, exact source SHA, selected ACK sheet/axis baseline,
+account/artifact scope and a fresh per-delete token. It reuses the existing SDK
+snapshot schema and source/ACK authored-input equivalence guard; blank logical
+windows do not imply missing source content. Source-absent restoration and blank
+birth cases refuse here until their separate owner exists.
+
+The stamping helper uses the official Worksheet custom-metadata API and replaces
+its object before the real RemoveSheetCommand captures Undo. Earlier actual SDK
+undo configs retain their original token. Tests edit an unrelated sheet and the
+deleted sheet before removal; real Undo retains both prior edits while the
+captured template baseline stays at the earlier source/ACK value. Receipt data
+association distinguishes sourceVersionId from saved target versionId and
+rejects scope/source changes or immutable rebinding.
+
+This is serialized context data, not authority. No file custom metadata, token,
+stored receipt or parsed context alone selects a historical asset, creates a
+blank origin or authorizes a sheet command. A recovered association must be
+checked again against server-owned receipt/source/history bytes and the selected
+sheet/axes under the current ACL. Capture/stamp/association do not install a live
+controller. Bounded pool admission, actual history-reachability pruning/refusal,
+blank births, inherited restoration, Writer pre-retirement association and actual
+recovered-origin derivation still remain required before controls can be enabled.
