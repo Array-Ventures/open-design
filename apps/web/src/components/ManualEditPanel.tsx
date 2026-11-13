@@ -215,7 +215,7 @@ export function ManualEditPanel({
         onPointerDown={floatingStyle ? startPanelDrag : undefined}
       >
         <div className="manual-edit-titlebar">
-          {floatingStyle ? (
+          {floatingStyle && onFloatingPositionChange && onToggleLock ? (
             <button
               type="button"
               className={`manual-edit-drag-handle${dragEnabled ? ' is-draggable' : ' is-locked'}`}

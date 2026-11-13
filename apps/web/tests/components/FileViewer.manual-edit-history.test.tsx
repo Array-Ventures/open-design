@@ -218,6 +218,29 @@ describe('FileViewer manual edit history regressions', () => {
     });
   });
 
+  it('pins the rendered inspector across selection changes and resumes automatic placement after unpinning', async () => {
+    const source = '<!doctype html><html><body><h1 data-od-id="hero">Hero</h1><h2 data-od-id="other">Other</h2></body></html>';
+    stubHistoryFileSource(source);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new window.DOMRect(0,0,800,900));
+    render(<FileViewer projectId="project-1" projectKind="prototype" file={htmlPreviewFile()} liveHtml={source} />);
+    await enterManualEditMode();await selectManualEditTarget();
+    const inspector=screen.getByTestId('mock-manual-edit-panel');inspector.classList.add('manual-edit-right');
+    Object.defineProperties(inspector,{offsetLeft:{value:140},offsetTop:{value:220}});
+    expect(panelState.props?.locked).toBe(false);expect(panelState.props?.onToggleLock).toEqual(expect.any(Function));
+    act(() => {panelState.props?.onToggleLock?.();});
+    await waitFor(() => expect(panelState.props?.locked).toBe(true));
+    expect(panelState.props?.floatingStyle).toMatchObject({left:140,top:220});
+    await selectManualEditTarget({...heroTarget(),id:'other',text:'Other',fields:{text:'Other'},rect:{x:400,y:450,width:120,height:40}});
+    expect(panelState.props?.locked).toBe(true);expect(panelState.props?.floatingStyle).toMatchObject({left:140,top:220});
+    act(() => {panelState.props?.onToggleLock?.();});
+    await waitFor(() => expect(panelState.props?.locked).toBe(false));
+    await selectManualEditTarget();
+    expect(panelState.props?.floatingStyle).not.toMatchObject({left:140,top:220});
+    act(() => {panelState.props?.onExit?.();});
+    await waitFor(() => expect(screen.queryByTestId('mock-manual-edit-panel')).toBeNull());
+    await selectManualEditTarget();expect(panelState.props?.locked).toBe(false);
+  });
+
   it('refreshes image fields and the reset baseline after Undo and Redo', async () => {
     const original = '<!doctype html><html><body><img data-od-id="figure" src="original.svg" alt="Original figure"></body></html>';
     const readPersisted = stubHistoryFileSource(original);

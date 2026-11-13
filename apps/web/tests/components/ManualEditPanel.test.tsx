@@ -185,11 +185,16 @@ describe('ManualEditPanel', () => {
     expect(host.querySelector('.manual-edit-titlebar')?.textContent).not.toContain('div.container');
   });
 
-  it('shows a drag handle for floating edit panels', () => {
-    renderPanel({ floatingStyle: { left: 20, top: 24, width: 320, height: 380 } });
+  it('shows a working pin control only when floating position and lock actions are available', () => {
+    const onToggleLock=vi.fn();
+    renderPanel({ floatingStyle: { left: 20, top: 24, width: 320, height: 380 },onFloatingPositionChange:vi.fn(),onToggleLock });
 
     expect(host.querySelector('.manual-edit-drag-handle')).not.toBeNull();
     expect(host.querySelector('.manual-edit-drag-handle')?.getAttribute('aria-label')).toBe('Move edit panel');
+    act(() => { (host.querySelector('.manual-edit-drag-handle') as HTMLButtonElement).click(); });
+    expect(onToggleLock).toHaveBeenCalledTimes(1);
+    renderPanel({floatingStyle:{left:20,top:24,width:320,height:380}});
+    expect(host.querySelector('.manual-edit-drag-handle')).toBeNull();
   });
 
   it('does not show page-level controls inside an element inspector', () => {
@@ -978,6 +983,8 @@ describe('ManualEditPanel', () => {
     busy = false,
     floatingStyle,
     onFloatingPositionChange,
+    onToggleLock,
+    locked,
     tokenSuggestions,
     tokenSuggestionsLoading,
     onApplyTokenSuggestion,
@@ -1006,6 +1013,8 @@ describe('ManualEditPanel', () => {
     busy?: boolean;
     floatingStyle?: CSSProperties;
     onFloatingPositionChange?: (position: { left: number; top: number }) => void;
+    onToggleLock?: () => void;
+    locked?: boolean;
     tokenSuggestions?: ProjectDesignTokenSuggestion[];
     tokenSuggestionsLoading?: boolean;
     onApplyTokenSuggestion?: (prop: keyof ManualEditStyles, value: string) => void;
@@ -1047,6 +1056,8 @@ describe('ManualEditPanel', () => {
           onRedo={onRedo}
           floatingStyle={floatingStyle}
           onFloatingPositionChange={onFloatingPositionChange}
+          onToggleLock={onToggleLock}
+          locked={locked}
           tokenSuggestions={tokenSuggestions}
           tokenSuggestionsLoading={tokenSuggestionsLoading}
           onApplyTokenSuggestion={onApplyTokenSuggestion}

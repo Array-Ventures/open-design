@@ -9377,6 +9377,11 @@ function HtmlViewer({
   const [manualEditPageStylesOpen, setManualEditPageStylesOpen] = useState(false);
   const [manualEditInsertionInset, setManualEditInsertionInset] = useState(64);
   const [manualEditPanelPosition, setManualEditPanelPosition] = useState<{ left: number; top: number } | null>(null);
+  const [manualEditPanelLocked, setManualEditPanelLocked] = useState(false);
+  useEffect(() => {
+    setManualEditPanelLocked(false);
+    setManualEditPanelPosition(null);
+  }, [projectId, file.name, manualEditMode]);
   const [manualEditDraftDirty, setManualEditDraftDirty] = useState(false);
   const selectManualEditTargetRef = useRef<(target: ManualEditTarget | null) => Promise<void>>(async () => {});
   const pendingManualInsertSelectionRef = useRef<string | null>(null);
@@ -13013,6 +13018,7 @@ function HtmlViewer({
     setManualEditTargets([]);
     setSelectedManualEditTarget(null);
     setManualEditPanelPosition(null);
+    setManualEditPanelLocked(false);
     selectedManualEditTargetIdRef.current = null;
     setManualEditDraft(emptyManualEditDraft());
     setManualEditDraftDirty(false);
@@ -13923,6 +13929,7 @@ function HtmlViewer({
         return;
       }
       setManualEditPageStylesOpen(false);
+      if (!manualEditPanelLocked) setManualEditPanelPosition(null);
       const base = sourceRef.current ?? '';
       const nextDraft = manualEditDraftForTarget(target, base);
       selectedManualEditTargetIdRef.current = target.id;
@@ -14297,6 +14304,8 @@ function HtmlViewer({
         selectedManualEditTargetIdRef.current = null;
         manualEditSelectionDraftRef.current = null;
         setSelectedManualEditTarget(null);
+        setManualEditPanelLocked(false);
+        setManualEditPanelPosition(null);
         setManualEditTargets((current) => current.filter((target) => target.id !== patch.id));
         setManualEditDraft(emptyManualEditDraft(result.source));
         setManualEditDraftDirty(false);
@@ -17202,6 +17211,15 @@ function HtmlViewer({
           }
         : { top: 12, right: 12, width: 320, maxHeight: Math.max(0,(previewBodySize?.height ?? 800) - (embedded ? manualEditInsertionInset : 0) - 24) }}
       reservedBottom={embedded ? manualEditInsertionInset : 0}
+      locked={manualEditPanelLocked}
+      onToggleLock={selectedManualEditTarget ? () => {
+        if (!manualEditPanelLocked) {
+          const panel = viewerRootRef.current?.querySelector<HTMLElement>('.manual-edit-right');
+          if (!panel) return;
+          setManualEditPanelPosition({ left: panel.offsetLeft, top: panel.offsetTop });
+        }
+        setManualEditPanelLocked(!manualEditPanelLocked);
+      } : undefined}
       onFloatingPositionChange={selectedManualEditTarget ? setManualEditPanelPosition : undefined}
       onPickImage={async (pickedFile, signal = new AbortController().signal) => {
         const beforeSource = sourceRef.current;
