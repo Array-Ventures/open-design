@@ -690,7 +690,9 @@ function setInlineStyles(el: HTMLElement, styles: Partial<ManualEditStyles>): vo
   for (const [name, value] of Object.entries(styles)) {
     const cssName = camelToKebab(name);
     if (typeof value !== 'string' || value.trim() === '') el.style.removeProperty(cssName);
-    else el.style.setProperty(cssName, value.trim());
+    // An explicit visual edit must win over authored stylesheet !important,
+    // matching the runtime-only override path. Clearing still restores defaults.
+    else el.style.setProperty(cssName, value.trim(), 'important');
   }
 }
 
