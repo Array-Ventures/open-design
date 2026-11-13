@@ -29,6 +29,7 @@ import { saveDocumentFile, type DocumentFile } from './document-file';
 import { DocumentWriter, type DocumentWriteState } from './document-writer';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
 import { DocumentImageNode, DocumentImageScope } from './DocumentImageNode';
+import { DocumentCellContrast } from './DocumentCellContrast';
 import { DocumentOutline } from './DocumentOutline';
 import { DocumentToolbar } from './DocumentToolbar';
 import styles from './DocumentEditor.module.css';
@@ -62,6 +63,7 @@ export function DocumentEditor({ feedback, onCommentDirtyChange, projectId, file
   return <div className={styles.editor} data-testid="document-editor">
     {failure ? <div role="alert" className="p-3 text-body-2-regular text-text-error-primary">{failure}</div> : null}
     <DocumentImageScope.Provider value={imageScope}><LexicalComposer initialConfig={initialConfig}>
+      <DocumentCellContrast />
       <DocumentBody onCommentDirtyChange={onCommentDirtyChange} feedback={feedback} projectId={projectId} fileName={fileName} title={title} observed={observed} owners={owners} onSaved={onSaved} onDirtyChange={onDirtyChange} onWriteError={onWriteError} />
       <HistoryPlugin /><ListPlugin /><CheckListPlugin /><TablePlugin hasHorizontalScroll /><LinkPlugin />
     </LexicalComposer></DocumentImageScope.Provider>
