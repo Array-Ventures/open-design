@@ -1,3 +1,4 @@
+import { insertionParentAllowed } from './insertion';
 import { insertionPlacement } from './insertion-placement';
 
 /** Placement only. The iframe proposes geometry; the source-owning host
@@ -5,6 +6,7 @@ import { insertionPlacement } from './insertion-placement';
 export function buildInsertionBridge(): string {
   return `<script data-od-edit-bridge>(function(){
   var place = ${insertionPlacement.toString()};
+  var parentAllowed = ${insertionParentAllowed.toString()};
   var armed = null, gesture = null, ghost = null, suppressClick = false;
   function post(data){ window.parent.postMessage(data, '*'); }
   function clear(){
@@ -22,7 +24,7 @@ export function buildInsertionBridge(): string {
     while (element && element !== document.documentElement) {
       var id = element.getAttribute('data-od-id') || element.getAttribute('data-od-source-path');
       if (element === document.body) id = '__body__';
-      if (id && /^(body|main|section|article|div|header|footer|aside|nav|figure|figcaption|form|fieldset|details|li|td|th)$/.test(element.localName)
+      if (id && parentAllowed(element)
         && getComputedStyle(element).position !== 'static') {
         // Bounding-box mapping is valid for positive axis-aligned transforms.
         // Reject perspective, rotations, skew and reflection throughout the
@@ -79,9 +81,11 @@ export function buildInsertionBridge(): string {
   window.addEventListener('pointerdown', function(event){
     if (!armed || event.button !== 0) return;
     stop(event);
+    if (gesture) return;
     var chosen = surfaceFor(event.target);
     if (!chosen) { post({type:'od-insert-unavailable',requestId:armed.requestId}); return; }
     gesture = { chosen:chosen, start:{x:event.clientX,y:event.clientY}, pointerId:event.pointerId };
+    try { chosen.element.setPointerCapture(event.pointerId); } catch (_) { /* Older engines still support in-canvas gestures. */ }
     ghost = document.createElement('div'); ghost.setAttribute('data-od-edit-bridge','');
     ghost.setAttribute('aria-hidden','true');
     ghost.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;outline:1px solid Highlight;box-sizing:border-box;';
@@ -102,6 +106,7 @@ export function buildInsertionBridge(): string {
     stop(event);
     if (gesture && gesture.pointerId === event.pointerId) complete({x:event.clientX,y:event.clientY});
   }, true);
+  window.addEventListener('lostpointercapture', function(event){ if (armed && gesture && gesture.pointerId === event.pointerId) cancel(); }, true);
   window.addEventListener('pointercancel', function(event){ if (armed) { stop(event); cancel(); } }, true);
   window.addEventListener('click', function(event){
     if (!armed && !suppressClick) return;

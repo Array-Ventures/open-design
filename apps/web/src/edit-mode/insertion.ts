@@ -18,7 +18,9 @@ export const ManualEditInsertionPatch = z.object({
 export type ManualEditInsertionPatch = z.infer<typeof ManualEditInsertionPatch>;
 
 export function insertionParentAllowed(parent: Element): boolean {
-  return parent.namespaceURI === 'http://www.w3.org/1999/xhtml'
+  return !['text', 'link', 'image'].includes(parent.getAttribute('data-od-edit') ?? '')
+    && parent.getAttribute('role') !== 'img'
+    && parent.namespaceURI === 'http://www.w3.org/1999/xhtml'
     && /^(body|main|section|article|div|header|footer|aside|nav|figure|figcaption|form|fieldset|details|li|td|th)$/.test(parent.localName);
 }
 

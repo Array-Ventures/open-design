@@ -53,6 +53,13 @@ describe('typed source insertion', () => {
     const removed = applyManualEditPatch(changed.source, { kind: 'remove-element', id }); expect(removed.ok).toBe(true);
     expect(parse(removed.source).querySelector(`[data-od-id="${id}"]`)).toBeNull(); expect(parse(removed.source).querySelector('h1')?.textContent).toBe('Retained heading');
   });
+  it('does not nest a new object inside an existing text box or shape', () => {
+    const text = applyManualEditPatch(source, patch({kind:'text',text:'Existing box'}));
+    const next = {...patch({kind:'table',rows:2,columns:2}),id:'eve-246109ab-8f8b-422b-b088-1260d39478d5',parentId:id};
+    expect(applyManualEditPatch(text.source,next)).toMatchObject({ok:false,source:text.source});
+    const shape = applyManualEditPatch(source,patch({kind:'shape',shape:'rectangle'}));
+    expect(applyManualEditPatch(shape.source,next)).toMatchObject({ok:false,source:shape.source});
+  });
   it('supports fragments and an explicit body target without wrapping a fragment in html', () => {
     const result = applyManualEditPatch('<main>Original</main>', { ...patch({ kind: 'text', text: 'Flow text' }, false), parentId: '__body__' });
     expect(result.ok).toBe(true); expect(result.source).not.toContain('<html'); expect(parse(result.source).body.children).toHaveLength(2);

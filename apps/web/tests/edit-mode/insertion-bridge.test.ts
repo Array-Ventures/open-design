@@ -32,6 +32,24 @@ describe('canvas insertion bridge', () => {
     win.close();
   });
 
+  it('places a subsequent object on the canvas rather than inside an existing text box', () => {
+    const {win,section,posts,arm,pointer} = fixture();
+    const text = win.document.createElement('div'); text.setAttribute('data-od-id','existing-box');
+    text.setAttribute('data-od-edit','text'); text.style.position='absolute'; text.textContent='Existing text'; section.append(text);
+    arm(); pointer('pointerdown',155,255,text); pointer('pointerup',255,305,text);
+    expect(posts).toContainEqual(expect.objectContaining({type:'od-insert-placement',parentId:'slide'}));
+    win.close();
+  });
+  it('captures the placing pointer and cancels cleanly if that capture is lost', () => {
+    const {win,section,posts,arm,pointer} = fixture();
+    const capture = vi.fn(); Object.defineProperty(section,'setPointerCapture',{value:capture});
+    arm(); pointer('pointerdown',155,255);
+    expect(capture).toHaveBeenCalledWith(1);
+    const lost = new win.Event('lostpointercapture',{bubbles:true}); Object.defineProperty(lost,'pointerId',{value:1}); section.dispatchEvent(lost);
+    expect(posts).toContainEqual({type:'od-insert-cancelled',requestId:'request-1'});
+    pointer('pointerup',255,305);
+    expect(posts.some(item => item.type === 'od-insert-placement')).toBe(false); win.close();
+  });
   it('proposes scaled geometry while leaving source content and navigation untouched', () => {
     const {win,section,posts,arm,pointer} = fixture(); arm();
     expect(posts).toContainEqual({type:'od-insert-armed',requestId:'request-1'});
