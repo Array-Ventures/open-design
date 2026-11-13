@@ -130,3 +130,25 @@ it('does not trust normalized CSSOM defaults as ownership of an authored image s
     expect(supportedDocument(documentHtml('Table', '<table><tr><td style="border-image:url(https://fixture.test/image.png) 30;border:1px solid black">Cell</td></tr></table>'), 'table.html')).toBe(false);
   } finally { normalize.mockRestore(); }
 });
+
+it('keeps actual inline Code TextNode exports editable with real editor styles and HTML ownership', async () => {
+  const { $createTextNode, $createParagraphNode, $isTextNode } = await import('lexical');
+  const { CodeNode, $createCodeNode } = await import('@lexical/code');
+  const { default: styles } = await import('../../../src/components/embedded/document/DocumentEditor.module.css');
+  const editor = createEditor({ namespace: 'actual-code-roundtrip', nodes: [CodeNode], html: documentHtmlConfig(), theme: { code: styles.code, text: { code: styles.inlineCode } }, onError: error => { throw error; } });
+  editor.update(() => { $getRoot().append($createParagraphNode().append($createTextNode('x').toggleFormat('code')), $createCodeNode('javascript').append($createTextNode('  let n = 1;'))); }, { discrete: true });
+  let saved = '';
+  editor.getEditorState().read(() => { saved = documentHtml('Code', $generateHtmlFromNodes(editor)); });
+  expect(new DOMParser().parseFromString(saved, 'text/html').querySelector('p code')?.getAttribute('spellcheck')).toBe('false');
+  expect(supportedDocument(saved, 'code.html'), saved).toBe(true);
+  const reopened = createEditor({ namespace: 'reopened-code-roundtrip', nodes: [CodeNode], html: documentHtmlConfig(), theme: { code: styles.code, text: { code: styles.inlineCode } }, onError: error => { throw error; } });
+  reopened.update(() => { $getRoot().append(...$generateNodesFromDOM(reopened, documentImport(saved))); }, { discrete: true });
+  reopened.getEditorState().read(() => {
+    const first = $getRoot().getFirstDescendant(); expect($isTextNode(first) && first.hasFormat('code')).toBe(true);
+    expect($getRoot().getTextContent()).toBe('x\n\n  let n = 1;');
+    expect(supportedDocument(documentHtml('Code', $generateHtmlFromNodes(reopened)), 'code.html')).toBe(true);
+  });
+});
+it.each(['true', 'custom', ''])('refuses unsupported inline CODE spellcheck=%s', value => {
+  expect(supportedDocument(documentHtml('Code', `<p><code spellcheck="${value}">x</code></p>`), 'code.html')).toBe(false);
+});

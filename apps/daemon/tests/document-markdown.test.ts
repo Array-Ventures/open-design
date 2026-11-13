@@ -76,3 +76,21 @@ it('keeps one outer owner when styled text contains inline code', () => {
   restoreDocumentMarkdownOwners(ast, input.rawSpans, input.rawBlocks);
   expect(ast).toEqual({ t: 'RawInline', c: ['html', html] }); expect(JSON.stringify(ast)).not.toContain('eve-document-');
 });
+it.each([
+  '<code>x</code>',
+  '<code spellcheck="false" style="white-space:pre-wrap"><span class="DocumentEditor-module__qFNIka__inlineCode">x</span></code>',
+  '<code><span style="white-space:pre-wrap">one two</span></code>',
+])('uses native inline code for exact ordinary text with only regenerated defaults: %s', body => {
+  const input = documentMarkdownInput(document(`<p>${body}</p>`)), $ = load(input.html);
+  expect(input.rawSpans.size).toBe(0); expect(input.rawBlocks.size).toBe(0);
+  expect($('code').attr('style')).toBeUndefined(); expect($('code span')).toHaveLength(0);
+  expect($('code').text()).toBe(body.includes('one two') ? 'one two' : 'x');
+});
+it.each([' x', 'x ', 'x  y', 'x\ty', 'x\ny'])('retains whole inline code for whitespace that native Pandoc would change: %s', text => {
+  const input = documentMarkdownInput(document(`<p><code>${text}</code></p>`)); expect([...input.rawSpans.values()]).toEqual([`<code>${text}</code>`]);
+});
+
+it('does not normalize away code defaults inside an outer styled source owner', () => {
+  const html = '<span style="color:red"><code spellcheck="false" style="white-space:pre-wrap"><span class="DocumentEditor-module__qFNIka__inlineCode">x</span></code></span>';
+  const input = documentMarkdownInput(document(`<p>${html}</p>`)); expect([...input.rawSpans.values()]).toEqual([html]);
+});

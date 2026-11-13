@@ -56,7 +56,7 @@ export function documentMarkdownInput(html: string): { html: string; rawSpans: M
     rawSpans.set(id, $.html(node)); protectedNodes.add(node); $(node).attr('id', id);
   });
   $('code').each((_index, node) => {
-    if ($(node).parents('pre').length || $(node).parents('span,div').toArray().some(parent => protectedNodes.has(parent))) return;
+    if (nativeCode.has(node) || $(node).parents('pre').length || $(node).parents('span,div').toArray().some(parent => protectedNodes.has(parent))) return;
     const wrapper = owner($.html(node), false); $(node).replaceWith(wrapper); wrapper.append(node);
   });
   return { html: $.html(), rawSpans, rawBlocks };

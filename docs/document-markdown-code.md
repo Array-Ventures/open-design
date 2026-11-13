@@ -7,7 +7,9 @@ text/default pre-wrap spans/line breaks. Line breaks become newlines; code owns
 its exact whitespace. The known class pattern is grounded in companion 95's
 `DocumentEditor-module__qFNIka__code`, not arbitrary authored code classes.
 
-Unknown rich PRE presentation remains one complete HTML RawBlock owner. Inline
+Unknown rich PRE presentation remains one complete HTML RawBlock owner. Plain
+inline CODE uses native Markdown when only proved regenerated defaults are
+present and whitespace is exactly representable. Sensitive whitespace or rich
 CODE remains a complete HTML RawInline owner, preserving its wrapper, attributes
 and exact exported source text. Existing styled spans retain their outermost
 source owner; nested CODE does not create a competing descendant owner. The
@@ -43,3 +45,25 @@ including real Lexical fixture regeneration. Daemon source/test TypeScript,
 web TypeScript and the repository guard passed. These are source/contained
 converter checks; the next immutable companion/renderer browser export check
 remains a separate gate.
+
+## Inline code save/reopen admission
+
+A follow-up real Lexical export with the actual editor CSS module,
+`documentHtmlConfig` and canonical document head proved another refusal:
+TextNode inline code exports `spellcheck="false"`, which CODE admission did not
+allow. Removing the new CODE rule reproduced the admission failure; restoring
+it allowed export/import/code-format-preserving re-export. Only the regenerated
+CODE value `false` is accepted; `true`, empty and custom values remain refused.
+No general attribute or class policy was broadened.
+
+The test processes the real DocumentEditor CSS module: Vitest's default module
+proxy generates property names but cannot enumerate them for the existing
+owned-class allowlist, so a proxy-only failure would not establish a product bug.
+The controlled red/green admission proof uses the enumerable real CSS exports.
+
+Final follow-up checks passed 95 web cases across admission, HTML, editor and
+table actions plus 25 daemon normalization/owner cases. Daemon source/test types,
+web types and guard passed. The contained renderer-40 probe independently
+confirmed native plain inline Code AST values `x` and `one two`, with no raw
+HTML owners, alongside the earlier native PRE and rich-code export checks.
+Sensitive raw inline-code GFM import whitespace loss remains open as above.

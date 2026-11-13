@@ -10,7 +10,7 @@ const attributes: Record<string, string[]> = {
   a: ['href', 'title', 'target', 'rel'], img: ['src', 'alt', 'title', 'width', 'height'],
   td: ['colspan', 'rowspan'], th: ['colspan', 'rowspan'], ol: ['start'],
   li: ['value', 'role', 'tabindex', 'aria-checked'], ul: ['__lexicallisttype'],
-  pre: ['spellcheck', 'data-language', 'data-highlight-language'], span: ['data-eve-document-image'],
+  code: ['spellcheck'], pre: ['spellcheck', 'data-language', 'data-highlight-language'], span: ['data-eve-document-image'],
 };
 const editorClasses = new Set(Object.values(styles).flatMap(value => value.split(/\s+/)));
 function supportedElement(element: HTMLElement): boolean {
@@ -23,6 +23,7 @@ function supportedElement(element: HTMLElement): boolean {
   // Unknown declarations (including invalid CSS that the DOM parser discards) must not vanish on save.
   if (element.hasAttribute('dir') && (!['ltr', 'rtl'].includes(element.getAttribute('dir')!) || !['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'li', 'ul', 'ol', 'table', 'tr', 'td', 'th', 'pre'].includes(tag))) return false;
   if (element.hasAttribute('data-od-id') && !/^[A-Za-z0-9_-]{1,100}$/.test(element.getAttribute('data-od-id')!)) return false;
+  if (tag === 'code' && element.hasAttribute('spellcheck') && element.getAttribute('spellcheck') !== 'false') return false;
   if (tag === 'a' && element.hasAttribute('target') && element.getAttribute('target') !== '_blank') return false;
   if (tag === 'a' && element.hasAttribute('rel') && element.getAttribute('rel') !== 'noopener noreferrer') return false;
   if (['main', 'div'].includes(tag) && element.attributes.length) return false;
