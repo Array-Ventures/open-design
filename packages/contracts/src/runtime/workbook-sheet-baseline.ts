@@ -51,10 +51,20 @@ function bounded(value: unknown): void {
     else if (typeof item === 'number') { if (!Number.isFinite(item)) throw Error('Workbook baseline requires finite numbers.'); }
     else if (item !== null && typeof item === 'object') {
       if (ancestors.has(item) || Object.getPrototypeOf(item) !== (Array.isArray(item) ? Array.prototype : Object.prototype) && Object.getPrototypeOf(item) !== null) throw Error('Workbook baseline requires plain acyclic JSON data.');
-      if (Array.isArray(item) && item.length > WORKBOOK_SHEET_BASELINE_LIMITS.nodes) throw Error('Workbook baseline exceeds its node limit.');
+      if (Array.isArray(item) && item.length > WORKBOOK_SHEET_BASELINE_LIMITS.nodes - nodes) throw Error('Workbook baseline exceeds its node limit.');
       ancestors.add(item);
+      if (Array.isArray(item)) {
+        // Object-property traversal alone misses holes before Zod allocates one
+        // parse result/error for every slot. Typed JSON arrays are dense and
+        // cannot contain undefined; inspect descriptors without running getters.
+        for (let index = 0; index < item.length; index++) {
+          const property = Object.getOwnPropertyDescriptor(item, String(index));
+          if (!property || !('value' in property) || property.value === undefined) throw Error('Workbook baseline requires dense JSON arrays.');
+          visit(property.value, depth + 1);
+        }
+        ancestors.delete(item); return;
+      }
       for (const key of Object.getOwnPropertyNames(item)) {
-        if (Array.isArray(item) && key === 'length') continue;
         const property = Object.getOwnPropertyDescriptor(item, key)!;
         if (!('value' in property)) throw Error('Workbook baseline requires own data properties.');
         text += key.length; visit(property.value, depth + 1);

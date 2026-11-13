@@ -68,3 +68,13 @@ it('keeps the proposed baseline claim outside the render wire until its consumer
   expect(workbookEditPlanSchema.safeParse(plan).success).toBe(true);
   expect(workbookEditPlanSchema.safeParse({ ...plan, sheets: [{ ...plan.sheets[0], baselineIdentity: { version: 1, sha256: 'b'.repeat(64) } }] }).success).toBe(false);
 });
+
+
+it('refuses sparse and undefined array slots before schema cloning', () => {
+  const baseline = workbookSheetBaseline(source(),'1');
+  const sparse = Array(1000);
+  expect(() => canonicalWorkbookSheetBaseline({ ...baseline, styleDefinitions: sparse })).toThrow('dense JSON arrays');
+  const small = baseline.styleDefinitions.slice(); delete small[0];
+  expect(() => canonicalWorkbookSheetBaseline({ ...baseline, styleDefinitions: small })).toThrow('dense JSON arrays');
+  expect(() => canonicalWorkbookSheetBaseline({ ...baseline, styleDefinitions: [undefined] })).toThrow('dense JSON arrays');
+});
