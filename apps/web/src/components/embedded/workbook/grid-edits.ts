@@ -1,5 +1,5 @@
-import { CellValueType, type ICellData, type IWorkbookData } from '@univerjs/presets';
-import { workbookEditPlanSchema, type WorkbookCell, type WorkbookDimensionEdit, type WorkbookDocument, type WorkbookStyleEdit } from '@open-design/contracts/runtime/workbook';
+import { CellValueType, WorksheetHiddenState, type ICellData, type IWorkbookData } from '@univerjs/presets';
+import { workbookEditPlanSchema, type WorkbookCell, type WorkbookDimensionEdit, type WorkbookDocument, type WorkbookStyleEdit, type WorkbookVisibilityEdit } from '@open-design/contracts/runtime/workbook';
 
 import { workbookRichText } from './grid-rich-text';
 import { gridDimensionEdits } from './grid-dimensions';
@@ -56,7 +56,7 @@ function styleDelta(a: Record<string, unknown>, b: Record<string, unknown>): Par
   if (!same(remainderA, remainderB)) fail('This formatting change cannot be saved yet. Keep this workbook open.');
   return result;
 }
-const sheetContent = ['name', 'hidden', 'rowCount', 'columnCount', 'mergeData', 'freeze', 'defaultRowHeight', 'defaultColumnWidth', 'defaultStyle'] as const;
+const sheetContent = ['name', 'rowCount', 'columnCount', 'mergeData', 'freeze', 'defaultRowHeight', 'defaultColumnWidth', 'defaultStyle'] as const;
 function positions(matrix: IWorkbookData['sheets'][string]['cellData']) {
   const result = new Set<string>();
   for (const [row, cells] of Object.entries(matrix ?? {})) for (const column of Object.keys(cells ?? {})) result.add(`${row}:${column}`);
@@ -92,10 +92,15 @@ export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string,
   const edits: { sheetId: string; cell: WorkbookCell }[] = [];
   const dimensions: WorkbookDimensionEdit[] = [];
   const styles: WorkbookStyleEdit[] = [];
+  const visibility: WorkbookVisibilityEdit[] = [];
   for (const sheet of model.sheets) {
     const before = initial.sheets[sheet.id], after = current.sheets[sheet.id];
     if (!before || !after) return fail('Sheet structure changed. Keep this workbook open.');
     if (sheetContent.some(key => !same(before[key], after[key]))) fail('Sheet formatting or structure changed. Keep this workbook open; these changes cannot be saved yet.');
+    if (!same(before.hidden, after.hidden)) {
+      if (!model.worksheetVisibilityEditable || sheet.visibility === 'veryHidden' || after.hidden !== WorksheetHiddenState.VISIBLE && after.hidden !== WorksheetHiddenState.HIDDEN) fail('This worksheet visibility change cannot be saved.');
+      visibility.push({ sheetId: sheet.id, visibility: after.hidden === WorksheetHiddenState.HIDDEN ? 'hidden' : 'visible' });
+    }
     dimensions.push(...gridDimensionEdits(sheet, before, after));
     const originals = new Map(sheet.cells.map(cell => [`${cell.row}:${cell.column}`, cell]));
     const coordinates = new Set([...positions(before.cellData), ...positions(after.cellData)]);
@@ -125,5 +130,6 @@ export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string,
       if (!same(next,originals.get(coordinate))) edits.push({sheetId:sheet.id,cell:next});
     }
   }
-  return workbookEditPlanSchema.parse({ sourceSha256, edits, ...(dimensions.length ? { dimensions } : {}), ...(styles.length ? { styles } : {}) });
+  if (!Object.values(current.sheets).some(sheet => sheet.hidden === undefined || sheet.hidden === WorksheetHiddenState.VISIBLE)) fail('Keep at least one worksheet visible.');
+  return workbookEditPlanSchema.parse({ sourceSha256, edits, ...(dimensions.length ? { dimensions } : {}), ...(styles.length ? { styles } : {}), ...(visibility.length ? { visibility } : {}) });
 }

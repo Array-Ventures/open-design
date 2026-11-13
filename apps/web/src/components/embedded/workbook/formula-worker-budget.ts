@@ -1,3 +1,4 @@
+import { assertWorkbookVisibilityMutation, WORKSHEET_VISIBILITY_MUTATION } from './grid-visibility-policy';
 import type { ICellData, IWorkbookData } from '@univerjs/presets';
 import { WORKBOOK_MODEL_LIMITS } from '@open-design/contracts/runtime/workbook';
 
@@ -42,6 +43,10 @@ export interface WorkbookCalculationMutation {
  * through paste, insertion, count changes or a future unreviewed mutation. */
 export function assertWorkbookCalculationMutation(command: WorkbookCalculationMutation, books: readonly IWorkbookData[], rangeMutationId: string): void {
   assertWorkbookCalculationBudget(books);
+  if (command.id === WORKSHEET_VISIBILITY_MUTATION) {
+    if (books.length !== 1) throw new WorkbookCalculationBudgetError('Workbook visibility identity is unavailable.');
+    assertWorkbookVisibilityMutation(command.params, books[0]!); return;
+  }
   if (!command.id.startsWith('sheet.mutation.') || layoutMutations.has(command.id)) return;
   if (command.id !== rangeMutationId) throw new WorkbookCalculationBudgetError('Structural workbook changes need a separate calculation adapter.');
   const params = command.params as { unitId?: unknown; subUnitId?: unknown; cellValue?: unknown } | undefined;

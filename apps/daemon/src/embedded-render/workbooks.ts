@@ -38,7 +38,7 @@ export async function renderWorkbook(output: string, input: { fileName: string; 
     if (plan.length > 16 * 1024 * 1024) throw new WorkbookFormatError('Workbook edit plan exceeds its byte limit.', 'WORKBOOK_LIMIT');
     const parsed = workbookEditPlanSchema.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(plan)));
     if (parsed.sourceSha256 !== sourceSha256) throw new WorkbookFormatError('The workbook changed after these edits were prepared. Reload it before exporting these edits.');
-    prepared = await calculateWorkbookCellEdits(source, parsed.edits, parsed.dimensions, parsed.styles);
+    prepared = await calculateWorkbookCellEdits(source, parsed.edits, parsed.dimensions, parsed.styles, parsed.visibility);
   }
   if (input.format === 'workbook') {
     const body = Buffer.from(JSON.stringify(workbookPreviewSchema.parse({ sourceSha256, model: prepared?.model ?? source.model })));

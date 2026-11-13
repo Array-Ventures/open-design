@@ -328,3 +328,44 @@ never send a message or invoke a bot by themselves. Permissions still gate both
 editing and staging, and failed handoffs retain their existing retry flow.
 Replies keep their existing separate save/reply and chat-staging controls; they
 do not gain an implicit mention-triggered handoff.
+
+## Worksheet visibility slice
+
+Ordinary XLSX worksheets support hide/unhide through the host header's scoped
+visibility bridge and the existing sparse edit plan. `veryHidden` worksheets
+remain source-owned and are omitted from actionable controls. Signed or
+macro-bearing files, workbook protection, custom workbook views, unknown or
+duplicate sheet IDs and hiding the last visible worksheet are refused. Names,
+order, geometry, cell formulas and relationships cannot change through this
+slice. A newly qualified `worksheetVisibilityEditable` preview flag controls
+availability; absent metadata does not grant permission.
+
+The contained renderer patches workbook sheet state and reconciles affected
+active/first tabs and worksheet selection flags. A visibility-only save retains
+formula caches and every unrelated OOXML part rather than recalculating or
+reserializing the workbook. Combined cell saves calculate first and apply
+visibility to that private candidate. Saves retain the existing preparation,
+CAS, receipt, protected draft and binary-history/restore boundaries. Header
+messages require parent origin/source, controller and acknowledged source digest;
+controls are unavailable during startup, saving, discard or blocked history.
+
+Row/column insertion, sheet rename/reorder/create/delete and editing very hidden
+worksheets remain unsupported. Source and regression changes in this slice need
+central qualification and paired-package visual acceptance before availability
+can be claimed; this section does not report tests or publication.
+
+### Source-owned slide background identity
+
+Slide background edits use a unique source path stamped before authored scripts
+execute, together with the exact srcdoc transport generation. Runtime slide
+indexes are navigation state, not source ownership: same-count DOM reordering
+retains a slide's stamped identity. Duplicated/cloned paths, missing identity,
+stale document generations and source changes refuse source editing. Legacy
+runtimes can keep reporting count/index without gaining this editing capability.
+
+The source lookup applies the same nonvisual speaker-notes removal as the preview
+before resolving element-only paths. The actual write still changes only the
+selected slide's raw opening-tag style attribute; notes and unrelated source
+bytes remain untouched. Runtime-reordered speaker-note arrays and export order
+remain separate fidelity requirements; background ownership does not qualify
+those broader cases.

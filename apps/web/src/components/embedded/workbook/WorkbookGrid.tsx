@@ -1,5 +1,7 @@
 'use client';
 
+import { ownWorkbookVisibility, workbookVisibilityBridge } from './grid-visibility';
+
 import { workbookExportBridge, type WorkbookExportScope } from './grid-export';
 import { attachWorkbookRichInput } from './rich-cell-input';
 import { attachCsvLiteralInput } from './csv-literal-input';
@@ -51,6 +53,8 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
   const exportCurrent = useRef(exportScope); exportCurrent.current = exportScope;
   const exportBridge = useRef<{ publish(): void } | null>(null);
   useEffect(() => { exportBridge.current?.publish(); }, [exportScope?.blocked, exportScope?.sourceSha256]);
+  const visibilityRef = useRef<{ publish(): void } | null>(null);
+  useEffect(() => { visibilityRef.current?.publish(); }, [formatScope?.blocked, formatScope?.saving]);
   const formattingRef = useRef<{ publish(): void } | null>(null);
   useEffect(() => { formattingRef.current?.publish(); }, [formatScope?.blocked]);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +115,8 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
       const stopArrayInput = () => { const owned = arrayInput; arrayInput = null; owned?.dispose(); };
       const stopCalculation = () => { const owned = calculationOwner; calculationOwner = null; owned?.dispose(); const arrays = arrayOwner; arrayOwner = null; arrays?.dispose(); };
       let readSnapshot: (() => IWorkbookData) | undefined;
+      const visibilityOwner = ownWorkbookVisibility(univer, model, () => readSnapshot?.(), () => current() && readyForInput && editable && !format.current?.blocked && !format.current?.saving);
+      layer.own(() => visibilityOwner.dispose());
       const fallback = () => {
         if (!current()) return;
         stored.current = model;
@@ -199,16 +205,21 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
         const scope = format.current;
         return editable && model.sourceFormat !== 'csv' && scope ? { ...scope, blocked: scope.blocked || !readyForInput } : undefined;
       }); formattingRef.current = formatting;
+      const visibility = workbookVisibilityBridge(univer, univerAPI, model, () => {
+        const scope = format.current;
+        return scope && sourceSha256 && model.sourceFormat !== 'csv' ? { ...scope, sourceSha256, blocked: scope.blocked || Boolean(scope.saving) || !editable || !readyForInput } : undefined;
+      }); visibilityRef.current = visibility;
       const exporter = workbookExportBridge(univerAPI, () => {
         const scope = exportCurrent.current;
         return scope ? { ...scope, blocked: scope.blocked || !readyForInput } : undefined;
       }); exportBridge.current = exporter;
       const changed = univerAPI.addEvent(univerAPI.Event.CommandExecuted, event => {
         if (!current()) return;
-        if (event.type === CommandType.MUTATION && event.id.startsWith('sheet.')) { callbacks.current.onSnapshot?.(workbook.save()); formatting.publish(); }
+        if (event.type === CommandType.MUTATION && event.id.startsWith('sheet.')) { callbacks.current.onSnapshot?.(workbook.save()); formatting.publish(); visibility.publish(); }
         // The pinned facade's programmatic selections emit selectionSet,
         // while onSelectionChange observes only selectionMoveEnd. Publish
         // after the command has settled, without treating view state as edits.
+        else if (event.id === 'sheet.operation.set-worksheet-active') visibility.publish();
         else if (event.id === kernel.SetSelectionsOperation.id) { formatting.publish(); exporter.publish(); }
       });
       let themeIdentity = JSON.stringify({ theme, dark: root.dataset.theme === 'dark' });
@@ -223,7 +234,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
         try {
           const sheet = workbook.getActiveSheet();
           view.current = { id, sourceFormat: model.sourceFormat, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() };
-        } finally { element.removeEventListener('pointerdown', activate, true); element.removeEventListener('focusin', activate); window.removeEventListener('blur', release); themes.disconnect(); literal?.dispose(); richInput?.dispose(); exporter.dispose(); exportBridge.current = null; formatting.dispose(); formattingRef.current = null; changed.dispose(); calculation.dispose(); workbook.setEditable(false); stopCalculation(); layer.retire(); }
+        } finally { element.removeEventListener('pointerdown', activate, true); element.removeEventListener('focusin', activate); window.removeEventListener('blur', release); themes.disconnect(); visibility.dispose(); visibilityRef.current = null; literal?.dispose(); richInput?.dispose(); exporter.dispose(); exportBridge.current = null; formatting.dispose(); formattingRef.current = null; changed.dispose(); calculation.dispose(); workbook.setEditable(false); stopCalculation(); layer.retire(); }
       };
       await univer.__getInjector().get(LifecycleService).onStage(LifecycleStages.Rendered);
       // The pinned UI releases its initial workbench skeleton two frames after
@@ -232,7 +243,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, initialSnapshot, 
       if (!current()) return;
       layer.show();
       readyForInput = true; workbook.setEditable(editable);
-      formatting.publish(); exporter.publish();
+      formatting.publish(); exporter.publish(); visibility.publish();
       callbacks.current.onDisplayGaps?.(prepared.gaps); setError(null);
     } catch { close(); if (current()) setError('The workbook grid could not be opened.'); }
     };
