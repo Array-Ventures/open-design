@@ -5,7 +5,7 @@ import { readXlsxWorkbook, type ReadWorkbook } from './reader.js';
 import { WorkbookFormatError } from './package.js';
 import { child, children, xmlPart } from './parts.js';
 import { writeWorkbookXml } from './xml.js';
-import { assertWorkbookSheetResourceContinuity } from './sheet-resources.js';
+import { workbookCellStyleSource, type WorkbookCellStyleSource } from './cell-style-guard.js';
 import { workbookSheetFormulaByIdentity } from './sheet-formulas.js';
 
 export interface WorkbookSheetTemplateEntry {
@@ -24,6 +24,12 @@ export interface WorkbookSheetTemplateEntry {
  * never the reader's compacted model style indices.
  */
 export async function prepareWorkbookSheetTemplate(current: ReadWorkbook, bytes: Buffer, expectedSha256: string, sheetId: string, target: readonly WorkbookSheetTemplateEntry[]): Promise<Buffer> {
+  return (await prepareWorkbookSheetTemplateSource(current, bytes, expectedSha256, sheetId, target)).xml;
+}
+
+/** The assembler retains this already-checked reader as the original cell/style
+ * guard owner; its compact ordinals are never written into the target XML. */
+export async function prepareWorkbookSheetTemplateSource(current: ReadWorkbook, bytes: Buffer, expectedSha256: string, sheetId: string, target: readonly WorkbookSheetTemplateEntry[]): Promise<{ xml: Buffer; styleSource: WorkbookCellStyleSource }> {
   if (!/^[a-f0-9]{64}$/.test(expectedSha256) || createHash('sha256').update(bytes).digest('hex') !== expectedSha256) throw new WorkbookFormatError('Historical worksheet source hash does not match.');
   // Reuse ordinary projection name/ID bounds; the assembler owns template refs.
   workbookSourceSheetProjectionSchema.parse(target.map(sheet => ({ sheetId: sheet.sheetId, name: sheet.name, origin: sheet.origin === 'restore' ? 'new' : sheet.origin })));
@@ -39,7 +45,7 @@ export async function prepareWorkbookSheetTemplate(current: ReadWorkbook, bytes:
     const actual = createHash('sha256').update(canonicalWorkbookSheetBaseline(workbookSheetBaseline(historical.model, sheetId)), 'utf8').digest('hex');
     if (identity.sha256 !== actual) throw new WorkbookFormatError('Historical worksheet baseline identity does not match.');
   }
-  assertWorkbookSheetResourceContinuity(historical, current);
+  const styleSource = workbookCellStyleSource(historical, sheetId, current);
   const part = historical.sheetParts.get(sheetId);
   if (!part) throw new WorkbookFormatError('Historical worksheet identity is missing.');
   // Source entries must identify current survivors; restoration of other absent
@@ -59,5 +65,5 @@ export async function prepareWorkbookSheetTemplate(current: ReadWorkbook, bytes:
     for (const cache of [...children(cell, 'v'), ...children(cell, 'is')]) cell.removeChild(cache);
     cell.removeAttribute('t');
   }
-  return writeWorkbookXml(document);
+  return { xml: writeWorkbookXml(document), styleSource };
 }

@@ -541,3 +541,8 @@ storage/recovery/editor tests passed; web typecheck, full repository typecheck
 and guard passed. The refusal callback test covers atomic pool retention; it
 is not a claim that a new large-quota or browser-storage boundary was exercised.
 No runtime, image, UI controls or publication changed.
+
+Scalar edit style annotations must follow the owning
+[style preservation guards](workbook-cell-style-guards.md). A compact historical
+model ordinal is not a raw stylesheet index or a transferable identity; the
+source owner proves any required guard rebase after membership/axis preparation.
