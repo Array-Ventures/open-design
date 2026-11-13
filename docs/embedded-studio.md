@@ -353,3 +353,44 @@ selected slide's raw opening-tag style attribute; notes and unrelated source
 bytes remain untouched. Runtime-reordered speaker-note arrays and export order
 remain separate fidelity requirements; background ownership does not qualify
 those broader cases.
+
+### Structural workbook editing foundation (not enabled in the UI)
+
+The structural helpers establish source ownership before enabling insert/delete
+menus. `grid-structure-identity.ts` stamps editor-only row/column identities in
+Univer's supported custom metadata. Actual pinned SDK tests prove sparse blank
+axes retain identity through insert, delete, save, undo and redo, including a
+restored cell, row height and unrelated custom metadata. Aggregate axis metadata
+is bounded at 100,000 entries; it is not allocated for a million-row workbook.
+
+`workbook-structure.ts` validates a monotone partial source→current mapping;
+inserted axes are null, deleted source axes are absent, and reorder/duplicate
+ownership is rejected. `structure-formulas.ts` uses the pinned lexer and range
+parser for actual references, absolute flags, quoted sheet names and whole-axis
+ranges. It leaves quoted strings unchanged, shrinks surviving ranges and emits
+`#REF!` when a referenced range is completely deleted. It does not regex-replace
+A1-looking text throughout a formula. The lexer also labels bare defined names
+and table prefixes as functions; admission distinguishes real calls and refuses
+those unsupported references.
+
+The source-only `structure-patch.ts` preservation primitive moves retained cell
+XML with its style/shared-string identities, row/column dimension metadata and
+supported merged ranges, updates selection/scroll references, and leaves unrelated
+ZIP members byte-identical. Column ranges split around inserted columns rather
+than giving those columns an unintended source style or hidden state. Formula
+caches are removed before the existing contained calculation/CAS path may admit
+an output. This primitive is not yet connected to that path and cannot save a
+live workbook itself.
+
+Initial exclusions are explicit: named/table/external/3-D references; arrays and
+shared formula groups; macros/signatures; charts/drawings/comments/pivots;
+frozen/split panes; protected or unknown coordinate-bearing metadata; deleting
+a surviving merged range's anchor; and reference growth outside Excel limits.
+These need qualified owners or an action-level refusal before any SDK mutation.
+
+**Still required before exposing menus:** capability admission in the reader and
+contained writer, strict structural edit schema, snapshot/source-plan comparison,
+calculation-worker mutation bounds, edit-controller/permission gates, actual SDK
+agreement for merged/view/formula behavior, source-bound conditional save/reopen,
+keyboard/right-click BoardUI menu interaction, and packaged light/dark visual and
+end-to-end tests. The current shipped interface keeps unsupported SDK menus off.
