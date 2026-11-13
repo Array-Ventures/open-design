@@ -21,3 +21,13 @@ it('removes only generated data ownership and refuses vanished or duplicated nor
   expect(()=>resolvedDocumentDocxColorOwners(duplicate,source,colors)).toThrow('ownership');
   expect(()=>resolvedDocumentDocxColorOwners(ast(),source,new Map([['wrong',{}]]))).toThrow('ownership');
 });
+
+it.each(['Code', 'CodeBlock'])('permits proved-empty %s wrappers to disappear but refuses the identical lost colored owner', kind => {
+  const source=documentDocxSourceColors(kind==='Code'?'<p><code> x  y </code></p>':'<pre>  x\n  y</pre>'), id=source.requests[0]!.id;
+  const code={t:kind,c:[['',kind==='CodeBlock'?['javascript']:[],[]],kind==='Code'?' x  y ':'  x\n  y']};
+  const input=kind==='Code'?{blocks:[{t:'Para',c:[code]}]}:{blocks:[code]};
+  const before=structuredClone(input);
+  expect(resolvedDocumentDocxColorOwners(input,source,new Map([[id,{}]]))).toEqual([]);
+  expect(input).toEqual(before); // Native code text/language/whitespace remain owned by Pandoc.
+  expect(()=>resolvedDocumentDocxColorOwners(structuredClone(input),source,new Map([[id,{foreground:'FF0000'}]]))).toThrow('ownership');
+});
