@@ -499,3 +499,9 @@ are documented in [document-table-actions.md](document-table-actions.md).
 It reuses the free embedded BoardUI menu adapter while preserving the workbook
 keyboard capture and source-reset behavior. Its browser/visual qualification remains a separate gate.
 
+
+### Markdown code export ownership
+
+[document-markdown-code.md](document-markdown-code.md) records the native fenced
+code normalization, whole-code HTML fallbacks, actual contained Pandoc evidence
+and the remaining inline-code whitespace import limitation.

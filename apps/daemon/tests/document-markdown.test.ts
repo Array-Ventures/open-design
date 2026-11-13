@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { load } from 'cheerio';
-import { documentMarkdownHtml, documentMarkdownInput, restoreDocumentMarkdownSpans } from '../src/embedded-render/document-markdown.js';
+import { documentMarkdownHtml, documentMarkdownInput, restoreDocumentMarkdownOwners } from '../src/embedded-render/document-markdown.js';
 const document = (body: string) => `<!doctype html><html data-eve-document="1"><body>${body}</body></html>`;
 it('exports ordinary editor text without regenerated default wrappers', () => {
   const $ = load(documentMarkdownHtml(document('<h1><span style="white-space: pre-wrap;">Report</span></h1><p><span style="white-space: pre-wrap;">Alpha <strong>bold</strong></span></p>')));
@@ -30,12 +30,49 @@ it('restores styled and whitespace-sensitive spans through native Pandoc AST own
   const input = documentMarkdownInput(document('<p><span style="white-space: pre-wrap;">two  spaces\nnext</span><span style="color:red"><span title="nested">Color</span></span></p>'));
   expect(input.rawSpans.size).toBe(2);
   const ast = { blocks: [{ t: 'Para', c: [...input.rawSpans.keys()].map(id => ({ t: 'Span', c: [[id, [], []], [{ t: 'Str', c: 'collapsed' }]] })) }] };
-  restoreDocumentMarkdownSpans(ast, input.rawSpans);
+  restoreDocumentMarkdownOwners(ast, input.rawSpans);
   expect(ast.blocks[0]!.c.map(node => node.t)).toEqual(['RawInline', 'RawInline']);
   expect(JSON.stringify(ast)).toContain('two  spaces\\nnext'); expect(JSON.stringify(ast)).toContain('nested');
 });
 it('refuses missing or duplicated styled owners rather than silently losing content', () => {
   const raw = new Map([['owned', '<span style="color:red">Red</span>']]);
-  expect(() => restoreDocumentMarkdownSpans({ blocks: [] }, raw)).toThrow('preserve');
-  expect(() => restoreDocumentMarkdownSpans([{ t: 'Span', c: [['owned'], []] }, { t: 'Span', c: [['owned'], []] }], raw)).toThrow('duplicated');
+  expect(() => restoreDocumentMarkdownOwners({ blocks: [] }, raw)).toThrow('preserve');
+  expect(() => restoreDocumentMarkdownOwners([{ t: 'Span', c: [['owned'], []] }, { t: 'Span', c: [['owned'], []] }], raw)).toThrow('duplicated');
+});
+it('normalizes pinned Lexical code exports to a real language-owned code block without changing whitespace', async () => {
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(`${process.cwd()}/tests/fixtures/documents/lexical-code-export.html`, 'utf8');
+  const input = documentMarkdownInput(html), $ = load(input.html);
+  expect($('pre > code').attr('class')).toBe('language-javascript'); expect($('pre > code').text()).toBe('  const n = 1;\n  n++;');
+  expect($('pre span,pre br')).toHaveLength(0); expect(input.rawBlocks.size).toBe(0);
+  expect([...input.rawSpans.values()]).toEqual(['<code spellcheck="false" style="white-space: pre-wrap;"><span class="DocumentEditor-module__qFNIka__inlineCode"> x  y </span></code>']);
+});
+it.each([
+  '<pre class="authored-code"><span style="white-space: pre-wrap;">  x  y</span></pre>',
+  '<pre style="color:red"><span style="white-space: pre-wrap;">  x  y</span></pre>',
+  '<pre data-language="javascript"><span style="color:red">  x  y</span></pre>',
+  '<pre data-language="javascript" data-highlight-language="python">  x  y</pre>',
+  '<pre data-eve-native-code="1"><span title="authored">  x  y</span></pre>',
+])('preserves an unknown rich-code block as one complete HTML owner: %s', html => {
+  const input = documentMarkdownInput(document(html)); expect(input.rawSpans.size).toBe(0); expect([...input.rawBlocks.values()]).toEqual([html]);
+  const id = [...input.rawBlocks.keys()][0]!, ast = { t: 'Div', c: [[id, [], []], []] };
+  restoreDocumentMarkdownOwners(ast, input.rawSpans, input.rawBlocks); expect(ast).toEqual({ t: 'RawBlock', c: ['html', html] });
+});
+it('restores complete inline code and refuses lost, duplicate or conflicting block owners', () => {
+  const input = documentMarkdownInput(document('<p><code><span style="white-space: pre-wrap;"> x  y </span></code></p><pre style="color:red">  x</pre>'));
+  const inline = [...input.rawSpans.keys()][0]!, block = [...input.rawBlocks.keys()][0]!;
+  const ast = [{ t: 'Span', c: [[inline, [], []], []] }, { t: 'Div', c: [[block, [], []], []] }];
+  restoreDocumentMarkdownOwners(ast, input.rawSpans, input.rawBlocks); expect(ast.map(node => node.t)).toEqual(['RawInline', 'RawBlock']);
+  expect(() => restoreDocumentMarkdownOwners([], input.rawSpans, input.rawBlocks)).toThrow('preserve');
+  expect(() => restoreDocumentMarkdownOwners([{ t: 'Div', c: [[block], []] }, { t: 'Div', c: [[block], []] }], new Map(), input.rawBlocks)).toThrow('duplicated');
+  expect(() => restoreDocumentMarkdownOwners([], new Map([[block, 'inline']]), input.rawBlocks)).toThrow('identity');
+});
+
+it('keeps one outer owner when styled text contains inline code', () => {
+  const html = '<span style="color:red"><code><span style="white-space:pre-wrap"> x  y </span></code></span>';
+  const input = documentMarkdownInput(document(`<p>${html}</p>`));
+  expect([...input.rawSpans.values()]).toEqual([html]); expect(input.rawBlocks.size).toBe(0);
+  const id = [...input.rawSpans.keys()][0]!, ast = { t: 'Span', c: [[id, [], []], []] };
+  restoreDocumentMarkdownOwners(ast, input.rawSpans, input.rawBlocks);
+  expect(ast).toEqual({ t: 'RawInline', c: ['html', html] }); expect(JSON.stringify(ast)).not.toContain('eve-document-');
 });
