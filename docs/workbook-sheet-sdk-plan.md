@@ -314,3 +314,22 @@ selected-history template restore. Host ACL and compatible resources do not
 prove a prior SDK Delete command. Automatic Undo remains unavailable until the
 producer can prove and persist its protected per-delete/ACK kernel identity;
 this source API must not be presented as that lineage guarantee.
+
+### Checked acknowledgement metadata foundation
+
+`save-identity.ts` explicitly validates optional `sourceVersionId` metadata.
+Older receipts may omit it or return null and still support ordinary saves;
+they supply no historical ownership. `checkedWorkbookSaveAcknowledgement` binds
+the receipt to its retained operation/project/file/render, pre-save source digest
+and refreshed saved-target digest. It returns a discriminated history result
+with non-null pre-save `sourceVersionId` and saved-target `versionId`, or an
+explicit unavailable result for a legacy or whole-file-restore receipt. One
+immutable version cannot represent different source and target byte digests.
+
+This helper does not itself read historical bytes, establish SDK Delete lineage,
+persist a checkpoint, transfer writer ownership or enable a producer. Those
+consumers are not connected yet. The next owning slice must protect its checked
+association in the existing journal before baseline retirement, retain only
+current/reachable per-delete associations, and prove lost-ACK/storage-failure
+ordering before the UI capability may be enabled. Whole-file/external kernel
+reset must retire the old ancestry rather than relabel it as a new source.
