@@ -70,11 +70,11 @@ function passiveDocumentMath(element: Element): boolean {
     if (name === 'xmlns' && tag === 'math' && value === mathNamespace) continue;
     if (attribute.namespaceURI) return false;
     if (name === 'display' && tag === 'math' && /^(inline|block)$/.test(value)) continue;
-    if (name === 'mathvariant' && ['mi','mtext'].includes(tag) && value === 'normal') continue;
+    if (name === 'mathvariant' && ['mi','mtext'].includes(tag) && ['normal','bold-italic','italic','double-struck','script','fraktur','sans-serif','monospace'].includes(value)) continue;
     if (tag === 'mo' && ((name === 'accent' && value === 'true') || (name === 'stretchy' && /^(true|false)$/.test(value)) || (name === 'form' && /^(prefix|postfix)$/.test(value)))) continue;
     if (tag === 'annotation' && name === 'encoding' && value === 'application/x-tex') continue;
     if (tag === 'mfrac' && name === 'linethickness' && value === '0') continue;
-    if (tag === 'mspace' && name === 'width' && /^(?:0|[1-9]\d?)(?:\.\d{1,3})?em$/.test(value)) continue;
+    if (tag === 'mspace' && name === 'width' && /^-?(?:0|[1-9]\d?)(?:\.\d{1,3})?em$/.test(value)) continue;
     if (tag === 'mtd' && ((name === 'columnalign' && value === 'center') || (name === 'style' && /^text-align:\s*center;?$/.test(value)))) continue;
     return false;
   }

@@ -119,3 +119,14 @@ it('refuses MathML paint, active/foreign owners, unknown grammar and styled HTML
     expect(document.body.innerHTML).toBe(before);
   }
 });
+
+it('preserves ordinary mathematical alphabets and bounded negative spacing without admitting paint', () => {
+  for (const variant of ['normal','bold-italic','italic','double-struck','script','fraktur','sans-serif','monospace']) {
+    source(`<math xmlns="http://www.w3.org/1998/Math/MathML"><mi mathvariant="${variant}">x</mi><mspace width="-0.167em"/></math>`);
+    expect(documentColorLayoutQualified(document,[style])).toBe(true);
+  }
+  for (const attrs of ['mathvariant="unknown"','mathvariant="red"','mathcolor="red"']) {
+    source(`<math xmlns="http://www.w3.org/1998/Math/MathML"><mi ${attrs}>x</mi></math>`);
+    expect(documentColorLayoutQualified(document,[style])).toBe(false);
+  }
+});
