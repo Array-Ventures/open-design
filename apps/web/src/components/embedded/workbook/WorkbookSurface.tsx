@@ -38,7 +38,9 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
     onAccessLost: () => { void editorRef.current?.close(); setLoaded(null); setError('This workbook is unavailable. Reopen it after checking access.'); onAccessLost?.(); },
     focusOnClose: () => window.parent.postMessage({ type: 'studio:workbook-history-focus', projectId, controllerId: editorRef.current?.controllerId }, window.location.origin),
   });
-  const editor = useWorkbookEditor(projectId, fileName, loaded, source => { setLoaded(source); onSaved?.(); }, dirty => onDirtyChange?.(dirty || history.blocked), recovery.session?.journal, () => { setLoaded(null); setRetry(value => value + 1); }, { open: history.open, blocked: history.blocked, visible: history.canOpen, show: history.toggle });
+  // The editor acknowledges only after the receipt and fresh preview hashes
+  // match. A refresh warning from that same pending save is then obsolete.
+  const editor = useWorkbookEditor(projectId, fileName, loaded, source => { setLoaded(source); setError(null); onSaved?.(); }, dirty => onDirtyChange?.(dirty || history.blocked), recovery.session?.journal, () => { setLoaded(null); setRetry(value => value + 1); }, { open: history.open, blocked: history.blocked, visible: history.canOpen, show: history.toggle });
   editorRef.current = editor;
   const historyRef = useRef(history); historyRef.current = history;
   close.current = editor.close;
