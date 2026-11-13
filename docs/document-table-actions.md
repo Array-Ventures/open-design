@@ -63,3 +63,16 @@ fix; the final focused suite passed 111 cases across admission, table actions,
 existing editor and HTML serialization. Web types and guard passed. A new
 companion build must still qualify actual Chromium save/reopen; this source
 change does not claim that later browser result.
+
+The declaration-level guard also checks the authored `border-image` shorthand
+before CSSOM normalization: only the existing `none` default is eligible; URL
+or other authored shorthand values are refused even when a later canonical
+border would reset them. The additional URL/override negatives already passed
+in pinned jsdom before this guard, so they are not claimed as a reproduced
+Chromium failure. Actual browser CSSOM evidence motivated the stricter raw
+declaration check; new-build Chromium qualification remains necessary.
+A separate public-admission regression explicitly supplies a normalized `none`
+CSSOM reading while retaining the raw image shorthand. That policy test failed
+with the raw shorthand guard removed and passed with it restored; it simulates
+the normalization seam rather than asserting jsdom is Chromium. Final focused
+qualification passed 115 cases across the four files, plus web types and guard.

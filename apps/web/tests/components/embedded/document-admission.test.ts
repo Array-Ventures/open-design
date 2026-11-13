@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { createEditor, $getRoot } from 'lexical';
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
@@ -104,6 +104,9 @@ it.each([
   'border-image-source:initial;border-image-repeat:round',
   'border-image-source:initial!important', 'border-image-custom:initial',
   'border-image-source:initial;position:absolute',
+  'border-image:url(https://fixture.test/image.png) 30',
+  'border-image:url(https://fixture.test/image.png) 30;border:1px solid black',
+  'border-image:url(https://fixture.test/image.png) 30;border-image:none',
   'border-image-source:url(https://fixture.test/image.png);border-image-source:initial',
   'border-image-width:2;border-image-width:initial',
   'border-image-source:initial!important;border-image-source:initial',
@@ -113,4 +116,17 @@ it.each([
 });
 it('does not admit border image defaults on non-cell elements', () => {
   expect(supportedDocument(documentHtml('Body', '<p style="border:1px solid black;border-image-source:initial">Text</p>'), 'report.html')).toBe(false);
+});
+
+it('does not trust normalized CSSOM defaults as ownership of an authored image shorthand', () => {
+  // Model the browser seam explicitly: a parsed/reset shorthand may read as a
+  // harmless default while the authored declaration still contains an image.
+  // This is a policy regression, not a claim that jsdom reproduces Chromium.
+  const original = CSSStyleDeclaration.prototype.getPropertyValue;
+  const normalize = vi.spyOn(CSSStyleDeclaration.prototype, 'getPropertyValue').mockImplementation(function (this: CSSStyleDeclaration, name: string) {
+    return name === 'border-image' ? 'none' : original.call(this, name);
+  });
+  try {
+    expect(supportedDocument(documentHtml('Table', '<table><tr><td style="border-image:url(https://fixture.test/image.png) 30;border:1px solid black">Cell</td></tr></table>'), 'table.html')).toBe(false);
+  } finally { normalize.mockRestore(); }
 });

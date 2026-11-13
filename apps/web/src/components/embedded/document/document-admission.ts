@@ -51,6 +51,9 @@ function supportedElement(element: HTMLElement): boolean {
     const colon = declaration.indexOf(':');
     if (colon < 1) return false;
     const name = declaration.slice(0, colon).trim().toLowerCase();
+    // Check the authored shorthand before CSSOM can reset/normalize an image
+    // behind a later border declaration. Only the existing none default is safe.
+    if (name === 'border-image' && declaration.slice(colon + 1).trim().toLowerCase() !== 'none') return false;
     const probe = document.createElement('span').style;
     probe.cssText = declaration;
     if (!probe.getPropertyValue(name)) return false;
