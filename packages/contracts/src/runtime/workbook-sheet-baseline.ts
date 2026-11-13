@@ -1,0 +1,98 @@
+import { z } from 'zod';
+import { canonicalCommentJson } from './comment-write-json';
+import { WORKBOOK_MODEL_LIMITS, workbookDocumentSchema, workbookSheetSchema, workbookStyleSchema, type WorkbookDocument } from './workbook';
+
+export const WORKBOOK_SHEET_BASELINE_VERSION = 1;
+export const WORKBOOK_SHEET_BASELINE_LIMITS = { depth: 64, nodes: 4_000_000, text: 64 * 1024 * 1024, bytes: 64 * 1024 * 1024 } as const;
+const document = workbookDocumentSchema.innerType().shape;
+const sheetIdentity = workbookSheetSchema.pick({ id: true, name: true });
+function referencedStyles(sheet: z.infer<typeof workbookSheetSchema>): number[] {
+  // The grid's defaultStyle is always 0. Explicit cell, row and column styles
+  // retain their complete effective definitions, including inherited formats.
+  const ids = new Set([0]);
+  for (const cell of sheet.cells) if (cell.style !== undefined) ids.add(cell.style);
+  for (const dimension of [...sheet.rowDimensions, ...sheet.columnDimensions]) if (dimension.style !== undefined) ids.add(dimension.style);
+  return [...ids].sort((a, b) => a - b);
+}
+export const workbookSheetBaselineSchema = z.object({
+  kind: z.literal('evebot-workbook-selected-sheet'), version: z.literal(WORKBOOK_SHEET_BASELINE_VERSION),
+  date1904: document.date1904, themeColors: document.themeColors,
+  calculationMetadata: document.calculationMetadata, richTextMetadata: document.richTextMetadata,
+  worksheetStructureEditable: document.worksheetStructureEditable, worksheetVisibilityEditable: document.worksheetVisibilityEditable,
+  features: document.features, sheetIdentities: z.array(sheetIdentity).min(1).max(WORKBOOK_MODEL_LIMITS.sheets),
+  definedNames: document.definedNames, tables: document.tables,
+  sheet: workbookSheetSchema,
+  styleDefinitions: z.array(z.object({ index: z.number().int().min(0).max(WORKBOOK_MODEL_LIMITS.styles - 1), style: workbookStyleSchema }).strict()).min(1).max(WORKBOOK_MODEL_LIMITS.styles),
+}).strict().superRefine((baseline, context) => {
+  const ids = new Set<string>(), names = new Set<string>();
+  for (const sheet of baseline.sheetIdentities) {
+    if (ids.has(sheet.id) || names.has(sheet.name.toLowerCase())) context.addIssue({ code: 'custom', message: 'Ambiguous baseline sheet identities.' });
+    ids.add(sheet.id); names.add(sheet.name.toLowerCase());
+  }
+  const selected = baseline.sheetIdentities.find(sheet => sheet.id === baseline.sheet.id);
+  if (selected?.name !== baseline.sheet.name) context.addIssue({ code: 'custom', message: 'Selected baseline sheet identity changed.' });
+  if (JSON.stringify(referencedStyles(baseline.sheet)) !== JSON.stringify(baseline.styleDefinitions.map(entry => entry.index))) context.addIssue({ code: 'custom', message: 'Baseline style closure is incomplete or ambiguous.' });
+  const positions = new Set<string>();
+  for (const cell of baseline.sheet.cells) {
+    const key = `${cell.row}:${cell.column}`;
+    if (positions.has(key) || cell.row >= baseline.sheet.rowCount || cell.column >= baseline.sheet.columnCount) context.addIssue({ code: 'custom', message: 'Baseline cell geometry changed.' });
+    positions.add(key);
+  }
+});
+export type WorkbookSheetBaseline = z.infer<typeof workbookSheetBaselineSchema>;
+
+/** Bound before schema cloning/canonical ordering; accept JSON-domain data only.
+ * Shared references may serialize twice; cycles/accessors/exotic objects refuse. */
+function bounded(value: unknown): void {
+  let nodes = 0, text = 0; const ancestors = new Set<object>();
+  function visit(item: unknown, depth: number) {
+    if (++nodes > WORKBOOK_SHEET_BASELINE_LIMITS.nodes || depth > WORKBOOK_SHEET_BASELINE_LIMITS.depth) throw Error('Workbook baseline exceeds its node/depth limit.');
+    if (typeof item === 'string') { text += item.length; }
+    else if (typeof item === 'number') { if (!Number.isFinite(item)) throw Error('Workbook baseline requires finite numbers.'); }
+    else if (item !== null && typeof item === 'object') {
+      if (ancestors.has(item) || Object.getPrototypeOf(item) !== (Array.isArray(item) ? Array.prototype : Object.prototype) && Object.getPrototypeOf(item) !== null) throw Error('Workbook baseline requires plain acyclic JSON data.');
+      if (Array.isArray(item) && item.length > WORKBOOK_SHEET_BASELINE_LIMITS.nodes) throw Error('Workbook baseline exceeds its node limit.');
+      ancestors.add(item);
+      for (const key of Object.getOwnPropertyNames(item)) {
+        if (Array.isArray(item) && key === 'length') continue;
+        const property = Object.getOwnPropertyDescriptor(item, key)!;
+        if (!('value' in property)) throw Error('Workbook baseline requires own data properties.');
+        text += key.length; visit(property.value, depth + 1);
+      }
+      ancestors.delete(item);
+    } else if (item !== undefined && typeof item !== 'boolean') throw Error('Workbook baseline requires JSON values.');
+    if (text > WORKBOOK_SHEET_BASELINE_LIMITS.text) throw Error('Workbook baseline exceeds its text limit.');
+  }
+  visit(value, 0);
+}
+
+/** Versioned public-preview JSON semantics, not raw XML identity or lineage.
+ * Reuses the existing UTF-16-key-order canonical JSON encoder. In particular,
+ * absent/undefined optional object keys agree and -0 normalizes to 0, exactly as
+ * the existing preview transport. Reader semantic changes require a version bump. */
+export function canonicalWorkbookSheetBaseline(raw: unknown): string {
+  bounded(raw);
+  const baseline = workbookSheetBaselineSchema.parse(raw), json = canonicalCommentJson(baseline);
+  if (new TextEncoder().encode(json).byteLength > WORKBOOK_SHEET_BASELINE_LIMITS.bytes) throw Error('Workbook baseline exceeds its byte limit.');
+  return json;
+}
+
+/** Extract the complete selected model semantics from one qualified full read.
+ * Only unused style definitions are omitted; raw history bytes/SHA, receipt and
+ * resource continuity remain independent checks at the contained source owner. */
+export function workbookSheetBaseline(raw: WorkbookDocument, selectedId: string): WorkbookSheetBaseline {
+  bounded(raw);
+  const model = workbookDocumentSchema.parse(raw), sheet = model.sheets.find(item => item.id === selectedId);
+  if (!sheet) throw Error('The selected workbook baseline sheet is missing.');
+  return workbookSheetBaselineSchema.parse({
+    kind: 'evebot-workbook-selected-sheet', version: WORKBOOK_SHEET_BASELINE_VERSION,
+    date1904: model.date1904, themeColors: model.themeColors,
+    calculationMetadata: model.calculationMetadata, richTextMetadata: model.richTextMetadata,
+    worksheetStructureEditable: model.worksheetStructureEditable, worksheetVisibilityEditable: model.worksheetVisibilityEditable,
+    features: model.features, sheetIdentities: model.sheets.map(({ id, name }) => ({ id, name })), definedNames: model.definedNames, tables: model.tables,
+    sheet, styleDefinitions: referencedStyles(sheet).map(index => {
+      const style = model.styles[index]; if (!style) throw Error('Referenced workbook baseline style is missing.');
+      return { index, style };
+    }),
+  });
+}

@@ -436,3 +436,39 @@ sheet/axes under the current ACL. Capture/stamp/association do not install a liv
 controller. Bounded pool admission, actual history-reachability pruning/refusal,
 blank births, inherited restoration, Writer pre-retirement association and actual
 recovered-origin derivation still remain required before controls can be enabled.
+
+
+### Development checkpoint: versioned selected baseline identity
+
+`runtime/workbook-sheet-baseline` defines the version-1 public-preview model
+identity. One extractor captures the complete typed selected sheet (including
+cached formula values, rich runs, merges, geometry and row/column owners), its
+referenced style closure including default style 0 and complete effective style
+definitions, date system, theme colors, sheet-ID/name reference map, defined
+names/tables, features and interpretation flags. Unused style definitions alone
+do not affect this selected baseline. Raw historical file SHA, same-file access,
+resource continuity and checked receipt ownership remain separate authorities.
+
+The canonical encoder reuses `canonicalCommentJson` unchanged: object keys use
+JavaScript UTF-16 lexicographic ordering (the typed key domain is ASCII), not JCS
+or general Unicode-code-point order. Array order is retained, undefined optional
+object keys are omitted, and -0 normalizes to 0 exactly as the existing preview
+JSON transport. Raw file SHA still binds exact source bytes. Version changes are
+required when interpreted reader representation changes; unknown versions refuse
+rather than silently reinterpret protected baseline data. Node/depth/text budgets
+are checked before cloning, and the final UTF-8 canonical body has a 64-MiB cap.
+
+Tests cover same ordinal/different style definitions, default/cell/row/column
+style owners, rich/cached/global-reference changes, JSON roundtrip/optional-key
+normalization, forged or incomplete baseline data, unknown versions and bounded
+non-JSON refusal. A reviewed fixed canonical vector agrees between actual
+@noble browser-library hashing and Node SHA-256. These are source-level identity
+checks, not actual historical ZIP/contained-worker proof yet.
+
+No baseline field is accepted on edit-plan restore entries at this checkpoint.
+Next, that field must be consumed by the actual historical template owner before
+assembly, preserving raw versionId/versionSha256 and opaque outer plan hashes.
+The context must store one baseline object and recompute its hash rather than
+trust a separately stored digest. Old strict workers must refuse unknown fields;
+no SDK producer may enable controls before the paired capability and complete
+worker/receipt/recovery pipeline are qualified.
