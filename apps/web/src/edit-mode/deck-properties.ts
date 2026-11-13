@@ -1,3 +1,4 @@
+import { DECK_TRANSITIONS, type DeckTransition } from '@open-design/contracts/runtime/deck-stage-fallback';
 import { parse, type DefaultTreeAdapterTypes } from 'parse5';
 
 export type DeckAspect = '16:9' | '4:3';
@@ -35,9 +36,28 @@ export function resizeDeckSource(source: string, aspect: DeckAspect): string | n
   const tag = stage?.sourceCodeLocation?.startTag;
   if (!stage || !tag || !dimensions) return null;
   const width = dimensions.width, height = width * (aspect === '16:9' ? 9 / 16 : 3 / 4);
+  return rewriteStageAttributes(source, stage, { width: String(width), height: String(height) });
+}
+
+export function readDeckTransition(source: string): DeckTransition | null {
+  const stage = stageIn(source);
+  if (!stage) return null;
+  const value = stage.attrs.find(attribute => attribute.name === 'transition')?.value;
+  return DECK_TRANSITIONS.find(mode => mode === value) ?? 'none';
+}
+
+export function setDeckTransition(source: string, transition: DeckTransition): string | null {
+  const stage = stageIn(source);
+  if (!stage || !DECK_TRANSITIONS.includes(transition)) return null;
+  return rewriteStageAttributes(source, stage, { transition });
+}
+
+function rewriteStageAttributes(source: string, stage: Element, attributes: Record<string, string>): string | null {
+  const tag = stage.sourceCodeLocation?.startTag;
+  if (!tag) return null;
   const edits: Array<{ start: number; end: number; value: string }> = [];
   let insert = '';
-  for (const [name, value] of [['width', width], ['height', height]] as const) {
+  for (const [name, value] of Object.entries(attributes)) {
     const location = stage.sourceCodeLocation?.attrs?.[name];
     if (location) edits.push({ start: location.startOffset, end: location.endOffset, value: `${name}="${value}"` });
     else insert += ` ${name}="${value}"`;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readDeckDimensions, resizeDeckSource } from '../../src/edit-mode/deck-properties';
+import { readDeckDimensions, resizeDeckSource, readDeckTransition, setDeckTransition } from '../../src/edit-mode/deck-properties';
 
 describe('persisted presentation dimensions', () => {
   it('changes only opening-tag dimensions and retains authored width', () => {
@@ -24,5 +24,25 @@ describe('persisted presentation dimensions', () => {
   });
   it('matches runtime defaults for invalid authored dimensions', () => {
     expect(readDeckDimensions('<deck-stage width="NaN" height="-1"></deck-stage>')).toEqual({ width: 1920, height: 1080, aspect: '16:9' });
+  });
+});
+
+describe('persisted presentation transitions', () => {
+  it('round-trips each supported mode without changing dimensions or content', () => {
+    const source = '<deck-stage width="800" height="450"><section><h1>Keep me</h1></section></deck-stage>';
+    expect(readDeckTransition(source)).toBe('none');
+    for (const mode of ['none', 'fade', 'push', 'magic-move'] as const) {
+      const changed = setDeckTransition(source, mode)!;
+      expect(changed).toBe(source.replace('height="450"', `height="450" transition="${mode}"`));
+      expect(readDeckTransition(changed)).toBe(mode);
+      expect(readDeckDimensions(changed)).toEqual(readDeckDimensions(source));
+      expect(setDeckTransition(changed, mode)).toBe(changed);
+    }
+  });
+  it('replaces one existing setting and refuses invalid modes or ambiguous targets', () => {
+    expect(setDeckTransition('<deck-stage transition="fade"></deck-stage>', 'push')).toBe('<deck-stage transition="push"></deck-stage>');
+    expect(setDeckTransition('<deck-stage></deck-stage><deck-stage></deck-stage>', 'push')).toBeNull();
+    expect(setDeckTransition('<deck-stage></deck-stage>', 'bounce' as 'push')).toBeNull();
+    expect(readDeckTransition('<main>App</main>')).toBeNull();
   });
 });

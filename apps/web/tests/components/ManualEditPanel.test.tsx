@@ -65,6 +65,16 @@ describe('ManualEditPanel', () => {
     Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT');
   });
 
+  it('persists the selected transition with its own history label', () => {
+    const source = '<deck-stage width="800" height="450"><section>Slide</section></deck-stage>';
+    const onApplyPatch = vi.fn<OnApplyPatch>();
+    renderPanel({ selectedTarget: null, presentationSource: source, onApplyPatch });
+    const select = host.querySelectorAll('select')[1]!;
+    expect(select.value).toBe('none');
+    act(() => { select.value = 'magic-move'; Simulate.change(select); });
+    expect(onApplyPatch).toHaveBeenCalledWith({ kind: 'set-full-source', source: source.replace('height="450"', 'height="450" transition="magic-move"') }, 'Transition');
+  });
+
   it('saves a presentation aspect change through history and rereads restored source', () => {
     const source = '<deck-stage width="1600" height="900"><section data-slide><h1>Keep me</h1></section></deck-stage>';
     const onApplyPatch = vi.fn<OnApplyPatch>();

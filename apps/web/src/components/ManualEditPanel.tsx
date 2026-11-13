@@ -1,4 +1,4 @@
-import { DeckDimensions } from './embedded/DeckDimensions';
+import { DeckProperties } from './embedded/DeckProperties';
 import { RiImageEditLine } from '@remixicon/react';
 import { Button as BoardUIButton } from './embedded/boardui/button';
 import { ARTIFACT_ICON_BUTTON } from './embedded/artifact-controls';
@@ -277,7 +277,7 @@ export function ManualEditPanel({
             </>
           ) : !targetForInspector ? (
             <>
-            {presentationSource ? <DeckDimensions source={presentationSource} busy={busy} onChange={source => onApplyPatch({ kind: 'set-full-source', source }, t('inspect.size'))} /> : null}
+            {presentationSource ? <DeckProperties source={presentationSource} busy={busy} onChange={(source, label) => onApplyPatch({ kind: 'set-full-source', source }, label)} /> : null}
             <PageInspector
               enabled={pageStylesEnabled}
               onStyleChange={(styles) => {

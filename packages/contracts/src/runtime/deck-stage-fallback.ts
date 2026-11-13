@@ -1,3 +1,5 @@
+import { DECK_TRANSITION_RUNTIME, DECK_TRANSITION_CSS } from './deck-transitions';
+export { DECK_TRANSITIONS, type DeckTransition } from './deck-transitions';
 import { findRealTagOffset, HTML_TAG_PATTERNS } from './html-injection-points';
 import {
   DECK_PROTOCOL_V1_CAPABILITIES,
@@ -127,11 +129,19 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
     } catch (_) {}
   }
 
+  ${DECK_TRANSITION_RUNTIME}
+  var transitionStyle = document.createElement('style');
+  transitionStyle.textContent = ${JSON.stringify(DECK_TRANSITION_CSS)};
+  document.head.appendChild(transitionStyle);
+
   class OdDeckStageFallback extends HTMLElement {
     constructor() {
       super();
       this._index = 0;
       this._slides = [];
+      this._transition = null;
+      this._transitionGeneration = 0;
+      this._transitionCleanup = null;
       this._onMessage = this._onMessage.bind(this);
       this._onKeydown = this._onKeydown.bind(this);
       this._onResize = this.fit.bind(this);
@@ -170,6 +180,7 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
     }
 
     disconnectedCallback() {
+      this._cancelTransition();
       this._observer.disconnect();
       window.removeEventListener('message', this._onMessage);
       window.removeEventListener('resize', this._onResize);
@@ -234,6 +245,7 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
     }
 
     _refresh() {
+      this._cancelTransition();
       var slides = this._collectSlides();
       this._index = Math.max(0, Math.min(slides.length - 1, this._initialIndex(slides)));
       this._apply();
@@ -285,11 +297,19 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
       this._canvas.style.transform = 'scale(' + scale + ')';
     }
 
+    _cancelTransition() {
+      this._transitionGeneration += 1;
+      if (this._transition) this._transition.skipTransition();
+      this._transition = null;
+      if (this._transitionCleanup) this._transitionCleanup();
+      this._transitionCleanup = null;
+    }
+
     go(action, index) {
       var slides = this._collectSlides();
       if (!slides.length) return;
-      if (action === 'go' && typeof index === 'number') {
-        this._index = index;
+      if (action === 'go' && Number.isFinite(index)) {
+        this._index = Math.floor(index);
       } else if (action === 'next') {
         this._index += 1;
       } else if (action === 'prev') {
@@ -299,7 +319,9 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
       } else if (action === 'last') {
         this._index = slides.length - 1;
       }
-      this._apply();
+      this._index = Math.max(0, Math.min(slides.length - 1, this._index));
+      var previous = slides.find(function(slide) { return slide.hasAttribute(ACTIVE_ATTR); });
+      runDeckTransition(this, previous, slides[this._index], this._apply.bind(this));
     }
 
     goTo(index) {
@@ -320,6 +342,7 @@ const DECK_STAGE_FALLBACK_SCRIPT = `<script data-od-deck-stage-fallback>(functio
 
     _onMessage(ev) {
       var data = ev && ev.data;
+      if (data && data.type === 'od-edit-mode' && data.enabled) { this._cancelTransition(); this._apply(); return; }
       if (!data || data.type !== 'od:slide') return;
       if (data.protocolVersion != null && data.protocolVersion !== ${DECK_PROTOCOL_VERSION}) return;
       this.go(data.action, data.index);
