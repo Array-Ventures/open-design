@@ -65,3 +65,17 @@ it('refuses a quoted semicolon declaration instead of silently dropping an autho
   expect(() => normalizeDocumentColorOwners(document,[{id:'font',kind:'inline'}],attribute,[style],read)).toThrow();
   expect(repairDocumentPrintInk(document,[style],read)).toEqual({applied:0,qualified:false}); expect(document.body.innerHTML).toBe(before);
 });
+it('proves collapsed indentation empty but retains visible highlighted whitespace and refuses padded paint', () => {
+  source(`<table><tr><td style="background-color:rgb(24,24,40)"><span ${attribute}="indent">\n </span><span style="background-color:rgb(255,246,170);white-space:pre-wrap"><span ${attribute}="visible"> </span></span></td></tr></table>`);
+  vi.spyOn(document,'createRange').mockImplementation(() => {
+    let visible = false;
+    return { selectNodeContents(node: Node) { visible = (node as Element).getAttribute(attribute) === 'visible'; }, getClientRects() { return visible ? [{width:4,height:16}] : []; } } as unknown as Range;
+  });
+  expect(normalizeDocumentColorOwners(document,[{id:'indent',kind:'inline'},{id:'visible',kind:'inline'}],attribute,[style],read)).toEqual([{id:'indent',colors:{}},{id:'visible',colors:{background:'FFF6AA'}}]);
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) { return {width:this.style.backgroundColor ? 40 : 0,height:16} as DOMRect; });
+  source(`<p><span style="background-color:rgb(255,246,170)"><span ${attribute}="painted"> </span></span></p>`);
+  expect(() => normalizeDocumentColorOwners(document,[{id:'painted',kind:'inline'}],attribute,[style],read)).toThrow();
+  vi.restoreAllMocks();
+  source(`<p><span style="background-color:rgb(255,246,170);padding-inline-start:40px"><span ${attribute}="padded"> </span></span></p>`);
+  expect(() => normalizeDocumentColorOwners(document,[{id:'padded',kind:'inline'}],attribute,[style],read)).toThrow();
+});

@@ -62,6 +62,7 @@ export function documentColorLayoutQualified(document: Document, ownedStyles: re
       const colon = declaration.indexOf(':'); if (colon < 1) return false;
       const name = declaration.slice(0,colon).trim().toLowerCase(), value = declaration.slice(colon+1).trim();
       if (!presentation.has(name) && !/^border(?:-(?:top|right|bottom|left))?(?:-(?:width|style|color))?$/.test(name) && !/^border-image-(?:source|slice|width|outset|repeat)$/.test(name)) return false;
+      if (name === 'padding-inline-start' && !['P','H1','H2','H3','H4','H5','H6','BLOCKQUOTE'].includes(owner.tagName)) return false;
       if (/var\(/i.test(value) || !owner.style.getPropertyValue(name)) return false;
       if ((name === 'background' || name === 'background-color') && (!inline.has(owner.tagName.toLowerCase()) && !['td','th'].includes(owner.tagName.toLowerCase()))) return false;
       if (name === 'background' && !document.defaultView?.CSS?.supports('color', value.replace(/!important\s*$/i,''))) return false;
@@ -101,6 +102,19 @@ export function normalizeDocumentColorOwners(document: Document, requests: reado
     const owner = elements.get(request.id)!;
     if (request.kind === 'cell' ? !['TD','TH'].includes(owner.tagName) : owner.tagName !== 'SPAN') return fail();
     const colors: import('./color.js').NormalizedDocumentColors = {};
+    if (request.kind === 'inline' && !owner.textContent?.trim()) {
+      const range = document.createRange(); range.selectNodeContents(owner);
+      if (!Array.from(range.getClientRects()).some(rect => rect.width > 0 && rect.height > 0)) {
+        // Collapsed indentation has no glyph ink. An authored inline background
+        // may still paint padding/boxes, so never discard such an owner by guess.
+        for (let current: HTMLElement | null = owner; current && inline.has(current.tagName.toLowerCase()); current = current.parentElement) {
+          if (!current.style.getPropertyValue('background-color')) continue;
+          const color = read(document.defaultView!.getComputedStyle(current).backgroundColor), box = current.getBoundingClientRect();
+          if (!color || (color[3] > 0 && box.width > 0 && box.height > 0)) return fail();
+        }
+        return { id: request.id, colors };
+      }
+    }
     const background = documentEffectiveBackground(owner, read, canvas); if (!background) return fail();
     if (request.kind === 'cell') {
       // Never put automatic inherited foreground on a parent cell.
