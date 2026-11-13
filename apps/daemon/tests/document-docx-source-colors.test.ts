@@ -31,3 +31,11 @@ it.each(['Code', 'CodeBlock'])('permits proved-empty %s wrappers to disappear bu
   expect(input).toEqual(before); // Native code text/language/whitespace remain owned by Pandoc.
   expect(()=>resolvedDocumentDocxColorOwners(structuredClone(input),source,new Map([[id,{foreground:'FF0000'}]]))).toThrow('ownership');
 });
+
+it('keeps prepared disabled checklist inputs and their checked states while annotating label text', () => {
+  const source=documentDocxSourceColors('<html><body><ul class="task-list"><li aria-checked="true"><label><input type="checkbox" disabled checked>Completed task</label></li><li aria-checked="false"><label><input type="checkbox" disabled>Pending task</label></li></ul></body></html>');
+  const $=load(source.html), inputs=$('input');
+  expect(inputs).toHaveLength(2);expect(inputs.eq(0).is('[disabled][checked]')).toBe(true);expect(inputs.eq(1).is('[disabled]:not([checked])')).toBe(true);
+  expect($('label').map((_index,node)=>$(node).text()).get()).toEqual(['Completed task','Pending task']);
+  expect(source.requests.map(r=>r.kind)).toEqual(['inline','inline']);
+});
