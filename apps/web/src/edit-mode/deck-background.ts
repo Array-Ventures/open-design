@@ -3,6 +3,7 @@ import postcss from 'postcss';
 import valueParser from 'postcss-value-parser';
 import colorNames from 'color-name';
 import { DECK_EXPLICIT_SLIDE_MARKERS } from '@open-design/contracts/runtime/deck-stage-fallback';
+import { findSpeakerNotesScriptBlock } from '@open-design/contracts/runtime/speaker-notes';
 import { stageIn } from './deck-properties';
 
 type Element = DefaultTreeAdapterTypes.Element;
@@ -33,6 +34,30 @@ function slidesIn(source: string): Element[] {
     }
     return true;
   });
+}
+
+/** Reserved paths are stamped before authored scripts run. A runtime reorder
+ * therefore retains the source node's identity instead of changing its owner. */
+export function deckSlideIndexForSourcePath(source: string, path: string): number | null {
+  if (!/^path(?:-\d+)+$/.test(path) || path.length > 500) return null;
+  // FileViewer removes the nonvisual notes block before building srcdoc. Match
+  // that visual tree while preserving the raw source's slide ordinal for writes.
+  const notes = findSpeakerNotesScriptBlock(source);
+  const visual = notes ? source.slice(0, notes.start) + source.slice(notes.end) : source;
+  const slides = slidesIn(visual);
+  if (slides.length !== slidesIn(source).length) return null;
+  const matches = slides.flatMap((slide, index) => {
+    const parts: number[] = [];
+    let node: DefaultTreeAdapterTypes.Node = slide;
+    while ('tagName' in node && node.tagName !== 'body') {
+      const parent: DefaultTreeAdapterTypes.ParentNode | null = node.parentNode;
+      if (!parent || !('childNodes' in parent)) return [];
+      parts.unshift(parent.childNodes.filter(child => 'tagName' in child).indexOf(node));
+      node = parent;
+    }
+    return 'tagName' in node && node.tagName === 'body' && `path-${parts.join('-')}` === path ? [index] : [];
+  });
+  return matches.length === 1 ? matches[0]! : null;
 }
 
 function parseInlineStyle(raw: string) {

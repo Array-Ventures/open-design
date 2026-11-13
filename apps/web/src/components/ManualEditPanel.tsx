@@ -56,6 +56,7 @@ export function ManualEditPanel({
   presentationSource,
   presentationSlideIndex,
   presentationSlideCount,
+  presentationSlideSourcePath,
   pageStylesEnabled = true,
   sourceControls = true,
   floatingStyle,
@@ -78,6 +79,7 @@ export function ManualEditPanel({
   presentationSource?: string;
   presentationSlideIndex?: number;
   presentationSlideCount?: number;
+  presentationSlideSourcePath?: string;
   pageStylesEnabled?: boolean;
   /** Embedded artifacts expose visual properties, never raw source editing. */
   sourceControls?: boolean;
@@ -284,7 +286,7 @@ export function ManualEditPanel({
             </>
           ) : !targetForInspector ? (
             <>
-            {presentationSource ? <DeckProperties source={presentationSource} busy={busy} slideIndex={presentationSlideIndex} slideCount={presentationSlideCount} onChange={(source, label) => onApplyPatch({ kind: 'set-full-source', source }, label)} /> : null}
+            {presentationSource ? <DeckProperties source={presentationSource} busy={busy} slideIndex={presentationSlideIndex} slideCount={presentationSlideCount} slideSourcePath={presentationSlideSourcePath} onChange={(source, label) => onApplyPatch({ kind: 'set-full-source', source }, label)} /> : null}
             {!presentationSource || pageStylesEnabled ? <PageInspector
               enabled={pageStylesEnabled}
               hideBackground={Boolean(presentationSource)}

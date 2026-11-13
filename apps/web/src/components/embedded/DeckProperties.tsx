@@ -6,7 +6,7 @@ import { Select, SelectItem } from './boardui/select';
 import { DeckSlideBackground } from './DeckSlideBackground';
 
 /** Source-backed presentation controls; the saved stage owns their behavior. */
-export function DeckProperties({ source, busy, slideIndex, slideCount, onChange }: { source: string; busy?: boolean; slideIndex?: number; slideCount?: number; onChange: (source: string, label: string) => void }) {
+export function DeckProperties({ source, busy, slideIndex, slideCount, slideSourcePath, onChange }: { source: string; busy?: boolean; slideIndex?: number; slideCount?: number; slideSourcePath?: string; onChange: (source: string, label: string) => void }) {
   const t = useT();
   const dimensions = useMemo(() => readDeckDimensions(source), [source]);
   const transition = useMemo(() => readDeckTransition(source), [source]);
@@ -32,6 +32,6 @@ export function DeckProperties({ source, busy, slideIndex, slideCount, onChange 
     <SelectItem id="push">{t('manualEdit.transitionPush')}</SelectItem>
     <SelectItem id="magic-move">{t('manualEdit.transitionMagicMove')}</SelectItem>
   </Select>
-  {slideIndex !== undefined && slideCount !== undefined ? <DeckSlideBackground source={source} index={slideIndex} count={slideCount} busy={busy} onChange={onChange} /> : null}
+  {slideIndex !== undefined && slideCount !== undefined ? <DeckSlideBackground source={source} index={slideIndex} count={slideCount} sourcePath={slideSourcePath} busy={busy} onChange={onChange} /> : null}
   </div>;
 }

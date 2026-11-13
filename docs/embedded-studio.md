@@ -337,3 +337,19 @@ Row/column insertion, sheet rename/reorder/create/delete and editing very hidden
 worksheets remain unsupported. Source and regression changes in this slice need
 central qualification and paired-package visual acceptance before availability
 can be claimed; this section does not report tests or publication.
+
+### Source-owned slide background identity
+
+Slide background edits use a unique source path stamped before authored scripts
+execute, together with the exact srcdoc transport generation. Runtime slide
+indexes are navigation state, not source ownership: same-count DOM reordering
+retains a slide's stamped identity. Duplicated/cloned paths, missing identity,
+stale document generations and source changes refuse source editing. Legacy
+runtimes can keep reporting count/index without gaining this editing capability.
+
+The source lookup applies the same nonvisual speaker-notes removal as the preview
+before resolving element-only paths. The actual write still changes only the
+selected slide's raw opening-tag style attribute; notes and unrelated source
+bytes remain untouched. Runtime-reordered speaker-note arrays and export order
+remain separate fidelity requirements; background ownership does not qualify
+those broader cases.

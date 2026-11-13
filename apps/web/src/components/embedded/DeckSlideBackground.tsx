@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from 'react';
 import { parseColor, type Color } from 'react-aria-components';
 import { RiCheckLine, RiCloseLine } from '@remixicon/react';
-import { readDeckSlideBackground, setDeckSlideBackground } from '../../edit-mode/deck-background';
+import { deckSlideIndexForSourcePath, readDeckSlideBackground, setDeckSlideBackground } from '../../edit-mode/deck-background';
 import { useT } from '../../i18n';
 import { ColorPicker } from './boardui/color-picker';
 import { Button } from './boardui/button';
@@ -18,21 +18,22 @@ function colorLabel(value: string, custom: string): string {
 
 /** The picker owns a local draft. A changed source or active slide invalidates
  * that draft before it can target a different slide or overwrite newer bytes. */
-export function DeckSlideBackground({ source, index, count, busy, onChange }: {
-  source: string; index: number; count: number; busy?: boolean;
+export function DeckSlideBackground({ source, index, count, sourcePath, busy, onChange }: {
+  source: string; index: number; count: number; sourcePath?: string; busy?: boolean;
   onChange(source: string, label: string): void;
 }) {
   const t = useT();
   const descriptionId = useId();
-  const selection = useMemo(() => readDeckSlideBackground(source, index), [source, index]);
+  const sourceIndex = useMemo(() => sourcePath ? deckSlideIndexForSourcePath(source, sourcePath) : null, [source, sourcePath]);
+  const selection = useMemo(() => sourceIndex === null ? null : readDeckSlideBackground(source, sourceIndex), [source, sourceIndex]);
   const initialColor = useMemo(() => pickerColor(selection?.color ?? ''), [selection?.color]);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(() => parseColor('#00000000'));
   const [dirty, setDirty] = useState(false);
-  const [owner, setOwner] = useState<{ source: string; index: number } | null>(null);
+  const [owner, setOwner] = useState<{ source: string; index: number; sourcePath?: string } | null>(null);
   const [failed, setFailed] = useState(false);
   const eligible = selection !== null && selection.editable && selection.count === count && initialColor !== null;
-  const stale = owner !== null && (owner.source !== source || owner.index !== index);
+  const stale = owner !== null && (owner.source !== source || owner.index !== index || owner.sourcePath !== sourcePath);
   const label = t('manualEdit.slideBackground');
   return <div className="flex flex-col gap-2" title={!eligible ? t('manualEdit.backgroundUnavailable') : undefined}>
     <span className="text-body-2-medium text-text-primary">{label}</span>
@@ -40,7 +41,7 @@ export function DeckSlideBackground({ source, index, count, busy, onChange }: {
     <Dropdown isOpen={open} onOpenChange={next => {
       if (next) {
         if (!eligible || busy || !initialColor) return;
-        setDraft(initialColor); setOwner({source,index}); setFailed(false); setDirty(false);
+        setDraft(initialColor); setOwner({source,index,sourcePath}); setFailed(false); setDirty(false);
       }
       setOpen(next);
     }}>
@@ -58,8 +59,8 @@ export function DeckSlideBackground({ source, index, count, busy, onChange }: {
             aria-label={t('common.cancel')} onClick={() => setOpen(false)} />
           <Button iconOnly leadingIcon={RiCheckLine} variant="ghost" size="xs" className={DOCUMENT_ICON_BUTTON}
             aria-label={t('common.save')} disabled={busy || stale || !eligible || !dirty} onClick={() => {
-              if (busy || stale || !eligible || !dirty) return;
-              const next = setDeckSlideBackground(source,index,colorValue(draft));
+              if (busy || stale || !eligible || !dirty || sourceIndex === null) return;
+              const next = setDeckSlideBackground(source,sourceIndex,colorValue(draft));
               if (next === null) { setFailed(true); return; }
               if (next !== source) onChange(next,label);
               setOpen(false);

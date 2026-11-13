@@ -374,7 +374,8 @@ export function buildSrcdoc(
   // user prints the preview iframe (Cmd+P → Save as PDF), Chromium uses the
   // sanitized title as the default filename — one that Microsoft Teams will
   // accept. Only the title text changes; visible page content is untouched.
-  const previewInput = options.legacyMotionVideo && options.motionPreview && !options.freezeMotion ? prepareLegacyMotionPreview(wrapped) : wrapped;
+  const sourceOwned = options.deck ? annotateDeckSlideSourcePaths(wrapped, options.transportActivationGeneration ?? '') : wrapped;
+  const previewInput = options.legacyMotionVideo && options.motionPreview && !options.freezeMotion ? prepareLegacyMotionPreview(sourceOwned) : sourceOwned;
   const motionSource = options.motionPreview && !options.freezeMotion ? markMotionHostedPreview(previewInput) : previewInput;
   const withSafeTitle = sanitizeTitleInDoc(options.freezeMotion ? motionSource : injectMotionSourcePlayer(motionSource));
   const withVisibilityGuard = injectAfterHeadOpen(withSafeTitle, buildPreviewVisibilityGuard());
@@ -1347,6 +1348,17 @@ function injectPaletteBridge(
   else boot();
 })();</script>`;
   return injectBeforeBodyEnd(doc, script);
+}
+
+/** Stamp source-owned paths before any body transforms or authored scripts. */
+function annotateDeckSlideSourcePaths(doc: string, generation: string): string {
+  if (typeof DOMParser === 'undefined') return doc;
+  const parsed = new DOMParser().parseFromString(doc, 'text/html');
+  parsed.body.querySelectorAll(DECK_SLIDE_SELECTOR).forEach(element => {
+    element.setAttribute(MANUAL_EDIT_SOURCE_PATH_ATTR, sourcePathForElement(element));
+  });
+  parsed.documentElement.setAttribute('data-od-deck-source-generation', generation);
+  return serializeHtmlDocument(parsed);
 }
 
 function annotateManualEditSourcePaths(doc: string): string {
@@ -4190,11 +4202,13 @@ function injectDeckBridge(
       var count = list.length;
       var progressWidth = count ? ((i + 1) / count * 100) + '%' : '0';
       updateDeckChrome(i, count);
-      window.parent.postMessage({
-        type: 'od:slide-state',
-        active: i,
-        count: count,
-      }, '*');
+      var state = { type: 'od:slide-state', active: i, count: count };
+      var sourcePath = list[i] && list[i].getAttribute('data-od-source-path');
+      var sourceGeneration = document.documentElement.getAttribute('data-od-deck-source-generation');
+      if (sourcePath && sourceGeneration && list.filter(function(slide){ return slide.getAttribute('data-od-source-path') === sourcePath; }).length === 1) {
+        state.sourcePath = sourcePath; state.sourceGeneration = sourceGeneration;
+      }
+      window.parent.postMessage(state, '*');
       document.querySelectorAll('.slide-number').forEach(function(el){
         el.setAttribute('data-current',i+1); el.setAttribute('data-total',count);
       });
