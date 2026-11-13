@@ -372,6 +372,12 @@ those broader cases.
 
 ### Structural workbook editing foundation (not enabled in the UI)
 
+Structural projections remove the derived Excel calculation chain together
+with its relationship and content-type override. This also applies when no
+scalar cell edit exists: moving a constant formula keeps its spelling but
+invalidates the chain's old coordinate. The existing cell-content writer shares
+the same cleanup; empty structural plans and unrelated ZIP parts are preserved.
+
 The structural helpers establish source ownership before enabling insert/delete
 menus. `grid-structure-identity.ts` stamps editor-only row/column identities in
 Univer's supported custom metadata. Actual pinned SDK tests prove sparse blank

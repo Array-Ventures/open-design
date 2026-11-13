@@ -1,7 +1,8 @@
 import type { Document, Element } from '@xmldom/xmldom';
 import { workbookCellSchema, type WorkbookCell, type WorkbookCellEdit, type WorkbookRange } from '@open-design/contracts/runtime/workbook';
 import { WorkbookFormatError, writeWorkbookPackage } from './package.js';
-import { appendWorkbookRowCell, orderWorkbookRowCells, address, child, children, range, relationships, relationshipTarget, xmlPart } from './parts.js';
+import { appendWorkbookRowCell, orderWorkbookRowCells, address, child, children, range, relationships, xmlPart } from './parts.js';
+import { removeWorkbookCalculationChain } from './calculation-chain.js';
 import type { ReadWorkbook } from './reader.js';
 import { writeRichCell } from './rich-cell.js';
 import { writeWorkbookXml } from './xml.js';
@@ -184,19 +185,7 @@ export async function patchWorkbookCells(source: ReadWorkbook, edits: readonly W
     if (changed) output.set(source.sheetParts.get(sheetId)!, writeWorkbookXml(document));
   }
   if (options.formattingOnly) return writeWorkbookPackage(output);
-  // Remove the obsolete calculation chain and its references. Root discovery
-  // is canonical for now, matching the package admission contract.
-  const relsName = 'xl/_rels/workbook.xml.rels';
-  const rels = xmlPart(output, relsName), types = xmlPart(output, '[Content_Types].xml');
-  let removedChain = false;
-  for (const relation of children(rels.documentElement!, 'Relationship')) if (relation.getAttribute('Type')?.endsWith('/calcChain')) {
-    // Resolve through the same checked package relationship resolver as reads.
-    const target = relation.getAttribute('Target')!;
-    const part = relationshipTarget('xl/workbook.xml', target);
-    output.delete(part); rels.documentElement!.removeChild(relation); removedChain = true;
-    for (const type of children(types.documentElement!, 'Override')) if (type.getAttribute('PartName') === `/${part}`) types.documentElement!.removeChild(type);
-  }
-  if (removedChain) { output.set(relsName, writeWorkbookXml(rels)); output.set('[Content_Types].xml', writeWorkbookXml(types)); }
+  removeWorkbookCalculationChain(output);
   const main = xmlPart(output, 'xl/workbook.xml'), root = main.documentElement!;
   let calculation = child(root, 'calcPr');
   if (!calculation) {

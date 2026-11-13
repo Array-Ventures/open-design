@@ -6,6 +6,7 @@ import type { ReadWorkbook } from './reader.js';
 import { address, child, children, range, relationships, xmlPart } from './parts.js';
 import { WorkbookFormatError, writeWorkbookPackage } from './package.js';
 import { writeWorkbookXml } from './xml.js';
+import { removeWorkbookCalculationChain } from './calculation-chain.js';
 import { workbookStructuralFormula, workbookStructuralFormulaBounds, type WorkbookSheetProjection } from './structure-formulas.js';
 
 const unsupported = (message: string): never => { throw new WorkbookFormatError(message, 'WORKBOOK_UNSUPPORTED'); };
@@ -179,5 +180,6 @@ export async function patchWorkbookStructure(source: ReadWorkbook, edits: readon
     }
     if (changed) output.set(part, writeWorkbookXml(document));
   }
+  if (projections.size) removeWorkbookCalculationChain(output);
   return writeWorkbookPackage(output);
 }
