@@ -5,8 +5,14 @@ import { WorkbookFormatError } from './package.js';
 /** The source admission already qualifies scalar tokens. Rewrite only parsed
  * qualified references: quoted text and unchanged references keep their bytes. */
 export function workbookSheetFormula(formula: string, source: readonly { id: string; name: string }[], target: WorkbookSheetProjection): string {
+  return workbookSheetFormulaByIdentity(formula, source, target.filter(sheet => sheet.origin === 'source').map(sheet => ({ id: sheet.sheetId, name: sheet.name })));
+}
+
+/** Bind references through explicit source IDs, never a coincidentally reused name.
+ * The caller owns which historical identities survive in the final projection. */
+export function workbookSheetFormulaByIdentity(formula: string, source: readonly { id: string; name: string }[], target: readonly { id: string; name: string }[]): string {
   const names = new Map(source.map(sheet => [sheet.name.toLowerCase(), sheet.id]));
-  const targets = new Map(target.filter(sheet => sheet.origin === 'source').map(sheet => [sheet.sheetId, sheet.name]));
+  const targets = new Map(target.map(sheet => [sheet.id, sheet.name]));
   const lexer = new LexerTreeBuilder();
   try {
     const nodes = lexer.sequenceNodesBuilder(formula);

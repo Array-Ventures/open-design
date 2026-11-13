@@ -221,3 +221,27 @@ merges and row geometry survive deletion undo while an earlier unrelated-sheet
 edit remains; original add redo is actually blank after undoing its later edit
 and then its insertion. Snapshot reads are not simulated server receipts: real
 writer ACK/history/retention integration remains a separate required gate.
+
+### Standalone historical worksheet XML owner
+
+`sheet-template.ts` prepares a selected, SHA-checked historical worksheet only
+after current/historical source admission and raw global-resource continuity.
+Its returned XML retains raw style/string indices, merges, geometry and print
+metadata; it removes derived formula caches and tab selection. It does not
+authorize history access, assemble the final ZIP, expose a restore wire field,
+or enable the SDK producer.
+
+Qualified historical references resolve through the historical name→stable-ID
+map, then the explicit final source/restored ID→name projection. An absent ID
+becomes `#REF!`; a different ID reusing its old name never receives that reference.
+Final SDK-authored formula edits must subsequently be applied and the complete
+source validated/recalculated. Compatibility is not ancestry: only checked
+per-delete source/kernel identity may supply this projection; external or
+whole-file kernel resets withdraw that descriptor. Each other restored identity
+still requires its independently checked template in the eventual assembler.
+
+Focused tests exercise actual ZIP-derived XML, quoted references/string literals,
+renamed survivor binding, different-ID name reuse, exact raw metadata/indices,
+source immutability, invalid hashes/IDs and continued wire refusal. They do not
+claim the outstanding actual SDK delete→ACK→Undo→save chronology or positive
+durable checkpoint/recovery/render-asset qualification.
