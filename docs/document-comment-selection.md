@@ -50,6 +50,11 @@ mid-drag, and the completed quote appeared without focus theft. They also
 checked real list visibility, the same reply DOM/draft after returning, generated
 identities after reload and exact working-source bytes. The prior candidate's
 1440 case failed at the expected missing-input assertion before this correction.
+The complete six-case document-comments suite subsequently passed in one minute,
+including the existing theme/size lifecycle cases. Its first attempt hit a
+visually hidden native checkbox input; using the real visible label corrected
+that driver target while retaining the same checked/unchecked assertions and
+explicitly unchecked state before saving. No forced click or DOM setter was used.
 
 Manual inspection additionally repeated the exact previously obstructed
 paragraph in dark mode: the endpoint (1369,187) was inside the hint bounds
