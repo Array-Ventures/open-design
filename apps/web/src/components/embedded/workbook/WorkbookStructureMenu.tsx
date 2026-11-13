@@ -20,6 +20,6 @@ export function WorkbookStructureMenu({ controller, disabled, children }: { cont
         {actions.map((action) => <ContextMenuItem key={action} id={action} isDisabled={!selection?.allowed[action]} variant={action.endsWith('-delete') ? 'danger' : undefined}>{labels[action]}</ContextMenuItem>)}
       </ContextMenu>
     </ContextMenuTrigger>
-    {error ? <div role="alert" className="absolute bottom-3 start-3 z-20 max-w-sm rounded-lg border border-border-default bg-background-primary-default px-3 py-2 text-caption-1-regular text-text-error-primary">{error}</div> : null}
+    {error ? <div role="alert" className="absolute bottom-3 start-3 z-20 max-w-sm rounded-lg border border-border-error-default bg-background-primary-default px-3 py-2 text-caption-1-regular text-text-error-primary">{error}</div> : null}
   </>;
 }
