@@ -115,3 +115,11 @@ export function stripWorkbookStructureIdentity(input: IWorkbookData): IWorkbookD
   }
   return book;
 }
+
+/** Worker-safe admission check; validates every owned axis before a structural
+ * mutation without installing handlers or allocating a second workbook. */
+export function assertWorkbookStructureIdentity(book: IWorkbookData): void {
+  owner(book);
+  const sourceSha256 = (book.custom![ownerMarker] as { sourceSha256: string }).sourceSha256;
+  gridStructureIdentity(book, book, sourceSha256);
+}
