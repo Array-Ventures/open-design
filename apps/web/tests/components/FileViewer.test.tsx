@@ -6053,6 +6053,28 @@ describe('FileViewer SVG artifacts', () => {
       expect(typeof nexts[0].slide_index).toBe('number');
     });
 
+    it('uses current slide state for host keyboard navigation', () => {
+      render(<FileViewer projectId="project-1" projectKind="prototype" file={deckFile()} isDeck liveHtml={twoSlideDeck} />);
+      const frame = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;
+      const post = vi.spyOn(frame.contentWindow!, 'postMessage');
+      act(() => { window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow, data: { type: 'od:slide-state', active: 0, count: 2 } })); });
+      post.mockClear();
+      fireEvent.keyDown(window, { key: 'ArrowRight' });
+      expect(post).toHaveBeenCalledWith({ type: 'od:slide', action: 'go', index: 1, userInitiated: true }, '*');
+    });
+
+    it('leaves consumed resize keys and focused controls to their owner', () => {
+      render(<FileViewer projectId="project-1" projectKind="prototype" file={deckFile()} isDeck liveHtml={twoSlideDeck} />);
+      const frame = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;
+      const post = vi.spyOn(frame.contentWindow!, 'postMessage');
+      post.mockClear();
+      const consumed = new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true });
+      consumed.preventDefault(); window.dispatchEvent(consumed);
+      const button = document.createElement('button'); document.body.append(button);
+      fireEvent.keyDown(button, { key: 'ArrowRight' }); button.remove();
+      expect(post.mock.calls.filter(([message]) => message?.type === 'od:slide')).toHaveLength(0);
+    });
+
     it('tracks opening speaker notes for edit', () => {
       render(
         <FileViewer

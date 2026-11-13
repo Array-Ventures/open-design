@@ -14863,17 +14863,16 @@ function HtmlViewer({
     }
   }
 
-  // Keyboard nav on the host, so the user can press ←/→ even when focus
-  // is on the chat composer or any other host control.
+  // Host shortcuts use the current active transport and reported slide count.
+  const hostDeckNavigation = useRef({ postSlide, goToSlide, activeDeckSlideIndex, deckSlideTotal });
+  hostDeckNavigation.current = { postSlide, goToSlide, activeDeckSlideIndex, deckSlideTotal };
   useEffect(() => {
     if (!workspaceActive || !effectiveDeck || mode !== 'preview') return;
     function onKey(e: KeyboardEvent) {
-      if (document.activeElement === iframeRef.current) return;
-      const target = e.target as HTMLElement | null;
-      if (target) {
-        const tag = target.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
-      }
+      if (e.defaultPrevented || document.activeElement === iframeRef.current) return;
+      const target = e.target;
+      if (target instanceof Element && target.closest('input, textarea, select, button, a[href], [role="separator"], [role="slider"], [role="combobox"], [role="listbox"], [role="textbox"], [contenteditable]:not([contenteditable="false"])')) return;
+      const { postSlide, goToSlide, activeDeckSlideIndex, deckSlideTotal } = hostDeckNavigation.current;
       const shortcut = deckKeyboardShortcutForEvent(e);
       if (shortcut === 'next') {
         e.preventDefault();

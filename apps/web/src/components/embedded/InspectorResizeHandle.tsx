@@ -31,7 +31,7 @@ export function InspectorResizeHandle({ width, maximum, label, onResize }: {
       onPointerCancel={stop} onLostPointerCapture={stop}
       onKeyDown={event => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-        event.preventDefault();
+        event.preventDefault(); event.stopPropagation();
         if (event.key === 'Home') resize(minimum);
         else if (event.key === 'End') resize(maximum);
         else {

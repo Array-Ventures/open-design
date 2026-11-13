@@ -20,7 +20,7 @@ export function SpeakerNotesDrawer({ children }: { children: ReactNode }) {
       onKeyDown={event => {
         setPointerFocus(false);
         if (!['ArrowUp', 'ArrowDown', 'Home', 'End', 'Enter', ' ', 'Escape'].includes(event.key)) return;
-        event.preventDefault();
+        event.preventDefault(); event.stopPropagation();
         if (event.key === 'Home' || event.key === 'Escape') resize(0);
         else if (event.key === 'End') resize(maximum());
         else if (event.key === 'Enter' || event.key === ' ') resize(height ? 0 : 176);

@@ -38,7 +38,7 @@ export function ThumbnailRailResize({ children, collapsed, width, defaultWidth, 
       onPointerCancel={stop} onLostPointerCapture={stop}
       onKeyDown={event => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Escape', 'Enter', ' '].includes(event.key)) return;
-        event.preventDefault(); setPointerFocus(false);
+        event.preventDefault(); event.stopPropagation(); setPointerFocus(false);
         if (event.key === 'Home' || event.key === 'Escape') onResize(0);
         else if (event.key === 'End') resize(maximum());
         else if (event.key === 'Enter' || event.key === ' ') onResize(collapsed ? restingWidth() : 0);
