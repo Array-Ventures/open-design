@@ -48,6 +48,8 @@ it('projects actual pinned converter cells including merge continuations without
   expect(result).not.toContain('EveColorFixture_');
   const broken = fixture.xml.replace('w:vMerge w:val="continue"', 'w:vMerge w:val="restart"');
   expect(() => projectDocumentDocxColors(broken,fixture.owners)).toThrow('ownership');
+  const unexpectedMerge = fixture.xml.replace('<w:tcPr />','<w:tcPr><w:vMerge w:val="restart"/></w:tcPr>');
+  expect(() => projectDocumentDocxColors(unexpectedMerge,fixture.owners)).toThrow('ownership');
 });
 
 it('keeps unrelated bookmarks and gives nested authored colors precedence without dropping outer formatting', () => {

@@ -102,6 +102,7 @@ export function projectDocumentDocxColors(xml: string, owners: readonly Document
               let current=0; const target = children(targetRow,'tc').find(tc => { const found=current===column; current+=span(tc); return found; });
               if (!target || span(target)!==own.columnSpan) return fail();
               const merge = children(target,'tcPr')[0]; const marker = merge && children(merge,'vMerge')[0];
+              if ((own.rowSpan ?? 1)===1 && marker) return fail();
               if ((own.rowSpan ?? 1)>1 && (!marker || (offset===0 ? marker.getAttributeNS(w,'val')!=='restart' : !['','continue'].includes(marker.getAttributeNS(w,'val') ?? '')))) return fail();
               set(properties(target,'tcPr'),'shd',{val:'clear',color:'auto',fill:own.colors.background.toUpperCase()});
             }
