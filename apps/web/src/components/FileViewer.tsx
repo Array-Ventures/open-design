@@ -18541,7 +18541,7 @@ function HtmlViewer({
                 <div
                   style={
                     manualEditMode
-                      ? manualEditPreviewShellStyle(previewViewport, previewScale, manualEditViewportWidth)
+                      ? manualEditPreviewShellStyle(previewViewport, previewScale, dockedPresentationProperties ? boardPreviewCanvasSize?.width ?? manualEditViewportWidth : manualEditViewportWidth)
                       : previewScaleShellStyle(previewViewport, previewScale)
                   }
                 >
