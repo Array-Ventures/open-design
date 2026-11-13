@@ -18347,7 +18347,7 @@ function HtmlViewer({
             </div>
       </>)}
       <div className="viewer-body" ref={previewBodyRef}>
-        {embedded && workspaceActive && manualEditMode && !viewerOnly ? <ArtifactInsertionToolbar key={file.name} source={source} busy={manualEditSaving}
+        {embedded && workspaceActive && manualEditMode && !viewerOnly ? <ArtifactInsertionToolbar key={`insertion:${file.name}`} source={source} busy={manualEditSaving}
           getFrame={() => iframeRef.current} getSource={() => sourceRef.current}
           onPrepare={async () => {
             if (!(await flushManualEditPanelDraft())) return false;

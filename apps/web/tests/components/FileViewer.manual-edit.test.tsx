@@ -731,6 +731,20 @@ describe('FileViewer manual edit regressions', () => {
     });
   });
 
+  it('removes the embedded insertion toolbar on safe exit and can re-enter without orphaned controls', async () => {
+    const source = '<!doctype html><html><body><main data-od-id="hero">Hero</main></body></html>';
+    let exit: (() => Promise<boolean>) | null = null;
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(source,{status:200,headers:{'Content-Type':'text/html'}})));
+    render(<FileViewer projectId="project-1" projectKind="prototype" embedded inlineAnnotations file={htmlPreviewFile()} liveHtml={source}
+      onManualEditExitHandlerChange={(_file,handler) => {exit=handler;}} />);
+    for (let cycle = 0; cycle < 2; cycle++) {
+      await enterManualEditMode();
+      expect(screen.getAllByRole('toolbar',{name:'Canvas insertion'})).toHaveLength(1);
+      await act(async () => { expect(await exit!()).toBe(true); });
+      await waitFor(() => expect(screen.queryAllByRole('toolbar',{name:'Canvas insertion'})).toHaveLength(0));
+    }
+  });
+
   it.each([true, false])('retains only a confirmed embedded paint, adopts echoes and releases external edits (paint confirmed: %s)', async (paintConfirmed) => {
     const original = '<!doctype html><html><body><main data-od-id="hero">Hero</main></body></html>';
     let disk = original, exit: (() => Promise<boolean>) | null = null;
