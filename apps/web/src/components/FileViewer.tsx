@@ -1,3 +1,5 @@
+import { uploadProjectImage } from './embedded/project-image-upload';
+import { insertionImageSourceForAsset } from '../edit-mode/insertion';
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex } from '@noble/hashes/utils';
 import { markdownDirectory, markdownRelativeProjectPath, markdownImageSourceUrl } from './markdown-image-path';
@@ -17080,7 +17082,7 @@ function HtmlViewer({
     manualEditMode && (!!selectedManualEditTarget || manualEditPageCardActive);
   const manualEditResetAvailable = selectedManualEditTarget ? manualEditDraftDirty : false;
   const manualEditPanel = manualEditPanelActive ? (
-    <ManualEditPanel
+    <ManualEditPanel key={`properties:${projectId}:${file.name}`}
       sourceControls={!embedded}
       targets={manualEditTargets}
       selectedTarget={selectedManualEditTarget}
@@ -17141,15 +17143,16 @@ function HtmlViewer({
         : { top: 12, right: 12, width: 320, maxHeight: Math.max(0,(previewBodySize?.height ?? 800) - (embedded ? manualEditInsertionInset : 0) - 24) }}
       reservedBottom={embedded ? manualEditInsertionInset : 0}
       onFloatingPositionChange={selectedManualEditTarget ? setManualEditPanelPosition : undefined}
-      onPickImage={async (pickedFile) => {
-        const result = await uploadProjectFiles(projectId, [pickedFile], undefined, workspaceContext);
-        const uploaded = result.uploaded[0];
-        if (!uploaded?.path) {
-          setManualEditError(result.error ?? t('manualEdit.uploadImageFailed'));
-          return null;
-        }
-        setManualEditError(null);
-        return toOwnerRelativePath(file.name, uploaded.path);
+      onPickImage={async (pickedFile, signal = new AbortController().signal) => {
+        const beforeSource = sourceRef.current;
+        if (beforeSource == null) throw new Error('Wait for the current artifact before replacing its image.');
+        const receipt = await uploadProjectImage(projectId, pickedFile, signal);
+        if (signal?.aborted) return null;
+        if (sourceRef.current !== beforeSource) throw new Error('The artifact changed during upload. Select the image again before replacing it.');
+        const base = new DOMParser().parseFromString(beforeSource, 'text/html').querySelector('base[href]')?.getAttribute('href') ?? null;
+        const src = insertionImageSourceForAsset(receipt.name, file.name, base);
+        if (!src) throw new Error('This artifact base does not support project image replacement.');
+        return src;
       }}
     />
   ) : null;

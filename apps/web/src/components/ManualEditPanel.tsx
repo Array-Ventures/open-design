@@ -75,7 +75,7 @@ export function ManualEditPanel({
   onStyleChange?: (id: string, styles: Partial<ManualEditStyles>, label: string) => void;
   onInvalidStyle?: (id: string, keys: Array<keyof ManualEditStyles>) => void;
   onApplyPatch: (patch: ManualEditPatch, label: string) => void;
-  onPickImage?: (file: File) => Promise<string | null>;
+  onPickImage?: (file: File, signal?: AbortSignal) => Promise<string | null>;
   tokenSuggestions?: ProjectDesignTokenSuggestion[];
   tokenSuggestionsLoading?: boolean;
   onApplyTokenSuggestion?: (prop: keyof ManualEditStyles, value: string) => void;
@@ -110,6 +110,13 @@ export function ManualEditPanel({
   const dragEnabled = !locked;
   const selectedTargetRef = useRef<ManualEditTarget | null>(selectedTarget);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageUpload = useRef<AbortController | null>(null);
+  useLayoutEffect(() => {
+    imageUpload.current?.abort();
+    imageUpload.current = null;
+    setUploadingImage(false);
+    return () => { imageUpload.current?.abort(); imageUpload.current = null; };
+  }, [selectedTarget?.id]);
   const targetForInspector = selectedTarget;
   const panelTitle = targetForInspector ? readableManualEditTargetName(targetForInspector) : t('manualEdit.fallbackTitle');
   useEffect(() => {
@@ -295,20 +302,26 @@ export function ManualEditPanel({
                     const file = e.currentTarget.files?.[0];
                     if (!file) return;
                     e.currentTarget.value = '';
+                    imageUpload.current?.abort();
+                    const controller = new AbortController();
+                    imageUpload.current = controller;
+                    const targetId = targetForInspector.id, alt = draft.alt;
                     setUploadingImage(true);
                     try {
-                      const src = await onPickImage(file);
+                      const src = await onPickImage(file, controller.signal);
+                      if (controller.signal.aborted || selectedTargetRef.current?.id !== targetId) return;
                       if (src) {
-                        const activeTargetId = selectedTargetRef.current?.id ?? targetForInspector.id;
-                        onApplyPatch(
-                          { id: activeTargetId, kind: 'set-image', src, alt: draft.alt },
-                          t('manualEdit.uploadImage'),
-                        );
+                        onApplyPatch({ id: targetId, kind: 'set-image', src, alt }, t('manualEdit.uploadImage'));
                       } else {
                         onError(t('manualEdit.uploadImageFailed'));
                       }
+                    } catch (error) {
+                      if (!controller.signal.aborted) onError(error instanceof Error ? error.message : t('manualEdit.uploadImageFailed'));
                     } finally {
-                      setUploadingImage(false);
+                      if (imageUpload.current === controller) {
+                        imageUpload.current = null;
+                        setUploadingImage(false);
+                      }
                     }
                   }}
                 />
@@ -816,6 +829,7 @@ function StyleInspector({
   const u = (key: keyof ManualEditStyles, value: string) => onChange(key, value);
   const summary = target.computedSummary;
   const layoutDisabled = !target.isLayoutContainer;
+  const typography = target.kind !== 'image' && !['svg', 'path', 'rect', 'circle', 'ellipse', 'polygon', 'polyline', 'line', 'video', 'canvas'].includes(target.tagName.toLowerCase());
   const widthPlaceholder = styles.width ? '' : `${Math.round(target.rect.width)}px`;
   const heightPlaceholder = styles.height ? '' : `${Math.round(target.rect.height)}px`;
 
@@ -840,9 +854,10 @@ function StyleInspector({
   return (
     <div className="cc-inspector">
       <Section title={t('manualEdit.parameters')}>
-        <ColorRow label={t('manualEdit.textColor')} value={styles.color} placeholder={summary?.color} onChange={(v) => u('color', v)} onFocus={() => activate('color', t('manualEdit.textColor'))} />
+        {typography ? <ColorRow label={t('manualEdit.textColor')} value={styles.color} placeholder={summary?.color} onChange={(v) => u('color', v)} onFocus={() => activate('color', t('manualEdit.textColor'))} /> : null}
         <ColorRow label={t('manualEdit.background')} value={styles.backgroundColor} placeholder={summary?.backgroundColor} onChange={(v) => u('backgroundColor', v)} onFocus={() => activate('backgroundColor', t('manualEdit.background'))} />
         <UnitRow label={t('manualEdit.opacity')} value={styles.opacity} placeholder="1" onChange={(v) => u('opacity', v)} unit="" onFocus={() => activate('opacity', t('manualEdit.opacity'))} />
+        {typography ? <>
         <FontRow label={t('manualEdit.fontFamily')} value={styles.fontFamily} placeholder={summary?.fontFamily} onChange={(v) => u('fontFamily', v)} onFocus={() => activate('fontFamily', t('manualEdit.fontFamily'))} />
         <PairRow>
           <UnitRow label={t('manualEdit.fontSize')} value={styles.fontSize} placeholder={summary?.fontSize} onChange={(v) => u('fontSize', v)} unit="px" autoUnit onFocus={() => activate('fontSize', t('manualEdit.fontSize'))} />
@@ -855,6 +870,7 @@ function StyleInspector({
           <UnitRow label={t('manualEdit.lineHeight')} value={styles.lineHeight} placeholder={summary?.lineHeight} onChange={(v) => u('lineHeight', v)} unit="" onFocus={() => activate('lineHeight', t('manualEdit.lineHeight'))} />
           <UnitRow label={t('manualEdit.letterSpacing')} value={styles.letterSpacing} placeholder={summary?.letterSpacing} onChange={(v) => u('letterSpacing', v)} unit="px" autoUnit onFocus={() => activate('letterSpacing', t('manualEdit.letterSpacing'))} />
         </PairRow>
+        </> : null}
         <UnitRow label={t('manualEdit.radius')} value={styles.borderRadius} placeholder={summary?.borderRadius} onChange={(v) => u('borderRadius', v)} unit="px" autoUnit onFocus={() => activate('borderRadius', t('manualEdit.radius'))} />
         <PairRow>
           <ColorRow label={t('manualEdit.borderColor')} value={styles.borderColor} placeholder={summary?.borderColor} onChange={(v) => u('borderColor', v)} onFocus={() => activate('borderColor', t('manualEdit.borderColor'))} />
@@ -885,22 +901,18 @@ function StyleInspector({
           t: styles.marginTop, r: styles.marginRight, b: styles.marginBottom, l: styles.marginLeft,
         }} onChange={(side, value) => u(sideToProp('margin', side), value)} onFocus={() => activate('margin', t('manualEdit.margin'))} />
 
-        <PairRow>
-          <DropdownRow label={t('manualEdit.layoutDirection')} value={styles.flexDirection} onChange={(v) => u('flexDirection', v)} options={layoutDirectionOptions(t)} disabled={layoutDisabled} />
-          <DropdownRow label={t('manualEdit.distribution')} value={styles.justifyContent} onChange={(v) => u('justifyContent', v)} options={justifyOptions(t)} disabled={layoutDisabled} />
-        </PairRow>
-        <PairRow>
-          <UnitRow label={t('manualEdit.gap')} value={styles.gap} onChange={(v) => u('gap', v)} unit="px" autoUnit disabled={layoutDisabled} onFocus={() => activate('gap', t('manualEdit.gap'))} />
-          {layoutDisabled ? (
-            // Non-flex/grid targets still get a live alignment dropdown — it
-            // drives text-align (left / center / right) instead of the flex
-            // cross-axis, so the control is never a dead grey box.
-            <DropdownRow label={t('manualEdit.align')} value={styles.textAlign} onChange={(v) => u('textAlign', v)} options={textAlignOptions(t)} />
-          ) : (
+        {!layoutDisabled ? <>
+          <PairRow>
+            <DropdownRow label={t('manualEdit.layoutDirection')} value={styles.flexDirection} onChange={(v) => u('flexDirection', v)} options={layoutDirectionOptions(t)} />
+            <DropdownRow label={t('manualEdit.distribution')} value={styles.justifyContent} onChange={(v) => u('justifyContent', v)} options={justifyOptions(t)} />
+          </PairRow>
+          <PairRow>
+            <UnitRow label={t('manualEdit.gap')} value={styles.gap} onChange={(v) => u('gap', v)} unit="px" autoUnit onFocus={() => activate('gap', t('manualEdit.gap'))} />
             <DropdownRow label={t('manualEdit.align')} value={styles.alignItems} onChange={(v) => u('alignItems', v)} options={itemAlignOptions(t)} />
-          )}
-        </PairRow>
-        {layoutDisabled ? <p className="cc-section-hint">{t('manualEdit.layoutUnavailable')}</p> : null}
+          </PairRow>
+        </> : typography ? (
+          <DropdownRow label={t('manualEdit.align')} value={styles.textAlign} onChange={(v) => u('textAlign', v)} options={textAlignOptions(t)} />
+        ) : null}
       </Section>
 
       {activeField && activeProp ? (

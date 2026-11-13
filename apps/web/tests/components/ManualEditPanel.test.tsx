@@ -76,6 +76,52 @@ describe('ManualEditPanel', () => {
     expect(host.querySelector('.manual-edit-code')).not.toBeNull();
   });
 
+  it('shows image properties without inherited typography or irrelevant alignment controls', () => {
+    const image = { ...target, kind: 'image' as const, tagName: 'img', fields: { src: 'image.png', alt: 'Figure' } };
+    renderPanel({ selectedTarget: image, sourceControls: false });
+    for (const label of ['Font', 'Font size', 'Text color', 'Weight', 'Line height', 'Letter spacing', 'Align', 'Direction', 'Distribution', 'Gap']) {
+      expect(host.querySelector(`[aria-label="${label}"]`)).toBeNull();
+    }
+    for (const label of ['Width', 'Height', 'Radius', 'Opacity']) expect(rowInput(label)).not.toBeNull();
+    expect(host.textContent).toContain('Alt text');
+    renderPanel({ selectedTarget: target, sourceControls: false });
+    expect(rowInput('Font size')).not.toBeNull();
+    expect(rowSelect('Align')).not.toBeNull();
+  });
+
+  it('cancels a pending image replacement when selection changes and never applies it to the new image', async () => {
+    let resolve!: (src: string) => void;
+    const onPickImage = vi.fn((_file: File, _signal?: AbortSignal) => new Promise<string>(done => { resolve = done; }));
+    const onApplyPatch = vi.fn(), onError = vi.fn();
+    const image = { ...target, id: 'first-image', kind: 'image' as const, tagName: 'img' };
+    renderPanel({ selectedTarget: image, onPickImage, onApplyPatch, onError });
+    const input = host.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [new dom.window.File(['fixture'], 'figure.png', { type: 'image/png' })] });
+    await act(async () => { Simulate.change(input); });
+    const signal = onPickImage.mock.calls[0]![1]!;
+    expect(signal.aborted).toBe(false);
+    renderPanel({ selectedTarget: { ...image, id: 'second-image' }, onPickImage, onApplyPatch, onError });
+    expect(signal.aborted).toBe(true);
+    await act(async () => { resolve('_studio-image-assets/confirmed.png'); });
+    expect(onApplyPatch).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('applies a confirmed replacement only to its original image and reports upload errors', async () => {
+    const onApplyPatch = vi.fn(), onError = vi.fn();
+    const onPickImage = vi.fn().mockResolvedValueOnce('_studio-image-assets/confirmed.png').mockRejectedValueOnce(new Error('Image could not be confirmed.'));
+    const image = { ...target, id: 'first-image', kind: 'image' as const, tagName: 'img' };
+    renderPanel({ selectedTarget: image, onPickImage, onApplyPatch, onError });
+    const input = host.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [new dom.window.File(['fixture'], 'figure.png', { type: 'image/png' })] });
+    await act(async () => { Simulate.change(input); });
+    expect(onApplyPatch).toHaveBeenCalledTimes(1);
+    expect(onApplyPatch).toHaveBeenCalledWith({ id: 'first-image', kind: 'set-image', src: '_studio-image-assets/confirmed.png', alt: '' }, 'Upload image');
+    await act(async () => { Simulate.change(input); });
+    expect(onApplyPatch).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith('Image could not be confirmed.');
+  });
+
   it('disables properties and content controls during a source write', () => {
     renderPanel({ busy: true });
     const text = host.querySelector('textarea')!;
@@ -536,7 +582,7 @@ describe('ManualEditPanel', () => {
     );
   });
 
-  it('disables layout controls for non-layout single targets', () => {
+  it('omits inapplicable layout controls while retaining text alignment and rejecting layout styles', () => {
     const onStyleChange = vi.fn();
     renderPanel({
       onStyleChange,
@@ -547,14 +593,13 @@ describe('ManualEditPanel', () => {
       },
     });
 
-    // Layout rows now live in the shared parameters list rather than their own
-    // group, so "not editable" has to be asserted as disabled controls plus the
-    // explanatory hint — not as a missing section.
+    // A non-layout target has no flex/grid controls, including disabled ones.
+    // The normalization boundary still rejects those style writes below.
     const parameters = sectionByTitle(PARAMETERS);
-    expect(rowSelect('Direction').disabled).toBe(true);
-    expect(rowSelect('Distribution').disabled).toBe(true);
-    expect(rowInput('Gap').disabled).toBe(true);
-    expect(parameters.textContent).toContain('Layout controls are available for flex or grid containers.');
+    for (const label of ['Direction', 'Distribution', 'Gap']) {
+      expect(parameters.querySelector(`[aria-label="${label}"]`)).toBeNull();
+    }
+    expect(parameters.textContent).not.toContain('Layout controls are available for flex or grid containers.');
     // The alignment slot degrades to text-align so it is never a dead control.
     const align = rowSelect('Align');
     expect(align.disabled).toBe(false);
@@ -901,6 +946,7 @@ describe('ManualEditPanel', () => {
   function renderPanel({
     onDraftChange = vi.fn<OnDraftChange>(),
     onApplyPatch = vi.fn<OnApplyPatch>(),
+    onPickImage,
     onError = vi.fn<OnError>(),
     onStyleChange = vi.fn<OnStyleChange>(),
     onInvalidStyle = vi.fn<OnInvalidStyle>(),
@@ -928,6 +974,7 @@ describe('ManualEditPanel', () => {
   }: {
     onDraftChange?: OnDraftChange;
     onApplyPatch?: OnApplyPatch;
+    onPickImage?: (file: File, signal?: AbortSignal) => Promise<string | null>;
     onError?: OnError;
     onStyleChange?: OnStyleChange;
     onInvalidStyle?: OnInvalidStyle;
@@ -979,6 +1026,7 @@ describe('ManualEditPanel', () => {
           onStyleChange={onStyleChange}
           onInvalidStyle={onInvalidStyle}
           onApplyPatch={onApplyPatch}
+          onPickImage={onPickImage}
           onError={onError}
           onClearSelection={onClearSelection}
           onCancelDraft={onCancelDraft}
