@@ -359,3 +359,30 @@ it('withdraws the waiting target when navigating to the comment list', async () 
   expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull(); expect(api.save).not.toHaveBeenCalled();
   expect(host.postMessage.mock.calls.filter(call => call[0].type === 'studio:feedback-state').at(-1)![0].dirty).toBe(false);
 });
+
+it('keeps the mounted thread and its reply draft hidden while the comment list is displayed', async () => {
+  // Browser acceptance qualifies actual utility hit-testing/display. This case
+  // primarily protects reply state against replacing hiding with unmounting.
+  const utilities = document.createElement('style'); utilities.textContent = '.flex{display:flex}.hidden{display:none}'; document.head.appendChild(utilities);
+  try {
+    render(<Harness />); const input = await selectAndOpen(); fireEvent.change(input, { target: { value: 'Saved root' } }); fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+    const reply = await screen.findByRole('textbox', { name: 'Reply' }); fireEvent.change(reply, { target: { value: 'Retained reply draft' } });
+    const quote = screen.getByLabelText('Selected document text'), thread = screen.getByRole('region', { name: 'Comment thread' });
+    fireEvent.click(screen.getByRole('button', { name: 'All comments' }));
+    expect(getComputedStyle(quote.parentElement!).display).toBe('none');
+    expect(quote).not.toBeVisible(); expect(thread).not.toBeVisible(); expect(screen.queryByRole('button', { name: 'Add comment to chat' })).toBeNull();
+    expect(thread.isConnected).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /Saved root/ }));
+    expect(screen.getByRole('textbox', { name: 'Reply' })).toBe(reply); expect(reply).toHaveValue('Retained reply draft'); expect(quote).toBeVisible();
+  } finally { utilities.remove(); }
+});
+
+it('makes only an unbound selection prompt transparent to document gestures while retaining its controls', async () => {
+  render(<Harness />); command('comment'); await screen.findByText('Select text in the document to comment.');
+  const card = screen.getByRole('dialog', { name: 'Document comments' });
+  expect(card).toHaveClass('pointer-events-none', 'select-none');
+  fireEvent.click(screen.getByRole('button', { name: 'All comments' }));
+  expect(card).not.toHaveClass('pointer-events-none');
+  fireEvent.click(screen.getByRole('button', { name: 'Close comments' }));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Document comments' })).toBeNull());
+});
