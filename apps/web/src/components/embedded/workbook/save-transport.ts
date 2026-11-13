@@ -60,7 +60,7 @@ async function settleWorkbookSave(attempt: WorkbookSaveAttempt, signal: AbortSig
     if (!attempt.renderId) {
       try {
         const sheetSources = workbookSheetSourcesForPlan(attempt.plan);
-        const job = await prepareWorkbookJob(attempt.projectId, attempt.fileName, workbookSaveFormat(attempt.fileName), attempt.preparationId, signal, JSON.stringify(attempt.plan), ...(sheetSources ? [sheetSources] as const : [] as const));
+        const job = await prepareWorkbookJob(attempt.projectId, attempt.fileName, workbookSaveFormat(attempt.fileName), attempt.preparationId, signal, JSON.stringify(attempt.plan), sheetSources);
         attempt.renderId = job.id;
       } catch (error) {
         if (error instanceof WorkbookHostError && error.code === 'workbook_preparation_cancelled') {

@@ -15,7 +15,7 @@ it('probes status before preparing once and waits for the durable applied receip
   const intent = attempt(); request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockResolvedValueOnce(receipt(intent.operationId, 'pending')).mockResolvedValueOnce(receipt(intent.operationId));
   prepare.mockResolvedValueOnce({ id: renderId, projectId, input: { fileName, format: 'xlsx' }, state: 'ready', error: null });
   expect(await saveWorkbook(intent)).toMatchObject({ state: 'applied', targetSha256: target });
-  expect(prepare).toHaveBeenCalledWith(projectId, fileName, 'xlsx', intent.preparationId, undefined, JSON.stringify(intent.plan));
+  expect(prepare).toHaveBeenCalledWith(projectId, fileName, 'xlsx', intent.preparationId, undefined, JSON.stringify(intent.plan), undefined);
   expect(request.mock.calls.map(call => call[1].action)).toEqual(['read-save', 'save', 'read-save']);
 });
 it('recovers a lost admission response by status without preparing or writing again', async () => {
@@ -232,7 +232,7 @@ it('retains complete source-owned sheet projections through save preparation and
   request.mockRejectedValueOnce(new WorkbookHostError('Missing', 404)).mockRejectedValueOnce(new WorkbookHostError('Response lost'));
   prepare.mockResolvedValueOnce({ id: renderId, projectId, input: { fileName, format: 'xlsx' }, state: 'ready', error: null });
   await expect(saveWorkbook(intent)).rejects.toThrow('Response lost');
-  expect(prepare).toHaveBeenCalledWith(projectId, fileName, 'xlsx', intent.preparationId, undefined, JSON.stringify({ sourceSha256: source, edits: [], sheets }));
+  expect(prepare).toHaveBeenCalledWith(projectId, fileName, 'xlsx', intent.preparationId, undefined, JSON.stringify({ sourceSha256: source, edits: [], sheets }), undefined);
   request.mockResolvedValueOnce(receipt(intent.operationId));
   await expect(saveWorkbook(intent)).resolves.toMatchObject({ state: 'applied' });
   expect(prepare).toHaveBeenCalledTimes(1); expect(intent.plan.sheets).toEqual(sheets);
