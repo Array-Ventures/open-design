@@ -59,6 +59,7 @@ export function ManualEditPanel({
   floatingStyle,
   reservedBottom = 0,
   floatingClassName,
+  resizeHandle,
   onFloatingPositionChange,
   locked = false,
   onToggleLock,
@@ -89,6 +90,7 @@ export function ManualEditPanel({
   floatingStyle?: CSSProperties;
   reservedBottom?: number;
   floatingClassName?: string;
+  resizeHandle?: ReactNode;
   onFloatingPositionChange?: (position: { left: number; top: number }) => void;
   /** When true the panel is pinned: no dragging, and it does not reposition
    *  when a different element is selected. Owned by the parent. */
@@ -213,6 +215,7 @@ export function ManualEditPanel({
       className={`manual-edit-right${floatingStyle ? ' manual-edit-floating' : ''}${floatingClassName ? ` ${floatingClassName}` : ''}`}
       style={floatingStyle}
     >
+      {resizeHandle}
       <section
         className={`manual-edit-modal cc-panel${floatingStyle && !dragEnabled ? ' is-drag-locked' : ''}`}
         onPointerDown={floatingStyle ? startPanelDrag : undefined}

@@ -1,0 +1,7 @@
+.handle { position: absolute; inset-inline-start: -6px; inset-block: 0; width: 12px; z-index: 1; display: flex; align-items: center; justify-content: center; cursor: col-resize; touch-action: none; user-select: none; outline: none; }
+.handle span { width: 4px; height: 40px; border-radius: 4px; background: var(--color-foreground-icon-tertiary); opacity: 0; transition: opacity 150ms ease-out; pointer-events: none; }
+.handle:hover span, .handle:active span, .handle:focus-visible span { opacity: 1; }
+.handle:focus-visible { outline: 2px solid var(--color-border-focus-ring); outline-offset: -2px; }
+.shield { position: fixed; inset: 0; z-index: 2147483646; cursor: col-resize; touch-action: none; user-select: none; }
+@media (pointer: coarse) { .handle span { opacity: .4; } }
+@media (prefers-reduced-motion: reduce) { .handle span { transition: none; } }

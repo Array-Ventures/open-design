@@ -453,3 +453,16 @@
   border-color: var(--color-border-focus-ring);
   box-shadow: none;
 }
+
+.workspace :global(.manual-edit-workspace > .manual-edit-right.manual-edit-presentation-dock) {
+  border-inline-start: 1px solid var(--color-separator-border);
+  max-width: none;
+  overflow: visible;
+}
+.workspace :global(.manual-edit-presentation-dock .manual-edit-modal.cc-panel) {
+  height: 100%;
+  max-height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}

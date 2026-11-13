@@ -1,3 +1,4 @@
+import { InspectorResizeHandle } from './embedded/InspectorResizeHandle';
 import { uploadProjectImage } from './embedded/project-image-upload';
 import { insertionImageSourceForAsset } from '../edit-mode/insertion';
 import { sha256 } from '@noble/hashes/sha256';
@@ -9375,6 +9376,7 @@ function HtmlViewer({
   const [selectedManualEditTarget, setSelectedManualEditTarget] = useState<ManualEditTarget | null>(null);
   const [manualEditHoverTarget, setManualEditHoverTarget] = useState<ManualEditTarget | null>(null);
   const [manualEditPageStylesOpen, setManualEditPageStylesOpen] = useState(false);
+  const [presentationInspectorWidth, setPresentationInspectorWidth] = useState(320);
   const [manualEditInsertionInset, setManualEditInsertionInset] = useState(64);
   const [manualEditPanelPosition, setManualEditPanelPosition] = useState<{ left: number; top: number } | null>(null);
   const [manualEditPanelLocked, setManualEditPanelLocked] = useState(false);
@@ -10355,11 +10357,18 @@ function HtmlViewer({
     return sourceLooksLikeDeckPreview(s);
   }, [routingHtmlSource]);
   const effectiveDeck = isDeck || (!passiveLargeHtmlPreview && looksLikeDeck);
+  const dockedPresentationProperties = embedded && effectiveDeck && manualEditMode
+    && !selectedManualEditTarget && manualEditPageStylesOpen && (previewBodySize?.width ?? 0) >= 640;
+  const presentationInspectorMaximum = Math.min(560, Math.max(288, (previewBodySize?.width ?? 800) - 320));
+  const presentationInspectorLayoutWidth = Math.min(presentationInspectorWidth, presentationInspectorMaximum);
+
   // Thumbnail rails consume real canvas width too. Include them when deciding
   // whether comments fit beside the slide or need a full-width bottom row.
-  const commentLayoutSize = previewBodySize && effectiveDeck && !deckThumbnailsCollapsed
-    ? { ...previewBodySize, width: Math.max(1, previewBodySize.width - thumbnailRailWidth - 12) }
-    : previewBodySize;
+  const commentLayoutSize = previewBodySize && dockedPresentationProperties
+    ? { ...previewBodySize, width: Math.max(1, previewBodySize.width - presentationInspectorLayoutWidth) }
+    : previewBodySize && effectiveDeck && !manualEditMode && !deckThumbnailsCollapsed
+      ? { ...previewBodySize, width: Math.max(1, previewBodySize.width - thumbnailRailWidth - 12) }
+      : previewBodySize;
   const boardPreviewCanvasSize = commentPreviewCanvasSize(commentLayoutSize, {
     boardMode: localCommentSideDockActive,
     sidePanelCollapsed: commentSidePanelCollapsed,
@@ -17219,7 +17228,8 @@ function HtmlViewer({
       onRedo={() => {
         void redoManualEdit();
       }}
-      floatingClassName={manualEditPageCardActive ? 'manual-edit-page-card' : undefined}
+      floatingClassName={dockedPresentationProperties ? 'manual-edit-presentation-dock' : manualEditPageCardActive ? 'manual-edit-page-card' : undefined}
+      resizeHandle={dockedPresentationProperties ? <InspectorResizeHandle width={presentationInspectorLayoutWidth} maximum={presentationInspectorMaximum} onResize={setPresentationInspectorWidth} label={`${t('manualEdit.presentationProperties')}: ${t('entry.resizeAria')}`} /> : undefined}
       floatingStyle={selectedManualEditTarget
         ? {
             ...manualEditFloatingPanelStyle(
@@ -17229,6 +17239,7 @@ function HtmlViewer({
               {bottomInset:embedded ? manualEditInsertionInset : 0,position:manualEditPanelPosition},
             ),
           }
+        : dockedPresentationProperties ? { top: 0, insetInlineEnd: 0, width: presentationInspectorLayoutWidth, height: '100%', maxHeight: '100%' }
         : { top: 12, right: 12, width: 320, maxHeight: Math.max(0,(previewBodySize?.height ?? 800) - (embedded ? manualEditInsertionInset : 0) - 24) }}
       reservedBottom={embedded ? manualEditInsertionInset : 0}
       locked={manualEditPanelLocked}
@@ -18522,6 +18533,7 @@ function HtmlViewer({
             ) : deckThumbnailRailNode}
             <div
               className={manualEditMode ? 'manual-edit-canvas' : 'comment-preview-canvas'}
+              style={dockedPresentationProperties ? { insetInlineEnd: presentationInspectorLayoutWidth } : undefined}
               data-testid={manualEditMode ? undefined : 'comment-preview-canvas'}
               ref={manualEditMode ? undefined : setCommentPreviewCanvasRef}
             >
