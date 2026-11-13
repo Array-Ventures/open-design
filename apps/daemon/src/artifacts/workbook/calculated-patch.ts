@@ -1,3 +1,4 @@
+import { rebaseWorkbookCellStyleGuards, workbookCellStyleSources, type WorkbookCellStyleSources } from './cell-style-guard.js';
 import { patchWorkbookSheets, assertWorkbookSheetsSupported } from './sheet-patch.js';
 import { workbookSourceSheetProjectionSchema, type WorkbookSheetProjection } from '@open-design/contracts/runtime/workbook';
 import { assertWorkbookStructureSupported, patchWorkbookStructure } from './structure-patch.js';
@@ -123,9 +124,10 @@ async function readStructuralWindow(bytes: Buffer, structure: readonly WorkbookS
 /** Internal transaction preparation. The caller must persist these bytes with
  * conditional binary history/receipts; this helper never writes workspace files.
  * Parser and calculation execution must be isolated before API exposure. */
-export async function calculateWorkbookCellEdits(source: ReadWorkbook, edits: readonly WorkbookCellEdit[], dimensions: readonly WorkbookDimensionEdit[] = [], styles: readonly WorkbookStyleEdit[] = [], visibility: readonly WorkbookVisibilityEdit[] = [], structure: readonly WorkbookStructureEdit[] = []): Promise<{ bytes: Buffer; model: WorkbookDocument }> {
+export async function calculateWorkbookCellEdits(source: ReadWorkbook, edits: readonly WorkbookCellEdit[], dimensions: readonly WorkbookDimensionEdit[] = [], styles: readonly WorkbookStyleEdit[] = [], visibility: readonly WorkbookVisibilityEdit[] = [], structure: readonly WorkbookStructureEdit[] = [], guardSources?: WorkbookCellStyleSources): Promise<{ bytes: Buffer; model: WorkbookDocument }> {
   if (structure.length) {
     const prepared = await readStructuralWindow(await patchWorkbookStructure(source, structure), structure);
+    edits = rebaseWorkbookCellStyleGuards(guardSources ?? workbookCellStyleSources(source), prepared, edits, structure);
     // Geometry invalidated every formula cache. Force the content calculator
     // even for dimension/style/visibility-only follow-ups; those normal owners
     // intentionally skip calculation when geometry has not changed.
@@ -206,15 +208,16 @@ export async function calculateWorkbookSheetEdits(source: ReadWorkbook, sheets: 
     return calculateWorkbookCellEdits(source, edits, dimensions, styles, [], structure);
   }
   const prepared = await readXlsxWorkbook(await patchWorkbookSheets(source, sheets, visibility));
-  return calculatePreparedWorkbookSheetEdits(prepared, edits, dimensions, styles, structure);
+  return calculatePreparedWorkbookSheetEdits(prepared, edits, dimensions, styles, structure, workbookCellStyleSources(source));
 }
 
 /** Calculate the fully assembled source, including restored XML templates.
  * Admission is repeated here; unlike an acknowledged no-op projection, a
  * newly assembled package must never retain historical formula caches. */
-export async function calculatePreparedWorkbookSheetEdits(prepared: ReadWorkbook, edits: readonly WorkbookCellEdit[] = [], dimensions: readonly WorkbookDimensionEdit[] = [], styles: readonly WorkbookStyleEdit[] = [], structure: readonly WorkbookStructureEdit[] = []): Promise<{ bytes: Buffer; model: WorkbookDocument }> {
+export async function calculatePreparedWorkbookSheetEdits(prepared: ReadWorkbook, edits: readonly WorkbookCellEdit[] = [], dimensions: readonly WorkbookDimensionEdit[] = [], styles: readonly WorkbookStyleEdit[] = [], structure: readonly WorkbookStructureEdit[] = [], guardSources: WorkbookCellStyleSources = workbookCellStyleSources(prepared)): Promise<{ bytes: Buffer; model: WorkbookDocument }> {
   assertWorkbookSheetsSupported(prepared);
-  if (structure.length) return calculateWorkbookCellEdits(prepared, edits, dimensions, styles, [], structure);
+  if (structure.length) return calculateWorkbookCellEdits(prepared, edits, dimensions, styles, [], structure, guardSources);
+  edits = rebaseWorkbookCellStyleGuards(guardSources, prepared, edits);
   assertCalculationSupported(prepared);
   let bytes = (await calculateContent(prepared, edits, verifiedDynamicArrayOwners(prepared))).bytes;
   if (dimensions.length) bytes = await patchWorkbookDimensions(await readXlsxWorkbook(bytes), dimensions);

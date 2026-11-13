@@ -1,0 +1,31 @@
+# Workbook cell style preservation guards
+
+`WorkbookCell.style` in a scalar edit is a preservation guard, not an authored
+formatting change or raw OOXML XF index. The reader interns normalized styles
+into a compact table. Deleting a worksheet or axis can remove the first use of
+a style and change these ordinals even though every retained raw XF is unchanged.
+Historical templates can also share unchanged raw style resources while the
+current reader's compact ordinals refer to different styles.
+
+The prepared source still accepts its exact style guard as before. A different
+original guard is rebound only when the exact original cell and validated row/
+column projection identify the prepared cell, both reader-normalized styles are
+identical, and the qualified current stylesheet remains byte-identical through
+membership/axis preparation. Historical templates first qualify their raw
+global-resource prefix against the current source. Guard context retains only
+the selected sheet, normalized styles and shared current stylesheet, not a full
+historical ZIP for every restored ID.
+
+New/blank coordinates cannot borrow a neighboring cell's style. Unknown indices,
+non-equivalent original styles and changed raw resource owners still refuse.
+The existing strict cell patch guard is unchanged; only an internal cloned
+annotation receives the prepared ordinal. The caller's serialized plan/hash and
+the raw worksheet style attributes remain untouched. Intentional font/fill/color
+changes continue through the separate formatting adapter.
+
+Actual source regressions cover restored scalar edits after unrelated survivor
+formatting, styled survivor edits after sheet deletion, ordinary structural
+reparse, restored axis projection, exact prepared-preview guards and separate
+formatting. Negative cases cover wrong/unknown guards, absent or inserted source
+coordinates and incompatible historical resource prefixes. This source fix does
+not enable automatic SDK worksheet Undo or change its remaining ownership gates.
