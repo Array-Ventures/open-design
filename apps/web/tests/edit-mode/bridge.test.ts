@@ -880,6 +880,15 @@ describe('manual edit bridge target normalization', () => {
     dom.window.close();
   });
 
+  it('gives live visual edits priority over authored important declarations', () => {
+    const dom=new JSDOM(`<html><head><style>.slide{background:#f5f7fb!important}</style></head><body><section class="slide" data-od-id="second">Slide</section>${buildManualEditBridge(true)}</body></html>`,{runScripts:'dangerously',url:'http://localhost',pretendToBeVisual:true});
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message',{source:dom.window.parent,data:{type:'od-edit-preview-style',id:'second',version:1,styles:{backgroundColor:'#ec4899'}}}));
+    const target=dom.window.document.querySelector<HTMLElement>('[data-od-id="second"]')!;
+    expect(target.style.backgroundColor).toBe('rgb(236, 72, 153)');
+    expect(target.style.getPropertyPriority('background-color')).toBe('important');
+    dom.window.close();
+  });
+
   it('reports resolved styles after clearing an inline override', () => {
     const posts: Array<{ type?: string; id?: string; version?: number; ok?: boolean; styles?: { color?: string } }> = [];
     const dom = new JSDOM(`<html><body style="color:#111111"><div data-od-id="shape" style="color:#2368c4">Shape</div>${buildManualEditBridge(true)}</body></html>`, { runScripts: 'dangerously', url: 'http://localhost', pretendToBeVisual: true });
@@ -1342,7 +1351,7 @@ describe('manual edit bridge target normalization', () => {
 
 describe('saved preview paint verification', () => {
   it('verifies actual text and normalized styles, rejecting missing or structurally different targets', async () => {
-    const dom = new JSDOM(`<main><h1 data-od-id="hero" style="color:rgb(255, 0, 0);font-size:24px">Saved heading</h1><p data-od-id="rich"><b>Saved heading</b></p></main>${buildManualEditBridge(true)}`, { runScripts: 'dangerously', url: 'http://localhost' });
+    const dom = new JSDOM(`<main><h1 data-od-id="hero" style="color:rgb(255, 0, 0)!important;font-size:24px!important">Saved heading</h1><p data-od-id="rich"><b>Saved heading</b></p></main>${buildManualEditBridge(true)}`, { runScripts: 'dangerously', url: 'http://localhost' });
     const post = vi.spyOn(dom.window.parent, 'postMessage');
     const verify = (patch: unknown, source: Window | null = dom.window as unknown as Window) => {
       post.mockClear();
@@ -1354,6 +1363,10 @@ describe('saved preview paint verification', () => {
     expect(verify({ kind: 'set-text', id: 'rich', value: 'Saved heading' })?.ok).toBe(false);
     expect(verify({ kind: 'set-text', id: 'missing', value: 'Saved heading' })?.ok).toBe(false);
     expect(verify({ kind: 'set-style', id: 'hero', styles: { color: '#ff0000', fontSize: '24px' } })?.ok).toBe(true);
+    // A matching inline value without the explicit edit priority can still lose
+    // to authored CSS. It must not certify the newly persisted visual override.
+    dom.window.document.querySelector<HTMLElement>('[data-od-id="hero"]')!.style.setProperty('color','#ff0000');
+    expect(verify({ kind: 'set-style', id: 'hero', styles: { color: '#ff0000' } })?.ok).toBe(false);
     expect(verify({ kind: 'set-style', id: 'hero', styles: { color: '#0000ff' } })?.ok).toBe(false);
     expect(verify({ kind: 'set-text', id: 'hero', value: 'Saved heading' }, null)).toBeUndefined();
     dom.window.close();

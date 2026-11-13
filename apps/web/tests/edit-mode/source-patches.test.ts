@@ -53,6 +53,23 @@ describe('manual edit source patches', () => {
     Reflect.deleteProperty(globalThis, 'CSS');
   });
 
+  it('persists explicit visual styles above authored important defaults and can remove them', () => {
+    const source='<!doctype html><html><head><style>.slide{background:#f5f7fb!important}</style></head><body><section class="slide" data-od-id="second" style="color:red;padding:8px">Slide</section></body></html>';
+    const result=applyManualEditPatch(source,{kind:'set-style',id:'second',styles:{backgroundColor:'#ec4899'}});
+    expect(result.ok).toBe(true);
+    const dom=new JSDOM(result.source), target=dom.window.document.querySelector<HTMLElement>('[data-od-id="second"]')!;
+    expect(target.style.backgroundColor).toBe('rgb(236, 72, 153)');
+    expect(target.style.getPropertyPriority('background-color')).toBe('important');
+    expect(target.style.color).toBe('red');expect(target.style.getPropertyPriority('color')).toBe('');
+    expect(target.style.padding).toBe('8px');
+    const cleared=applyManualEditPatch(result.source,{kind:'set-style',id:'second',styles:{backgroundColor:''}});
+    const clearedDom=new JSDOM(cleared.source), clearedTarget=clearedDom.window.document.querySelector<HTMLElement>('[data-od-id="second"]')!;
+    expect(clearedTarget.style.backgroundColor).toBe('');
+    expect(clearedTarget.style.getPropertyPriority('background-color')).toBe('');
+    expect(clearedDom.window.document.querySelector('style')!.textContent).toBe('.slide{background:#f5f7fb!important}');
+    dom.window.close();clearedDom.window.close();
+  });
+
   it('updates only the selected text target', () => {
     const result = applyManualEditPatch(baseSource, { kind: 'set-text', id: 'hero-title', value: 'Edited title' });
 
@@ -150,8 +167,13 @@ describe('manual edit source patches', () => {
     expect(styles.color).toBe('');
     expect(styles.backgroundColor).toBe('rgb(255, 0, 0)');
     expect(styles.fontSize).toBe('24px');
-    expect(styles.padding).toBe('12px 8px 8px');
+    // CSSOM cannot serialize one shorthand when only the edited top edge has
+    // important priority. Verify every edge instead of expecting a lossy shorthand.
+    expect(styles.padding).toBe('');
     expect(styles.paddingTop).toBe('12px');
+    expect(styles.paddingRight).toBe('8px');
+    expect(styles.paddingBottom).toBe('8px');
+    expect(styles.paddingLeft).toBe('8px');
     expect(styles.marginLeft).toBe('4px');
     expect(styles.borderTopWidth).toBe('2px');
     expect(styles.borderStyle).toBe('solid');
