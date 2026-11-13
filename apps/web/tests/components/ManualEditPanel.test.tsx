@@ -89,6 +89,15 @@ describe('ManualEditPanel', () => {
     expect(rowSelect('Align')).not.toBeNull();
   });
 
+  it('keeps currentColor editing on vector shapes without typography controls', () => {
+    const onStyleChange = vi.fn();
+    renderPanel({ selectedTarget: { ...target, kind: 'container', tagName: 'svg' }, onStyleChange });
+    expect(host.querySelector('[aria-label="Font size"]')).toBeNull();
+    const color = rowInput('Color');
+    act(() => { color.value = '#2368c4'; Simulate.change(color); });
+    expect(onStyleChange).toHaveBeenCalledWith(target.id, { color: '#2368c4' }, 'Style: Hero Title');
+  });
+
   it('cancels a pending image replacement when selection changes and never applies it to the new image', async () => {
     let resolve!: (src: string) => void;
     const onPickImage = vi.fn((_file: File, _signal?: AbortSignal) => new Promise<string>(done => { resolve = done; }));

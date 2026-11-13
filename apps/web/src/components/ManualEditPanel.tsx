@@ -830,6 +830,7 @@ function StyleInspector({
   const summary = target.computedSummary;
   const layoutDisabled = !target.isLayoutContainer;
   const typography = target.kind !== 'image' && !['svg', 'path', 'rect', 'circle', 'ellipse', 'polygon', 'polyline', 'line', 'video', 'canvas'].includes(target.tagName.toLowerCase());
+  const colorLabel = typography ? t('manualEdit.textColor') : t('sketch.color');
   const widthPlaceholder = styles.width ? '' : `${Math.round(target.rect.width)}px`;
   const heightPlaceholder = styles.height ? '' : `${Math.round(target.rect.height)}px`;
 
@@ -854,7 +855,7 @@ function StyleInspector({
   return (
     <div className="cc-inspector">
       <Section title={t('manualEdit.parameters')}>
-        {typography ? <ColorRow label={t('manualEdit.textColor')} value={styles.color} placeholder={summary?.color} onChange={(v) => u('color', v)} onFocus={() => activate('color', t('manualEdit.textColor'))} /> : null}
+        {target.kind !== 'image' ? <ColorRow label={colorLabel} value={styles.color} placeholder={summary?.color} onChange={(v) => u('color', v)} onFocus={() => activate('color', colorLabel)} /> : null}
         <ColorRow label={t('manualEdit.background')} value={styles.backgroundColor} placeholder={summary?.backgroundColor} onChange={(v) => u('backgroundColor', v)} onFocus={() => activate('backgroundColor', t('manualEdit.background'))} />
         <UnitRow label={t('manualEdit.opacity')} value={styles.opacity} placeholder="1" onChange={(v) => u('opacity', v)} unit="" onFocus={() => activate('opacity', t('manualEdit.opacity'))} />
         {typography ? <>
