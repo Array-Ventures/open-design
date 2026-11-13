@@ -514,3 +514,30 @@ Full repository typecheck and guard passed. The first full typecheck exposed
 NodeNext import-extension and exact-optional interface mismatches; those were
 corrected before the final pass. No full daemon/web suite, browser, contained
 image or server-side receipt recovery run is claimed by these source checks.
+
+### Development checkpoint: context protection in the existing draft owner
+
+`WorkbookCheckpoint.sheetDeletions` now retains bounded typed selected-baseline
+contexts, including on otherwise clean drafts. `WorkbookWriter.retainSheetDeletion`
+requires the real journal's synchronous validator and checks the entire prospective
+checkpoint through the exact serializer used by IndexedDB storage (same schema
+and 128 MiB byte bound), before changing the retained pool. Wrong source/scope,
+replacement tokens, pool overflow or encoder refusal retain existing contexts.
+Recovery decoding checks unique tokens and exact account/artifact scope; decoding
+is still data validation, never recovered server receipt or lineage authority.
+The recovery session supplies this validator and the editor preserves it when
+wrapping the journal. No separate cache or replay journal was introduced.
+
+This is context retention only, not post-command admission. No live command
+controller is installed and no Delete/Undo authority is granted. Current pending
+membership derivation still fails closed; an actual encoder negative proves that
+an invented pending Delete plan cannot bypass it. The next producer slice must
+validate its exact post-command checkpoint before Remove or Undo/Redo stack pops,
+maintain real history reachability, and bind checked historical receipts before
+source retirement. No untested positive Delete receipt association is claimed.
+
+Validation: 33 focused Writer/real-SDK-context tests and 30 affected existing
+storage/recovery/editor tests passed; web typecheck, full repository typecheck
+and guard passed. The refusal callback test covers atomic pool retention; it
+is not a claim that a new large-quota or browser-storage boundary was exercised.
+No runtime, image, UI controls or publication changed.

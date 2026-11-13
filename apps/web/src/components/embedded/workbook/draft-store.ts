@@ -52,9 +52,14 @@ export async function listWorkbookDrafts(scope: Omit<WorkbookDraftScope, 'draftI
   })) throw new Error('The workbook recovery index could not be read.');
   return raw.sort((a: WorkbookDraftHead, b: WorkbookDraftHead) => b.updatedAt - a.updatedAt);
 }
+/** Shared exact encoder and byte bound used by storage and synchronous
+ * prospective destructive-command admission. No IndexedDB side effect. */
+export function serializeWorkbookDraft(scope: WorkbookDraftScope, state: WorkbookCheckpoint): string {
+  return bounded(JSON.stringify(encodeWorkbookDraft(scope, state)));
+}
 export async function saveWorkbookDraft(scope: WorkbookDraftScope, state: WorkbookCheckpoint | null): Promise<void> {
   const key = workbookDraftKey(scope);
-  const serialized = state ? bounded(JSON.stringify(encodeWorkbookDraft(scope, state))) : null;
+  const serialized = state ? serializeWorkbookDraft(scope, state) : null;
   if (serialized === null) await access([STORE, HEADS], 'readwrite', tx => { tx.objectStore(HEADS).delete(key); return tx.objectStore(STORE).delete(key); });
   else await access([STORE, HEADS], 'readwrite', tx => {
     tx.objectStore(HEADS).put({ id: key, draftId: scope.draftId, artifactKey: workbookDraftArtifactKey(scope), updatedAt: Date.now() } satisfies WorkbookDraftHead);

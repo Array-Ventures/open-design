@@ -1,3 +1,4 @@
+import { workbookSourceDeleteContextSchema } from './sheet-delete-context';
 import { workbookGridSnapshotSchema, workbookDraftScopeSchema, type WorkbookDraftScope } from './workbook-draft-schema';
 export { workbookDraftScopeSchema, type WorkbookDraftScope } from './workbook-draft-schema';
 import { workbookSaveAcknowledgementSchema } from './save-provenance';
@@ -11,6 +12,7 @@ const intent = z.object({ id: z.string().uuid(), preparationId: z.string().uuid(
 const checkpoint = z.object({ version: z.literal(1), source: workbookPreviewSchema, acknowledged: snapshot, desired: snapshot,
   pending: z.object({ intent, snapshot, acknowledgement: workbookSaveAcknowledgementSchema.optional() }).strict().nullable(),
   sourceAcknowledgement: workbookSaveAcknowledgementSchema.optional(),
+  sheetDeletions: z.array(workbookSourceDeleteContextSchema).max(4096).optional(),
 }).strict();
 const record = z.object({ version: z.literal(1), scope: workbookDraftScopeSchema, checkpoint, updatedAt: z.number().int().nonnegative() }).strict();
 export function workbookDraftArtifactKey(scope: Omit<WorkbookDraftScope, 'draftId'>): string {
@@ -33,6 +35,11 @@ export function decodeWorkbookDraft(value: unknown, scope: WorkbookDraftScope): 
       if (sheet.id !== id) throw new Error('The workbook draft sheet identity is inconsistent.');
       for (const [row, cells] of Object.entries(sheet.cellData ?? {})) for (const column of Object.keys(cells)) if (Number(row) >= sheet.rowCount! || Number(column) >= sheet.columnCount!) throw new Error('The workbook draft contains out-of-bounds cells.');
     }
+  }
+  const tokens = new Set<string>();
+  for (const context of state.sheetDeletions ?? []) {
+    if (tokens.has(context.descriptor.token) || context.scope.viewerId !== scope.viewerId || context.scope.projectId !== scope.projectId || context.scope.fileName !== scope.fileName) throw Error('The protected deletion context scope or identity changed.');
+    tokens.add(context.descriptor.token);
   }
   const sheetIds = state.source.model.sheets.map(sheet => sheet.id);
   if (JSON.stringify(state.acknowledged.sheetOrder) !== JSON.stringify(sheetIds)) throw new Error('The workbook draft baseline is inconsistent.');

@@ -5,7 +5,9 @@ import { FUniver } from '@univerjs/core/facade';
 import '@univerjs/sheets/facade';
 import English from '@univerjs/sheets/locale/en-US';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
-import type { WorkbookCheckpoint } from '../../src/components/embedded/workbook/workbook-writer';
+import { WorkbookWriter, type WorkbookCheckpoint } from '../../src/components/embedded/workbook/workbook-writer';
+import { serializeWorkbookDraft } from '../../src/components/embedded/workbook/draft-store';
+import { decodeWorkbookDraft } from '../../src/components/embedded/workbook/workbook-checkpoint';
 import { gridWorkbook } from '../../src/components/embedded/workbook/grid-model';
 import { seedWorkbookStructureIdentity } from '../../src/components/embedded/workbook/grid-structure-identity';
 import { captureWorkbookSourceDeletion, stampWorkbookSourceDeletion, associateWorkbookSourceDeletion, workbookSourceDeletionBaselineIdentity, WORKBOOK_SHEET_DELETE_MARKER } from '../../src/components/embedded/workbook/sheet-delete-context';
@@ -90,4 +92,36 @@ it('keeps one complete baseline and recomputes identity after JSON recovery rath
   expect(workbookSourceDeletionBaselineIdentity(forged)).not.toEqual(identity);
   expect(() => workbookSourceDeletionBaselineIdentity({ ...context, baselineIdentity: identity } as typeof context)).toThrow();
   expect(context).not.toHaveProperty('sourceSheet'); expect(context).not.toHaveProperty('date1904');
+});
+
+it('protects bounded contexts through the exact existing encoder and journal while clean, without admitting membership edits', async () => {
+  const f = fixture(), context = captureWorkbookSourceDeletion(scope, f.checkpoint, '2');
+  const records: (WorkbookCheckpoint | null)[] = [], validated: WorkbookCheckpoint[] = [];
+  const writer = new WorkbookWriter(f.checkpoint.source, f.checkpoint.acknowledged, async () => { throw Error('No remote write expected'); }, () => {}, undefined, {
+    validate: candidate => { serializeWorkbookDraft(scope, candidate); validated.push(structuredClone(candidate)); },
+    save: async candidate => { records.push(structuredClone(candidate)); },
+  });
+  writer.retainSheetDeletion(context); await writer.close();
+  expect(validated[0]!.sheetDeletions).toEqual([context]);
+  expect(records.at(-1)?.sheetDeletions).toEqual([context]);
+  expect(decodeWorkbookDraft(JSON.parse(serializeWorkbookDraft(scope, writer.checkpoint())), scope).sheetDeletions).toEqual([context]);
+  const deleted = structuredClone(f.checkpoint.desired); delete deleted.sheets['2']; deleted.sheetOrder = deleted.sheetOrder.filter(id => id !== '2');
+  expect(() => serializeWorkbookDraft(scope, { ...writer.checkpoint(), pending: { snapshot: deleted, intent: { id: crypto.randomUUID(), preparationId: crypto.randomUUID(), previewId: crypto.randomUUID(), plan: { sourceSha256, edits: [], sheets: [{ sheetId: '1', name: 'Sheet 1', origin: 'source' }, { sheetId: '3', name: 'Sheet 3', origin: 'source' }] } } } })).toThrow();
+  // Current producer remains OFF: this is honest refusal, not a forged positive
+  // restored checkpoint bypassing the existing membership derivation owner.
+});
+it('refuses prospective context replacement, source/scope drift and validation failure without dropping protected roots', async () => {
+  const f = fixture(), context = captureWorkbookSourceDeletion(scope, f.checkpoint, '2'); let refused = false;
+  const writer = new WorkbookWriter(f.checkpoint.source, f.checkpoint.acknowledged, async () => { throw Error('No write'); }, () => {}, undefined, {
+    validate: candidate => { serializeWorkbookDraft(scope, candidate); if (refused) throw Error('Prospective budget refusal'); }, save: async () => {},
+  });
+  writer.retainSheetDeletion(context); const before = writer.checkpoint();
+  const second = captureWorkbookSourceDeletion(scope, f.checkpoint, '3'); refused = true;
+  expect(() => writer.retainSheetDeletion(second)).toThrow('budget'); expect(writer.checkpoint()).toEqual(before);
+  expect(() => writer.retainSheetDeletion({ ...context, sourceSha256: 'c'.repeat(64) })).toThrow('source changed');
+  const changed = structuredClone(context); changed.baseline.sheet.cells[0]!.value = 999;
+  expect(() => writer.retainSheetDeletion(changed)).toThrow('cannot be replaced');
+  const crossScope = structuredClone(second); crossScope.scope.viewerId = 'another-person'; refused = false;
+  expect(() => writer.retainSheetDeletion(crossScope)).toThrow('scope'); expect(writer.checkpoint()).toEqual(before);
+  await writer.close();
 });

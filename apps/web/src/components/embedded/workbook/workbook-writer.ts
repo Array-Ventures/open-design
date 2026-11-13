@@ -1,3 +1,4 @@
+import { workbookSourceDeleteContextSchema, type WorkbookSourceDeleteContext } from './sheet-delete-context';
 import { workbookSaveAcknowledgementSchema, type WorkbookSaveAcknowledgement } from './save-provenance';
 import { workbookGridPlan, workbookPlanHasChanges } from './grid-plan';
 import type { IWorkbookData } from '@univerjs/presets';
@@ -14,8 +15,9 @@ export interface WorkbookCheckpoint {
   version: 1; source: Preview; acknowledged: IWorkbookData; desired: IWorkbookData;
   pending: { intent: WorkbookWriteIntent; snapshot: IWorkbookData; acknowledgement?: WorkbookSaveAcknowledgement } | null;
   sourceAcknowledgement?: WorkbookSaveAcknowledgement;
+  sheetDeletions?: WorkbookSourceDeleteContext[];
 }
-export interface WorkbookJournal { save(checkpoint: WorkbookCheckpoint | null): Promise<void>; restored?: WorkbookCheckpoint }
+export interface WorkbookJournal { save(checkpoint: WorkbookCheckpoint | null): Promise<void>; validate?(checkpoint: WorkbookCheckpoint): void; restored?: WorkbookCheckpoint }
 /** Serializes edits against acknowledged bytes. A failed/uncertain intent keeps
  * its exact plan and identity; edits made during it are rebased only after its
  * receipt and refreshed model agree. This class never owns or remounts a grid. */
@@ -25,6 +27,7 @@ export class WorkbookWriter {
   private source: Preview;
   private pending: WorkbookCheckpoint['pending'] = null;
   private sourceAcknowledgement: WorkbookSaveAcknowledgement | undefined;
+  private sheetDeletions: WorkbookSourceDeleteContext[] = [];
   private running: Promise<void> | null = null;
   private active = true;
   private persistence = Promise.resolve();
@@ -37,7 +40,7 @@ export class WorkbookWriter {
     this.source = source; this.acknowledged = structuredClone(initial); this.desired = structuredClone(initial);
     if (journal?.restored) {
       const restored = structuredClone(journal.restored);
-      this.source = restored.source; this.acknowledged = restored.acknowledged; this.desired = restored.desired; this.pending = restored.pending; this.sourceAcknowledgement = restored.sourceAcknowledgement;
+      this.source = restored.source; this.acknowledged = restored.acknowledged; this.desired = restored.desired; this.pending = restored.pending; this.sourceAcknowledgement = restored.sourceAcknowledgement; this.sheetDeletions = restored.sheetDeletions ?? [];
       if (source.sourceSha256 !== restored.source.sourceSha256) {
         this.recoveryConflict = !restored.pending;
         this.error = 'Recovered edits belong to an earlier workbook version. Keep this draft while checking the save status.';
@@ -58,14 +61,29 @@ export class WorkbookWriter {
     this.publish();
     void this.persist().catch(error => { if (this.active) { this.error = this.persistenceError(error); this.publish(); } });
   }
-  checkpoint(): WorkbookCheckpoint { return structuredClone({ version: 1, source: this.source, acknowledged: this.acknowledged, desired: this.desired, pending: this.pending, ...(this.sourceAcknowledgement ? { sourceAcknowledgement: this.sourceAcknowledgement } : {}) }); }
+  checkpoint(): WorkbookCheckpoint { return structuredClone({ version: 1, source: this.source, acknowledged: this.acknowledged, desired: this.desired, pending: this.pending, ...(this.sourceAcknowledgement ? { sourceAcknowledgement: this.sourceAcknowledgement } : {}), ...(this.sheetDeletions.length ? { sheetDeletions: this.sheetDeletions } : {}) }); }
+  /** Synchronous context-pool admission through the real draft encoder.
+   * A command owner must separately validate its post-command snapshot before
+   * executing. This retains data, not Delete/Undo or historical authority. */
+  retainSheetDeletion(raw: WorkbookSourceDeleteContext): void {
+    if (!this.active || this.pending || this.running || !this.journal?.validate) throw Error('Protected worksheet deletion is not ready.');
+    const context = workbookSourceDeleteContextSchema.parse(raw);
+    if (context.sourceSha256 !== this.source.sourceSha256) throw Error('The deletion source changed.');
+    const previous = this.sheetDeletions.find(value => value.descriptor.token === context.descriptor.token);
+    if (previous) { if (JSON.stringify(previous) !== JSON.stringify(context)) throw Error('The deletion context cannot be replaced.'); return; }
+    if (this.sheetDeletions.length >= 4096) throw Error('The worksheet deletion recovery limit was reached.');
+    const candidate = [...this.sheetDeletions, structuredClone(context)];
+    this.journal.validate({ ...this.checkpoint(), sheetDeletions: candidate });
+    this.sheetDeletions = candidate;
+    void this.persist().catch(error => { if (this.active) { this.error = this.persistenceError(error); this.publish(); } });
+  }
   recoveredSnapshot(): IWorkbookData { return structuredClone(this.desired); }
   private persistenceError(_error: unknown) { return 'This draft could not be protected on this device. Keep the workbook open and try saving again.'; }
   private async persist() {
     if (!this.journal) return;
     let dirty = Boolean(this.pending);
     try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
-    const checkpoint = dirty || this.sourceAcknowledgement?.kind === 'history' ? this.checkpoint() : null;
+    const checkpoint = dirty || this.sheetDeletions.length || this.sourceAcknowledgement?.kind === 'history' ? this.checkpoint() : null;
     const next = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
     this.persistence = next;
     try { await next; }
