@@ -397,6 +397,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
       layer.show();
       readyForInput = true;
       membershipController?.requestMaintenance(); workbook.setEditable(editable);
+      if (seed && editable && current()) scalarCalculation?.calculateRestoredInputs();
       formatting.publish(); exporter.publish(); visibility.publish();
       callbacks.current.onDisplayGaps?.(prepared.gaps); setError(null);
     } catch { close(); if (current()) setError('The workbook grid could not be opened.'); }
