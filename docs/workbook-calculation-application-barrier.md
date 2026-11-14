@@ -1,0 +1,9 @@
+# Workbook calculation application barrier
+
+The scalar result mutation is a notification: its pinned SDK handler is a no-op. The sheets plugin subsequently applies its values through asynchronous `SetRangeValues` mutations. Receiving a qualified result therefore does not prove that `book.save()` contains those results yet.
+
+The calculation owner now keeps its existing deadline through those actual applications. Each expected application is bound to the already accepted calculation provenance, unit, sheet, exact value/type vector and source formula identities. Across RPC these objects are cloned, so correlation uses the existing canonical SHA helper; the local SDK path also retains the existing source-object provenance. Formatting fields are excluded because the SDK independently merges number-format styles. Only an accepted derived mutation whose actual resulting cells match can discharge its application. A late, mismatched or rejected application cannot complete the latest input epoch.
+
+Membership waits require the applied replica acknowledgement, qualified scalar completion when formulas remain, and these real cache applications. The new quiescent wait additionally drains ordinary scalar work for clean History snapshot capture, with cancellation and failure owned by the existing worker deadline. Neither wait grants source/history authorization or promotes stored caches into calculated results.
+
+A genuine regression against `13196db4` held the reverse cache mutation while allowing its scalar result: `awaitMembership()` resolved although the actual workbook cache was still not `#REF!`. The corrected production RPC suite passed all 14 cases; the existing formula display and worker-boundary suites passed 22 cases. An ordinary edit similarly proves quiescent completion returns the actual fresh value 40, rather than the prior cache 38. These are local source/RPC tests, not packaged runtime qualification or live worksheet-control enablement.

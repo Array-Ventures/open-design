@@ -178,3 +178,50 @@ it('refuses over-budget Add before any SDK mutation, history push or protected c
     expect(f.owner.ready).toBe(true);
   } finally { await f.close(); }
 }, 15_000);
+
+it('drains ordinary scalar results before capturing a clean History snapshot', async () => {
+  vi.stubGlobal('Worker', NodeWorkbookWorker);
+  const f = await createWorkbookMembershipRpcFixture();
+  const held: unknown[] = [];
+  let holding = true;
+  f.worker.acceptIncoming = message => { if (holding) { if (!held.includes(message)) held.push(message); return false; } return true; };
+  try {
+    f.book.getSheetBySheetId('2')!.getRange('A1').setValue(19);
+    await vi.waitFor(() => expect(held.length).toBeGreaterThan(0), { timeout: 5000 });
+    let settled = false;
+    const idle = f.calculation.awaitQuiescent().then(() => { settled = true; }); void idle.catch(() => {});
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    holding = false;
+    for (const message of held) f.worker.thread.emit('message', message);
+    await idle;
+    expect(f.book.save().sheets['3']!.cellData![1]![0]!.v).toBe(40);
+    expect(f.owner.ready).toBe(true);
+  } finally { await f.close(); }
+}, 15_000);
+
+it('keeps membership completion pending until its actual derived cache mutation is applied', async () => {
+  vi.stubGlobal('Worker', NodeWorkbookWorker);
+  const f = await createWorkbookMembershipRpcFixture();
+  const held: unknown[] = [];
+  let holding = true;
+  const contains = (value: unknown, target: unknown): boolean => value === target || Boolean(value && typeof value === 'object' && Object.values(value).some(child => contains(child, target)));
+  f.worker.acceptIncoming = message => {
+    if (holding && contains(message, SetRangeValuesMutation.id)) { if (!held.includes(message)) held.push(message); return false; }
+    return true;
+  };
+  try {
+    await f.controller.remove('2');
+    let settled = false;
+    const applied = f.calculation.awaitMembership().then(() => { settled = true; }); void applied.catch(() => {});
+    await vi.waitFor(() => expect(held.length).toBeGreaterThan(0), { timeout: 5000 });
+    await Promise.resolve();
+    expect(f.book.save().sheets['3']!.cellData![1]![0]!.v).not.toBe('#REF!');
+    expect(settled).toBe(false);
+    holding = false;
+    for (const message of held) f.worker.thread.emit('message', message);
+    await applied;
+    expect(f.book.save().sheets['3']!.cellData![1]![0]!.v).toBe('#REF!');
+    expect(f.owner.ready).toBe(true);
+  } finally { await f.close(); }
+}, 15_000);
