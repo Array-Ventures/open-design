@@ -88,7 +88,7 @@ ${MOTION_AUDIO_SYNC_RUNTIME}
     var hostMuted = false;
     var active = !hosted, playing = false, wantsPlay = true, pageActive = true, updateTimer = null;
     var applyPlayback = function () {};
-    function requestActivity() { window.parent.postMessage({type:'${MOTION_PREVIEW_REQUEST}', id:instance, width:width, height:height}, '*'); }
+    function requestActivity(probe) { window.parent.postMessage(Object.assign({type:'${MOTION_PREVIEW_REQUEST}', id:instance, width:width, height:height, probeVersion:1}, probe === undefined ? {} : {probe:probe}), '*'); }
     function onActivity(event) {
       var data = event.data;
       if (!hosted || event.source !== window.parent || !data) return;
@@ -101,7 +101,10 @@ ${MOTION_AUDIO_SYNC_RUNTIME}
         else if (data.action === 'mute' && typeof data.muted === 'boolean') player.setMuted(data.muted);
         return;
       }
-      if (data.type === '${MOTION_PREVIEW_PROBE}') { requestActivity(); return; }
+      if (data.type === '${MOTION_PREVIEW_PROBE}') {
+        if (data.probe !== undefined && (typeof data.probe !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(data.probe))) return;
+        requestActivity(data.probe); return;
+      }
       if (data.type !== '${MOTION_PREVIEW_ACTIVITY}' || typeof data.active !== 'boolean' || (data.active && data.id !== instance)) return;
       hostMuted = data.muted === true;
       active = data.active; applyPlayback();
@@ -191,7 +194,7 @@ ${MOTION_AUDIO_SYNC_RUNTIME}
       };
       function reportState() {
         var state = window.__odMotionPlayer.state();
-        window.parent.postMessage({type:'od:motion-state', id:instance, playing:state.playing, time:state.time, duration:state.duration, muted:state.muted, hasAudio:tracks.length > 0}, '*');
+        window.parent.postMessage({type:'od:motion-state', id:instance, probeVersion:1, playing:state.playing, time:state.time, duration:state.duration, muted:state.muted, hasAudio:tracks.length > 0}, '*');
       }
       var stateTimer = setInterval(function () {
         if (!stage.isConnected) { clearInterval(stateTimer); return; }
