@@ -8,7 +8,7 @@ import English from '@univerjs/sheets/locale/en-US';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { gridWorkbook } from '../../src/components/embedded/workbook/grid-model';
 import { seedWorkbookStructureIdentity } from '../../src/components/embedded/workbook/grid-structure-identity';
-import { WorkbookWriter, type WorkbookCheckpoint, type WorkbookWriteIntent, type WorkbookWriteResult } from '../../src/components/embedded/workbook/workbook-writer';
+import { WorkbookWriter, type WorkbookCheckpoint, type WorkbookJournal, type WorkbookWriteIntent, type WorkbookWriteResult } from '../../src/components/embedded/workbook/workbook-writer';
 import { WorkbookSheetHistoryController } from '../../src/components/embedded/workbook/sheet-history-controller';
 import { serializeWorkbookDraft } from '../../src/components/embedded/workbook/draft-store';
 import type { WorkbookProtectedSheetSequence } from '../../src/components/embedded/workbook/sheet-calculation-permit';
@@ -19,6 +19,7 @@ export function createSourceDeleteHistoryFixture(owned: boolean, options: {
   initial?: IWorkbookData;
   sourceCells?: number;
   save?: (state: WorkbookCheckpoint | null) => Promise<void>;
+  saveGuarded?: WorkbookJournal['saveGuarded'];
   current?: () => boolean;
   runProtectedSequence?: WorkbookProtectedSheetSequence;
   write?: (intent: WorkbookWriteIntent, checkpoint: () => Promise<void>) => Promise<WorkbookWriteResult>;
@@ -48,7 +49,7 @@ export function createSourceDeleteHistoryFixture(owned: boolean, options: {
   const commands = univer.__getInjector().get(ICommandService);
   const history = univer.__getInjector().get(IUndoRedoService);
   const writer = new WorkbookWriter(source, book.save(), options.write ?? (async () => { throw Error('Unexpected transport'); }), () => {}, undefined, {
-    scope, isCurrent: options.current ?? (() => true), validate: state => { serializeWorkbookDraft(scope, state); }, save: options.save ?? (async () => {}),
+    scope, isCurrent: options.current ?? (() => true), validate: state => { serializeWorkbookDraft(scope, state); }, save: options.save ?? (async () => {}), ...(options.saveGuarded ? { saveGuarded: options.saveGuarded } : {}),
   });
   const controller = owned ? new WorkbookSheetHistoryController(univer, writer, scope, () => book.save(), options.current ?? (() => true), options.runProtectedSequence) : undefined;
   const observer = commands.onCommandExecuted(command => {
@@ -59,4 +60,3 @@ export function createSourceDeleteHistoryFixture(owned: boolean, options: {
     async close() { await writer.close(); observer.dispose(); controller?.dispose(); univer.dispose(); },
   };
 }
-

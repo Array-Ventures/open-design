@@ -1,5 +1,9 @@
 # Source Delete native history checkpoint
 
+The later [origin-aware Delete and Rename checkpoint](workbook-origin-delete-rename.md)
+extends this source-present path to private unsaved/restored origins and protected
+Rename. Its source evidence remains separate from actual worker/UI qualification.
+
 This source slice connects privately issued source Delete actions to the existing
 Writer, source-preserving restoration projector and historical-asset declaration
 path. `WorkbookSheetHistoryController` remains uninstalled. It is not packaged
@@ -142,8 +146,9 @@ the complete prospective result, and no invocation before denied storage.
 Actual native formula updates additionally emit derived `fromFormula` cache
 clearing events. The fixture records those separately and checks their null
 scalar caches rather than silently treating them as extra authored input.
-Affected author checks passed 52 cases across four suites, web types and guard.
+Affected author checks passed52 cases across four suites, web types and guard.
 At that adapter checkpoint, actual main/worker admission and RPC qualification
-remained a separate gate. The subsequent source consumer proof is recorded in
-[the live consumer checkpoint](workbook-live-membership-consumer.md); packaged
+remained a separate gate. Subsequent source consumer work is recorded in
+[the live consumer checkpoint](workbook-live-membership-consumer.md) and
+[the clean History handoff](workbook-clean-history-resume.md); packaged
 acceptance remains separate.

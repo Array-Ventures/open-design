@@ -58,14 +58,28 @@ export async function listWorkbookDrafts(scope: Omit<WorkbookDraftScope, 'draftI
 export function serializeWorkbookDraft(scope: WorkbookDraftScope, state: WorkbookCheckpoint): string {
   return bounded(JSON.stringify(encodeWorkbookDraft(scope, state)));
 }
-export async function saveWorkbookDraft(scope: WorkbookDraftScope, state: WorkbookCheckpoint | null): Promise<void> {
+export async function saveWorkbookDraft(scope: WorkbookDraftScope, state: WorkbookCheckpoint | null, guard?: () => void, beforeCommit?: () => void): Promise<void> {
   const key = workbookDraftKey(scope);
   const serialized = state ? serializeWorkbookDraft(scope, state) : null;
   const needsRecovery = state ? workbookCheckpointNeedsRecovery(state, scope, state.source) : false;
-  if (serialized === null) await access([STORE, HEADS], 'readwrite', tx => { tx.objectStore(HEADS).delete(key); return tx.objectStore(STORE).delete(key); });
-  else await access([STORE, HEADS], 'readwrite', tx => {
-    tx.objectStore(HEADS).put({ id: key, draftId: scope.draftId, artifactKey: workbookDraftArtifactKey(scope), updatedAt: Date.now(), needsRecovery } satisfies WorkbookDraftHead);
-    return tx.objectStore(STORE).put(serialized, key);
+  await access([STORE, HEADS], 'readwrite', tx => {
+    guard?.();
+    let request: IDBRequest;
+    if (serialized === null) {
+      tx.objectStore(HEADS).delete(key);
+      request = tx.objectStore(STORE).delete(key);
+    } else {
+      tx.objectStore(HEADS).put({ id: key, draftId: scope.draftId, artifactKey: workbookDraftArtifactKey(scope), updatedAt: Date.now(), needsRecovery } satisfies WorkbookDraftHead);
+      request = tx.objectStore(STORE).put(serialized, key);
+    }
+    if (guard) request.onsuccess = () => {
+      // The last queued write has succeeded but is still abortable. Admission
+      // and explicit commit occur in one synchronous event turn. Promise
+      // completion may come later; it is not a second ownership grant.
+      try { guard(); beforeCommit?.(); tx.commit(); }
+      catch { tx.abort(); }
+    };
+    return request;
   });
 }
 

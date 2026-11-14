@@ -4,6 +4,8 @@ import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex } from '@noble/hashes/utils';
 import { canonicalWorkbookJsonValue } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 
+/** Installed only by the live kernel calculation owner, inside an already
+ * durable callback. Sequence data alone is not authority. */
 export type WorkbookProtectedSheetSequence = (sequence: readonly IMutationInfo<object>[], prospective: IWorkbookData, execute: () => boolean) => boolean;
 export const WORKBOOK_MEMBERSHIP_OPTION = 'studioWorkbookMembership';
 const digest = z.string().regex(/^[a-f0-9]{64}$/);

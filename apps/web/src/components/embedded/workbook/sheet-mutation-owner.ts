@@ -1,5 +1,5 @@
 import { ICommandService, IUniverInstanceService, UniverInstanceType, type ICommand, type IWorkbookData, type Univer, type Workbook } from '@univerjs/core';
-import { InsertSheetMutation, RemoveSheetMutation } from '@univerjs/sheets';
+import { InsertSheetMutation, RemoveSheetMutation, SetWorksheetNameMutation } from '@univerjs/sheets';
 import { canonicalWorkbookJsonValue } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import { workbookSheetActionDescriptorSchema, type WorkbookSheetActionDescriptor } from './sheet-action-descriptor';
 import { WORKBOOK_SHEET_REMOVALS, workbookSheetRemovalSelection, workbookSheetMutationSnapshot, type WorkbookSheetMutationKind } from './sheet-removal-selection';
@@ -41,7 +41,7 @@ export class WorkbookSheetMutationOwner {
     if (!unit) throw Error('The worksheet kernel is unavailable.');
     this.unit = unit;
     try {
-      for (const [kind, original] of [['insert', InsertSheetMutation], ['remove', RemoveSheetMutation]] as const) {
+      for (const [kind, original] of [['insert', InsertSheetMutation], ['remove', RemoveSheetMutation], ['rename', SetWorksheetNameMutation]] as const) {
         const originalCommand: ICommand = original;
         const command: ICommand = { ...original, handler: (accessor, params, options) => {
           const input = params as { unitId?: string; subUnitId?: string; sheet?: { id?: string } } | undefined;
@@ -76,7 +76,7 @@ export class WorkbookSheetMutationOwner {
   }
 
   isCurrent(): boolean {
-    return !this.disposed && !this.fault && this.handles.length === 2 && this.handles.every(handle => handle.isCurrent())
+    return !this.disposed && !this.fault && this.handles.length === 3 && this.handles.every(handle => handle.isCurrent())
       && this.authority.isCurrent() && this.instances.getFocusedUnit() === this.unit
       && this.instances.getUnit(this.unit.getUnitId(), UniverInstanceType.UNIVER_SHEET) === this.unit;
   }

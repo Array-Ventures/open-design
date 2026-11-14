@@ -1,3 +1,4 @@
+import { MAX_WORKBOOK_SHEET_CONTEXTS } from './workbook-draft-limits';
 import { z } from 'zod';
 import type { IWorkbookData } from '@univerjs/core';
 import { canonicalWorkbookJsonValue } from '@open-design/contracts/runtime/workbook-sheet-baseline';
@@ -8,9 +9,9 @@ export const WORKBOOK_SHEET_REMOVALS = 'evebotSheetRemovals';
 const removalMapSchema = z.object({
   version: z.literal(1), generation: z.string().uuid(),
   entries: z.record(workbookActionSheetIdSchema, z.string().uuid()),
-}).strict().refine(value => Object.keys(value.entries).length <= 4096
+}).strict().refine(value => Object.keys(value.entries).length <= MAX_WORKBOOK_SHEET_CONTEXTS
   && new Set(Object.values(value.entries)).size === Object.keys(value.entries).length);
-export type WorkbookSheetMutationKind = 'insert' | 'remove';
+export type WorkbookSheetMutationKind = 'insert' | 'remove' | 'rename';
 
 /** Projection selection data only. Issuance, history and historical-file access
  * are separately owned; parsing this metadata never grants an SDK action. */
@@ -30,7 +31,7 @@ export function workbookSheetRemovalSelection(snapshot: IWorkbookData, generatio
  * through the existing Writer before invoking the native callback. */
 export function workbookSheetMutationSnapshot(before: IWorkbookData, after: IWorkbookData,
   kind: WorkbookSheetMutationKind, raw: WorkbookSheetActionDescriptor): IWorkbookData {
-  if (kind !== 'insert' && kind !== 'remove') throw Error('Unknown worksheet mutation kind.');
+  if (kind !== 'insert' && kind !== 'remove' && kind !== 'rename') throw Error('Unknown worksheet mutation kind.');
   const descriptor = workbookSheetActionDescriptorSchema.parse(raw);
   canonicalWorkbookJsonValue(before); canonicalWorkbookJsonValue(after);
   workbookGridSnapshotSchema.parse(before); workbookGridSnapshotSchema.parse(after);
@@ -41,9 +42,13 @@ export function workbookSheetMutationSnapshot(before: IWorkbookData, after: IWor
   if (kind === 'remove') {
     if (!before.sheets[id] || after.sheets[id] || after.sheetOrder.includes(id)) throw Error('The worksheet removal target changed.');
     entries[id] = descriptor.token;
-  } else {
+  } else if (kind === 'insert') {
     if (before.sheets[id] || !after.sheets[id] || !after.sheetOrder.includes(id)) throw Error('The worksheet insertion target changed.');
     delete entries[id];
+  } else if (!before.sheets[id] || !after.sheets[id]
+    || canonicalWorkbookJsonValue(before.sheetOrder) !== canonicalWorkbookJsonValue(after.sheetOrder)
+    || canonicalWorkbookJsonValue(Object.keys(before.sheets).sort()) !== canonicalWorkbookJsonValue(Object.keys(after.sheets).sort())) {
+    throw Error('The worksheet rename membership changed.');
   }
   const next = structuredClone(after);
   next.custom = { ...next.custom };
