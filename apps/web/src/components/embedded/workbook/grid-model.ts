@@ -78,7 +78,12 @@ function cellValue(cell: WorkbookCell, model: WorkbookDocument, gaps: Set<Workbo
 /** Display-only adapter. OOXML remains authoritative; Univer serialization is
  * never used to save the package, styles or uncaptured workbook parts. */
 export function gridWorkbook(input: WorkbookDocument, id: string, title: string, defaultTextColor?: string): GridWorkbook {
-  const model = workbookDocumentSchema.parse(input), gaps = new Set<WorkbookDisplayGap>();
+  return gridWorkbookFromValidatedModel(workbookDocumentSchema.parse(input), id, title, defaultTextColor);
+}
+/** Pure display adapter for the contract owner's synchronous validated read.
+ * This function does not qualify source data or grant writing authority. */
+export function gridWorkbookFromValidatedModel(model: WorkbookDocument, id: string, title: string, defaultTextColor?: string): GridWorkbook {
+  const gaps = new Set<WorkbookDisplayGap>();
   const data: Partial<IWorkbookData> = { id, name: title, appVersion: '1.4.0', locale: LocaleType.EN_US, dateSystem: model.date1904 ? DateSystem.Date1904 : DateSystem.Date1900,
     sheetOrder: model.sheets.map(sheet => sheet.id), styles: Object.fromEntries(model.styles.map((input, index) => [String(index), style(input, model, gaps, index === 0)])), sheets: {} };
   // OOXML style zero is the inherited Normal style even when cells omit s.

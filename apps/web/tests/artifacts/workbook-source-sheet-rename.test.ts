@@ -19,7 +19,7 @@ afterEach(() => closers.splice(0).reverse().forEach(close => close()));
 function fixture(withFormulas = false) {
   const model: WorkbookDocument = {
     version: 1, date1904: false, activeSheetId: '1',
-    worksheetStructureEditable: true, calculationMetadata: 'verified',
+    worksheetStructureEditable: true, worksheetMembershipEditable: true, calculationMetadata: 'verified',
     styles: [{}, { font: { bold: true, size: 11 } }],
     features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
     sheets: ['1', '2', '3'].map(id => ({

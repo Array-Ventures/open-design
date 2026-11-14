@@ -1,5 +1,5 @@
-import { ICommandService, type IWorkbookData, type Univer } from '@univerjs/core';
-import { WORKBOOK_MODEL_LIMITS } from '@open-design/contracts/runtime/workbook';
+import { ICommandService, type IWorkbookData, type IWorksheetData, type Univer } from '@univerjs/core';
+import { WORKBOOK_MODEL_LIMITS, WORKBOOK_SHEET_ID_MAX } from '@open-design/contracts/runtime/workbook';
 import { WORKBOOK_STRUCTURE_AXIS_BUDGET } from '@open-design/contracts/runtime/workbook-structure';
 
 const marker = 'evebotSourceAxis', ownerMarker = 'evebotStructureOwner';
@@ -29,7 +29,26 @@ export function seedWorkbookStructureIdentity(input: IWorkbookData, sourceSha256
   const book = structuredClone(input), generation = crypto.randomUUID();
   if (book.custom?.[ownerMarker] !== undefined) throw new Error('Structural source identity is already installed.');
   book.custom = { ...book.custom, [ownerMarker]: { generation, sourceSha256 } };
-  for (const sheet of Object.values(book.sheets)) for (const [axis, field, count, limit] of [
+  for (const sheet of Object.values(book.sheets)) seedSheetAxes(sheet, generation);
+  return book;
+}
+/** Seed only an owned new sheet. Existing source axes and the kernel owner
+ * remain untouched; these view identities are never OOXML/source authority. */
+export function seedWorkbookNewSheetIdentity(book: IWorkbookData, input: IWorksheetData): IWorksheetData {
+  assertWorkbookStructureIdentity(book);
+  if (!/^[1-9][0-9]{0,4}$/.test(input.id) || Number(input.id) > WORKBOOK_SHEET_ID_MAX || Object.hasOwn(book.sheets, input.id)) throw new Error('A new worksheet needs a distinct bounded numeric identity.');
+  const prospective = { ...book, sheets: { ...book.sheets, [input.id]: input } };
+  axisCount(prospective);
+  const area = Object.values(prospective.sheets).reduce((sum, sheet) => sum + (sheet.rowCount ?? NaN) * (sheet.columnCount ?? NaN), 0);
+  if (!Number.isSafeInteger(area) || area > WORKBOOK_MODEL_LIMITS.cells) throw new Error('New worksheet geometry exceeds the calculation budget.');
+  const sheet = structuredClone(input);
+  seedSheetAxes(sheet, owner(book));
+  return sheet;
+}
+
+function seedSheetAxes(sheet: Partial<IWorksheetData>, generation: string): void {
+  if (typeof sheet.id !== 'string' || !sheet.id) throw new Error('Structural worksheet identity is unavailable.');
+  for (const [axis, field, count, limit] of [
     ['row', 'rowData', sheet.rowCount ?? NaN, WORKBOOK_MODEL_LIMITS.rows],
     ['column', 'columnData', sheet.columnCount ?? NaN, WORKBOOK_MODEL_LIMITS.columns],
   ] as const) {
@@ -41,8 +60,8 @@ export function seedWorkbookStructureIdentity(input: IWorkbookData, sourceSha256
       dimension.custom = { ...dimension.custom, [marker]: { owner: generation, sheetId: sheet.id, axis, id: `source:${index}` } };
     }
   }
-  return book;
 }
+
 /** Assign inserted axes before the SDK records redo parameters. Deletion undo
  * restores existing metadata; redo insertion reuses exactly the same birth IDs.
  * Post-mutation stamping would lose this identity after undo/redo or save. */

@@ -1,3 +1,6 @@
+import type { WorkbookCheckpoint } from './workbook-writer';
+import { workbookDraftScopeSchema, type WorkbookDraftScope } from './workbook-draft-schema';
+import { canonicalWorkbookJsonValue } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import { z } from 'zod';
 import { workbookCommitRequestSchema } from '@open-design/contracts/runtime/workbook';
 import { checkedWorkbookSave } from './save-identity';
@@ -34,4 +37,19 @@ export function checkedWorkbookSaveAcknowledgement(raw: unknown, attempt: Workbo
     sourceSha256: receipt.sourceSha256, sourceVersionId: receipt.sourceVersionId,
     targetSha256: receipt.targetSha256, versionId: receipt.versionId,
   }) };
+}
+
+
+/** Recheck the exact retained pending identity before transferring protected
+ * birth data. Metadata consistency only, never server or SDK authority. */
+export function assertWorkbookPendingAcknowledgement(scope: WorkbookDraftScope, before: WorkbookCheckpoint,
+  target: WorkbookCheckpoint['source'], acknowledgement: WorkbookSaveAcknowledgement): asserts acknowledgement is Extract<WorkbookSaveAcknowledgement, { kind: 'history' }> {
+  scope = workbookDraftScopeSchema.parse(scope);
+  const checked = workbookSaveAcknowledgementSchema.parse(acknowledgement), pending = before.pending;
+  if (!pending || checked.kind !== 'history') throw Error('A pending birth requires its checked target receipt.');
+  if (pending.acknowledgement && canonicalWorkbookJsonValue(pending.acknowledgement) !== canonicalWorkbookJsonValue(checked)) throw Error('The checked birth receipt changed while protected.');
+  const proof = checked.provenance;
+  if (proof.operationId !== pending.intent.id || proof.renderId !== pending.intent.renderId
+    || proof.sourceSha256 !== before.source.sourceSha256 || proof.sourceSha256 !== pending.intent.plan.sourceSha256
+    || proof.targetSha256 !== target.sourceSha256 || proof.projectId !== scope.projectId || proof.fileName !== scope.fileName) throw Error('The saved birth receipt changed source, target or operation.');
 }
