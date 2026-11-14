@@ -11,6 +11,7 @@ import { WorkbookSheetMutationOwner } from './sheet-mutation-owner';
 import { workbookSheetMutationSnapshot } from './sheet-removal-selection';
 import { nativeDeletePayloadIdentity, projectNativeSheetDelete, type NativeDeletePayload, type NativeSheetMutation } from './native-delete-history';
 import type { WorkbookSourceDeleteContext } from './sheet-delete-context';
+import type { WorkbookProtectedSheetSequence } from './sheet-calculation-permit';
 
 type Direction = 'undo' | 'redo';
 interface IssuedBirth { entry: WorkbookSheetBirthEntry; index: number; nativeEntryId: number }
@@ -36,7 +37,8 @@ export class WorkbookSheetHistoryController {
   private disposed = false;
 
   constructor(univer: Univer, private readonly writer: WorkbookWriter, private readonly scope: WorkbookDraftScope,
-    private readonly snapshot: () => IWorkbookData, private readonly current: () => boolean) {
+    private readonly snapshot: () => IWorkbookData, private readonly current: () => boolean,
+    private readonly runProtectedSequence: WorkbookProtectedSheetSequence = (_sequence, _prospective, execute) => execute()) {
     const injector = univer.__getInjector();
     this.injector = injector;
     this.commands = injector.get(ICommandService);
@@ -216,7 +218,7 @@ export class WorkbookSheetHistoryController {
     mutations: readonly NativeSheetMutation[], execute: () => boolean): IWorkbookData {
     const projection = projectNativeSheetDelete(before, descriptor, mutations);
     const { kind, before: immediateBefore, after } = projection.transition;
-    return this.mutation.run(kind, descriptor, immediateBefore, after, execute, projection.snapshot);
+    return this.mutation.run(kind, descriptor, immediateBefore, after, () => this.runProtectedSequence(mutations, projection.snapshot, execute), projection.snapshot);
   }
 
   async add(name: string, index: number): Promise<WorkbookSheetBirthEntry> {
@@ -229,9 +231,10 @@ export class WorkbookSheetHistoryController {
         const before = this.snapshot(), after = structuredClone(before);
         after.sheets[entry.descriptor.sheetId] = structuredClone(entry.initialSheet);
         after.sheetOrder.splice(index, 0, entry.descriptor.sheetId);
-        const result = this.mutation.run('insert', entry.descriptor, before, after, () => this.commands.syncExecuteCommand(InsertSheetCommand.id, {
+        const sequence = [{ id: InsertSheetMutation.id, params: { unitId: before.id, index, sheet: structuredClone(entry.initialSheet) } }];
+        const result = this.mutation.run('insert', entry.descriptor, before, after, () => this.runProtectedSequence(sequence, after, () => this.commands.syncExecuteCommand(InsertSheetCommand.id, {
           unitId: before.id, index, sheet: structuredClone(entry.initialSheet),
-        }));
+        })));
         const native = this.history.getUndoRedoCheckpoint();
         if (native.unitId !== this.unit.getUnitId() || native.undoEntryId === null) throw Error('The native Add history entry is unavailable.');
         assertNativeWorkbookBirthHistory(this.history.getUndoRedoMutationData(before.id, 'undo', native.undoEntryId), before.id, entry, index);
@@ -283,10 +286,13 @@ export class WorkbookSheetHistoryController {
     this.busy = true;
     try {
       const origin = action.birth.entry.descriptor;
+      const sequence: NativeSheetMutation[] = action.direction === 'redo'
+        ? [{ id: InsertSheetMutation.id, params: { unitId: this.unit.getUnitId(), index: action.birth.index, sheet: structuredClone(action.birth.entry.initialSheet) } }]
+        : [{ id: RemoveSheetMutation.id, params: { unitId: this.unit.getUnitId(), subUnitId: origin.sheetId, subUnitName: action.birth.entry.initialSheet.name } }];
       if (action.direction === 'redo') {
         await this.writer.protectSheetBirthReplay(origin, action.birth.index, after => {
           this.verify(action);
-          return this.mutation.run('insert', origin, this.snapshot(), after, execute);
+          return this.mutation.run('insert', origin, this.snapshot(), after, () => this.runProtectedSequence(sequence, after, execute));
         }, () => { this.verify(action); return undefined; });
       } else {
         const state = this.writer.checkpoint();
@@ -297,14 +303,15 @@ export class WorkbookSheetHistoryController {
           const prospective = workbookSheetMutationSnapshot(before, after, 'remove', context.descriptor);
           await this.writer.protectSheetDeletion(context, prospective, () => {
             this.verify(action); this.issue(context.descriptor);
-            return this.mutation.run('remove', context.descriptor, before, prospective, execute);
+            return this.mutation.run('remove', context.descriptor, before, prospective, () => this.runProtectedSequence(sequence, prospective, execute));
           }, () => { this.verify(action); return undefined; });
         } else {
           await this.writer.protectSheetBirthRemoval(origin, removal => {
             this.verify(action); this.issue(removal.descriptor);
             const before = this.snapshot(), after = structuredClone(before);
             delete after.sheets[origin.sheetId]; after.sheetOrder = after.sheetOrder.filter(id => id !== origin.sheetId);
-            return this.mutation.run('remove', removal.descriptor, before, after, execute);
+            const prospective = workbookSheetMutationSnapshot(before, after, 'remove', removal.descriptor);
+            return this.mutation.run('remove', removal.descriptor, before, prospective, () => this.runProtectedSequence(sequence, prospective, execute));
           }, () => { this.verify(action); return undefined; });
         }
       }
