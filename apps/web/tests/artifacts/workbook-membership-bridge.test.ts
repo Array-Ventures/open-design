@@ -3,7 +3,7 @@ import { workbookMembershipBridge, type WorkbookMembershipBridgeState } from '..
 import { workbookMembershipActionSchema, workbookMembershipVisibilitySchema, type WorkbookMembershipAction } from '@open-design/contracts/runtime/workbook';
 
 const projectId = '11111111-1111-4111-8111-111111111111', controllerId = '22222222-2222-4222-8222-222222222222', ownerId = '33333333-3333-4333-8333-333333333333';
-function fixture(execute: Parameters<typeof workbookMembershipBridge>[0]['execute'] = async () => {}) {
+function fixture(execute: Parameters<typeof workbookMembershipBridge>[0]['execute'] = async () => {}, getScope?: () => {projectId:string;controllerId:string} | null) {
   let state: WorkbookMembershipBridgeState | null = { lifetime: {}, ownerId, historyRevision: 1, busy: false, canAdd: true,
     sheets: [{ id: '1', canRename: true, canDelete: true }, { id: '2', canRename: true, canDelete: true }],
     visibility: { type: 'studio:workbook-visibility-state', projectId, controllerId, sourceSha256: 'a'.repeat(64), editable: true, activeSheetId: '1', error: null,
@@ -11,7 +11,7 @@ function fixture(execute: Parameters<typeof workbookMembershipBridge>[0]['execut
   const messages: Record<string, unknown>[] = [], stamps: unknown[] = [];
   let calls = 0, duringPublish: (() => void) | undefined;
   const parent = { postMessage: (value: Record<string, unknown>, origin: string) => { expect(origin).toBe('http://localhost:6261'); messages.push(structuredClone(value)); } } as unknown as Window;
-  const options = { parentWindow: parent, origin: 'http://localhost:6261', getState: () => state,
+  const options = { parentWindow: parent, origin: 'http://localhost:6261', getState: () => state, ...(getScope ? {getScope} : {}),
     publish: () => { duringPublish?.(); if (state) messages.push(bridge.decorate(state.visibility) as unknown as Record<string, unknown>); },
     execute: async (action: WorkbookMembershipAction['action'], stamp: Parameters<typeof execute>[1]) => { calls++; stamps.push(stamp); await execute(action, stamp); } };
   const bridge = workbookMembershipBridge(options);
@@ -161,4 +161,79 @@ it('suppresses an applied receipt when final publication explicitly disposes the
   f.duringPublish = () => { if (applied) { f.duringPublish = undefined; f.bridge.dispose(); } };
   await f.send(request); expect(f.calls).toBe(1);
   expect(f.messages.some(value => value.type === 'studio:workbook-membership-result')).toBe(false);
+});
+
+
+it('retains a matching early version request before private membership state exists', async () => {
+  const f = fixture(undefined, () => ({projectId,controllerId}));
+  const ready = f.state;
+  f.clearState();
+  await f.negotiate();
+  expect(f.calls).toBe(0);
+  expect(f.messages).toEqual([]);
+  f.state = ready;
+  expect(f.view().membership?.ownerId).toBe(ownerId);
+});
+
+it.each(['parent','origin','project','controller','version'] as const)('does not cache an early %s mismatch', async mismatch => {
+  const f = fixture(undefined, () => ({projectId,controllerId}));
+  const ready = f.state;
+  f.clearState();
+  const packet = {type:'studio:artifact-request',projectId,controllerId,workbookMembershipVersion:1};
+  await f.send({...packet,
+    ...(mismatch === 'project' ? {projectId:ownerId} : {}),
+    ...(mismatch === 'controller' ? {controllerId:ownerId} : {}),
+    ...(mismatch === 'version' ? {workbookMembershipVersion:2} : {}),
+  }, mismatch === 'parent' ? null : undefined, mismatch === 'origin' ? 'https://foreign.test' : undefined);
+  f.state = ready;
+  expect(f.view().membership).toBeUndefined();
+  expect(f.calls).toBe(0);
+});
+
+it('retires early negotiation across observed trusted scope changes, including a return to the first scope', async () => {
+  let scope: {projectId:string;controllerId:string} | null = {projectId,controllerId};
+  const f = fixture(undefined, () => scope);
+  const ready = f.state;
+  f.clearState(); await f.negotiate();
+  scope = {projectId,controllerId:ownerId};
+  f.state = {...ready,visibility:{...ready.visibility,controllerId:ownerId}};
+  expect(f.view().membership).toBeUndefined();
+  scope = {projectId,controllerId}; f.state = ready;
+  expect(f.view().membership).toBeUndefined();
+  await f.negotiate(); expect(f.view().membership).toBeDefined();
+  scope = null;
+  expect(f.view().membership).toBeUndefined();
+  scope = {projectId,controllerId};
+  expect(f.view().membership).toBeUndefined();
+});
+
+it('keeps the legacy ready-only negotiation behavior when no trusted scope getter is installed', async () => {
+  const f = fixture(); const ready = f.state;
+  f.clearState(); await f.negotiate(); f.state = ready;
+  expect(f.view().membership).toBeUndefined();
+  await f.negotiate(); expect(f.view().membership).toBeDefined();
+});
+
+it('does not execute a valid-looking action from early negotiation without the private state owner', async () => {
+  const f = fixture(undefined, () => ({projectId,controllerId}));
+  const ready = f.state;
+  f.clearState(); await f.negotiate();
+  await f.send({type:'studio:workbook-membership',projectId,controllerId,sourceSha256:ready.visibility.sourceSha256,
+    ownerId,revision:0,requestId:crypto.randomUUID(),action:{kind:'add',name:'New'}});
+  expect(f.calls).toBe(0); expect(f.messages).toEqual([]);
+  f.state = ready;
+  expect(f.view().membership).toBeDefined();
+  expect(f.calls).toBe(0);
+});
+
+it('does not decorate private state from a different scope or borrow its earlier negotiation on return', async () => {
+  const f = fixture(undefined, () => ({projectId,controllerId}));
+  const ready = f.state;
+  f.clearState(); await f.negotiate();
+  f.state = {...ready,visibility:{...ready.visibility,controllerId:ownerId}};
+  expect(f.view().membership).toBeUndefined();
+  f.state = ready;
+  expect(f.view().membership).toBeUndefined();
+  await f.negotiate(); expect(f.view().membership).toBeDefined();
+  expect(f.calls).toBe(0);
 });

@@ -21,6 +21,9 @@ interface Options {
   parentWindow: Pick<Window, 'postMessage'>;
   origin: string;
   getState(): WorkbookMembershipBridgeState | null;
+  /** Trusted frame context, available before private membership readiness.
+   * Version negotiation alone never supplies an executable owner. */
+  getScope?(): { projectId: string; controllerId: string } | null;
   /** Calls the ONE existing visibility publisher, which invokes decorate(). */
   publish(): void;
   /** Must independently admit the captured private stamp against the current
@@ -40,14 +43,30 @@ export function workbookMembershipBridge(options: Options) {
   let withdrawing = false;
   let current: Current | null = null;
   let negotiated: string | null = null;
+  let knownScope: string | null = null;
   let active: Active | null = null;
   const results = new Map<string, { identity: string; result: WorkbookMembershipResult }>();
-  const scopeKey = (state: WorkbookMembershipBridgeState) => `${state.visibility.projectId}:${state.visibility.controllerId}`;
+  const contextKey = (scope: { projectId: string; controllerId: string }) => `${scope.projectId}:${scope.controllerId}`;
+  const scopeKey = (state: WorkbookMembershipBridgeState) => contextKey(state.visibility);
+  const trustedScope = () => {
+    const scope = options.getScope?.();
+    const checked = scope && workbookMembershipControlsRequestSchema.safeParse({
+      type: 'studio:artifact-request', projectId: scope.projectId,
+      controllerId: scope.controllerId, workbookMembershipVersion: 1,
+    });
+    const currentScope = checked?.success ? checked.data : null;
+    const key = currentScope ? contextKey(currentScope) : null;
+    if (key !== knownScope) { knownScope = key; negotiated = null; }
+    return currentScope;
+  };
   const advance = () => { if (revision === Number.MAX_SAFE_INTEGER) { exhausted = true; return; } revision++; };
   const refresh = (): Current | null => {
     if (disposed || exhausted) return null;
-    const raw = options.getState();
-    if (!raw) { if (current) { advance(); results.clear(); } current = null; return null; }
+    const scope = options.getScope ? trustedScope() : null;
+    const raw = options.getScope && !scope ? null : options.getState();
+    const mismatchedScope = Boolean(raw && scope && scopeKey(raw) !== contextKey(scope));
+    if (mismatchedScope) negotiated = null;
+    if (!raw || mismatchedScope) { if (current) { advance(); results.clear(); } current = null; return null; }
     if (!Number.isSafeInteger(raw.historyRevision) || raw.historyRevision < 0 || !raw.lifetime || typeof raw.lifetime !== 'object') throw Error('The worksheet membership owner is invalid.');
     const visibility = workbookMembershipVisibilitySchema.parse(raw.visibility);
     if (visibility.membership) throw Error('The existing visibility publisher must not supply a second membership bundle.');
@@ -92,12 +111,17 @@ export function workbookMembershipBridge(options: Options) {
   };
   const receive = async (event: Pick<MessageEvent, 'source' | 'origin' | 'data'>): Promise<void> => {
     if (disposed || event.source !== options.parentWindow || event.origin !== options.origin) return;
-    const value = refresh(); if (!value) return;
     const negotiation = workbookMembershipControlsRequestSchema.safeParse(event.data);
     if (negotiation.success) {
-      if (negotiation.data.projectId === value.stamp.projectId && negotiation.data.controllerId === value.stamp.controllerId) { negotiated = scopeKey(value.state); options.publish(); }
+      // Cache only against an independently known frame context. In the
+      // compatibility path, the fully ready private getter remains required.
+      const scope = options.getScope ? trustedScope() : refresh()?.stamp;
+      if (scope && contextKey(negotiation.data) === contextKey(scope)) {
+        negotiated = contextKey(scope); options.publish();
+      }
       return;
     }
+    const value = refresh(); if (!value) return;
     const parsed = workbookMembershipActionSchema.safeParse(event.data);
     if (!parsed.success || negotiated !== scopeKey(value.state)) return;
     const request = parsed.data;

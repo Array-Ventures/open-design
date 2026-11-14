@@ -148,3 +148,37 @@ after executor resolution: the receipt must not escape a retired session. The
 post-publication disposal fence preserves this distinction from mere publication
 failure. `/tmp/workbook-membership-applied-dispose-red.log` retains that failure;
 final callback coverage passes without changing the original strict assertions.
+
+## Early frame negotiation
+
+The optional trusted `getScope()` returns the existing frame's project/controller
+identity before calculation configuration and private membership readiness finish.
+The bridge validates and caches an exact-parent/same-origin version-1 request
+against that independently supplied context **before** requesting private state.
+Packet fields never establish the bridge's own context. An observed trusted
+context change, null withdrawal or mismatched private-state context retires the
+cached negotiation; returning to the former context requires a new request.
+Without the optional getter, negotiation retains its existing ready-state-only
+behavior.
+
+This is version negotiation, not mutation authority. Decoration still requires
+the complete coherent private state; action dispatch still requires its exact
+owner/source/revision/capabilities and independent executor admission. The bridge
+uses the same existing publisher and installs no listener itself. The Grid owner
+must attach the early listener before readiness and synchronously hand it to the
+single visibility listener; this source-only change does not install that wiring.
+
+The genuine callback regression first produced 2 failures and 26 passes: early
+negotiation was lost, and withdrawing trusted scope did not retire the cached
+version. `/tmp/workbook-early-negotiation-red.log` retains that run. Added cases
+cover foreign parent/origin/project/controller/version, context change and
+return, trusted-null withdrawal, mismatched private state, no early execution and
+legacy fallback. These are callback protocol tests, not packaged startup or
+actual SDK/worker execution. No runtime, build, installer pin or publication
+changed.
+
+Final early-negotiation author checks passed 30 bridge cases, full workspace
+`pnpm typecheck` and `pnpm guard`. Logs:
+`/tmp/workbook-early-negotiation-green-final.log`,
+`/tmp/workbook-early-negotiation-types.log` and
+`/tmp/workbook-early-negotiation-guard.log`. No full app suite was run.
