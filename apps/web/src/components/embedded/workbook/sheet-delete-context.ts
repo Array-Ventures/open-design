@@ -3,14 +3,14 @@ import { z } from 'zod';
 import { workbookActionSheetIdSchema, workbookSheetActionDescriptorSchema as workbookSheetDeleteDescriptorSchema } from './sheet-action-descriptor';
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex } from '@noble/hashes/utils';
-import { canonicalWorkbookJsonValue, canonicalWorkbookSheetBaseline, workbookSheetBaseline, workbookSheetBaselineSchema, WORKBOOK_SHEET_BASELINE_VERSION, type WorkbookSheetBaselineIdentity } from '@open-design/contracts/runtime/workbook-sheet-baseline';
+import { canonicalWorkbookJsonValue, canonicalWorkbookSheetBaseline, withWorkbookSheetBaselines, WORKBOOK_SHEET_BASELINE_BATCH_LIMIT, workbookSheetBaselineSchema, WORKBOOK_SHEET_BASELINE_VERSION, type WorkbookSheetBaselineIdentity } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import type { IWorkbookData, Worksheet } from '@univerjs/core';
 import { WORKBOOK_MODEL_LIMITS, workbookCommitRequestSchema } from '@open-design/contracts/runtime/workbook';
 import type { WorkbookCheckpoint } from './workbook-writer';
 import { workbookDraftScopeSchema, workbookGridSnapshotSchema, type WorkbookDraftScope } from './workbook-draft-schema';
 import { workbookSaveProvenanceSchema, type WorkbookSaveAcknowledgement } from './save-provenance';
 import { assertWorkbookStructureIdentity } from './grid-structure-identity';
-import { gridWorkbook } from './grid-model';
+import { gridWorkbookFromValidatedModel } from './grid-model';
 import { assertWorkbookSourceSnapshotInputs } from './source-snapshot-inputs';
 
 export const WORKBOOK_SHEET_DELETE_MARKER = 'evebotSheetDeletion';
@@ -98,32 +98,34 @@ export interface WorkbookDeletionBaselineRequest {
 export function captureWorkbookDeletionBaselines(scope: WorkbookDraftScope, source: WorkbookCheckpoint['source'], acknowledged: IWorkbookData,
   requests: readonly WorkbookDeletionBaselineRequest[]): WorkbookSourceDeleteContext[] {
   scope = workbookDraftScopeSchema.parse(scope);
-  if (!requests.length || requests.length > 4096) throw Error('The deletion baseline batch exceeds its limit.');
+  if (!requests.length || requests.length > WORKBOOK_SHEET_BASELINE_BATCH_LIMIT) throw Error('The deletion baseline batch exceeds its limit.');
   const selected = requests.map(request => ({ sheetId: sheetId.parse(request.sheetId), descriptor: request.descriptor }));
-  const { model, sourceSha256 } = source;
-  if (model.sourceFormat === 'csv' || model.worksheetMembershipEditable !== true || !model.worksheetStructureEditable || model.calculationMetadata !== 'verified' || model.sheets.some(sheet => !sheet.arrayFormulas || sheet.arrayFormulas.length)) throw Error('Source deletion capture requires a ready qualified scalar baseline.');
-  const unitId = `${scope.projectId}:${scope.fileName}`;
-  if (acknowledged.id !== unitId) throw Error('The deletion context belongs to another workbook.');
-  for (const request of selected) {
-    const sourceSheet = model.sheets.find(sheet => sheet.id === request.sheetId);
-    if (!sourceSheet || !acknowledged.sheets[request.sheetId] || sourceSheet.visibility === 'veryHidden') throw Error('This worksheet has no current source-owned deletion baseline.');
-  }
-  assertWorkbookStructureIdentity(acknowledged);
-  assertWorkbookSourceSnapshotInputs(gridWorkbook(model, unitId, 'Workbook').data as IWorkbookData, acknowledged, unitId);
-  const axisOwner = acknowledged.custom!.evebotStructureOwner as { generation: string; sourceSha256: string };
-  let bytes = 2; // JSON array brackets; each subsequent result adds a comma.
-  const results: WorkbookSourceDeleteContext[] = [];
-  for (const request of selected) {
-    const candidate = {
-      descriptor: request.descriptor ?? { version: 1, token: crypto.randomUUID(), generation: axisOwner.generation, sheetId: request.sheetId },
-      scope: { viewerId: scope.viewerId, projectId: scope.projectId, fileName: scope.fileName }, sourceSha256,
-      baseline: workbookSheetBaseline(model, request.sheetId), acknowledgedSheet: acknowledged.sheets[request.sheetId], axisOwner,
-    };
-    bytes += new Blob([JSON.stringify(candidate)]).size + (results.length ? 1 : 0);
-    if (bytes > MAX_WORKBOOK_DRAFT_BYTES) throw Error('The selected worksheet baselines exceed the recovery limit.');
-    results.push(workbookSourceDeleteContextSchema.parse(structuredClone(candidate)));
-  }
-  return results;
+  const { sourceSha256 } = source;
+  return withWorkbookSheetBaselines(source.model, selected.map(request => request.sheetId), (model, baselines) => {
+    if (model.sourceFormat === 'csv' || model.worksheetMembershipEditable !== true || !model.worksheetStructureEditable || model.calculationMetadata !== 'verified' || model.sheets.some(sheet => !sheet.arrayFormulas || sheet.arrayFormulas.length)) throw Error('Source deletion capture requires a ready qualified scalar baseline.');
+    const unitId = `${scope.projectId}:${scope.fileName}`;
+    if (acknowledged.id !== unitId) throw Error('The deletion context belongs to another workbook.');
+    for (const request of selected) {
+      const sourceSheet = baselines.get(request.sheetId)?.sheet;
+      if (!sourceSheet || !acknowledged.sheets[request.sheetId] || sourceSheet.visibility === 'veryHidden') throw Error('This worksheet has no current source-owned deletion baseline.');
+    }
+    assertWorkbookStructureIdentity(acknowledged);
+    assertWorkbookSourceSnapshotInputs(gridWorkbookFromValidatedModel(model, unitId, 'Workbook').data as IWorkbookData, acknowledged, unitId);
+    const axisOwner = acknowledged.custom!.evebotStructureOwner as { generation: string; sourceSha256: string };
+    let bytes = 2; // JSON array brackets; each subsequent result adds a comma.
+    const results: WorkbookSourceDeleteContext[] = [];
+    for (const request of selected) {
+      const candidate = {
+        descriptor: request.descriptor ?? { version: 1, token: crypto.randomUUID(), generation: axisOwner.generation, sheetId: request.sheetId },
+        scope: { viewerId: scope.viewerId, projectId: scope.projectId, fileName: scope.fileName }, sourceSha256,
+        baseline: baselines.get(request.sheetId)!, acknowledgedSheet: acknowledged.sheets[request.sheetId], axisOwner,
+      };
+      bytes += new Blob([JSON.stringify(candidate)]).size + (results.length ? 1 : 0);
+      if (bytes > MAX_WORKBOOK_DRAFT_BYTES) throw Error('The selected worksheet baselines exceed the recovery limit.');
+      results.push(workbookSourceDeleteContextSchema.parse(structuredClone(candidate)));
+    }
+    return results;
+  });
 }
 
 /** Replace custom metadata before RemoveSheetCommand's undo factory reads it.

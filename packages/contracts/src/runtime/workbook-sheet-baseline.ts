@@ -100,22 +100,44 @@ export function canonicalWorkbookSourceModel(raw: unknown): string {
   bounded(raw); return encodeWorkbookJson(workbookDocumentSchema.parse(raw));
 }
 
-/** Extract the complete selected model semantics from one qualified full read.
- * Only unused style definitions are omitted; raw history bytes/SHA, receipt and
- * resource continuity remain independent checks at the contained source owner. */
-export function workbookSheetBaseline(raw: WorkbookDocument, selectedId: string): WorkbookSheetBaseline {
+export const WORKBOOK_SHEET_BASELINE_BATCH_LIMIT = 4096;
+
+/** One synchronous full-source qualification, then selected data extraction.
+ * The callback receives ordinary private parsed data, never an authorization or
+ * durable qualification token. Selected candidates share that private read until
+ * their consumer performs its aggregate byte check and context schema clone. */
+export function withWorkbookSheetBaselines<T>(raw: WorkbookDocument, selectedIds: readonly string[],
+  use: (model: WorkbookDocument, selected: ReadonlyMap<string, WorkbookSheetBaseline>) => T): T {
+  if (!Array.isArray(selectedIds) || !selectedIds.length || selectedIds.length > WORKBOOK_SHEET_BASELINE_BATCH_LIMIT) throw Error('Workbook baseline selection exceeds its batch limit.');
   bounded(raw);
-  const model = workbookDocumentSchema.parse(raw), sheet = model.sheets.find(item => item.id === selectedId);
-  if (!sheet) throw Error('The selected workbook baseline sheet is missing.');
-  return workbookSheetBaselineSchema.parse({
+  const model = workbookDocumentSchema.parse(raw);
+  const sheets = new Map(model.sheets.map(sheet => [sheet.id, sheet]));
+  const identities = model.sheets.map(({ id, name }) => ({ id, name }));
+  const selected = new Map<string, WorkbookSheetBaseline>();
+  for (const id of new Set(selectedIds)) {
+    const sheet = typeof id === 'string' ? sheets.get(id) : undefined;
+    if (!sheet) throw Error('The selected workbook baseline sheet is missing.');
+    selected.set(id, selectedBaselineData(model, sheet, identities));
+  }
+  return use(model, selected);
+}
+
+/** Existing single-capture API retains its detached schema-canonicalized data. */
+export function workbookSheetBaseline(raw: WorkbookDocument, selectedId: string): WorkbookSheetBaseline {
+  return withWorkbookSheetBaselines(raw, [selectedId], (_model, selected) => workbookSheetBaselineSchema.parse(selected.get(selectedId)));
+}
+
+function selectedBaselineData(model: WorkbookDocument, sheet: WorkbookSheetBaseline['sheet'],
+  sheetIdentities: WorkbookSheetBaseline['sheetIdentities']): WorkbookSheetBaseline {
+  return {
     kind: 'evebot-workbook-selected-sheet', version: WORKBOOK_SHEET_BASELINE_VERSION,
     date1904: model.date1904, themeColors: model.themeColors,
     calculationMetadata: model.calculationMetadata, richTextMetadata: model.richTextMetadata,
     worksheetStructureEditable: model.worksheetStructureEditable, worksheetVisibilityEditable: model.worksheetVisibilityEditable,
-    features: model.features, sheetIdentities: model.sheets.map(({ id, name }) => ({ id, name })), definedNames: model.definedNames, tables: model.tables,
+    features: model.features, sheetIdentities, definedNames: model.definedNames, tables: model.tables,
     sheet, styleDefinitions: referencedStyles(sheet).map(index => {
       const style = model.styles[index]; if (!style) throw Error('Referenced workbook baseline style is missing.');
       return { index, style };
     }),
-  });
+  };
 }
