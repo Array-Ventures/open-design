@@ -80,3 +80,23 @@ contexts must eventually retire through existing pending/ACK/map roots and bound
 native inspection. Current retention is conservative and bounded; it never prunes
 roots to force admission. This is not the completed feature or a readiness gate
 that permanently disables history while an ordinary save is pending.
+
+## Membership detection follow-up
+
+The first controller implementation selected strings at parameter paths to detect
+Insert/Remove operations. Missing both ID fields could therefore look like no
+membership, allowing the original Undo handler to attempt its nested Remove.
+The scoped mutation owner then refused it; no successful mutation was established.
+Four real cases reproduced the incorrect delegation with a public command listener.
+
+Detection now reads the generic frozen top mutation data first and checks actual
+mutation IDs independently of params. A recognized membership operation cannot
+fall back to ordinary delegation because its sheet ID is absent, undefined, an
+array path or a nonstring. Shape, private issuer and complete payload checks follow
+recognition. No SDK API was added. Seven new cases plus the original 14 controller
+cases pass: nested mutation attempts stay zero, history/data remain unchanged, and
+ordinary workbook asynchronous/synchronous Undo/Redo still works. An actual SDK
+DocumentDataModel unit with a fixture body mutation also keeps native Undo/Redo
+delegation without touching workbook cells. This is a source dispatch case, not
+a browser Docs-editor or paste-mode qualification.
+Full fork typecheck and guard also passed for this detection follow-up.

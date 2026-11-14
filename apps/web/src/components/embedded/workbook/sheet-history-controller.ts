@@ -111,20 +111,30 @@ export class WorkbookSheetHistoryController {
   private action(direction: Direction): BirthAction | null {
     const checkpoint = this.history.getUndoRedoCheckpoint();
     if (checkpoint.unitId !== this.unit.getUnitId()) return null;
-    const select = (mutation: string, path: readonly string[]) => this.history.getUndoRedoMutationStrings(checkpoint.unitId, mutation, path, 'top')[direction === 'undo' ? 'undos' : 'redos'];
-    const inserted = select(InsertSheetMutation.id, ['sheet','id']);
-    const removed = select(RemoveSheetMutation.id, ['subUnitId']);
+    const nativeEntryId = checkpoint[direction === 'undo' ? 'undoEntryId' : 'redoEntryId'];
+    if (nativeEntryId === null) return null;
+    const data = this.history.getUndoRedoMutationData(checkpoint.unitId, direction, nativeEntryId);
+    const mutations = [...data.undoMutations, ...data.redoMutations];
+    const inserted = mutations.filter(mutation => mutation.id === InsertSheetMutation.id);
+    const removed = mutations.filter(mutation => mutation.id === RemoveSheetMutation.id);
     if (!inserted.length && !removed.length) return null;
-    if (inserted.length !== 1 || removed.length !== 1 || inserted[0] !== removed[0]) throw Error('Compound or unknown worksheet history is not ready.');
-    if (select(InsertSheetMutation.id, ['sheet','custom',WORKBOOK_SHEET_DELETE_MARKER,'token']).length) throw Error('Historical worksheet restoration is not ready.');
-    const tokens = select(InsertSheetMutation.id, ['sheet','custom',WORKBOOK_SHEET_BIRTH_MARKER,'token']);
-    const birth = tokens.length === 1 ? this.births.get(tokens[0]!) : undefined;
-    if (!birth || birth.entry.descriptor.sheetId !== inserted[0] || !this.owns(birth.entry.descriptor)) throw Error('The worksheet history has no live birth issuer.');
-    if (checkpoint[direction === 'undo' ? 'undoEntryId' : 'redoEntryId'] !== birth.nativeEntryId) throw Error('The worksheet history native entry has no live issuer.');
+    if (inserted.length !== 1 || removed.length !== 1 || data.undoMutations.length !== 1 || data.redoMutations.length !== 1) throw Error('Compound or unknown worksheet history is not ready.');
+    const record = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+    const insertParams = inserted[0]!.params, removeParams = removed[0]!.params;
+    if (!record(insertParams) || !record(removeParams) || !record(insertParams.sheet)
+      || typeof insertParams.sheet.id !== 'string' || typeof removeParams.subUnitId !== 'string'
+      || insertParams.sheet.id !== removeParams.subUnitId) throw Error('The worksheet history target metadata is invalid.');
+    const custom = insertParams.sheet.custom;
+    if (custom !== undefined && !record(custom)) throw Error('The worksheet history target metadata is invalid.');
+    if (record(custom) && custom[WORKBOOK_SHEET_DELETE_MARKER] !== undefined) throw Error('Historical worksheet restoration is not ready.');
+    const marker = record(custom) ? custom[WORKBOOK_SHEET_BIRTH_MARKER] : undefined;
+    const birth = record(marker) && typeof marker.token === 'string' ? this.births.get(marker.token) : undefined;
+    if (!birth || birth.entry.descriptor.sheetId !== insertParams.sheet.id || !this.owns(birth.entry.descriptor)) throw Error('The worksheet history has no live birth issuer.');
+    if (nativeEntryId !== birth.nativeEntryId) throw Error('The worksheet history native entry has no live issuer.');
     if (!this.isCurrent() || this.busy) throw Error('The worksheet history owner is not current.');
     const present = Boolean(this.snapshot().sheets[birth.entry.descriptor.sheetId]);
     if (present !== (direction === 'undo')) throw Error('The worksheet birth history direction changed.');
-    assertNativeWorkbookBirthHistory(this.history.getUndoRedoMutationData(checkpoint.unitId, direction, birth.nativeEntryId), checkpoint.unitId, birth.entry, birth.index);
+    assertNativeWorkbookBirthHistory(data, checkpoint.unitId, birth.entry, birth.index);
     return { birth, direction, checkpoint };
   }
 
