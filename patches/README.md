@@ -69,3 +69,24 @@ qualify the real production companion with row/column actions, actual formula
 readback, Save, post-ACK Undo/Redo and independent XLSX inspection before removing
 the patch. The frozen72 production failure and subsequent candidate qualification
 are recorded separately; source test success does not claim a fixed bundle.
+
+`@univerjs__sheets-ui@1.4.0.patch` names the existing sheet-list icon button
+through its supported forwarded `aria-label` prop. `SheetBarMenu` has no public
+label configuration or component slot, and its icon has no accessible name in
+the pinned producer. The patch obtains the existing `LocaleService` dependency
+and reuses `sheets-ui.sheetConfig.sheetTabs`, the navigation label already used
+by the adjacent tablist. It does not borrow the unrelated protection-scope
+"All sheets" key, add controls, or change navigation/permissions/data handling.
+
+The three maintained ESM/CommonJS/compatibility entries receive the same bounded
+producer change. The actual SDK DOM regression in
+`workbook-sheet-list-label.test.tsx` exposes the private producer only within a
+standalone test loader (ESM syntax is transpiled for that loader), renders its
+real dropdown against a real two-sheet SDK workbook/injector, checks English and
+French accessible names, activates each original sheet, and verifies unchanged
+sheet snapshots. The original named-button assertion failed on the unpatched
+producer. These six source-level cases do not qualify a new packaged companion,
+application accessibility tree, browser keyboard behavior or visual layout.
+Refresh through `pnpm patch` / `pnpm patch-commit`, update the lockfile and verify
+a frozen installation. Remove when the upstream producer provides the localized
+name and the same real DOM cases still pass. No dependency version changes.
