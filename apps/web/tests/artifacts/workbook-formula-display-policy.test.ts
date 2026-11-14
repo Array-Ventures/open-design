@@ -157,16 +157,16 @@ it('refuses a source rebase with different authored inputs or family without cha
 });
 
 
-it('keeps actual pinned SDK Undo/Redo history and unit identity across a scalar source-owner rebase', async () => {
+it.each([7, '19K'])('keeps actual pinned SDK Undo/Redo history and unit identity across a scalar source-owner rebase to %s', async value => {
   const f = fixture(), book = f.api.getActiveWorkbook(), units = f.univer.__getInjector().get(core.IUniverInstanceService);
   units.focusUnit(book.getId());
   const unit = units.getUnit(book.getId()); expect(unit).toBeDefined();
-  book.getActiveSheet().getRange('A1').setValue(7);
+  book.getActiveSheet().getRange('A1').setValue(value);
   const acknowledged = book.save(); f.display.update(acknowledged, false);
-  const model = structuredClone(f.model); model.sheets[0]!.cells[0]!.value = 7; model.sheets[0]!.cells[1]!.value = 10;
+  const model = structuredClone(f.model); model.sheets[0]!.cells[0] = typeof value === 'string' ? { row: 0, column: 0, kind: 'string', value } : { row: 0, column: 0, kind: 'number', value }; model.sheets[0]!.cells[1]!.value = 10;
   f.display.rebaseSource(model, gridWorkbook(model, book.getId(), 'Display').data as IWorkbookData, acknowledged);
   expect(units.getUnit(book.getId())).toBe(unit);
   await f.api.undo(); expect(book.save().sheets.s!.cellData![0]![0]!.v).toBe(2);
   expect(units.getUnit(book.getId())).toBe(unit);
-  await f.api.redo(); expect(book.save().sheets.s!.cellData![0]![0]!.v).toBe(7);
+  await f.api.redo(); expect(book.save().sheets.s!.cellData![0]![0]!.v).toBe(value);
 });
