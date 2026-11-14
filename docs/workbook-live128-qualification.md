@@ -59,3 +59,7 @@ The manual layout receipt covers observations and DOM identity/geometry measurem
 Dark narrow inspection retained readable grid content. Fullscreen/restore retained those same instances and draft, and narrow **Show chat** followed by return retained the same iframe/canvas and unsent text. Choose-chat avatars were personally inspected by the manual author. The draft was cleared, Send was disabled, the original Dark theme was restored, and saved workbook bytes did not change. No message was sent.
 
 This is not a complete edit matrix for every theme/viewport, Tab-only navigation, another platform, or History/crash acceptance. Failed stale-reference attempts were followed by a fresh snapshot; no success is inferred from those failed commands. Evidence: `/tmp/workbook-live128-ui/manual-layout-flow.json`. No full-chat captures are added to this record.
+
+## Later experimental candidate
+
+The [candidate 129 followup](workbook-live129-qualification.md) records the remaining healthy-typing font refusal, corrected error-layer stacking, actual no-effect History cancellation with native Undo/Redo retained, and a separate bounded document-export check. It does not relabel candidate 128 or make this draft merge-ready.
