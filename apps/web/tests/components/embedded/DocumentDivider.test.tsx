@@ -7,6 +7,7 @@ import { documentHtml } from '../../../src/components/embedded/document/document
 import { finalizeMarkdownDocument, readMarkdownDocument } from '../../../src/components/embedded/document/markdown-document';
 import { documentIdentityGroups } from '../../../src/components/embedded/document/document-identity';
 import { resolveDocumentComment } from '../../../src/components/embedded/document/document-comment-anchor';
+import { supportedDocument } from '../../../src/components/embedded/document/document-admission';
 
 const save = vi.hoisted(() => vi.fn());
 vi.mock('../../../src/components/embedded/document/document-file', () => ({ saveDocumentFile: save }));
@@ -15,6 +16,14 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 function editor(): LexicalEditor {
   return (screen.getByRole('textbox', { name: 'Report' }) as HTMLElement & { __lexicalEditor: LexicalEditor }).__lexicalEditor;
 }
+
+it.each(['', 'width:40%', 'color:rgb(120, 30, 40);background-color:rgb(240, 230, 220)'])('admits a divider with preserved presentation %s', style => {
+  expect(supportedDocument(documentHtml('Report', `<p>Before</p><hr data-od-id="rule" style="${style}"><p>After</p>`), 'report.html')).toBe(true);
+});
+
+it.each(['width:40%!important', 'width:calc(100% - 2px)', 'border-top:2px solid red', 'position:absolute', 'color:currentcolor', 'background-image:url(https://fixture.invalid/image.png)'])('keeps unsupported divider presentation read-only: %s', style => {
+  expect(supportedDocument(documentHtml('Report', `<p>Before</p><hr style="${style}"><p>After</p>`), 'report.html')).toBe(false);
+});
 
 it('keeps pre-divider paragraph identities so existing source-only comments still resolve', () => {
   const observed = { html: documentHtml('Report', '<p>Before</p><hr><p>After</p>'), sha256: 'original' };

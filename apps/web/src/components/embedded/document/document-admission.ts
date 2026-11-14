@@ -3,7 +3,7 @@ import { supportedDocumentImageElement } from './document-image-source';
 import { documentImportStyles, documentTextStyles } from './document-styles';
 import styles from './DocumentEditor.module.css';
 
-const tags = new Set(['main', 'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'table', 'colgroup', 'col', 'thead', 'tbody', 'tr', 'td', 'th', 'a', 'br', 'span', 'code', 'pre', 'img']);
+const tags = new Set(['main', 'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'table', 'colgroup', 'col', 'thead', 'tbody', 'tr', 'td', 'th', 'a', 'br', 'span', 'code', 'pre', 'img', 'hr']);
 const canonicalBorderImageDefaults = new Set(['border-image-source', 'border-image-slice', 'border-image-width', 'border-image-outset', 'border-image-repeat']);
 const inline = new Set(['span', 'strong', 'b', 'em', 'i', 'u', 's', 'code']);
 const attributes: Record<string, string[]> = {
@@ -32,7 +32,7 @@ function supportedElement(element: HTMLElement): boolean {
   if (element.hasAttribute('aria-checked') && !['true', 'false'].includes(element.getAttribute('aria-checked')!)) return false;
   if (element.hasAttribute('__lexicallisttype') && element.getAttribute('__lexicallisttype') !== 'check') return false;
   if (element.hasAttribute('data-eve-document-image') && (element.getAttribute('data-eve-document-image') !== '1' || element.children.length !== 1 || element.firstElementChild?.tagName !== 'IMG' || element.textContent?.trim())) return false;
-  if (element.hasAttribute('data-od-id') && !['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'li', 'ul', 'ol', 'table', 'tr', 'td', 'th', 'pre'].includes(tag) && !element.hasAttribute('data-eve-document-image')) return false;
+  if (element.hasAttribute('data-od-id') && !['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'li', 'ul', 'ol', 'table', 'tr', 'td', 'th', 'pre', 'hr'].includes(tag) && !element.hasAttribute('data-eve-document-image')) return false;
   if (tag === 'li' && ['role', 'tabindex', 'aria-checked'].some(name => element.hasAttribute(name)) && element.parentElement?.getAttribute('__lexicallisttype') !== 'check') return false;
   for (const name of ['colspan', 'rowspan', 'start', 'value']) {
     if (element.hasAttribute(name) && !/^[1-9]\d*$/.test(element.getAttribute(name)!)) return false;
@@ -80,7 +80,8 @@ function supportedElement(element: HTMLElement): boolean {
     if (documentTextStyles.has(name) && /^(?:inherit|initial|unset|revert|revert-layer|currentcolor)$/i.test(value)) return false;
     const pattern = documentImportStyles.get(name);
     if (!pattern?.test(value)) return false;
-    if (documentTextStyles.has(name) && !inline.has(tag) && !(name === 'background-color' && ['td', 'th'].includes(tag))) return false;
+    const dividerColor = tag === 'hr' && ['color', 'background-color'].includes(name);
+    if (documentTextStyles.has(name) && !inline.has(tag) && !dividerColor && !(name === 'background-color' && ['td', 'th'].includes(tag))) return false;
     const indentable = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote'].includes(tag);
     if (name === 'padding-inline-start' && (!indentable || parseFloat(value) % 40 !== 0)) return false;
     if (name === 'text-align' && !indentable) return false;
@@ -91,7 +92,7 @@ function supportedElement(element: HTMLElement): boolean {
     if (['font-weight', 'font-style', 'text-decoration'].includes(name) && !inline.has(tag)) return false;
     if (name === 'font-size' && !/^(?:\d+(?:\.\d+)?)(?:px|pt)$/.test(value)) return false;
     if (name === 'aspect-ratio' && tag !== 'img') return false;
-    if (name === 'width' && (!['col', 'td', 'th'].includes(tag) || !value.endsWith('px'))) return false;
+    if (name === 'width' && tag !== 'hr' && (!['col', 'td', 'th'].includes(tag) || !value.endsWith('px'))) return false;
     if (name === 'height' && tag !== 'tr') return false;
     if (name === 'vertical-align' && !['td', 'th'].includes(tag)) return false;
   }
