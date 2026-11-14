@@ -89,9 +89,9 @@ Discard removed composer/highlight. Fullscreen and restore kept the same iframe,
 document and input while preserving unsent comment and chat drafts.
 
 On the dark 390-wide mobile flow, Show chat/Return to artifact retained the same
-document and reply node with its unsent reply. List navigation hid that reply
-with zero rectangles and returned the same DOM node and unsent text. The light
-mobile thread was also personally viewed. These actions were not all repeated
+document and reply node with its unsent reply. Separately, on light desktop,
+list navigation hid the reply with zero rectangles and returned the same DOM
+node and unsent text. The light mobile thread was also personally viewed. These actions were not all repeated
 in every theme/viewport combination.
 
 The fake manual artifact remained 328 bytes with SHA256
