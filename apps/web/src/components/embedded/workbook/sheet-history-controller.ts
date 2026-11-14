@@ -357,8 +357,8 @@ export class WorkbookSheetHistoryController {
   async add(name: string, index: number): Promise<WorkbookSheetBirthEntry> {
     if (this.busy || !this.isCurrent()) throw Error('The worksheet action owner is not current.');
     this.busy = true;
-    const checkpoint = this.history.getUndoRedoCheckpoint();
     try {
+      const checkpoint = this.history.getUndoRedoCheckpoint();
       return await this.writer.protectSheetBirth(name, index, entry => {
         this.assertHistoryCheckpoint(checkpoint);
         this.issue(entry.descriptor, this.birthIssuerData(entry, index));
