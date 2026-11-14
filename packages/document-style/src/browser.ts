@@ -1,3 +1,4 @@
+import { documentFontSizePattern, validDocumentFontSize, validDocumentFontLineHeight, normalizeDocumentFontPoints, validDocumentHeadingLevel } from './presentation.js';
 import { compositeDocumentColor, documentContrast, opaqueDocumentColorHex, type DocumentColor } from './color.js';
 export type { DocumentColor } from './color.js';
 export { documentContrast } from './color.js';
@@ -110,6 +111,7 @@ export function documentColorLayoutQualified(document: Document, ownedStyles: re
       const colon = declaration.indexOf(':'); if (colon < 1) return false;
       const name = declaration.slice(0,colon).trim().toLowerCase(), value = declaration.slice(colon+1).trim();
       if (!presentation.has(name) && !/^border(?:-(?:top|right|bottom|left))?(?:-(?:width|style|color))?$/.test(name) && !/^border-image-(?:source|slice|width|outset|repeat)$/.test(name)) return false;
+      if (name === 'font-size' && (!inline.has(owner.tagName.toLowerCase()) || !documentFontSizePattern.test(value.replace(/!important\s*$/i,'')))) return false;
       if (name === 'padding-inline-start' && !['P','H1','H2','H3','H4','H5','H6','BLOCKQUOTE'].includes(owner.tagName)) return false;
       if (/var\(/i.test(value) || !owner.style.getPropertyValue(name)) return false;
       if ((name === 'background' || name === 'background-color') && (!inline.has(owner.tagName.toLowerCase()) && !['td','th','hr'].includes(owner.tagName.toLowerCase()))) return false;
@@ -133,10 +135,10 @@ export function documentCanvasColor(document: Document, read: DocumentColorReade
   try { return read(document.defaultView!.getComputedStyle(probe).backgroundColor); }
   finally { probe.remove(); }
 }
-export function normalizeDocumentColorOwners(document: Document, requests: readonly import('./color.js').DocumentColorRequest[], attributeName: string, ownedStyles: readonly string[], read: DocumentColorReader = documentColorReader(document)): Array<{ id: string; colors: import('./color.js').NormalizedDocumentColors }> {
+export function normalizeDocumentPresentationOwners(document: Document, requests: readonly import('./presentation.js').DocumentPresentationRequest[], attributeName: string, ownedStyles: readonly string[], read: DocumentColorReader = documentColorReader(document)): Array<{ id: string; presentation: import('./presentation.js').NormalizedDocumentPresentation }> {
   const fail = (): never => { throw new Error('The document color ownership or authored presentation is not representable.'); };
   if (!/^data-eve-docx-[a-z0-9-]{1,80}$/.test(attributeName) || requests.length > 20000 || !documentColorLayoutQualified(document, ownedStyles)) return fail();
-  if (requests.some(request => !/^[A-Za-z0-9_-]{1,100}$/.test(request.id) || !['cell','inline','divider'].includes(request.kind))) return fail();
+  if (requests.some(request => !/^[A-Za-z0-9_-]{1,100}$/.test(request.id) || !['cell','inline','divider','heading'].includes(request.kind))) return fail();
   const expected = new Map(requests.map(request => [request.id, request.kind])); if (expected.size !== requests.length) return fail();
   const elements = new Map<string, HTMLElement>();
   for (const element of Array.from(document.body.querySelectorAll(`[${attributeName}]`))) {
@@ -148,18 +150,45 @@ export function normalizeDocumentColorOwners(document: Document, requests: reado
   if (!canvas || canvas[3] !== 1) return fail();
   return requests.map(request => {
     const owner = elements.get(request.id)!;
-    if (request.kind === 'cell' ? !['TD','TH'].includes(owner.tagName) : request.kind === 'divider' ? owner.tagName !== 'HR' : owner.tagName !== 'SPAN') return fail();
-    const colors: import('./color.js').NormalizedDocumentColors = {};
+    if (request.kind === 'cell' ? !['TD','TH'].includes(owner.tagName) : request.kind === 'divider' ? owner.tagName !== 'HR' : request.kind === 'heading' ? !/^H[1-6]$/.test(owner.tagName) : owner.tagName !== 'SPAN') return fail();
+    const presentation: import('./presentation.js').NormalizedDocumentPresentation = {};
+    if (request.kind === 'heading') {
+      const main = owner.parentElement, level = Number(owner.tagName.slice(1));
+      const canonicalFrame = document.body.children.length === 1 && main?.tagName === 'MAIN'
+        && main.parentElement === document.body && document.querySelectorAll('main').length === 1;
+      if (canonicalFrame && main.firstElementChild === owner && document.defaultView!.getComputedStyle(owner).marginTop === '0px') {
+        if (!validDocumentHeadingLevel(level)) return fail();
+        presentation.headingLevel = level; presentation.headingBeforePt = 0; presentation.headingSource = 'canonical-first-block';
+      }
+      return { id: request.id, presentation };
+    }
+    if (request.kind === 'inline') {
+      let authoredSize = false;
+      for (let ancestor: HTMLElement | null = owner; ancestor; ancestor = ancestor.parentElement) {
+        if (ancestor.style.getPropertyValue('font-size')) { authoredSize = true; break; }
+      }
+      if (authoredSize) {
+        const view = document.defaultView!, computed = view.getComputedStyle(owner);
+        const px = (value: string): number => /^\d+(?:\.\d+)?px$/.test(value) ? Number.parseFloat(value) : NaN;
+        let block: HTMLElement | null = owner.parentElement;
+        while (block && !['P','H1','H2','H3','H4','H5','H6','LI','PRE','TD','TH','BLOCKQUOTE','MAIN','BODY'].includes(block.tagName)) block = block.parentElement;
+        if (!block) return fail();
+        const size = normalizeDocumentFontPoints(px(computed.fontSize) * .75);
+        const line = Math.max(px(computed.lineHeight), px(view.getComputedStyle(block).lineHeight)) * .75;
+        if (!validDocumentFontSize(size) || !validDocumentFontLineHeight(line)) return fail();
+        presentation.fontSizePt = size; presentation.fontLineHeightPt = line; presentation.fontSizeSource = 'authored';
+      }
+    }
     if (request.kind === 'divider') {
       const background = documentEffectiveBackground(owner, read, canvas); if (!background) return fail();
       for (const [property, key] of [['color','foreground'], ['background-color','background']] as const) {
         if (property === 'background-color' && !owner.style.getPropertyValue(property)) continue;
         const value = read(document.defaultView!.getComputedStyle(owner).getPropertyValue(property));
         if (!value) return fail();
-        colors[key] = opaqueDocumentColorHex(key === 'background' ? background : compositeDocumentColor(value, background));
-        if (key === 'foreground') colors.foregroundSource = authoredForeground(owner) ? 'authored' : 'inherited';
+        presentation[key] = opaqueDocumentColorHex(key === 'background' ? background : compositeDocumentColor(value, background));
+        if (key === 'foreground') presentation.foregroundSource = authoredForeground(owner) ? 'authored' : 'inherited';
       }
-      return { id: request.id, colors };
+      return { id: request.id, presentation };
     }
     if (request.kind === 'inline' && !owner.textContent?.trim()) {
       const range = document.createRange(); range.selectNodeContents(owner);
@@ -171,26 +200,28 @@ export function normalizeDocumentColorOwners(document: Document, requests: reado
           const color = read(document.defaultView!.getComputedStyle(current).backgroundColor), box = current.getBoundingClientRect();
           if (!color || (color[3] > 0 && box.width > 0 && box.height > 0)) return fail();
         }
-        return { id: request.id, colors };
+        return { id: request.id, presentation };
       }
     }
     const background = documentEffectiveBackground(owner, read, canvas); if (!background) return fail();
     if (request.kind === 'cell') {
       // Never put automatic inherited foreground on a parent cell.
-      if (owner.style.getPropertyValue('background-color')) colors.background = opaqueDocumentColorHex(background);
+      if (owner.style.getPropertyValue('background-color')) presentation.background = opaqueDocumentColorHex(background);
     } else {
-      if (inlineBackground(owner)) colors.background = opaqueDocumentColorHex(background);
+      if (inlineBackground(owner)) presentation.background = opaqueDocumentColorHex(background);
       if (authoredForeground(owner)) {
         const ink = read(document.defaultView!.getComputedStyle(owner).color); if (!ink) return fail();
-        colors.foreground = opaqueDocumentColorHex(compositeDocumentColor(ink, background)); colors.foregroundSource = 'authored';
+        presentation.foreground = opaqueDocumentColorHex(compositeDocumentColor(ink, background)); presentation.foregroundSource = 'authored';
       } else {
         const correction = documentTextInk(owner, read, canvas);
-        if (correction) { const ink = read(correction); if (!ink) return fail(); colors.foreground = opaqueDocumentColorHex(ink); colors.foregroundSource = 'inherited'; }
+        if (correction) { const ink = read(correction); if (!ink) return fail(); presentation.foreground = opaqueDocumentColorHex(ink); presentation.foregroundSource = 'inherited'; }
       }
     }
-    return { id: request.id, colors };
+    return { id: request.id, presentation };
   });
 }
+/** Source compatibility alias; there is only one normalized presentation payload. */
+export const normalizeDocumentColorOwners = normalizeDocumentPresentationOwners;
 /** Transient print DOM only. Working HTML and authored foregrounds never change. */
 export function repairDocumentPrintInk(document: Document, ownedStyles: readonly string[], read: DocumentColorReader = documentColorReader(document)): { applied: number; qualified: boolean } {
   if (!documentColorLayoutQualified(document, ownedStyles)) return { applied: 0, qualified: false };

@@ -1,31 +1,47 @@
+import { documentWordFontSize, validDocumentFontSize, validDocumentFontLineHeight, validDocumentHeadingLevel } from '@open-design/document-style';
 import { randomBytes } from 'node:crypto';
 import { DOMParser, XMLSerializer, type Element, type Node } from '@xmldom/xmldom';
 
-export interface DocumentDocxColors { foreground?: string; background?: string }
-export interface DocumentDocxColorOwner { id: string; name: string; kind: 'cell' | 'inline'; rowSpan?: number; columnSpan?: number; temporaryStart?: boolean; temporaryEnd?: boolean; colors: DocumentDocxColors }
+export interface DocumentDocxPresentation { foreground?: string; background?: string; fontSizePt?: number; fontLineHeightPt?: number; headingLevel?: number; headingBeforePt?: 0 }
+export type DocumentDocxColors = DocumentDocxPresentation;
+export interface DocumentDocxStyleOwner { id: string; name: string; kind: 'cell' | 'inline' | 'heading'; rowSpan?: number; columnSpan?: number; temporaryStart?: boolean; temporaryEnd?: boolean; presentation: DocumentDocxPresentation }
 type Ast = { t?: string; c?: unknown };
-const fail = (): never => { throw new Error('The document converter could not preserve authored color ownership.'); };
+const fail = (): never => { throw new Error('The document converter could not preserve authored presentation ownership.'); };
 const w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
-function colors(value: DocumentDocxColors): DocumentDocxColors {
-  if (Object.keys(value).some(key => !['foreground', 'background'].includes(key))) return fail();
-  for (const color of Object.values(value)) if (!/^[A-Fa-f0-9]{6}$/.test(color)) return fail();
+function checkedPresentation(value: DocumentDocxPresentation): DocumentDocxPresentation {
+  if (Object.keys(value).some(key => !['foreground', 'background', 'fontSizePt', 'fontLineHeightPt', 'headingLevel', 'headingBeforePt'].includes(key))) return fail();
+  for (const color of [value.foreground, value.background]) if (color !== undefined && !/^[A-Fa-f0-9]{6}$/.test(color)) return fail();
+  if (value.fontSizePt !== undefined || value.fontLineHeightPt !== undefined) {
+    if (!validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt)) return fail();
+  }
+  if (value.headingLevel !== undefined || value.headingBeforePt !== undefined) { if (!validDocumentHeadingLevel(value.headingLevel) || value.headingBeforePt !== 0) return fail(); }
   return value;
 }
-/** The caller resolves authored CSS to opaque sRGB. This owner does not infer
- * author colors from display contrast or flatten native Pandoc content. */
-export function documentDocxColorOwners(ast: unknown, resolve: (attributes: unknown, kind: 'cell' | 'inline') => DocumentDocxColors): DocumentDocxColorOwner[] {
-  const owners: DocumentDocxColorOwner[] = [], prefix = `EveClr${randomBytes(8).toString('hex')}`;
-  const marker = (owner: DocumentDocxColorOwner, start: boolean) => ({ t: 'RawInline', c: ['openxml', start ? `<w:bookmarkStart w:id="${owner.id}" w:name="${owner.name}"/>` : `<w:bookmarkEnd w:id="${owner.id}"/>`] });
-  const owner = (attributes: unknown, kind: 'cell' | 'inline') => {
-    const value = colors(resolve(attributes, kind));
+/** The caller supplies qualified normalized presentation. This owner never
+ * guesses authored styling or flattens native Pandoc content. */
+export function documentDocxPresentationOwners(ast: unknown, resolve: (attributes: unknown, kind: 'cell' | 'inline' | 'heading') => DocumentDocxPresentation): DocumentDocxStyleOwner[] {
+  const owners: DocumentDocxStyleOwner[] = [], prefix = `EveClr${randomBytes(8).toString('hex')}`;
+  const marker = (owner: DocumentDocxStyleOwner, start: boolean) => ({ t: 'RawInline', c: ['openxml', start ? `<w:bookmarkStart w:id="${owner.id}" w:name="${owner.name}"/>` : `<w:bookmarkEnd w:id="${owner.id}"/>`] });
+  const owner = (attributes: unknown, kind: 'cell' | 'inline' | 'heading') => {
+    const value = checkedPresentation(resolve(attributes, kind));
+    if (kind !== 'inline' && value.fontSizePt !== undefined) return fail();
+    if (kind === 'heading') { if (Object.keys(value).some(key => !['headingLevel','headingBeforePt'].includes(key))) return fail(); }
+    else if (value.headingLevel !== undefined || value.headingBeforePt !== undefined) return fail();
     if (!Object.keys(value).length) return undefined;
     if (owners.length >= 10000) return fail();
-    const result: DocumentDocxColorOwner = { id: String(2_000_000_000 + owners.length), name: `${prefix}_${owners.length}`, kind, colors: value }; owners.push(result); return result;
+    const result: DocumentDocxStyleOwner = { id: String(2_000_000_000 + owners.length), name: `${prefix}_${owners.length}`, kind, presentation: value }; owners.push(result); return result;
   };
   const visit = (value: unknown): void => {
     if (!value || typeof value !== 'object') return;
     if (Array.isArray(value)) { for (const item of value) visit(item); return; }
     const node = value as Ast;
+    if (node.t === 'Header' && Array.isArray(node.c)) {
+      const entry = owner(node.c[1], 'heading');
+      if (entry && entry.presentation.headingLevel !== node.c[0]) return fail();
+      visit(node.c[2]);
+      if (entry) { if (!Array.isArray(node.c[2])) return fail(); node.c[2] = [marker(entry,true), ...node.c[2], marker(entry,false)]; }
+      return;
+    }
     if (node.t === 'Span' && Array.isArray(node.c)) {
       const entry = owner(node.c[0], 'inline'); visit(node.c[1]);
       if (entry) { if (!Array.isArray(node.c[1])) return fail(); node.c[1] = [marker(entry, true), ...node.c[1], marker(entry, false)]; }
@@ -68,17 +84,19 @@ export function documentDocxColorOwners(ast: unknown, resolve: (attributes: unkn
 
 /** Verify generated bookmarks before projecting into editable native OOXML.
  * Never identify cells/runs by text or positional guesses. */
-export function projectDocumentDocxColors(xml: string, owners: readonly DocumentDocxColorOwner[]): string {
+export function projectDocumentDocxPresentation(xml: string, owners: readonly DocumentDocxStyleOwner[]): string {
   if (!owners.length) return xml;
   const doc = new DOMParser({ onError: fail }).parseFromString(xml, 'application/xml');
   const byId = new Map(owners.map(owner => [owner.id, owner])), names = new Set(owners.map(owner => owner.name));
   if (byId.size !== owners.length || names.size !== owners.length) return fail();
-  const stack: DocumentDocxColorOwner[] = [], seen = new Set<string>(), ended = new Set<string>(), markers: Element[] = [], temporary = new Set<Element>(), cells = new Map<string, Element>();
+  const stack: DocumentDocxStyleOwner[] = [], seen = new Set<string>(), ended = new Set<string>(), markers: Element[] = [], temporary = new Set<Element>(), cells = new Map<string, Element>();
   const parentCell = (node: Node): Element | undefined => { for (let p = node.parentNode; p; p = p.parentNode) if (p.nodeType === 1 && (p as Element).namespaceURI === w && (p as Element).localName === 'tc') return p as Element; return undefined; };
   const children = (node: Element, name: string) => Array.from(node.childNodes).filter((n): n is Element => n.nodeType === 1 && (n as Element).namespaceURI === w && (n as Element).localName === name);
   const properties = (node: Element, name: string) => { const found = children(node, name); if (found.length > 1) return fail(); if (found[0]) return found[0]; const p = doc.createElementNS(w, `w:${name}`); node.insertBefore(p, node.firstChild); return p; };
   const set = (p: Element, name: string, attributes: Record<string, string>) => { for (const old of children(p, name)) p.removeChild(old); const item = doc.createElementNS(w, `w:${name}`); for (const [key, value] of Object.entries(attributes)) item.setAttributeNS(w, `w:${key}`, value); const later = p.localName === 'tcPr'
       ? ['noWrap','tcMar','textDirection','tcFitText','vAlign','hideMark','cellIns','cellDel','cellMerge','tcPrChange']
+      : name === 'sz' || name === 'szCs'
+        ? [...(name === 'sz' ? ['szCs'] : []), 'highlight','u','effect','bdr','shd','fitText','vertAlign','rtl','cs','em','lang','eastAsianLayout','specVanish','oMath','rPrChange']
       : name === 'color'
         ? ['spacing','w','kern','position','sz','szCs','highlight','u','effect','bdr','shd','fitText','vertAlign','rtl','cs','em','lang','eastAsianLayout','specVanish','rPrChange']
         : ['fitText','vertAlign','rtl','cs','em','lang','eastAsianLayout','specVanish','rPrChange'];
@@ -87,9 +105,22 @@ export function projectDocumentDocxColors(xml: string, owners: readonly Document
     // run extension properties), never append after superscript/alignment.
     const next = Array.from(p.childNodes).find(node => node.nodeType === 1 && ((node as Element).namespaceURI !== w || later.includes((node as Element).localName ?? '')));
     p.insertBefore(item, next ?? null); };
+  const paragraphSpacing = (paragraph: Element): Element => {
+    const pPr = properties(paragraph,'pPr'), existing = children(pPr,'spacing');
+    if (existing.length > 1) return fail();
+    if (existing[0]) return existing[0];
+    const spacing = doc.createElementNS(w,'w:spacing');
+    const later = ['ind','contextualSpacing','mirrorIndents','suppressOverlap','jc','textDirection','textAlignment','textboxTightWrap','outlineLvl','divId','cnfStyle','rPr','sectPr','pPrChange'];
+    const next = Array.from(pPr.childNodes).find(node => node.nodeType===1 && ((node as Element).namespaceURI!==w || later.includes((node as Element).localName ?? '')));
+    pPr.insertBefore(spacing,next ?? null); return spacing;
+  };
+  const parentParagraph = (node: Node): Element | undefined => { for (let parent = node.parentNode; parent; parent = parent.parentNode) if (parent.nodeType === 1 && (parent as Element).namespaceURI === w && (parent as Element).localName === 'p') return parent as Element; return undefined; };
+  const headingParagraphs = new Map<string,Element>(), headingTargets = new Set<Element>();
+  const paragraphLines = new Map<Element, number>();
   const visit = (node: Node): void => {
     if (node.nodeType !== 1) return;
     const element = node as Element, name = element.namespaceURI === w ? element.localName : '';
+    if (name === 'p' && stack.some(owner => owner.kind === 'heading' && headingParagraphs.get(owner.id) !== element)) return fail();
     if (name === 'bookmarkStart' || name === 'bookmarkEnd') {
       const id = element.getAttributeNS(w, 'id')!, own = byId.get(id);
       if (!own && names.has(element.getAttributeNS(w, 'name') ?? '')) return fail();
@@ -97,8 +128,15 @@ export function projectDocumentDocxColors(xml: string, owners: readonly Document
         if (name === 'bookmarkStart') {
           if (seen.has(id) || element.getAttributeNS(w, 'name') !== own.name) return fail();
           seen.add(id); stack.push(own);
+          if (own.kind === 'heading') {
+            const paragraph = parentParagraph(element);
+            if (!paragraph || element.parentNode !== paragraph || headingTargets.has(paragraph)) return fail();
+            const pPr = children(paragraph,'pPr');
+            if (pPr.length !== 1 || children(pPr[0]!,'pStyle').length !== 1 || children(pPr[0]!,'pStyle')[0]!.getAttributeNS(w,'val') !== `Heading${own.presentation.headingLevel}`) return fail();
+            headingParagraphs.set(id,paragraph); headingTargets.add(paragraph);
+          }
           const cell = parentCell(element); if (cell) cells.set(id, cell); else if (own.kind === 'cell') return fail();
-          if (own.kind === 'cell' && own.colors.background) {
+          if (own.kind === 'cell' && own.presentation.background) {
             const row = cell!.parentNode as Element, table = row.parentNode as Element;
             if (row.localName !== 'tr' || table.localName !== 'tbl') return fail();
             const span = (tc: Element) => { const raw = children(tc, 'tcPr')[0]; const value = raw && children(raw, 'gridSpan')[0]?.getAttributeNS(w, 'val'); const count = value ? Number(value) : 1; if (!Number.isSafeInteger(count) || count < 1) return fail(); return count; };
@@ -113,11 +151,12 @@ export function projectDocumentDocxColors(xml: string, owners: readonly Document
               const merge = children(target,'tcPr')[0]; const marker = merge && children(merge,'vMerge')[0];
               if ((own.rowSpan ?? 1)===1 && marker) return fail();
               if ((own.rowSpan ?? 1)>1 && (!marker || (offset===0 ? marker.getAttributeNS(w,'val')!=='restart' : !['','continue'].includes(marker.getAttributeNS(w,'val') ?? '')))) return fail();
-              set(properties(target,'tcPr'),'shd',{val:'clear',color:'auto',fill:own.colors.background.toUpperCase()});
+              set(properties(target,'tcPr'),'shd',{val:'clear',color:'auto',fill:own.presentation.background.toUpperCase()});
             }
           }
         } else {
           if (stack.at(-1)?.id !== id || ended.has(id) || cells.get(id) !== parentCell(element)) return fail();
+          if (own.kind === 'heading' && (parentParagraph(element) !== headingParagraphs.get(id) || element.parentNode !== headingParagraphs.get(id))) return fail();
           stack.pop(); ended.add(id);
         }
         markers.push(element);
@@ -128,15 +167,28 @@ export function projectDocumentDocxColors(xml: string, owners: readonly Document
       }
     }
     if (name === 'r') {
-      const effective: DocumentDocxColors = {};
-      for (const own of stack) { if (own.colors.foreground) effective.foreground = own.colors.foreground; if (own.kind === 'inline' && own.colors.background) effective.background = own.colors.background; }
+      const effective: DocumentDocxPresentation = {};
+      for (const own of stack) { if (own.presentation.foreground) effective.foreground = own.presentation.foreground; if (own.kind === 'inline' && own.presentation.background) effective.background = own.presentation.background; if (own.kind === 'inline' && own.presentation.fontSizePt !== undefined) { effective.fontSizePt = own.presentation.fontSizePt; effective.fontLineHeightPt = own.presentation.fontLineHeightPt!; } }
       if (effective.foreground) set(properties(element, 'rPr'), 'color', { val: effective.foreground.toUpperCase() });
+      if (effective.fontSizePt !== undefined) {
+        set(properties(element, 'rPr'), 'sz', { val: documentWordFontSize(effective.fontSizePt) });
+        set(properties(element, 'rPr'), 'szCs', { val: documentWordFontSize(effective.fontSizePt) });
+        let paragraph: Node | null = element.parentNode;
+        while (paragraph && !(paragraph.nodeType === 1 && (paragraph as Element).namespaceURI === w && (paragraph as Element).localName === 'p')) paragraph = paragraph.parentNode;
+        if (!paragraph || !validDocumentFontLineHeight(effective.fontLineHeightPt)) return fail();
+        paragraphLines.set(paragraph as Element, Math.max(paragraphLines.get(paragraph as Element) ?? 0, effective.fontLineHeightPt));
+      }
       if (effective.background) set(properties(element, 'rPr'), 'shd', { val: 'clear', color: 'auto', fill: effective.background.toUpperCase() });
     }
     for (const child of Array.from(element.childNodes)) visit(child);
   };
   if (!doc.documentElement) return fail(); visit(doc.documentElement);
   if (stack.length || seen.size !== owners.length || ended.size !== owners.length) return fail();
+  for (const [paragraph, minimum] of paragraphLines) {
+    const spacing = paragraphSpacing(paragraph);
+    spacing.setAttributeNS(w,'w:line',String(Math.round(minimum * 20))); spacing.setAttributeNS(w,'w:lineRule','atLeast');
+  }
+  for (const paragraph of headingTargets) paragraphSpacing(paragraph).setAttributeNS(w,'w:before','0');
   for (const marker of markers) marker.parentNode?.removeChild(marker);
   for (const paragraph of temporary) {
     // Only our marker-only paragraphs can disappear; real empty authored
@@ -152,3 +204,8 @@ export function projectDocumentDocxColors(xml: string, owners: readonly Document
   }
   return new XMLSerializer().serializeToString(doc);
 }
+
+export const documentDocxColorOwners = documentDocxPresentationOwners;
+export const projectDocumentDocxColors = projectDocumentDocxPresentation;
+
+export type DocumentDocxColorOwner = DocumentDocxStyleOwner;
