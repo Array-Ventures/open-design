@@ -75,3 +75,12 @@ this checkpoint does not claim full layout parity. Microsoft Word application
 appearance has not been tested. The source fixture and generated images contain
 only made-up test content. No shared preview, production, publication or pins
 changed.
+
+
+Personally inspected source-proof views: [Word through isolated LibreOffice](images/document-divider-export/word-libreoffice-source.png)
+and [browser PDF](images/document-divider-export/browser-pdf-source.png).
+Both show the default gray and authored colored rules; they also preserve the
+visible spacing difference rather than presenting the two layouts as identical.
+Final author checks passed 80 affected daemon cases, 25 shared-style cases,
+full workspace types and guard. All proof containers were removed and isolated
+LibreOffice processes exited normally. No application runtime was activated.
