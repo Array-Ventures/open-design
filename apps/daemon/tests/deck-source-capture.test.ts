@@ -29,6 +29,12 @@ describe('source-owned deck image capture', () => {
     const capture = prepareDeckSourceCapture(buffer, { ...selection, deckSourceSha256: createHash('sha256').update(buffer).digest('hex') });
     expect(capture.html).toContain('>Two</section>');
   });
+  it('uses the same strict BOM/non-ASCII decode as preview but hashes the original bytes', () => {
+    const raw = Buffer.from('\ufeff' + html.replace('Two', '二 café'));
+    expect(prepareDeckSourceCapture(raw, { ...selection, deckSourceSha256: createHash('sha256').update(raw).digest('hex') }).html).toContain('二 café');
+    const invalid = Buffer.concat([Buffer.from([0xff]), bytes]);
+    expect(() => prepareDeckSourceCapture(invalid, { ...selection, deckSourceSha256: createHash('sha256').update(invalid).digest('hex') })).toThrow('valid UTF-8');
+  });
   it('requires all new binding fields only for the new deck-image contract, preserving legacy explicit index', () => {
     const input = { fileName: 'index.html', format: 'image', deck: true, index: 1 };
     expect(RenderInput.safeParse(input).success).toBe(true);

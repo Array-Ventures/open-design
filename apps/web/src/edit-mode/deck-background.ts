@@ -27,6 +27,14 @@ export function deckSlideIndexForSourcePath(source: string, path: string): numbe
   return matches.length === 1 ? matches[0]! : null;
 }
 
+/** Export's trusted first-child stub needs a normal HTML flow-content root. */
+export function deckSlideExportSource(source: string, path: string): { index: number; count: number } | null {
+  const index = deckSlideIndexForSourcePath(source, path);
+  const slides = slidesIn(source), selected = index === null ? null : slides[index];
+  return index !== null && selected && selected.namespaceURI === 'http://www.w3.org/1999/xhtml'
+    && ['section', 'div', 'article', 'main'].includes(selected.tagName) ? { index, count: slides.length } : null;
+}
+
 function parseInlineStyle(raw: string) {
   try {
     const css = postcss.parse(raw, { from: undefined });

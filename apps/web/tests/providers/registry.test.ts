@@ -1801,6 +1801,22 @@ describe('fetchProjectFileText', () => {
     vi.unstubAllGlobals();
   });
 
+  it('optionally hashes original BOM/non-ASCII bytes while preserving legacy decoded text', async () => {
+    const { webcrypto, createHash } = await import('node:crypto');
+    vi.stubGlobal('crypto', webcrypto);
+    const bytes = Buffer.from('\ufeff<section>二 café</section>', 'utf8');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(bytes)));
+    const snapshot = vi.fn();
+    await expect(fetchProjectFileText('project-1', 'index.html', { onSourceSnapshot: snapshot })).resolves.toBe('<section>二 café</section>');
+    expect(snapshot).toHaveBeenCalledWith({ text: '<section>二 café</section>', sha256: createHash('sha256').update(bytes).digest('hex') });
+  });
+  it('declines optional byte proof for invalid UTF-8 without breaking existing preview decoding', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array([0xff, 0x61]))));
+    const snapshot = vi.fn();
+    await expect(fetchProjectFileText('project-1', 'index.html', { onSourceSnapshot: snapshot })).resolves.toBe('\ufffda');
+    expect(snapshot).toHaveBeenCalledWith(null);
+  });
+
   it('can bypass caches when fetching source text', async () => {
     const fetchMock = vi.fn(async () => new Response('<svg />', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);

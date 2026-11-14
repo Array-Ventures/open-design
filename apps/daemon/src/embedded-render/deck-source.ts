@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { load } from 'cheerio';
-import { canonicalDeckSourceSlides, deckSourcePath, type DeckSourceTree } from '@open-design/contracts/runtime/deck-source';
+import { canonicalDeckSourceSlides, deckSourcePath, decodeDeckSourceBytes, type DeckSourceTree } from '@open-design/contracts/runtime/deck-source';
 import { findSpeakerNotesScriptBlock } from '@open-design/contracts/runtime/speaker-notes';
 
 type SourceRoot = ReturnType<ReturnType<typeof load>['root']>[0];
@@ -17,7 +17,8 @@ const fail = (): never => { throw new Error('The selected slide no longer has a 
  * removal, marker stamping, fallback injection or browser execution. */
 export function prepareDeckSourceCapture(bytes: Buffer, selection: { deckSourceSha256: string; deckSourcePath: string; index: number }) {
   if (createHash('sha256').update(bytes).digest('hex') !== selection.deckSourceSha256) throw new Error('The selected slide belongs to a different source revision.');
-  const original = bytes.toString('utf8');
+  const original = decodeDeckSourceBytes(bytes);
+  if (original === null) throw new Error('Source-owned slide export requires valid UTF-8.');
   const notes = findSpeakerNotesScriptBlock(original);
   const visual = notes ? original.slice(0, notes.start) + original.slice(notes.end) : original;
   const $visual = load(visual), visualSlides = canonicalDeckSourceSlides($visual.root()[0]!, tree);

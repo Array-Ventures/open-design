@@ -1,3 +1,4 @@
+import { sourceOwnedDeckExportSelection } from './embedded/deck-export';
 import { deckSlideStateFromMessage } from '../edit-mode/deck-source-identity';
 import { InspectorResizeHandle } from './embedded/InspectorResizeHandle';
 import { uploadProjectImage } from './embedded/project-image-upload';
@@ -9450,12 +9451,14 @@ function HtmlViewer({
   const sourceFileKeyRef = useRef<string | null>(
     source !== null ? currentSourceIdentity : null,
   );
+  const [sourceByteProof, setSourceByteProof] = useState<{ key: string; text: string; sha256: string } | null>(null);
   const sourceLoadInFlightRef = useRef<{
     key: string;
     promise: Promise<{
       text: string | null;
       poweredPreviewRequired: boolean;
       sourceLoadMode: HtmlSourceLoadMode;
+      byteSnapshot?: { text: string; sha256: string } | null;
     }>;
   } | null>(null);
   const handledLoginUpdateNonceRef = useRef<number | null>(null);
@@ -10139,7 +10142,8 @@ function HtmlViewer({
     // metadata / Workspace identity changes. Re-reading the same bytes on
     // every ordinary viewer remount made Design Files ↔ preview round-trips
     // perform one uncached raw request apiece.
-    if (cachedSnapshot !== null) {
+    if (cachedSnapshot !== null && (!embedded || cachedSnapshot.sourceSha256)) {
+      setSourceByteProof(cachedSnapshot.sourceSha256 ? { key: sourceFileKey, text: cachedSnapshot.source, sha256: cachedSnapshot.sourceSha256 } : null);
       return () => {
         cancelled = true;
       };
@@ -10174,6 +10178,14 @@ function HtmlViewer({
     ].join('\0');
     let sourceLoad = sourceLoadInFlightRef.current;
     if (sourceLoad?.key !== sourceLoadKey) {
+      const fullSource = async () => {
+        let byteSnapshot: { text: string; sha256: string } | null = null;
+        const text = await fetchProjectFileText(projectId, file.name, {
+          cache: 'no-store', cacheBustKey, workspaceContext,
+          ...(embedded ? { onSourceSnapshot: (value: { text: string; sha256: string } | null) => { byteSnapshot = value; } } : {}),
+        });
+        return { text, byteSnapshot };
+      };
       const promise = shouldDeferPassivePreviewSource
         ? fetchProjectFileTextPreview(projectId, file.name, {
           limit: HTML_ROUTING_TEXT_PREVIEW_LIMIT,
@@ -10182,14 +10194,10 @@ function HtmlViewer({
         }).then(async (preview) => {
           const previewText = preview?.text ?? null;
           if (previewTextNeedsFullSourceForSafeInline(previewText)) {
-            const fullText = await fetchProjectFileText(projectId, file.name, {
-              cache: 'no-store',
-              cacheBustKey,
-              workspaceContext,
-            });
+            const { text: fullText, byteSnapshot } = await fullSource();
             if (fullText !== null) {
               return {
-                text: fullText,
+                text: fullText, byteSnapshot,
                 poweredPreviewRequired: preview?.poweredPreview.required === true,
                 sourceLoadMode: 'full' as HtmlSourceLoadMode,
               };
@@ -10201,12 +10209,8 @@ function HtmlViewer({
             sourceLoadMode: 'routing-preview' as HtmlSourceLoadMode,
           };
         })
-      : fetchProjectFileText(projectId, file.name, {
-          cache: 'no-store',
-          cacheBustKey,
-          workspaceContext,
-        }).then((text) => ({
-        text,
+      : fullSource().then(({ text, byteSnapshot }) => ({
+        text, byteSnapshot,
         poweredPreviewRequired: false,
         sourceLoadMode: 'full' as HtmlSourceLoadMode,
       }));
@@ -10218,7 +10222,7 @@ function HtmlViewer({
         }
       });
     }
-    void sourceLoad.promise.then(({ text, poweredPreviewRequired, sourceLoadMode }) => {
+    void sourceLoad.promise.then(({ text, poweredPreviewRequired, sourceLoadMode, byteSnapshot }) => {
       if (cancelled) return;
       setServerPoweredPreviewRequired(poweredPreviewRequired);
       // Chokidar emits agent rewrites as unlink+add+change bursts; a
@@ -10264,6 +10268,7 @@ function HtmlViewer({
         }
         return;
       }
+      setSourceByteProof(byteSnapshot ? { key: sourceFileKey, ...byteSnapshot } : null);
       prevSourceBeforeReloadRef.current = null;
       sourceEverLoadedRef.current = true;
       sourceLoadedKeysRef.current.add(sourceLoadedFileKey);
@@ -10280,6 +10285,7 @@ function HtmlViewer({
             fileName: file.name,
             refreshKey: sourceSnapshotRefreshKey,
             source: text,
+            ...(byteSnapshot ? { sourceSha256: byteSnapshot.sha256 } : {}),
           });
         }
         setSource(text);
@@ -18085,7 +18091,14 @@ function HtmlViewer({
             ? filePrimaryActions
             : null
       ))(<>
-          {showPresent && embedded && effectiveDeck ? <DeckPresentationMenu projectId={projectId} hosted={inlineAnnotations} onPresent={withNotes => {
+          {showPresent && embedded && effectiveDeck ? <DeckPresentationMenu projectId={projectId} hosted={inlineAnnotations} exportSelection={sourceOwnedDeckExportSelection({
+            fileName: file.name, source, proof: sourceByteProof?.key === currentSourceIdentity ? sourceByteProof : null,
+            sourceGeneration: srcDocTransportGeneration, sourcePath: slideState?.sourcePath,
+            runtimeCount: slideState?.count ?? 0,
+            blocked: !workspaceActive || mode !== 'preview' || manualEditDraftDirty || manualEditSaving || savingInspect
+              || !deckTransportMatchesPreview || deckIdentitySource.current.source !== source
+              || slideState?.sourceGeneration !== srcDocTransportGeneration,
+          })} onPresent={withNotes => {
             const present = () => { if (withNotes) presentInThisTab(true); else presentFullscreen(false); };
             if (manualEditMode) {
               void requestManualEditSafeExitRef.current().then(saved => { if (saved) present(); });

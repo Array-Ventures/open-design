@@ -50,3 +50,10 @@ export function deckSourcePath<Node>(node: Node, tree: DeckSourceTree<Node>): st
 export function validDeckSourcePath(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 500 && /^path(?:-\d+)+$/.test(value);
 }
+
+/** New source-bound exports use strict UTF-8 with the Fetch UTF-8 BOM policy.
+ * The digest always belongs to the input bytes, never this decoded projection. */
+export function decodeDeckSourceBytes(bytes: Uint8Array): string | null {
+  try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes); }
+  catch { return null; }
+}
