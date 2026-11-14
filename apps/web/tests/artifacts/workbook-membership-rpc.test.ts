@@ -369,3 +369,137 @@ it('normalizes real source-preserved and dependent caches before admitting a lat
     expect(f.writer.checkpoint().source.model.sheets[2]!.cells[1]!.value).toBe(999);
   } finally { release?.(); await f.close(); }
 }, 15_000);
+
+
+it('keeps the worker healthy after first Add on the actual browser rich/SUM-range source model', async () => {
+  const { workbookDocumentSchema } = await import('@open-design/contracts/runtime/workbook');
+  const raw = await import('../fixtures/workbook-browser-membership-model.json');
+  const model = workbookDocumentSchema.parse(raw.default);
+  vi.stubGlobal('Worker', NodeWorkbookWorker);
+  const f = await createWorkbookMembershipRpcFixture(true, 100, 12, false, model);
+  try {
+    const born = await f.controller.add('Research', 2);
+    await f.calculation.awaitQuiescent();
+    expect(f.owner.ready).toBe(true);
+    expect(f.book.save().sheetOrder).toEqual(['1', '2', born.descriptor.sheetId]);
+    expect(f.book.save().sheets['1']!.cellData![2]![2]!.v).toBe(12);
+    expect(f.book.save().sheets['2']!.cellData![0]![0]!.v).toBe(12);
+    await f.api.undo(); await f.calculation.awaitQuiescent();
+    expect(f.book.save().sheetOrder).toEqual(['1', '2']);
+    await f.api.redo(); await f.calculation.awaitQuiescent();
+    expect(f.book.save().sheets[born.descriptor.sheetId]!.cellData).toEqual({});
+    expect(f.owner.ready).toBe(true);
+    expect(f.writer.checkpoint().sheetActionConflict).toBeUndefined();
+  } finally { await f.close(); }
+}, 15_000);
+
+
+it('holds two-sheet membership completion until the second actual cache application reaches the workbook', async () => {
+  const { workbookDocumentSchema } = await import('@open-design/contracts/runtime/workbook');
+  const model = workbookDocumentSchema.parse((await import('../fixtures/workbook-browser-membership-model.json')).default);
+  vi.stubGlobal('Worker', NodeWorkbookWorker);
+  const f = await createWorkbookMembershipRpcFixture(true, 100, 12, false, model);
+  const held: unknown[] = [];
+  let holding = true;
+  f.worker.acceptIncoming = raw => {
+    const packet = raw as { args?: [{ mutationInfo?: { id?: string; params?: { subUnitId?: string; workbookCalculation?: unknown } } }] };
+    const mutation = packet.args?.[0]?.mutationInfo;
+    if (holding && mutation?.id === SetRangeValuesMutation.id && mutation.params?.subUnitId === '2') {
+      expect(mutation.params.workbookCalculation).toBeDefined();
+      if (!held.includes(raw)) held.push(raw);
+      return false;
+    }
+    return true;
+  };
+  try {
+    f.book.getSheetBySheetId('1')!.getRange('B2').setValue(19);
+    await f.controller.add('Research', 2);
+    let complete = false;
+    const ready = f.calculation.awaitQuiescent().then(() => { complete = true; }); void ready.catch(() => {});
+    await vi.waitFor(() => expect(held.length).toBeGreaterThan(0), { timeout: 5000 });
+    expect(f.book.save().sheets['1']!.cellData![2]![2]!.v).toBe(19);
+    expect(f.book.save().sheets['2']!.cellData![0]![0]!.v).toBe(12);
+    expect(complete).toBe(false); expect(f.statuses.at(-1)?.phase).toBe('pending');
+    holding = false; for (const packet of held) f.worker.thread.emit('message', packet);
+    await ready;
+    expect(f.book.save().sheets['2']!.cellData![0]![0]!.v).toBe(19);
+    expect(f.calculation.quiescent).toBe(true); expect(f.owner.ready).toBe(true);
+    expect(f.writer.checkpoint().source.model.sheets[1]!.cells[0]!.value).toBe(12);
+  } finally { await f.close(); }
+}, 15_000);
+
+it('refuses a changed second-sheet computed vector despite its otherwise valid real receipt tag', async () => {
+  const { workbookDocumentSchema } = await import('@open-design/contracts/runtime/workbook');
+  const model = workbookDocumentSchema.parse((await import('../fixtures/workbook-browser-membership-model.json')).default);
+  vi.stubGlobal('Worker', NodeWorkbookWorker);
+  const f = await createWorkbookMembershipRpcFixture(true, 100, 12, false, model);
+  let changed = false;
+  f.worker.acceptIncoming = raw => {
+    const packet = raw as { args?: [{ mutationInfo?: { id?: string; params?: { subUnitId?: string; workbookCalculation?: unknown; cellValue?: Record<number, Record<number, { v?: unknown }>> } } }] };
+    const mutation = packet.args?.[0]?.mutationInfo, params = mutation?.params;
+    if (!changed && mutation?.id === SetRangeValuesMutation.id && params?.subUnitId === '2' && params.cellValue?.[0]?.[0]) {
+      expect(params.workbookCalculation).toBeDefined();
+      changed = true; params.cellValue[0][0].v = 999;
+    }
+    return true;
+  };
+  try {
+    await f.controller.add('Research', 2);
+    const ready = f.calculation.awaitQuiescent(); void ready.catch(() => {});
+    await vi.waitFor(() => expect(changed).toBe(true), { timeout: 5000 });
+    expect(f.owner.ready).toBe(false);
+    expect(f.book.save().sheets['2']!.cellData![0]![0]!.v).not.toBe(999);
+    expect(f.calculation.status('2', 0, 0)?.result).not.toBe('calculated');
+    await expect(ready).rejects.toThrow('unavailable');
+  } finally { await f.close(); }
+}, 15_000);
+
+it.each(['omitted', 'wrong-formula', 'wrong-shared-id', 'invalid-receipt', 'stale-receipt'] as const)('rejects host-origin scalar output with %s identity before issuing worker provenance', async attack => {
+  const { workbookDocumentSchema } = await import('@open-design/contracts/runtime/workbook');
+  const model = workbookDocumentSchema.parse((await import('../fixtures/workbook-browser-membership-model.json')).default);
+  const { IRemoteInstanceService } = await import('@univerjs/rpc');
+  const { SetFormulaCalculationResultMutation } = await import('@univerjs/engine-formula');
+  const { CommandType } = await import('@univerjs/core');
+  const { workbookCalculationInputSha256 } = await import('../../src/components/embedded/workbook/formula-input-provenance');
+  vi.stubGlobal('Worker', NodeWorkbookWorker);
+  const f = await createWorkbookMembershipRpcFixture(true, 100, 12, false, model);
+  const held: unknown[] = [];
+  let receipt: { valid?: boolean; inputEpoch?: number } | undefined;
+  f.worker.acceptIncoming = raw => {
+    const packet = raw as { args?: [{ mutationInfo?: { id?: string; params?: { subUnitId?: string; workbookCalculation?: typeof receipt } } }] };
+    const mutation = packet.args?.[0]?.mutationInfo;
+    if (mutation?.id === SetFormulaCalculationResultMutation.id) receipt = mutation.params?.workbookCalculation;
+    if (mutation?.id === SetRangeValuesMutation.id && mutation.params?.subUnitId === '2') {
+      if (!held.includes(raw)) held.push(raw); return false;
+    }
+    return true;
+  };
+  try {
+    await f.controller.add('Research', 2);
+    await vi.waitFor(() => expect(held.length).toBeGreaterThan(0), { timeout: 5000 });
+    expect(receipt?.valid).toBe(true); expect(receipt?.inputEpoch).toBe(f.calculation.inputEpoch);
+    expect(f.calculation.quiescent).toBe(false);
+    const before = f.book.save();
+    const params = {
+      unitData: { [f.book.getId()]: { '2': { 0: { 0: { v: attack === 'omitted' ? 12 : 999, t: 2 } } } } }, unitOtherData: {},
+      ...(attack === 'wrong-formula' || attack === 'wrong-shared-id' ? { sourceFormulaData: { [f.book.getId()]: { '2': { 0: { 0: {
+        f: attack === 'wrong-formula' ? '=999' : "='Rich cells'!B2", ...(attack === 'wrong-shared-id' ? { si: 'forged' } : {}),
+      } } } } } } : {}),
+      ...(attack === 'invalid-receipt' || attack === 'stale-receipt' ? { workbookCalculation: { version: 1, unitId: f.book.getId(),
+        inputSha256: workbookCalculationInputSha256(before), generation: 1,
+        inputEpoch: attack === 'stale-receipt' ? 0 : f.calculation.inputEpoch, valid: attack !== 'invalid-receipt' } } : {}),
+    };
+    const remote = f.univer.__getInjector().get(IRemoteInstanceService);
+    // The pinned receiver overrides fromSync after restOptions, so the caller
+    // cannot disguise host-origin output as a local engine completion.
+    let accepted = false;
+    // Terminal worker withdrawal may cancel the RPC channel before its error
+    // reply arrives; the durable consumer contract is immediate withdrawal and
+    // no accepted output, rather than a guaranteed transport rejection.
+    void remote.syncMutation({ mutationInfo: { id: SetFormulaCalculationResultMutation.id, type: CommandType.MUTATION, params } }, { onlyLocal: true, fromSync: false }).then(value => { accepted = value === true; }, () => {});
+    await vi.waitFor(() => expect(f.owner.ready).toBe(false), { timeout: 5000 });
+    expect(accepted).toBe(false);
+    expect(f.book.save()).toEqual(before);
+    expect(f.writer.checkpoint().source.sourceSha256).toBe('a'.repeat(64));
+  } finally { await f.close(); }
+}, 15_000);

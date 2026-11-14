@@ -1,3 +1,4 @@
+import { workbookFormulaSourceGuard } from './formula-result-sources';
 import { assertWorkbookSourceSnapshotInputs } from './source-snapshot-inputs';
 import type { ICellData, IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
@@ -132,7 +133,7 @@ export class WorkbookFormulaDisplay {
       // Normalize the exact source guard before an application is compared;
       // this step cannot promote any value into calculated display state.
       const source = params.sourceFormulaData ??= {}, unit = source[this.current.id] ??= {}, sheet = unit[sheetId] ??= {}, cells = sheet[row] ??= {};
-      cells[column] = { f: formula, ...(at(this.current, sheetId, row, column)?.si ? { si: at(this.current, sheetId, row, column)!.si } : {}) };
+      cells[column] = workbookFormulaSourceGuard(this.current, sheetId, row, column)!;
     }
     return { tag, policy, limited };
   }
