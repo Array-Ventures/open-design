@@ -31,9 +31,11 @@ export function ownWorkbookVisibility(univer: Univer, model: () => WorkbookDocum
  * Real SDK commands retain normal undo/redo; every write is independently
  * validated again against retained OOXML in the isolated worker. */
 export function workbookVisibilityBridge(univer: Univer, api: FUniver, model: () => WorkbookDocument, scope: () => WorkbookVisibilityScope | undefined, management?: WorkbookVisibilityManagement) {
+  let disposed = false;
   let error: string | null = null;
   const snapshot = () => api.getActiveWorkbook()?.save();
   function state(): VisibilityState | null {
+    if (disposed) return null;
     const current = scope(); if (!current) return null;
     const live = management?.snapshot();
     const book = live ?? snapshot(), visible = Object.values(book?.sheets ?? {}).filter(sheet => sheet.hidden === undefined || sheet.hidden === 0).length;
@@ -77,5 +79,5 @@ export function workbookVisibilityBridge(univer: Univer, api: FUniver, model: ()
   };
   window.addEventListener('message', receive);
   try { publish(); } catch (failure) { window.removeEventListener('message', receive); throw failure; }
-  return { state, publish, dispose: () => window.removeEventListener('message', receive) };
+  return { state, publish, dispose() { disposed = true; window.removeEventListener('message', receive); } };
 }

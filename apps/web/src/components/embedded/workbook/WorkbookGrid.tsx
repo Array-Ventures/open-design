@@ -130,11 +130,12 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
     const root = document.documentElement;
     let dispose = () => {}, active = true;
     let ownedStructure: WorkbookStructureController | null = null;
+    let withdrawManagement = () => {};
     // Crossing artifact identity withdraws old content synchronously, even if
     // the next lazy import or source preparation never completes.
     if (viewScope.current !== id) { views.current?.dispose(); views.current = null; viewScope.current = id; }
     const current = () => active && callbacks.current.id === id && callbacks.current.model === model && callbacks.current.sourceSha256 === sourceSha256;
-    const close = () => { const owned = dispose; dispose = () => {}; owned(); };
+    const close = () => { withdrawManagement(); const owned = dispose; dispose = () => {}; owned(); };
     const start = async () => {
     try {
       // UI plugins are browser-only and form a lazy chunk. In particular, do
@@ -171,6 +172,9 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
         parentWindow: window.parent, origin: window.location.origin, getScope: managementScope,
         publish: () => visibilityPublisher?.publish(), ...executor,
       });
+      // A shown view can retire later to preserve canvas continuity, but its
+      // request authority ends synchronously with this grid generation.
+      withdrawManagement = () => management.dispose();
       const receiveManagement = (event: MessageEvent) => {
         void management.receive(event).catch(() => {
           management.dispose();
@@ -327,7 +331,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
       }); formattingRef.current = formatting;
       const visibility = workbookVisibilityBridge(univer, univerAPI, () => model, () => {
         const scope = format.current;
-        return scope && sourceSha256 && model.sourceFormat !== 'csv' ? { ...scope, sourceSha256, blocked: scope.blocked || Boolean(scope.saving) || !editable || !readyForInput } : undefined;
+        return current() && scope && sourceSha256 && model.sourceFormat !== 'csv' ? { ...scope, sourceSha256, blocked: scope.blocked || Boolean(scope.saving) || !editable || !readyForInput } : undefined;
       }, { snapshot: () => membershipController?.inspectManagement()?.snapshot ?? null,
         decorate: state => management.decorate(state), receive: receiveManagement });
       visibilityPublisher = visibility; visibilityRef.current = visibility;

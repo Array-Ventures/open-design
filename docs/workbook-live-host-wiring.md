@@ -66,3 +66,22 @@ This source checkpoint does not prove actual browser/worker HTTP persistence,
 package acquisition, source-history cancel/recovery, or crash acceptance. The
 owned preview remains pair126/69 without these live controls; installer pins
 and production remain unchanged.
+
+## Retained-view retirement correction
+
+Read review found that a shown layer intentionally retains its SDK instance
+until the replacement shows. With the same artifact ID but a new source/kernel,
+a late old management settlement could call a still-callable visibility
+publisher after grid cleanup. This was a stale UI publication race, not proven
+cross-project access. Grid close now disposes management synchronously, the
+visibility scope requires the exact current generation, and a disposed
+publisher's state/publish methods are inert. The real-SDK regression replaces
+the scope after disposal and verifies that late publication cannot post again.
+Existing bridge tests cover disposal while execution is pending.
+
+The final corrected product passes 46 focused cases across five files, full
+workspace types and guard. Terminal logs:
+/tmp/workbook-live-host-retirement-boundaries.log,
+/tmp/workbook-live-host-retirement-types.log and
+/tmp/workbook-live-host-retirement-guard.log. No browser/package acceptance or
+runtime switch is implied; the remaining gates above still apply.

@@ -4,6 +4,20 @@ import { workbookVisibilityBridge } from '../../src/components/embedded/workbook
 import { workbookMembershipVisibilitySchema } from '@open-design/contracts/runtime/workbook';
 
 afterEach(() => vi.unstubAllGlobals());
+it('makes a retired publisher inert when a late callback sees a replacement scope', async () => {
+  const f = createSourceDeleteHistoryFixture(true), postMessage = vi.fn();
+  vi.stubGlobal('window', { parent: { postMessage }, location: { origin: 'http://fixture.invalid' }, addEventListener() {}, removeEventListener() {} });
+  let scope = { projectId: sourceDeleteScope.projectId, controllerId: '22222222-2222-4222-8222-222222222222', sourceSha256: 'a'.repeat(64), blocked: false };
+  const bridge = workbookVisibilityBridge(f.univer, f.api, () => f.source.model, () => scope);
+  try {
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    bridge.dispose();
+    scope = { ...scope, projectId: crypto.randomUUID(), controllerId: crypto.randomUUID() };
+    bridge.publish(); bridge.publish();
+    expect(bridge.state()).toBeNull();
+    expect(postMessage).toHaveBeenCalledTimes(1);
+  } finally { bridge.dispose(); await f.close(); }
+});
 it('refuses an incoherent live name instead of posting an invalid host worksheet list', async () => {
   const f = createSourceDeleteHistoryFixture(true), postMessage = vi.fn(), addEventListener = vi.fn(), removeEventListener = vi.fn();
   vi.stubGlobal('window', { parent: { postMessage }, location: { origin: 'http://fixture.invalid' }, addEventListener, removeEventListener });
