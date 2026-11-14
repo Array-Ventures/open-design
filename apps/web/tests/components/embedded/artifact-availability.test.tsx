@@ -28,7 +28,7 @@ it('keeps real file export metadata while reporting availability separately', ()
 });
 
 it.each([
-  ['clip.mp4', 'video', ['mp4', 'webm']], ['clip.mkv', 'video', ['mp4', 'webm']], ['voice.flac', 'audio', ['mp3', 'wav']], ['voice.aac', 'audio', ['mp3', 'wav']], ['logo.png', 'image', []], ['logo.svg', 'image', []], ['index.html', 'app', ['html', 'pdf', 'image']],
+  ['clip.mp4', 'video', ['mp4', 'webm']], ['clip.mkv', 'video', ['mp4', 'webm']], ['voice.flac', 'audio', ['mp3', 'wav']], ['voice.aac', 'audio', ['mp3', 'wav']], ['logo.png', 'image', []], ['logo.svg', 'image', []], ['index.html', 'app', ['html', 'pdf', 'image']], ['motion/index.html', 'hyperframes', ['html', 'pdf', 'image', 'hyperframes']],
 ])('advertises only real export candidates for %s', (fileName, kind, formats) => {
   const iframe = document.createElement('iframe'); document.body.append(iframe);
   const parent = iframe.contentWindow!, original = Object.getOwnPropertyDescriptor(window, 'parent')!;

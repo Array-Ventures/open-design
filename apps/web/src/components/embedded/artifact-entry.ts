@@ -1,7 +1,7 @@
 import type { ProjectFile } from '../../types';
 import type { EmbeddedDashboardSummary } from './dashboards';
 
-export type ArtifactEntry = { file: ProjectFile; kind: 'app' | 'deck' | 'document' | 'workbook' | 'image' | 'video' | 'audio' | 'other'; title: string };
+export type ArtifactEntry = { file: ProjectFile; kind: 'app' | 'deck' | 'document' | 'workbook' | 'image' | 'video' | 'audio' | 'hyperframes' | 'other'; title: string };
 
 function ordinary(file: ProjectFile): boolean {
   return file.type !== 'dir' && !['_studio-comments/', '_studio-document-assets/'].some(prefix => file.name.startsWith(prefix)) && file.name.split('/').every(part => part && part !== '.' && part !== '..' && !part.startsWith('.') && !/[\\\u0000]/.test(part));
@@ -22,7 +22,7 @@ export function artifactEntry(files: ProjectFile[], selected: string | null, pro
     ?? candidates.find(item => /\.(md|markdown|txt)$/i.test(item.name));
   if (!file) return null;
   const declared = file.artifactManifest?.kind;
-  const kind = /\.(xlsx|csv)$/i.test(file.name) ? 'workbook' : declared === 'deck' || projectKind === 'deck' ? 'deck'
+  const kind = projectKind === 'hyperframes' && /\.html?$/i.test(file.name) ? 'hyperframes' : /\.(xlsx|csv)$/i.test(file.name) ? 'workbook' : declared === 'deck' || projectKind === 'deck' ? 'deck'
     : declared === 'markdown-document' || projectKind === 'document' || /\.(md|markdown|txt)$/i.test(file.name) ? 'document'
     : file.kind === 'image' || file.kind === 'sketch' ? 'image'
     : file.kind === 'video' || file.kind === 'audio' ? file.kind
