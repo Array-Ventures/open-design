@@ -21,6 +21,7 @@ await build({
     "./src/runtime/deck-stage-fallback.ts",
     "./src/runtime/motion-source-player.ts",
     "./src/runtime/deck-protocol.ts",
+    "./src/runtime/deck-source.ts",
     "./src/runtime/document.ts",
     "./src/runtime/workbook.ts",
     "./src/runtime/workbook-sheet-baseline.ts",

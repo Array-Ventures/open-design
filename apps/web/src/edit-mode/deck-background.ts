@@ -1,62 +1,29 @@
-import type { DefaultTreeAdapterTypes } from 'parse5';
+import { parse, type DefaultTreeAdapterTypes } from 'parse5';
+import { canonicalDeckSourceSlides, deckSourcePath, validDeckSourcePath, type DeckSourceTree } from '@open-design/contracts/runtime/deck-source';
 import postcss from 'postcss';
 import valueParser from 'postcss-value-parser';
 import colorNames from 'color-name';
-import { DECK_EXPLICIT_SLIDE_MARKERS } from '@open-design/contracts/runtime/deck-stage-fallback';
 import { findSpeakerNotesScriptBlock } from '@open-design/contracts/runtime/speaker-notes';
-import { stageIn } from './deck-properties';
 
 type Element = DefaultTreeAdapterTypes.Element;
-const slideClasses = new Set(DECK_EXPLICIT_SLIDE_MARKERS.map(selector => selector.slice(1)));
-const isSlide = (node: Element) => node.attrs.some(attr => attr.name === 'data-screen-label'
-  || attr.name === 'class' && attr.value.split(/\s+/).some(value => slideClasses.has(value)));
-
-/** Match the canonical stage runtime: prefer direct slides, otherwise only
- * outermost marked descendants. Templates and nested slide content are inert. */
+const sourceTree: DeckSourceTree<DefaultTreeAdapterTypes.Node> = {
+  tag: node => 'tagName' in node ? node.tagName : null,
+  children: node => 'childNodes' in node ? node.childNodes.filter(child => 'tagName' in child) : [],
+  parent: node => 'parentNode' in node ? node.parentNode : null,
+  attribute: (node, name) => 'attrs' in node ? node.attrs.find(attr => attr.name === name)?.value ?? null : null,
+};
 function slidesIn(source: string): Element[] {
-  const stage = stageIn(source);
-  if (!stage) return [];
-  const nested: Element[] = [];
-  function visit(parent: Element) {
-    for (const child of parent.childNodes) {
-      if (!('tagName' in child)) continue;
-      if (isSlide(child)) nested.push(child);
-      visit(child);
-    }
-  }
-  visit(stage);
-  const direct = nested.filter(node => node.parentNode === stage);
-  return direct.length ? direct : nested.filter(node => {
-    let parent = node.parentNode;
-    while (parent && parent !== stage) {
-      if ('tagName' in parent && isSlide(parent)) return false;
-      parent = 'parentNode' in parent ? parent.parentNode : null;
-    }
-    return true;
-  });
+  return canonicalDeckSourceSlides(parse(source, { sourceCodeLocationInfo: true }), sourceTree) as Element[];
 }
 
-/** Reserved paths are stamped before authored scripts run. A runtime reorder
- * therefore retains the source node's identity instead of changing its owner. */
+/** Paths refer to the notes-free source tree stamped before authored scripts. */
 export function deckSlideIndexForSourcePath(source: string, path: string): number | null {
-  if (!/^path(?:-\d+)+$/.test(path) || path.length > 500) return null;
-  // FileViewer removes the nonvisual notes block before building srcdoc. Match
-  // that visual tree while preserving the raw source's slide ordinal for writes.
+  if (!validDeckSourcePath(path)) return null;
   const notes = findSpeakerNotesScriptBlock(source);
   const visual = notes ? source.slice(0, notes.start) + source.slice(notes.end) : source;
   const slides = slidesIn(visual);
   if (slides.length !== slidesIn(source).length) return null;
-  const matches = slides.flatMap((slide, index) => {
-    const parts: number[] = [];
-    let node: DefaultTreeAdapterTypes.Node = slide;
-    while ('tagName' in node && node.tagName !== 'body') {
-      const parent: DefaultTreeAdapterTypes.ParentNode | null = node.parentNode;
-      if (!parent || !('childNodes' in parent)) return [];
-      parts.unshift(parent.childNodes.filter(child => 'tagName' in child).indexOf(node));
-      node = parent;
-    }
-    return 'tagName' in node && node.tagName === 'body' && `path-${parts.join('-')}` === path ? [index] : [];
-  });
+  const matches = slides.flatMap((slide, index) => deckSourcePath(slide, sourceTree) === path ? [index] : []);
   return matches.length === 1 ? matches[0]! : null;
 }
 

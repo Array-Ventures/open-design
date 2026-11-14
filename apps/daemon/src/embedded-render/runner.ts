@@ -1,3 +1,4 @@
+import { prepareDeckSourceCapture } from './deck-source.js';
 import { extractSpeakerNotesFromHtml } from '@open-design/contracts/runtime/speaker-notes';
 import { withPptxSpeakerNotes } from './pptx-notes.js';
 import { editablePptx } from './editable-pptx.js';
@@ -39,8 +40,11 @@ export async function renderSnapshot(source: string, output: string, value: unkn
     return readFile(file);
   }
   if (input.format === 'workbook' || input.format === 'xlsx' || input.format === 'csv') return renderWorkbook(output, { fileName: input.fileName, format: input.format, ...(input.sheetId ? { sheetId: input.sheetId, workbookSourceSha256: input.workbookSourceSha256! } : {}), ...(input.dataFile ? { dataFile: input.dataFile } : {}), ...(input.workbookSheetSources ? { workbookSheetSources: input.workbookSheetSources } : {}), ...(input.restore ? { restore: input.restore } : {}) }, asset);
-  const original = (await asset(input.fileName)).toString('utf8');
-  let html = original;
+  const originalBytes = await asset(input.fileName);
+  const original = originalBytes.toString('utf8');
+  const slideCapture = input.deckSourceSha256 && input.deckSourcePath && input.index !== undefined
+    ? prepareDeckSourceCapture(originalBytes, { deckSourceSha256: input.deckSourceSha256, deckSourcePath: input.deckSourcePath, index: input.index }) : null;
+  let html = slideCapture?.html ?? original;
   const document = !input.deck && !input.dataFile ? await prepareDocument(html, input.fileName, input.title) : null;
   if (['docx', 'markdown'].includes(input.format)) {
     if (!document) throw new Error('Choose a document artifact for this export.');
@@ -97,6 +101,7 @@ export async function renderSnapshot(source: string, output: string, value: unkn
     // writable mounts beyond its bounded output. It is not a bot browser.
     browser = await chromium.launch({ executablePath: '/usr/bin/chromium', headless: true, args: ['--disable-dev-shm-usage'] });
     const page = await browser.newPage({ viewport: { width: composition?.width ?? input.width ?? (deck ? 1920 : 1440), height: composition?.height ?? input.height ?? (deck ? 1080 : 900) }, serviceWorkers: 'block' });
+    if (slideCapture) await page.addInitScript({ content: slideCapture.bootstrap });
     const unavailable = new Set<string>();
     await page.route('**/*', async (route) => {
       const url = new URL(route.request().url());
@@ -144,12 +149,27 @@ export async function renderSnapshot(source: string, output: string, value: unkn
       if (start >= count) throw new Error('Slide index is outside this deck.');
       await page.addStyleTag({ content: '.progress-bar,.notes-overlay,aside.notes,.speaker-notes,.deck-nav,.deck-hint,.deck-counter{visibility:hidden!important}' });
       for (let index = start; index < end; index++) {
-        await page.evaluate(`window.postMessage({type:'od:slide',action:'go',index:${index}},'*')`);
+        const captured = slideCapture ? await page.evaluateHandle(slideCapture.targetExpression) : null;
+        let runtimeIndex = index;
+        if (slideCapture && captured) {
+          runtimeIndex = await captured.evaluate(`(node, args) => {
+            if (!(node instanceof HTMLElement) || !node.isConnected || document.querySelectorAll("["+args.attribute+"]").length !== 1 || node.getAttribute(args.attribute) !== args.nonce) throw new Error('The source-owned slide was replaced or duplicated.');
+            const list = Array.from(document.querySelectorAll(args.selector));
+            const current = list.indexOf(node);
+            if (current < 0) throw new Error('The source-owned slide is unavailable.');
+            return current;
+          }`, { attribute: slideCapture.attribute, nonce: slideCapture.nonce, selector: realSlideSelector });
+        }
+        await page.evaluate(`window.postMessage({type:'od:slide',action:'go',index:${runtimeIndex}},'*')`);
         await page.evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
         // Select the same non-clone ordinal used for the count above.
         const selected = slides.filter({ visible: true });
         const visible = await selected.count();
-        const target = visible === 1 ? selected.first() : slides.nth(index);
+        const target = captured ? captured.asElement() : visible === 1 ? selected.first() : slides.nth(index);
+        if (!target) throw new Error('The selected slide is unavailable.');
+        if (slideCapture && captured) await captured.evaluate(`(node, args) => {
+          if (!(node instanceof HTMLElement) || !node.isConnected || document.querySelectorAll("["+args.attribute+"]").length !== 1 || node.getAttribute(args.attribute) !== args.nonce || !node.checkVisibility()) throw new Error('The source-owned slide is not visible or was replaced.');
+        }`, { attribute: slideCapture.attribute, nonce: slideCapture.nonce });
         const type = input.format === 'image' ? input.imageFormat : 'png';
         images.push({ buffer: await target.screenshot({ type, timeout: 10_000 }), jpeg: type === 'jpeg' });
       }
