@@ -142,7 +142,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
         previousPublishedSource = publishedSource; publishedSource = saved.source;
         current.current.onAcknowledged(saved.source, ticket);
       }
-    }, (source, snapshot, acknowledgement) => { membershipQualified = source.model.worksheetMembershipEditable === true && source.model.sourceFormat !== 'csv' && acknowledgement.kind === 'history'; historyContinuity &&= acknowledgement.kind === 'history'; acknowledged = { source, snapshot, acknowledgement }; }, ownedJournal ? { save: ownedJournal.save, ...(ownedJournal.scope ? { scope: ownedJournal.scope } : {}), ...(ownedJournal.validate ? { validate: ownedJournal.validate } : {}), ...(ownedJournal.isCurrent ? { isCurrent: ownedJournal.isCurrent } : {}), restored: recovery } : undefined);
+    }, (source, snapshot, acknowledgement) => { membershipQualified = source.model.worksheetMembershipEditable === true && source.model.sourceFormat !== 'csv' && acknowledgement.kind === 'history'; historyContinuity &&= acknowledgement.kind === 'history'; acknowledged = { source, snapshot, acknowledgement }; }, ownedJournal ? { save: ownedJournal.save, ...(ownedJournal.saveGuarded ? { saveGuarded: ownedJournal.saveGuarded } : {}), ...(ownedJournal.scope ? { scope: ownedJournal.scope } : {}), ...(ownedJournal.validate ? { validate: ownedJournal.validate } : {}), ...(ownedJournal.isCurrent ? { isCurrent: ownedJournal.isCurrent } : {}), restored: recovery } : undefined);
     const owned = writer.current;
     if (ownedJournal?.scope && ownedJournal.isCurrent && sourceSupportsMembership) {
       const lease: WorkbookMembershipWriterLease = issueWorkbookMembershipWriterLease({
@@ -294,8 +294,22 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     if (lease) {
       if (!running.current || !lease.isQualified() || !identity || identity.projectId !== projectId
         || identity.fileName !== fileName || identity.sourceSha256 !== opened.source?.sourceSha256) return false;
-      resumeOwner = await lease.captureCleanResume(running.current.signal);
-      if (!resumeOwner || writer.current !== owned || !lease.isQualified() || owned?.state().dirty || owned?.state().saving) return false;
+      const writerSignal = running.current.signal;
+      const capture = new AbortController();
+      const cancel = () => capture.abort();
+      writerSignal.addEventListener('abort', cancel, { once: true });
+      if (writerSignal.aborted) cancel();
+      try {
+        resumeOwner = await lease.captureCleanResume(capture.signal);
+        if (!resumeOwner || writer.current !== owned || !lease.isQualified() || owned?.state().dirty || owned?.state().saving) {
+          capture.abort(); return false;
+        }
+      } catch (error) { capture.abort(); throw error; }
+      finally {
+        // Acceptance and retained-ticket assignment share this turn. The
+        // normal close below must not cancel an accepted clean handoff.
+        writerSignal.removeEventListener('abort', cancel);
+      }
     }
     if (owned && resumeOwner && opened.source && opened.journal) cleanResume.current = {
       source: opened.source, journal: opened.journal, identity: Object.freeze({ ...identity! }), checkpoint: owned.checkpoint(), resume: resumeOwner,
