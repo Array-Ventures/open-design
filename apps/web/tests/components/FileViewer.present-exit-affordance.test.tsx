@@ -96,9 +96,9 @@ function pageFile(): ProjectFile {
 
 const PAGE_HTML = '<html><body><h1>slide</h1></body></html>';
 
-function installFetchMock(projectId: string) {
+function installFetchMock(projectId: string, name = 'page.html') {
   const filesUrl = `/api/projects/${encodeURIComponent(projectId)}/files`;
-  const rawUrl = `/api/projects/${encodeURIComponent(projectId)}/raw/page.html`;
+  const rawUrl = `/api/projects/${encodeURIComponent(projectId)}/raw/${name}`;
   vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
     const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
     if (url.split('?')[0] === filesUrl) {
@@ -261,5 +261,72 @@ describe('embedded deck presentation intents', () => {
     await waitFor(() => expect(overlay()).toBeNull());
     expect(popupClose).toHaveBeenCalledTimes(withNotes ? 1 : 0);
     expect(screen.getByRole('button', { name: 'Present' })).toBe(trigger);
+  });
+});
+
+
+describe('presentation entry keyboard ownership', () => {
+  it('focuses the loaded presentation once without a slide click, and fences retired frames', async () => {
+    const projectId = 'proj-present-focus-entry';
+    installFetchMock(projectId);
+    render(<Wrap><FileViewer projectId={projectId} projectKind="prototype" file={pageFile()} /></Wrap>);
+    await waitFor(() => expect(document.querySelector('.present-trigger')).not.toBeNull());
+    await enterPresentation();
+    const frame = overlay()!.querySelector('iframe')!;
+    const focus = vi.spyOn(frame, 'focus');
+    fireEvent.load(frame);
+    expect(document.activeElement).toBe(frame);
+    expect(focus).toHaveBeenCalledTimes(1);
+    const exit = overlay()!.querySelector('button')!;
+    exit.focus();
+    fireEvent.load(frame);
+    expect(document.activeElement).toBe(exit);
+    expect(focus).toHaveBeenCalledTimes(1);
+    fireEvent.click(exit);
+    await waitFor(() => expect(overlay()).toBeNull());
+    await enterPresentation();
+    const next = overlay()!.querySelector('iframe')!;
+    fireEvent.load(frame);
+    expect(focus).toHaveBeenCalledTimes(1);
+    fireEvent.load(next);
+    expect(document.activeElement).toBe(next);
+  });
+});
+
+
+describe('presentation load retirement', () => {
+  it('does not reclaim focus after its workspace is deactivated', async () => {
+    const projectId = 'proj-present-focus-inactive';
+    installFetchMock(projectId);
+    const view = render(<Wrap><FileViewer projectId={projectId} projectKind="prototype" file={pageFile()} /></Wrap>);
+    await waitFor(() => expect(document.querySelector('.present-trigger')).not.toBeNull());
+    await enterPresentation();
+    const frame = overlay()!.querySelector('iframe')!;
+    const focus = vi.spyOn(frame, 'focus');
+    view.rerender(<Wrap><FileViewer projectId={projectId} projectKind="prototype" file={pageFile()} workspaceActive={false} /></Wrap>);
+    await waitFor(() => expect(overlay()).toBeNull());
+    fireEvent.load(frame);
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  it('gives a replacement source its own load handoff and ignores the detached frame', async () => {
+    const projectId = 'proj-present-focus-replacement';
+    installFetchMock(projectId);
+    const view = render(<Wrap><FileViewer projectId={projectId} projectKind="prototype" file={pageFile()} /></Wrap>);
+    await waitFor(() => expect(document.querySelector('.present-trigger')).not.toBeNull());
+    await enterPresentation();
+    const previous = overlay()!.querySelector('iframe')!;
+    const focus = vi.spyOn(previous, 'focus');
+    installFetchMock(projectId, 'other.html');
+    view.rerender(<Wrap><FileViewer projectId={projectId} projectKind="prototype" file={{ ...pageFile(), name: 'other.html', path: 'other.html' }} /></Wrap>);
+    await waitFor(() => expect(previous.isConnected).toBe(false));
+    // A source transition may close presentation. Re-enter only if it did.
+    if (!overlay()) await enterPresentation();
+    const next = overlay()!.querySelector('iframe')!;
+    expect(next).not.toBe(previous);
+    fireEvent.load(previous);
+    expect(focus).not.toHaveBeenCalled();
+    fireEvent.load(next);
+    expect(document.activeElement).toBe(next);
   });
 });

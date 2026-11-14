@@ -9957,6 +9957,14 @@ function HtmlViewer({
   );
   const presenterWindowRef = useRef<Window | null>(null);
   const presentOverlayRef = useRef<HTMLDivElement | null>(null);
+  const focusedPresentationFrame = useRef<HTMLIFrameElement | null>(null);
+  const focusLoadedPresentationFrame = (frame: HTMLIFrameElement) => {
+    if (!workspaceActive || !inTabPresent || !frame.isConnected
+      || presentOverlayRef.current?.querySelector('iframe') !== frame
+      || focusedPresentationFrame.current === frame) return;
+    focusedPresentationFrame.current = frame;
+    frame.focus({ preventScroll: true });
+  };
   const presentFullscreenRequestedRef = useRef(false);
   const [presentFullscreenPending, setPresentFullscreenPending] = useState(false);
   // Brief "Press Esc to exit" hint shown in the main window whenever a
@@ -19084,14 +19092,18 @@ function HtmlViewer({
         >
           {effectiveDeck || !useUrlLoadPreview ? (
             <iframe
+              key={`${previewStateKey}:${presentationSrcDoc}`}
               title="present"
+              onLoad={(event) => focusLoadedPresentationFrame(event.currentTarget)}
               sandbox={HTML_PREVIEW_SANDBOX}
               data-od-render-mode="srcdoc"
               srcDoc={presentationSrcDoc}
             />
           ) : (
             <iframe
+              key={`${previewStateKey}:${urlFrameSrc}`}
               title="present"
+              onLoad={(event) => focusLoadedPresentationFrame(event.currentTarget)}
               sandbox={urlFrameSandbox}
               allow={urlFrameAllow}
               data-od-powered={usePoweredPreview ? 'true' : undefined}
