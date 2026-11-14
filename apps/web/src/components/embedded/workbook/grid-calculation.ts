@@ -19,10 +19,24 @@ export function workbookLiveCalculationEligible(model: WorkbookDocument, snapsho
   try { assertWorkbookCalculationBudget([snapshot], true); return true; } catch { return false; }
 }
 export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: WorkbookDocument, original: IWorkbookData, initial: IWorkbookData,
-  snapshot: () => IWorkbookData, owner: ReturnType<typeof ownWorkbookCalculationWorker> | null, changed: (status: WorkbookCalculationState) => void, membershipCurrent: () => boolean = () => false) {
+  snapshot: () => IWorkbookData, owner: ReturnType<typeof ownWorkbookCalculationWorker> | null, changed: (status: WorkbookCalculationState) => void, membershipCurrent: () => boolean = () => false, render?: { ready: Promise<void>; available(): boolean }) {
   const injector = univer.__getInjector(), commands = injector.get(ICommandService), functions = injector.get(engine.IFunctionService);
   const display = new WorkbookFormulaDisplay(model, original, initial, { sequenceNodesBuilder: value => api.getFormula().sequenceNodesBuilder(value), hasExecutor: name => functions.hasExecutor(name), deserializeRangeWithSheet: engine.deserializeRangeWithSheet, sequenceNodeType: engine.sequenceNodeType });
   if (!owner) display.pause('Stored results');
+  let active = true, rendered = false, paintPending = false;
+  const repaint = () => {
+    if (!active || !render) return;
+    paintPending = true;
+    if (!rendered || !render.available()) return;
+    const book = api.getActiveWorkbook();
+    if (book?.id !== initial.id) return;
+    paintPending = false;
+    for (const sheet of book.getSheets()) sheet.refreshCanvas();
+  };
+  // Intercepted scalar text can have been cached while its result was unavailable.
+  // Invalidate only the disposable view; never change raw cells or calculation proof.
+  void render?.ready.then(() => { if (!active) return; rendered = true; if (paintPending) repaint(); }, () => { paintPending = false; });
+
   let generation: number | null = null, scalarRequired = false, inputEpoch = 0;
   let pendingMembership: { sequence: number; inputEpoch: number; inputSha256: string; applied: boolean; scalar: boolean } | null = null;
   let settledInputEpoch = 0;
@@ -97,6 +111,7 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
       for (const waiter of waiters) { waiters.delete(waiter); waiter.resolve(); }
     }
     changed(workbookCalculationState({ ...summary, pending: Boolean(owner?.ready && (summary.pending || pendingMembership || generation !== null || pendingApplications.size)) }));
+    repaint();
   };
   // SDK graph publication is asynchronous, so a genuine terminal can arrive
   // first. Retain only one candidate for this input epoch, bounded by its
@@ -242,5 +257,5 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
     if (!owner?.ready || authoredFreeze) throw Error('The workbook calculation cannot be paused.');
     const ticket = {}; authoredFreeze = ticket;
     return () => { if (authoredFreeze === ticket && owner.ready) authoredFreeze = null; };
-  }, get inputEpoch() { return inputEpoch; }, get quiescent() { return Boolean(owner?.ready && generation === null && pendingApplications.size === 0 && !pendingMembership && settledInputEpoch === inputEpoch && !display.summary().pending); }, awaitMembership: (signal?: AbortSignal) => awaitCalculation(false, signal), awaitQuiescent: (signal?: AbortSignal) => awaitCalculation(true, signal), runProtectedSequence, rebaseSource(nextModel: WorkbookDocument, nextOriginal: IWorkbookData, acknowledged: IWorkbookData) { display.rebaseSource(nextModel, nextOriginal, acknowledged); }, publish, status: (sheet: string, row: number, column: number) => display.status(sheet, row, column), dispose() { rejectWaiters(); unavailable?.(); before.dispose(); after.dispose(); unsubscribe?.(); intercept.dispose(); } };
+  }, get inputEpoch() { return inputEpoch; }, get quiescent() { return Boolean(owner?.ready && generation === null && pendingApplications.size === 0 && !pendingMembership && settledInputEpoch === inputEpoch && !display.summary().pending); }, awaitMembership: (signal?: AbortSignal) => awaitCalculation(false, signal), awaitQuiescent: (signal?: AbortSignal) => awaitCalculation(true, signal), runProtectedSequence, rebaseSource(nextModel: WorkbookDocument, nextOriginal: IWorkbookData, acknowledged: IWorkbookData) { display.rebaseSource(nextModel, nextOriginal, acknowledged); repaint(); }, publish, status: (sheet: string, row: number, column: number) => display.status(sheet, row, column), dispose() { active = false; paintPending = false; rejectWaiters(); unavailable?.(); before.dispose(); after.dispose(); unsubscribe?.(); intercept.dispose(); } };
 }
