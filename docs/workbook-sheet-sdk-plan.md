@@ -735,3 +735,32 @@ including the unchanged cross-runtime canonical identity vector. Final web types
 full repository typecheck, guard and diff check passed. No full daemon/web suite
 or browser visual test was run. Main is intentionally not rebased during this
 qualified source checkpoint; later upstream integration is a separate check.
+
+### Corrective checkpoint: quarantine survives editor handoff and cancelled discard
+
+A later integration review found `use-workbook-editor` classified same-source
+handoffs only by their ordinary edit plan. Quarantine deliberately restores its
+pre-command desired snapshot, so that plan can be empty while its sticky flag
+remains essential. A second `ready()` or cancelled discard could drop that
+checkpoint, and the journal's already-consumed replay would not restore the fence.
+
+The hook now retains explicit quarantined checkpoints after its existing exact
+scope/journal/source guards and before considering ordinary clean-plan retirement.
+It does not revive every clean history record or use the fresh-model garbage
+collection classifier as handoff authority. Two real hook regressions start from
+an actual SDK Remove/mismatch-generated, encoded/decoded quarantine and drive
+ready/reset or the real prepare/cancel discard message protocol. Both failed on
+the prior code with the flag missing. They now retain dirty/error, source, protected
+pre-command desired and contexts; subsequent ordinary snapshot/Save does not call
+the remote transport.
+
+The source-SHA mismatch guard remains strict. The actual production caller,
+`WorkbookSurface`, refuses external source-stamp adoption while the editor reports
+dirty (including quarantine), preserving the loaded source and showing its refresh
+warning before a fresh-source `ready()` path could run. This fix does not force an
+old protected checkpoint into another source, artifact or account. Deliberate
+recovery/reset still needs its explicit validated editor reset; cancelling discard
+is not such permission.
+Validation: both new regressions were RED before the handoff guard. All 29 focused
+handoff/discard/recovery lifecycle cases, web typecheck, full repository typecheck,
+guard and diff check passed after the fix. Controls and runtime remain unchanged.

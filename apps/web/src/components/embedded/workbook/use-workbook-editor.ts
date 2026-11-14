@@ -72,6 +72,9 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     const matching = (candidate: WriterHandoff | null | undefined) => {
       if (!candidate || !sameWriterScope(candidate.scope, scope) || candidate.checkpoint.source.sourceSha256 !== source.sourceSha256) return undefined;
       const checkpoint = candidate.checkpoint;
+      // A quarantined command deliberately restores its pre-command snapshot,
+      // which may have an empty ordinary plan. That is not reset authority.
+      if (checkpoint.sheetActionConflict) return checkpoint;
       // An acknowledged clean kernel replacement needs the fresh SDK baseline,
       // including its new source/axis identities. Only real dirty or unresolved
       // checkpoints may replace that baseline; invalid protected drafts stay.
