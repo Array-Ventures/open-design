@@ -142,7 +142,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
         previousPublishedSource = publishedSource; publishedSource = saved.source;
         current.current.onAcknowledged(saved.source, ticket);
       }
-    }, (source, snapshot, acknowledgement) => { membershipQualified = source.model.worksheetMembershipEditable === true && source.model.sourceFormat !== 'csv' && acknowledgement.kind === 'history'; historyContinuity &&= acknowledgement.kind === 'history'; acknowledged = { source, snapshot, acknowledgement }; }, ownedJournal ? { save: ownedJournal.save, ...(ownedJournal.scope ? { scope: ownedJournal.scope } : {}), ...(ownedJournal.validate ? { validate: ownedJournal.validate } : {}), ...(ownedJournal.isCurrent ? { isCurrent: ownedJournal.isCurrent } : {}), restored: recovery } : undefined);
+    }, (source, snapshot, acknowledgement) => { membershipQualified = source.model.worksheetMembershipEditable === true && source.model.sourceFormat !== 'csv' && acknowledgement.kind === 'history'; historyContinuity &&= acknowledgement.kind === 'history'; acknowledged = { source, snapshot, acknowledgement }; }, ownedJournal ? { save: ownedJournal.save, ...(ownedJournal.saveGuarded ? { saveGuarded: ownedJournal.saveGuarded } : {}), ...(ownedJournal.scope ? { scope: ownedJournal.scope } : {}), ...(ownedJournal.validate ? { validate: ownedJournal.validate } : {}), ...(ownedJournal.isCurrent ? { isCurrent: ownedJournal.isCurrent } : {}), restored: recovery } : undefined);
     const owned = writer.current;
     if (ownedJournal?.scope && ownedJournal.isCurrent && sourceSupportsMembership) {
       const lease: WorkbookMembershipWriterLease = issueWorkbookMembershipWriterLease({

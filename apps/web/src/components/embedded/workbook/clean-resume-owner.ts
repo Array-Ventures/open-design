@@ -40,6 +40,10 @@ export function bindWorkbookCleanResumeOwner(initial: WorkbookMembershipWriterLe
     try {
       resumeHistory = options.controller.pauseHistory();
       await options.calculation.awaitQuiescent(signal);
+      // History has withdrawn operational admission. Drain any already-running
+      // retirement through its commit/rollback and controller cleanup before
+      // capturing a checkpoint; this starts no maintenance or save work.
+      await options.controller.settleMaintenance();
       if (signal.aborted || !active || lease !== owner || !owner.isQualified() || !options.qualified()) throw Error('The worksheet pause owner changed.');
       owner.writer.update(options.snapshot());
       if (owner.writer.state().dirty || owner.writer.state().saving || owner.writer.state().error) throw Error('The worksheet is not clean.');
