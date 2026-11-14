@@ -106,13 +106,10 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
     owner?.deadline.complete(generation); generation = null; completion = null; settledInputEpoch = inputEpoch; publish();
   };
   const before = commands.beforeCommandExecuted((command, options) => {
-    if (authoredFreeze && command.id.startsWith('sheet.mutation.')) {
-      const params = command.params as RangeResult;
-      const key = command.id === SetRangeValuesMutation.id && options?.fromFormula && params
-        ? applicationKey(params.unitId, params.subUnitId, params.cellValue, params.sourceFormulaData, params.workbookCalculation
-          ?? (params.sourceFormulaData && applicationSources.get(params.sourceFormulaData))) : undefined;
-      if (!key || !pendingApplications.has(key)) throw Error('The workbook is paused while History is checked.');
-    }
+    // Derived data reaches the SAME non-promoting preservation/key admission
+    // below. The option flag alone never authorizes an SDK mutation.
+    const pausedCache = Boolean(authoredFreeze && command.id === SetRangeValuesMutation.id && options?.fromFormula);
+    if (authoredFreeze && command.id.startsWith('sheet.mutation.') && !pausedCache) throw Error('The workbook is paused while History is checked.');
     const membershipMutation = membershipMutationIds.has(command.id);
     let permit: WorkbookMembershipPermit | undefined;
     if (owner && command.id.startsWith('sheet.mutation.') && !options?.fromFormula) {
@@ -154,14 +151,16 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
       if (options?.fromFormula) {
         if (!protectedSequence || !protectedFormulaInputNormalization(command.params, authoredRange ?? protectedSequence?.params[protectedSequence.index])) {
           const params = command.params as Parameters<WorkbookFormulaDisplay['rangeResult']>[0];
+          let knownApplication = false;
           display.rangeResult(params, (normalized, tag) => {
             const key = applicationKey(normalized.unitId, normalized.subUnitId, normalized.cellValue, normalized.sourceFormulaData, tag);
-            if (key && completedApplications.has(key)) return false;
+            if (key && completedApplications.has(key)) { knownApplication = true; return false; }
             if (!key || !pendingApplications.has(key)) {
               display.pause('Calculation application changed.'); owner?.deadline.fail(); publish(); return false;
             }
-            applyingResults.set(params, key); return true;
+            knownApplication = true; applyingResults.set(params, key); return true;
           });
+          if (pausedCache && !knownApplication) throw Error('The workbook is paused while History is checked.');
         }
       }
       else if (owner && workbookCalculationChangesInputs(command.params) && (formulas(snapshot()) || Object.values((command.params as { cellValue?: Record<string, Record<string, ICellData>> }).cellValue ?? {}).some(row => Object.values(row).some(cell => cell?.f)))) {
