@@ -7,6 +7,7 @@ import {
   type WorkbookFont,
 } from '@open-design/contracts/runtime/workbook';
 import { workbookGridRunFont } from './grid-model';
+import { workbookFontFamily } from './grid-fonts';
 export class WorkbookRichTextError extends Error {}
 const refuse = (message: string): never => {
   throw new WorkbookRichTextError(message);
@@ -140,7 +141,8 @@ function fontFromStyle(
   const parsed = workbookFontSchema.parse(font);
   return Object.keys(parsed).length ? parsed : undefined;
 }
-function sourceFontIndex(fonts: (WorkbookFont | undefined)[], model: WorkbookDocument) {
+function sourceFontIndex(fonts: (WorkbookFont | undefined)[], model: WorkbookDocument, cellFont?: WorkbookFont) {
+  const cellFamily = cellFont && workbookFontFamily(cellFont);
   const exact = new Map<string, Map<string, WorkbookFont | undefined>>(),
     metadata = { ff: new Map<string, Map<string, object>>(), cl: new Map<string, Map<string, object>>() };
   for (const font of fonts) {
@@ -176,6 +178,14 @@ function sourceFontIndex(fonts: (WorkbookFont | undefined)[], model: WorkbookDoc
     for (const key of ['ff', 'cl'] as const) {
       const choices = metadata[key].get(key === 'cl' ? colorIdentity(style[key]) : canonical(style[key]));
       if (choices && choices.size > 1) refuse('This rich edit has ambiguous source font metadata.');
+      if (!choices && key === 'ff' && cellFont && cellFamily && !cellFamily.limited
+        && (same(style.ff, cellFamily.value) || sameFontName(style.ff, cellFont))) {
+        // A new blank cell has no old runs. Only its exact source cell/default
+        // font can explain the SDK's generated fallback stack. Existing run
+        // metadata wins; unrelated/ambiguous stacks remain refused.
+        if (cellFont.name !== undefined) base.name = cellFont.name;
+        if (cellFont.family !== undefined) base.family = cellFont.family;
+      }
       Object.assign(base, choices?.values().next().value ?? {});
     }
     return Object.keys(base).length ? base : undefined;
@@ -286,6 +296,7 @@ export function workbookRichText(
     indexedFont = sourceFontIndex(
       oldRuns.map((run) => run.font),
       model,
+      model.styles[original?.style ?? 0]?.font,
     );
   const append = (st: number, ed: number, style: IStyleBase, base: WorkbookFont | undefined) => {
     const font = fontFromStyle(style, base, model);
