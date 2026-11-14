@@ -1,13 +1,14 @@
 import { documentTextStyles } from './document-styles';
 import { $getState, $getRoot, $isElementNode, $setState, createState, ParagraphNode, $isTextNode, TextNode, type DOMConversionMap, type HTMLConfig, type Klass, type LexicalNode } from 'lexical';
 import { DocumentImageNode } from './DocumentImageNode';
+import { DocumentDividerNode } from './DocumentDividerNode';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { CodeNode } from '@lexical/code';
 import { ListItemNode, ListNode } from '@lexical/list';
 import { TableCellNode, TableNode, TableRowNode } from '@lexical/table';
 
 export const documentBlockId = createState('eveDocumentBlockId', { parse: value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(value) ? value : '' });
-const blocks: readonly Klass<LexicalNode>[] = [ParagraphNode, HeadingNode, QuoteNode, ListItemNode, TableCellNode, CodeNode, ListNode, TableNode, DocumentImageNode];
+const blocks: readonly Klass<LexicalNode>[] = [ParagraphNode, HeadingNode, QuoteNode, ListItemNode, TableCellNode, CodeNode, ListNode, TableNode, DocumentImageNode, DocumentDividerNode];
 
 /** Keep saved annotation identities when importing and exporting structured text. */
 export function documentHtmlConfig(): HTMLConfig {
@@ -119,7 +120,11 @@ export function initializeDocumentBlockIds(owners: Map<string, string>, sourceId
     if (id && !owners.has(id)) owners.set(id, node.getKey());
   }
   const source = sourceIdentity.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) || 'source';
-  for (const [index, node] of nodes.entries()) {
+  let legacyIndex = 0, dividerIndex = 0;
+  for (const node of nodes) {
+    // Rules were previously omitted from imports. Do not renumber unchanged
+    // text blocks and invalidate source-only comment anchors written before support.
+    const index = node instanceof DocumentDividerNode ? `divider-${dividerIndex++}` : legacyIndex++;
     const id = $getState(node, documentBlockId);
     if (id && owners.get(id) === node.getKey()) continue;
     let generated = `doc-${source}-${index}`, suffix = 0;
