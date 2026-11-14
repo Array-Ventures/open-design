@@ -77,8 +77,9 @@ container and LibreOffice exited normally and no owned process remains.
 Final focused checks passed 53 cases across the new paint tests and existing
 HTML, identity and DocumentEditor tests. Full workspace `pnpm typecheck` and
 `pnpm guard` passed. Existing unrelated failures were not removed or rebaselined.
-Actual generated Markdown-to-Word conversion remains a separate gate from the
-proved Markdown serialization/readback and generated HTML-to-Word seam.
+At that checkpoint, actual generated Markdown-to-Word conversion remained a
+separate gate from the proved Markdown serialization/readback and generated
+HTML-to-Word seam; the bounded followup below subsequently exercised it.
 
 ## Raw Markdown language followup
 
@@ -116,7 +117,7 @@ The exact input had no authored language; this does not add a native Word
 language-fidelity claim. The styled raw-language/trailing-newline correction is
 separately proved through the real Markdown reader and Lexical producer test.
 
-Seventeen of eighteen native package parts match the previously qualified HTML
+Fifteen of sixteen native file parts match the previously qualified HTML
 Word document, including exact `word/document.xml`. The sole difference is
 Heading1–6 fonts in `word/styles.xml`: the scratch HTML wrapper used its serif
 heading default while the controlled Markdown root retained its sans default.
