@@ -43,3 +43,8 @@
 .content :is(h1, h2, h3, h4, h5, h6)[tabindex="-1"]:focus-visible { outline: 2px solid var(--color-border-focus-ring); outline-offset: 4px; }
 
 :where(.content :is(td, th)) [data-lexical-text][style*="--eve-document-text-ink:"] { color: var(--eve-document-text-ink); }
+
+.content ins[data-eve-suggestion] { text-decoration: underline; text-decoration-color: var(--color-accent-600); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.content del[data-eve-suggestion] { text-decoration: line-through; text-decoration-color: var(--color-text-error-primary); }
+
+@media (min-width: 1024px) { .reviewing .scroll { margin-inline-end: 336px; } }

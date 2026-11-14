@@ -30,6 +30,27 @@ export const LOCALE_LABEL: Record<Locale, string> = {
 // flat (not deeply nested) so missing-key TS errors point straight at the
 // offending string instead of a generic object mismatch.
 export interface Dict {
+  'documentSuggestions.modeAria': string;
+  'documentSuggestions.mode': string;
+  'documentSuggestions.editing': string;
+  'documentSuggestions.viewing': string;
+  'documentSuggestions.review': string;
+  'documentSuggestions.count': string;
+  'documentSuggestions.previous': string;
+  'documentSuggestions.next': string;
+  'documentSuggestions.delete': string;
+  'documentSuggestions.insert': string;
+  'documentSuggestions.reject': string;
+  'documentSuggestions.accept': string;
+  'documentSuggestions.unsupported': string;
+  'documentSuggestions.structure': string;
+  'documentSuggestions.reviewFirst': string;
+  'documentSuggestions.clipboard': string;
+  'documentSuggestions.plainPaste': string;
+  'documentSuggestions.composition': string;
+  'documentSuggestions.blocked': string;
+  'documentSuggestions.stale': string;
+
   "referral.notice.label": string;
   "referral.notice.registered": string;
   "referral.notice.pending": string;

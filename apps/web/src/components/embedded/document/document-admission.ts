@@ -1,3 +1,4 @@
+import { readDocumentSuggestion, validDocumentSuggestions } from './document-suggestion-schema';
 import { documentHtml, isEditableDocument, isDocumentLinkSupported, supportedDocumentLanguage } from './document-html';
 import { supportedDocumentImageElement, documentImageCssDimension } from './document-image-source';
 import { documentImportStyles, documentTextStyles } from './document-styles';
@@ -15,6 +16,7 @@ const attributes: Record<string, string[]> = {
 const editorClasses = new Set(Object.values(styles).flatMap(value => value.split(/\s+/)));
 function supportedElement(element: HTMLElement): boolean {
   const tag = element.tagName.toLowerCase();
+  if (tag === 'ins' || tag === 'del') return readDocumentSuggestion(element) !== null;
   if (!tags.has(tag)) return false;
   for (const attribute of Array.from(element.attributes)) {
     if (attribute.name === 'class' && attribute.value.split(/\s+/).every(value => editorClasses.has(value))) continue;
@@ -112,6 +114,7 @@ function supportedElement(element: HTMLElement): boolean {
 export function supportedDocument(html: string, fileName: string): boolean {
   if (!isEditableDocument(html)) return false;
   const parsed = new DOMParser().parseFromString(html, 'text/html');
+  if (!validDocumentSuggestions(parsed.body)) return false;
   const root = parsed.documentElement;
   if (Array.from(root.attributes).some(attr => !['data-eve-document', 'data-eve-document-font', 'data-eve-document-heading-font', 'lang', 'dir'].includes(attr.name))) return false;
   if (root.hasAttribute('lang') && !supportedDocumentLanguage(root.getAttribute('lang')!)) return false;

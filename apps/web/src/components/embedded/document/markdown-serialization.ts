@@ -1,3 +1,5 @@
+import { validDocumentSuggestions } from './document-suggestion-schema';
+import { $isDocumentSuggestionNode } from './DocumentSuggestionNode';
 import { documentCodeNeedsHtml } from './document-code-paint';
 import { $convertToMarkdownString, TRANSFORMERS, CODE, LINK, type ElementTransformer, type TextMatchTransformer } from '@lexical/markdown';
 import { $generateHtmlFromNodes } from '@lexical/html';
@@ -13,7 +15,12 @@ import { encodeMarkdownDocument } from './markdown-document';
 
 /** Preserve formatting that standard Markdown cannot express as valid inline/block HTML. */
 export function serializeMarkdownDocument(editor: LexicalEditor): string {
+  const containsSuggestion = (node: LexicalNode): boolean => $isDocumentSuggestionNode(node) || $isElementNode(node) && node.getChildren().some(containsSuggestion);
   let exported: Document | undefined;
+  if (containsSuggestion($getRoot())) {
+    exported = new DOMParser().parseFromString($generateHtmlFromNodes(editor), 'text/html');
+    if (!validDocumentSuggestions(exported.body)) throw Error('Document suggestions could not be preserved.');
+  }
   const htmlFor = (node: LexicalNode) => {
     // Selection export clones nodes, which Lexical forbids in a read-only serialization.
     // Export the complete snapshot once and select its already-stable block identity.
@@ -79,6 +86,12 @@ export function serializeMarkdownDocument(editor: LexicalEditor): string {
     const title = node.getTitle();
     return `[${children(node)}](<${url}>${title ? ` "${title.replace(/&/g, '&amp;').replace(/[\\"]/g, '\\$&')}"` : ''})`;
   } };
+  const suggestedBlock: ElementTransformer = {
+    type: 'element', dependencies: [], regExp: /a^/, replace: () => false,
+    export: node => {
+      return $isElementNode(node) && containsSuggestion(node) ? htmlFor(node) : null;
+    },
+  };
   const alignedBlock: ElementTransformer = {
     type: 'element', dependencies: [], regExp: /a^/, replace: () => false,
     export: node => $isElementNode(node) && !['', 'left', 'start'].includes(node.getFormatType()) ? htmlFor(node) : null,
@@ -90,6 +103,6 @@ export function serializeMarkdownDocument(editor: LexicalEditor): string {
       return $getState(node, documentDividerStyle) ? htmlFor(node) : '---';
     },
   };
-  const body = $convertToMarkdownString([divider, image, code, table, alignedBlock, nestedImage, styledText, literalText, link, ...TRANSFORMERS]);
+  const body = $convertToMarkdownString([suggestedBlock, divider, image, code, table, alignedBlock, nestedImage, styledText, literalText, link, ...TRANSFORMERS]);
   return encodeMarkdownDocument(body, { version: 1, fonts: { text: $getState($getRoot(), documentFont), headings: $getState($getRoot(), documentHeadingFont) }, ids: documentIdentityGroups() });
 }
