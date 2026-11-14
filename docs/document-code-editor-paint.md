@@ -79,3 +79,24 @@ HTML, identity and DocumentEditor tests. Full workspace `pnpm typecheck` and
 `pnpm guard` passed. Existing unrelated failures were not removed or rebaselined.
 Actual generated Markdown-to-Word conversion remains a separate gate from the
 proved Markdown serialization/readback and generated HTML-to-Word seam.
+
+## Raw Markdown language followup
+
+Independent review found that the new fence-only early return also skipped the
+existing safe language promotion for raw identified/styled CODE. An actual
+Markdown-readback→Lexical test with CODE class `language-ts`, red/yellow paint,
+a source block ID and real trailing newline genuinely failed: language became
+undefined. The correction promotes the same validated language for both source
+shapes; only syntactic newline removal remains gated. The fence shape is captured
+before adding PRE language metadata, preserving ordinary language-fence handling.
+Exact language, text/newline, block ID and paint now survive that regression.
+
+Frozen `ab78b917` is retained as the earlier checkpoint. This followup changes
+only the web Markdown reader plus its test and this note. The earlier contained
+Word/LibreOffice proof uses generated HTML and does not invoke that readback
+branch, so it is not rerun or relabeled as new renderer/consumer qualification.
+The new raw-language case is source/real-Lexical qualification, not packaged UI.
+
+Followup checks passed 54 affected cases in four files, web typecheck and the
+repository guard. No renderer, builder, browser or LibreOffice run was repeated
+for this language-only parser correction.

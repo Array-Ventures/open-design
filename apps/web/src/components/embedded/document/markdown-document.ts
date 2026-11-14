@@ -42,14 +42,14 @@ export async function readMarkdownDocument(source: string, title: string) {
     cell.removeAttribute('align');
   }
   for (const code of dom.querySelectorAll('pre > code')) {
-    // Only the plain producer shape has a syntactic terminating newline.
-    // Source-owned rich HTML CODE retains its actual text and descendants.
+    const language = [...code.classList].find(name => name.startsWith('language-'))?.slice(9);
     const fenced = code.parentElement!.attributes.length === 0
       && Array.from(code.attributes).every(attribute => attribute.name === 'class')
       && Array.from(code.childNodes).every(node => node.nodeType === Node.TEXT_NODE);
-    if (!fenced) continue;
-    const language = [...code.classList].find(name => name.startsWith('language-'))?.slice(9);
+    // Language promotion also belongs to source-owned raw HTML. Only newline
+    // normalization is restricted to the plain fence-producer shape.
     if (language && /^[A-Za-z0-9_-]{1,40}$/.test(language)) code.parentElement!.setAttribute('data-language', language);
+    if (!fenced) continue;
     // A fenced block's terminating newline is Markdown syntax, not an extra code line.
     code.textContent = (code.textContent ?? '').replace(/\n$/, '');
   }
