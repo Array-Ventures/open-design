@@ -124,7 +124,7 @@ clipboard, table-cell flow, access withdrawal, reload/conflict/history, themes,
 phone/fullscreen and original-download/conversion boundaries remain required
 before claiming user-level acceptance.
 
-Final author qualification on base `c12ffd58`: 266 web cases across fourteen
+Initial `2831ec60` author qualification on base `c12ffd58`: 266 web cases across fourteen
 focused files and eight daemon cases across two files passed. Full workspace
 `pnpm typecheck`, `pnpm guard`, `pnpm i18n:check`, the frozen install and diff
 check exited 0. The final logs use `/tmp/document-suggesting-freeze-*.log`.
@@ -133,3 +133,30 @@ proposal-range accessor. No browser, Worker, renderer image, model call or
 runtime change was used for this qualification. The remaining actual immutable
 pipeline/visual/interaction gates above remain open, including Markdown renderer
 preparation and the resolve-first conversion error as seen through the normal UI.
+
+
+## Character-deletion domain correction
+
+Independent review of frozen `2831ec60` found that collapsed character deletion
+flattened `getAllTextNodes()` while element offsets also counted BR/image nodes.
+The producer could delete text on the wrong side of a barrier, or change the
+active selection before refusing the operation. This is a source/SDK finding,
+not an executed packaged-browser failure.
+
+The follow-up planner retains BR, image, proposal and unknown inline nodes as
+explicit barriers. It maps actual SDK TextPoints and ElementPoints through
+native child boundaries, then measures Unicode graphemes only within the
+contiguous text segment on the requested side. Links retain their text children
+in that same segment. All checks and detached-range construction precede any
+active-selection or source mutation. The segment iterator does not allocate a
+whole-paragraph array of grapheme objects.
+
+Twenty actual SDK cases initially had twelve failures and eight passes. The
+corrected source passes all twenty: eight barrier refusals compare exact source,
+selection points and native Undo/Redo stacks; eight valid same-side controls
+exercise native Undo/Redo; four formatted/link grapheme controls preserve their
+text, styles and URL. The final affected lane passes 59 cases across four files.
+Full workspace types, guard, frozen install and diff checks exit 0. Logs are
+`/tmp/document-suggestion-barriers-{red,green,focused,types,guard}.log`.
+The original checkpoint and its earlier proofs remain frozen. No browser,
+Worker, renderer or runtime qualification is implied by this correction.

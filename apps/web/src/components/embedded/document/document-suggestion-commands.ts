@@ -1,3 +1,4 @@
+import { $documentCharacterDeletionRange } from './document-suggestion-deletion';
 import { DOCUMENT_SUGGESTION_UPDATE_TAG } from './document-suggestion-policy';
 import { $addUpdateTag, $copyNode, $createRangeSelection, $setSelection, $createTextNode, $getRoot, $getSelection, $isElementNode, $isRangeSelection, $isTextNode, type ElementNode, type LexicalNode, type TextNode } from 'lexical';
 import { $isLinkNode } from '@lexical/link';
@@ -113,32 +114,8 @@ export function $suggestDocumentCharacterDeletion(backward: boolean, id: string)
   const selection = qualified();
   if (!selection.isCollapsed()) { $suggestDocumentDeletion(id); return; }
   const owner = block(selection.anchor.getNode())!;
-  const texts = owner.getAllTextNodes();
-  const point = selection.anchor, anchor = point.getNode();
-  let offset = 0;
-  if ($isTextNode(anchor)) {
-    for (const text of texts) { if (text === anchor) { offset += point.offset; break; } offset += text.getTextContentSize(); }
-  } else if ($isElementNode(anchor)) {
-    const preceding = anchor.getChildren().slice(0, point.offset).reduce((sum, child) => sum + child.getTextContentSize(), 0);
-    const first = anchor.getAllTextNodes()[0];
-    for (const text of texts) { if (text === first) break; offset += text.getTextContentSize(); }
-    offset += preceding;
-  } else throw Error('Select text to suggest its deletion.');
-  const value = texts.map(text => text.getTextContent()).join('');
-  const boundaries = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value)].map(segment => segment.index);
-  boundaries.push(value.length);
-  if (!boundaries.includes(offset)) throw Error('Select complete Unicode characters.');
-  const start = backward ? boundaries.filter(index => index < offset).at(-1) : offset;
-  const end = backward ? offset : boundaries.find(index => index > offset);
-  if (start === undefined || end === undefined || start === end) throw Error('Suggestions cannot join paragraphs.');
-  const set = (target: typeof selection.anchor, position: number) => {
-    for (const text of texts) {
-      if (position <= text.getTextContentSize()) { target.set(text.getKey(), position, 'text'); return; }
-      position -= text.getTextContentSize();
-    }
-    throw Error('The selected text changed.');
-  };
-  set(selection.anchor, start); set(selection.focus, end);
+  const range = $documentCharacterDeletionRange(selection, owner, backward);
+  $setSelection(range);
   $suggestDocumentDeletion(id);
 }
 
