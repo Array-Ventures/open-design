@@ -1,5 +1,5 @@
 'use client';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type SetStateAction } from 'react';
 import { RiRefreshLine } from '@remixicon/react';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { useEmbeddedViewer } from '../host-viewer';
@@ -8,6 +8,7 @@ import { cx } from '../boardui/cx';
 import { ARTIFACT_ICON_BUTTON } from '../artifact-controls';
 import { loadWorkbookPreview } from './preview-transport';
 import { WorkbookHostError } from './host-request';
+import type { WorkbookKernelAcknowledgement } from './kernel-acknowledgement';
 import { useWorkbookEditor } from './use-workbook-editor';
 import { useWorkbookRecovery } from './use-workbook-recovery';
 import { WorkbookRecoveryCard } from './WorkbookRecoveryCard';
@@ -24,10 +25,17 @@ export function WorkbookSurface(props: Props) {
   return <ScopedWorkbookSurface key={`${viewer.memberId}:${props.projectId}:${props.fileName}`} {...props} viewerId={viewer.memberId} />;
 }
 function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirtyChange, onSaved, viewerId, statusOnly, onAccessLost }: Props & { viewerId: string }) {
-  const [loaded, setLoaded] = useState<{ sourceSha256: string; model: WorkbookDocument } | null>(null);
+  type Preview = { sourceSha256: string; model: WorkbookDocument };
+  const [sourceOwner, setSourceOwner] = useState<{ preview: Preview; generation: object; ticket?: WorkbookKernelAcknowledgement } | null>(null);
+  const loaded = sourceOwner?.preview ?? null;
+  // Every external/history/reset adoption starts a distinct kernel lifetime.
+  const setLoaded = useCallback((value: SetStateAction<Preview | null>) => setSourceOwner(current => {
+    const next = typeof value === 'function' ? value(current?.preview ?? null) : value;
+    return next === current?.preview ? current : next ? { preview: next, generation: {} } : null;
+  }), []);
   const [error, setError] = useState<string | null>(null), [retry, setRetry] = useState(0);
   const close = useRef<() => Promise<void>>(async () => {});
-  const recovery = useWorkbookRecovery({ viewerId, projectId, fileName }, Boolean(loaded), () => close.current());
+  const recovery = useWorkbookRecovery({ viewerId, projectId, fileName }, Boolean(loaded), () => close.current(), loaded);
   const editorRef = useRef<ReturnType<typeof useWorkbookEditor> | null>(null);
   const history = useWorkbookHistory({ statusOnly, scope: { viewerId, projectId, fileName }, source: loaded, ready: Boolean(recovery.session),
     dirty: () => !editorRef.current || editorRef.current.stateRef.current.dirty || editorRef.current.discarding,
@@ -40,7 +48,11 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
   });
   // The editor acknowledges only after the receipt and fresh preview hashes
   // match. A refresh warning from that same pending save is then obsolete.
-  const editor = useWorkbookEditor(projectId, fileName, loaded, source => { setLoaded(source); setError(null); onSaved?.(); }, dirty => onDirtyChange?.(dirty || history.blocked), recovery.session?.journal, () => { setLoaded(null); setRetry(value => value + 1); }, { open: history.open, blocked: history.blocked, visible: history.canOpen, show: history.toggle });
+  const editor = useWorkbookEditor(projectId, fileName, loaded, (source, ticket) => {
+    setSourceOwner(previous => ticket && previous?.preview === ticket.previous && ticket.target === source && ticket.journal === recovery.session?.journal && ticket.controllerId === editorRef.current?.controllerId
+      ? { preview: source, generation: previous.generation, ticket } : { preview: source, generation: {} });
+    setError(null); onSaved?.();
+  }, dirty => onDirtyChange?.(dirty || history.blocked), recovery.session?.journal, () => { setLoaded(null); setRetry(value => value + 1); }, { open: history.open, blocked: history.blocked, visible: history.canOpen, show: history.toggle });
   editorRef.current = editor;
   const historyRef = useRef(history); historyRef.current = history;
   close.current = editor.close;
@@ -100,7 +112,7 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
   let content;
   if (!loaded) content = history.open ? null : <div role={error ? 'alert' : 'status'} className="flex h-full items-center justify-center gap-2 p-4 text-body-2-regular text-text-tertiary">{error ?? history.notice ?? (statusOnly ? history.available && !history.intent && !history.checking ? 'No unresolved restore remains for this file.' : 'Open History to check the pending restore.' : 'Loading workbook…')}</div>;
   else if (recovery.session) content = <Suspense fallback={<div role="status" className="p-4 text-body-2-regular text-text-tertiary">Loading workbook…</div>}>
-    <WorkbookGrid id={`${projectId}:${fileName}`} title={title} model={loaded.model} sourceSha256={loaded.sourceSha256} initialSnapshot={recovery.session.journal.restored?.desired} onReady={editor.ready} onSnapshot={editor.snapshot} exportScope={loaded.model.sourceFormat === 'csv' ? undefined : { projectId, controllerId: editor.controllerId, fileName, sourceSha256: loaded.sourceSha256, blocked: editor.state.dirty || editor.state.saving || editor.discarding || history.blocked }} structureSource={() => { const checkpoint = editor.checkpoint(); return checkpoint && !error && !editor.stateRef.current.error ? { model: checkpoint.source.model, sourceSha256: checkpoint.source.sourceSha256, acknowledged: checkpoint.acknowledged } : null; }} structureBlocked={Boolean(error || editor.state.error || editor.state.saving || editor.discarding || history.blocked)} formatScope={{ projectId, controllerId: editor.controllerId, saving: editor.state.saving, blocked: editor.discarding || history.blocked }} />
+    <WorkbookGrid onKernelReset={() => setSourceOwner(previous => previous ? { preview: previous.preview, generation: {} } : null)} kernelGeneration={sourceOwner?.generation} acknowledgement={sourceOwner?.ticket} id={`${projectId}:${fileName}`} title={title} model={loaded.model} sourceSha256={loaded.sourceSha256} initialSnapshot={recovery.session.journal.restored?.desired} onReady={editor.ready} onSnapshot={editor.snapshot} exportScope={loaded.model.sourceFormat === 'csv' ? undefined : { projectId, controllerId: editor.controllerId, fileName, sourceSha256: loaded.sourceSha256, blocked: editor.state.dirty || editor.state.saving || editor.discarding || history.blocked }} structureSource={() => { const checkpoint = editor.checkpoint(); return checkpoint && !error && !editor.stateRef.current.error ? { model: checkpoint.source.model, sourceSha256: checkpoint.source.sourceSha256, acknowledged: checkpoint.acknowledged } : null; }} structureBlocked={Boolean(error || editor.state.error || editor.state.saving || editor.discarding || history.blocked)} formatScope={{ projectId, controllerId: editor.controllerId, saving: editor.state.saving, blocked: editor.discarding || history.blocked }} />
   </Suspense>;
   else content = <div className="flex h-full items-center justify-center overflow-auto p-4">
     {recovery.busy && !recovery.drafts.length && !recovery.error ? <div role="status" className="text-body-2-regular text-text-tertiary">Checking workbook recovery…</div> :

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { legacyWorkbookWrite } from '../../fixtures/workbook-write-result';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useState } from 'react';
@@ -10,7 +11,7 @@ import { ICommandService } from '@univerjs/core';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookGrid } from '../../../src/components/embedded/workbook/WorkbookGrid';
 
-const runtime = vi.hoisted(() => ({ visibilityBefore: vi.fn(), visibilityBeforeOff: vi.fn(), navigationCommand: vi.fn(), navigationShortcut: vi.fn(), navigationCommandOff: vi.fn(), navigationShortcutOff: vi.fn(), firstCell: vi.fn(), scrollToCell: vi.fn(), events: [] as string[], richInputs: [] as { dispose: ReturnType<typeof vi.fn> }[], workers: [] as { dispose: ReturnType<typeof vi.fn> }[], inputs: [] as { dispose: ReturnType<typeof vi.fn> }[], rendered: Promise.resolve(), context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
+const runtime = vi.hoisted(() => ({ rebaseSource: vi.fn(), calculationPublish: vi.fn(), visibilityBefore: vi.fn(), visibilityBeforeOff: vi.fn(), navigationCommand: vi.fn(), navigationShortcut: vi.fn(), navigationCommandOff: vi.fn(), navigationShortcutOff: vi.fn(), firstCell: vi.fn(), scrollToCell: vi.fn(), events: [] as string[], richInputs: [] as { dispose: ReturnType<typeof vi.fn> }[], workers: [] as { dispose: ReturnType<typeof vi.fn> }[], inputs: [] as { dispose: ReturnType<typeof vi.fn> }[], rendered: Promise.resolve(), context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
   calculation: null as null | ((state: { phase: string; stored: number; unavailable: number; paused: boolean }) => void),
   input: null as null | ((message: string) => void), live: false, fail: null as null | (() => void), calculationDisposed: vi.fn(),
   getRange: vi.fn(), select: vi.fn(), createWorkbook: vi.fn(), editable: vi.fn(), activeSheet: vi.fn(), saved: vi.fn(), listener: null as null | ((event: { type: number; id: string }) => void) }));
@@ -20,7 +21,7 @@ vi.mock('@univerjs/presets', async original => ({ ...await original<typeof impor
     addEvent: (event: string, callback: NonNullable<typeof runtime.listener>) => { if (event === 'CommandExecuted') { runtime.listener = callback; return { dispose: runtime.off }; } return { dispose() {} }; }, setTheme: runtime.theme, toggleDarkMode: runtime.dark }) },
 }));
 vi.mock('@univerjs/preset-sheets-core', () => ({ ...Object.fromEntries(['UniverRenderEnginePlugin', 'UniverFormulaEnginePlugin', 'UniverUIPlugin', 'UniverDocsPlugin', 'UniverDocsUIPlugin', 'UniverSheetsPlugin', 'UniverSheetsUIPlugin', 'UniverSheetsFormulaPlugin', 'UniverSheetsFormulaUIPlugin', 'UniverSheetsNumfmtPlugin', 'UniverSheetsNumfmtUIPlugin'].map(name => [name, name])), IShortcutService: 'IShortcutService', KeyCode: { HOME: 36 }, MetaKeys: { CTRL_COMMAND: 2048 }, whenSheetEditorFocused: (context: { focused: boolean }) => context.focused, SetSelectionsOperation: { id: 'sheet.operation.set-selections' }, IRenderManagerService: 'IRenderManagerService', DISABLE_AUTO_FOCUS_KEY: 'disableAutoFocus', CalculationMode: { NO_CALCULATION: 2 } }));
-vi.mock('../../../src/components/embedded/workbook/grid-calculation', () => ({ workbookLiveCalculationEligible: () => runtime.live, attachWorkbookCalculation: (...args: unknown[]) => { runtime.calculation = args[7] as NonNullable<typeof runtime.calculation>; return { dispose() {} }; } }));
+vi.mock('../../../src/components/embedded/workbook/grid-calculation', () => ({ workbookLiveCalculationEligible: () => runtime.live, attachWorkbookCalculation: (...args: unknown[]) => { runtime.calculation = args[7] as NonNullable<typeof runtime.calculation>; return { rebaseSource: runtime.rebaseSource, publish: runtime.calculationPublish, dispose() {} }; } }));
 vi.mock('../../../src/components/embedded/workbook/calculation-worker-owner', () => ({ ownWorkbookCalculationWorker: (fail: () => void) => { runtime.fail = fail; return { loaded: Promise.resolve(true), ready: true, worker: {}, dispose: runtime.calculationDisposed }; } }));
 vi.mock('../../../src/components/embedded/workbook/array-projection-owner', () => ({ ownArrayProjectionWorker: () => {
   const id = runtime.workers.length + 1, owned = { loaded: Promise.resolve(true), ready: true, dispose: vi.fn(() => runtime.events.push(`worker:${id}`)) }; runtime.workers.push(owned); return owned;
@@ -236,7 +237,7 @@ it('retains CSV sizing through the real writer acknowledgement and refreshed sou
         expect(intent.plan).not.toHaveProperty('dimensions');
         const next = structuredClone(source); next.sourceSha256 = 'b'.repeat(64);
         next.model.sheets[0]!.cells = intent.plan.edits.map(edit => edit.cell);
-        return next;
+        return legacyWorkbookWrite(next);
       }, () => {}, accept, journal); ready();
     }} />;
   }
@@ -387,4 +388,41 @@ it('owns structural mutation admission through startup, source-ready input, savi
   view.rerender(<WorkbookGrid id="grid" title="Structure" model={qualified} onSnapshot={vi.fn()} sourceSha256={'a'.repeat(64)} formatScope={{ ...scope, saving: true }} structureBlocked={false} structureSource={source} onReady={() => startup} />);
   expect(() => admit(command())).toThrow('not ready');
   view.unmount(); expect(() => admit(command())).toThrow('not ready'); expect(runtime.visibilityBeforeOff).toHaveBeenCalledTimes(2);
+});
+
+
+it('retains the same Univer only for an exact protected own-ACK and refreshes source callbacks without restarting its writer', async () => {
+  runtime.live = true;
+  const previous = { sourceSha256: 'a'.repeat(64), model: { ...model, worksheetStructureEditable: true, calculationMetadata: 'verified' as const, sheets: model.sheets.map(sheet => ({ ...sheet, arrayFormulas: [] })) } };
+  const target = { sourceSha256: 'b'.repeat(64), model: structuredClone(previous.model) };
+  const generation = {}, ready = vi.fn(), changed = vi.fn();
+  const snapshot = gridWorkbook(target.model, 'grid', 'Revenue').data as IWorkbookData; runtime.saved.mockReturnValue(snapshot);
+  const projectId = crypto.randomUUID(), controllerId = crypto.randomUUID(), journal = { save: async () => {} };
+  const props = { id: 'grid', title: 'Revenue', model: previous.model, sourceSha256: previous.sourceSha256, kernelGeneration: generation, onReady: ready, onSnapshot: changed, formatScope: { projectId, controllerId, blocked: false } };
+  const view = render(<WorkbookGrid {...props} />); await waitFor(() => expect(runtime.editable).toHaveBeenLastCalledWith(true));
+  view.rerender(<WorkbookGrid {...props} model={target.model} sourceSha256={target.sourceSha256} acknowledgement={{ previous, target, snapshot, controllerId, journal,
+    acknowledgement: { kind: 'history', provenance: { operationId: crypto.randomUUID(), projectId, fileName: 'book.xlsx', renderId: crypto.randomUUID(), sourceSha256: previous.sourceSha256, sourceVersionId: 'before', targetSha256: target.sourceSha256, versionId: 'after' } } }} />);
+  expect(runtime.dispose).not.toHaveBeenCalled(); expect(runtime.calculationDisposed).not.toHaveBeenCalled();
+  expect(runtime.created).toHaveBeenCalledTimes(1); expect(runtime.rebaseSource).toHaveBeenCalledOnce(); expect(ready).toHaveBeenCalledOnce();
+  act(() => runtime.listener?.({ id: 'sheet.mutation.set-range-values', type: CommandType.MUTATION })); expect(changed).toHaveBeenCalledWith(snapshot);
+  // An external replacement cannot borrow the own-ACK generation, even with
+  // identical byte checksums. It must retire this kernel and its Undo lineage.
+  view.rerender(<WorkbookGrid {...props} model={structuredClone(target.model)} sourceSha256={target.sourceSha256} />);
+  await waitFor(() => expect(runtime.created).toHaveBeenCalledTimes(2)); expect(runtime.calculationDisposed).toHaveBeenCalledOnce();
+});
+
+
+it.each(['controller', 'previous reference', 'target digest', 'project'] as const)('retires the kernel for a mismatched own-ACK %s', async invalid => {
+  runtime.live = true;
+  const previous = { sourceSha256: 'a'.repeat(64), model: { ...model, worksheetStructureEditable: true, calculationMetadata: 'verified' as const, sheets: model.sheets.map(sheet => ({ ...sheet, arrayFormulas: [] })) } };
+  const target = { sourceSha256: 'b'.repeat(64), model: structuredClone(previous.model) }, snapshot = gridWorkbook(target.model, 'grid', 'Revenue').data as IWorkbookData;
+  runtime.saved.mockReturnValue(snapshot);
+  const projectId = crypto.randomUUID(), controllerId = crypto.randomUUID(), generation = {}, changed = vi.fn();
+  const props = { id: 'grid', title: 'Revenue', model: previous.model, sourceSha256: previous.sourceSha256, kernelGeneration: generation, onSnapshot: changed, formatScope: { projectId, controllerId, blocked: false } };
+  const view = render(<WorkbookGrid {...props} />); await waitFor(() => expect(runtime.editable).toHaveBeenLastCalledWith(true));
+  const ticket = { previous: invalid === 'previous reference' ? { ...previous, model: structuredClone(previous.model) } : previous, target, snapshot,
+    controllerId: invalid === 'controller' ? crypto.randomUUID() : controllerId, journal: { save: async () => {} },
+    acknowledgement: { kind: 'history' as const, provenance: { operationId: crypto.randomUUID(), projectId: invalid === 'project' ? crypto.randomUUID() : projectId, fileName: 'book.xlsx', renderId: crypto.randomUUID(), sourceSha256: previous.sourceSha256, sourceVersionId: 'before', targetSha256: invalid === 'target digest' ? 'c'.repeat(64) : target.sourceSha256, versionId: 'after' } } };
+  view.rerender(<WorkbookGrid {...props} model={target.model} sourceSha256={target.sourceSha256} acknowledgement={ticket} />);
+  await waitFor(() => expect(runtime.created).toHaveBeenCalledTimes(2)); expect(runtime.rebaseSource).not.toHaveBeenCalled();
 });

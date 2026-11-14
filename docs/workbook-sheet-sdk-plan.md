@@ -168,11 +168,10 @@ source and its actual axis identities/logical window. Keep it within existing
 SDK snapshots and protected checkpoints, not a second action replay journal.
 
 The checked save receipt already has `sourceVersionId` for the before-save binary
-and `versionId` for its target. The companion currently only parses `versionId`
-explicitly and returns the refreshed preview from `use-workbook-editor.ts`,
-dropping those history associations. Restoration requires explicitly validating
-`sourceVersionId` and associating its before-source SHA with the old baseline
-before ACK retirement. A lost ACK must recover the same receipt/association.
+and `versionId` for its target. The checked ACK consumer now explicitly validates those identities and protects
+the before-source association in the existing pending checkpoint before retiring
+its baseline. The per-delete producer still must bind that checked association
+to its captured descriptor, not infer it from the latest target version. A lost ACK must recover the same receipt/association.
 This provenance must be protected before a pending source transition can discard
 its predecessor. Do not trust an arbitrary passthrough receipt field.
 
@@ -315,7 +314,453 @@ prove a prior SDK Delete command. Automatic Undo remains unavailable until the
 producer can prove and persist its protected per-delete/ACK kernel identity;
 this source API must not be presented as that lineage guarantee.
 
+### Checked acknowledgement metadata foundation
+
+`save-identity.ts` explicitly validates optional `sourceVersionId` metadata.
+Older receipts may omit it or return null and still support ordinary saves;
+they supply no historical ownership. `checkedWorkbookSaveAcknowledgement` binds
+the receipt to its retained operation/project/file/render, pre-save source digest
+and refreshed saved-target digest. It returns a discriminated history result
+with non-null pre-save `sourceVersionId` and saved-target `versionId`, or an
+explicit unavailable result for a legacy or whole-file-restore receipt. One
+immutable version cannot represent different source and target byte digests.
+
+This helper does not itself read historical bytes, establish SDK Delete lineage,
+persist a checkpoint, transfer writer ownership or enable a producer. Those
+consumers are not connected yet. The next owning slice must protect its checked
+association in the existing journal before baseline retirement, retain only
+current/reachable per-delete associations, and prove lost-ACK/storage-failure
+ordering before the UI capability may be enabled. Whole-file/external kernel
+reset must retire the old ancestry rather than relabel it as a new source.
+
+
+### Development checkpoint: ACK writer consumer
+
+The editor now consumes that result after fresh-preview validation and returns
+an internal `{preview, acknowledgement}` pair to the existing Writer, without
+adding fields to the strict preview wire schema. The existing protected pending
+checkpoint retains its old source, snapshot and immutable intent while recording
+the checked association before baseline retirement. A failed transfer-storage
+write restores the old in-memory baseline and pending identity. Recovery checks
+the same remote receipt again; it does not skip source/target validation based on
+a client-stored acknowledgement. Legacy receipts remain explicitly unavailable.
+
+After successful protection, only the latest source-bound association survives
+in the existing checkpoint; this is not an append-only cell-save journal.
+Decoder checks bind historical ACKs to account/artifact scope, current target or
+pending operation/render/source. Source tests cover actual Writer failure and
+IndexedDB recovery, cross-owner refusal and the React hook consumer. Two new
+failure regressions fail against the original Writer. This remains a development
+checkpoint: own-ACK same-kernel retention, per-delete descriptor ownership,
+reachable older association retention, outer Undo gating and actual contained
+SDK recovery are not integrated, and sheet controls remain disabled.
+
+
+### Development checkpoint: protected scalar kernel/source handoff
+
+The editor issues an in-memory own-ACK ticket only after successful Writer
+protection, within the same controller and journal lease, and for the exact
+previously published Preview object. A multi-save drain retains that live owner
+continuity but carries only its last checked receipt; this does not manufacture a
+persisted historical chain. Without a journal, or after a legacy receipt, no
+retained-kernel ticket is issued.
+
+The surface keeps a separate kernel generation. External/history/reset source
+adoption creates a new generation; a matching own-ACK alone retains it. The grid
+then checks exact previous model/digest references, target/controller/project
+binding, scalar worker readiness and stable source capabilities before adopting
+the fresh source. Source closures and visibility gates read that rebased owner.
+The live worker, its input epochs/generation floors, actual Univer instance and
+SDK Undo history remain intact. A source change without a valid handoff retires
+the old kernel instead of trusting an equal checksum or a borrowed generation.
+
+The existing formula display owner explicitly rebases genuine source caches and
+the acknowledged input baseline, preserving newer desired inputs and verified
+calculated-output provenance. The input-equivalence guard normalizes only reader
+blank-window extents to the ACK-owned geometry, rejects source cells outside
+that window and never reseeds axis identities or modifies raw SDK cells. A cache
+rebase publishes after the grid's current-source guard has adopted the target.
+
+Source tests separately cover component lifetime retention, actual pinned SDK
+unit identity and Undo/Redo, live visibility capability withdrawal, stale worker
+epoch refusal, wrong source/controller/digest/project tickets and protected
+multi-ACK handoff. They are not browser/container or full SDK sheet-action
+qualification. Array/CSV source-family handoff, per-delete descriptor production,
+reachable older template associations, pending sheet Undo gating, protected
+restart recovery and actual worksheet add/remove/rename admission remain open.
+Sheet controls remain disabled; no distribution pins change.
+
+
+### Development checkpoint: live SDK history reachability
+
+A maintained generic `@univerjs/core` patch supplies the missing read-only
+primitive-history query; its boundaries and refresh evidence are documented in
+[`patches/README.md`](../patches/README.md). It projects detached strings from
+actual SDK history, including grouped entries and references retained on the
+opposite stack after Undo. No source consumer may inspect private stacks,
+truncate overflowing reachability or substitute a shadow history. Inspection
+refusal must withdraw sheet deletion/Undo authority while retaining protected
+context. The descriptor consumer is not installed yet.
+
+Ordinary browser reload starts a fresh SDK Undo/Redo history, as it already does
+for workbook edits. This work does not serialize or restore that native history.
+Durable restart qualification must protect the current acknowledged/desired and
+pending restored-sheet ownership, same operation/receipt and exact history
+assets. Live own-ACK handoff, separately, must retain actual Undo/Redo across
+saves. These are distinct guarantees; the new query provides live reachability
+only, not durable Undo stacks.
+
+
+### Development checkpoint: selected source-deletion capture
+
+`sheet-delete-context.ts` captures only a currently source-present scalar sheet:
+its typed source sheet, exact source SHA, selected ACK sheet/axis baseline,
+account/artifact scope and a fresh per-delete token. It reuses the existing SDK
+snapshot schema and source/ACK authored-input equivalence guard; blank logical
+windows do not imply missing source content. Source-absent restoration and blank
+birth cases refuse here until their separate owner exists.
+
+The stamping helper uses the official Worksheet custom-metadata API and replaces
+its object before the real RemoveSheetCommand captures Undo. Earlier actual SDK
+undo configs retain their original token. Tests edit an unrelated sheet and the
+deleted sheet before removal; real Undo retains both prior edits while the
+captured template baseline stays at the earlier source/ACK value. Receipt data
+association distinguishes sourceVersionId from saved target versionId and
+rejects scope/source changes or immutable rebinding.
+
+This is serialized context data, not authority. No file custom metadata, token,
+stored receipt or parsed context alone selects a historical asset, creates a
+blank origin or authorizes a sheet command. A recovered association must be
+checked again against server-owned receipt/source/history bytes and the selected
+sheet/axes under the current ACL. Capture/stamp/association do not install a live
+controller. Bounded pool admission, actual history-reachability pruning/refusal,
+blank births, inherited restoration, Writer pre-retirement association and actual
+recovered-origin derivation still remain required before controls can be enabled.
+
+
+### Development checkpoint: versioned selected baseline identity
+
+`runtime/workbook-sheet-baseline` defines the version-1 public-preview model
+identity. One extractor captures the complete typed selected sheet (including
+cached formula values, rich runs, merges, geometry and row/column owners), its
+referenced style closure including default style 0 and complete effective style
+definitions, date system, theme colors, sheet-ID/name reference map, defined
+names/tables, features and interpretation flags. Unused style definitions alone
+do not affect this selected baseline. Raw historical file SHA, same-file access,
+resource continuity and checked receipt ownership remain separate authorities.
+
+The canonical encoder reuses `canonicalCommentJson` unchanged: object keys use
+JavaScript UTF-16 lexicographic ordering (the typed key domain is ASCII), not JCS
+or general Unicode-code-point order. Array order is retained, undefined optional
+object keys are omitted, and -0 normalizes to 0 exactly as the existing preview
+JSON transport. Raw file SHA still binds exact source bytes. Version changes are
+required when interpreted reader representation changes; unknown versions refuse
+rather than silently reinterpret protected baseline data. Node/depth/text budgets
+are checked before cloning, and the final UTF-8 canonical body has a 64-MiB cap.
+
+Tests cover same ordinal/different style definitions, default/cell/row/column
+style owners, rich/cached/global-reference changes, JSON roundtrip/optional-key
+normalization, forged or incomplete baseline data, unknown versions and bounded
+non-JSON refusal. A reviewed fixed canonical vector agrees between actual
+@noble browser-library hashing and Node SHA-256. These are source-level identity
+checks, not actual historical ZIP/contained-worker proof yet.
+
+No baseline field is accepted on edit-plan restore entries at this checkpoint.
+Next, that field must be consumed by the actual historical template owner before
+assembly, preserving raw versionId/versionSha256 and opaque outer plan hashes.
+The context must store one baseline object and recompute its hash rather than
+trust a separately stored digest. Old strict workers must refuse unknown fields;
+no SDK producer may enable controls before the paired capability and complete
+worker/receipt/recovery pipeline are qualified.
+
+
+### Development checkpoint: selected-baseline consumer and context migration
+
+The optional `baselineIdentity: { version: 1, sha256 }` is now accepted only on
+restored-sheet entries. `sheet-template.ts` consumes it before assembly or cell
+deltas: it extracts the selected baseline from the actual fully validated
+historical `WorkbookDocument`, recomputes the canonical digest and rejects any
+mismatch. Parsing the standalone baseline schema is never content authority.
+Legacy manually authorized restoration without the optional field retains its
+existing semantics. The original `template.versionId/versionSha256` and current
+source CAS remain independent and unchanged; all historical assets still pass
+exact same-file server authorization, frozen byte hashes and resource checks.
+
+The development Delete context now stores one full selected baseline (including
+referenced style definitions), not separate source-sheet/flag copies or a stored
+claimed digest. Its helper recomputes the identity after JSON recovery. Serialized
+context and receipt association remain data: no descriptor controller may use
+them without rechecking the actual protected operation, server receipt/history
+association and source scope. This checkpoint does not implement that controller.
+
+Actual source tests pass a valid identity through `renderWorkbook` and inspect
+the independently loaded XLSX; forged claims and unknown versions produce no
+output. Historical-template tests reject changed selected values, same-ordinal
+style definitions, date system and ID/name maps before assembly. Existing worker
+asset tests retain wrong/missing/version/extra/hash refusal and unchanged source
+checks; existing context tests retain receipt source/scope/rebinding refusals.
+The captured old strict field set rejects the new claim (source-level proof,
+not an old-image execution). Genuine merged/blank historical models exposed and
+now cover JSON-null admission in the canonical preclone guard.
+
+SDK sheet controls and capability remain OFF. No contained pair or runtime was
+built/activated for this checkpoint; producer/controller integration, actual
+old/new pair negotiation, checked recovered receipt binding and full protected
+Undo/Redo/ACK/recovery qualification remain required before enablement.
+
+Checkpoint validation: nine focused contract tests, fourteen historical-template
+and actual renderer tests, and six SDK-context/cross-runtime tests passed.
+Full repository typecheck and guard passed. The first full typecheck exposed
+NodeNext import-extension and exact-optional interface mismatches; those were
+corrected before the final pass. No full daemon/web suite, browser, contained
+image or server-side receipt recovery run is claimed by these source checks.
+
+### Development checkpoint: context protection in the existing draft owner
+
+`WorkbookCheckpoint.sheetDeletions` now retains bounded typed selected-baseline
+contexts, including on otherwise clean drafts. `WorkbookWriter.retainSheetDeletion`
+requires the real journal's synchronous validator and checks the entire prospective
+checkpoint through the exact serializer used by IndexedDB storage (same schema
+and 128 MiB byte bound), before changing the retained pool. Wrong source/scope,
+replacement tokens, pool overflow or encoder refusal retain existing contexts.
+Recovery decoding checks unique tokens and exact account/artifact scope; decoding
+is still data validation, never recovered server receipt or lineage authority.
+The recovery session supplies this validator and the editor preserves it when
+wrapping the journal. No separate cache or replay journal was introduced.
+
+This is context retention only, not post-command admission. No live command
+controller is installed and no Delete/Undo authority is granted. Current pending
+membership derivation still fails closed; an actual encoder negative proves that
+an invented pending Delete plan cannot bypass it. The next producer slice must
+validate its exact post-command checkpoint before Remove or Undo/Redo stack pops,
+maintain real history reachability, and bind checked historical receipts before
+source retirement. No untested positive Delete receipt association is claimed.
+
+Validation: 33 focused Writer/real-SDK-context tests and 30 affected existing
+storage/recovery/editor tests passed; web typecheck, full repository typecheck
+and guard passed. The refusal callback test covers atomic pool retention; it
+is not a claim that a new large-quota or browser-storage boundary was exercised.
+No runtime, image, UI controls or publication changed.
+
 Scalar edit style annotations must follow the owning
 [style preservation guards](workbook-cell-style-guards.md). A compact historical
 model ordinal is not a raw stylesheet index or a transferable identity; the
 source owner proves any required guard rebase after membership/axis preparation.
+
+### Development checkpoint: source-present membership derivation
+
+`grid-sheet-projection.ts` now derives only current-source survivor projections
+when protected deletion contexts are present. Writer and pending decoder call
+the same `workbookGridPlan` owner. Original final membership is carried separately
+while matched survivor baselines reuse the existing scalar/style/dimension/axis
+diff. Source/ACK cell and complete style closure, account/file identity, actual
+axis generation, every original and surviving axis, unique contexts and survivor
+order are independently checked before filtering. Very-hidden deletion refuses.
+Unknown/restored/new IDs refuse; no marker becomes a blank or template grant.
+
+The existing scalar reference/work budget is extracted unchanged into
+`grid-scalar-admission.ts` and reused here. Actual pinned SDK formula-plugin
+Delete produces genuine cross-sheet `#REF!` references, which remain authored
+plan edits. Unresolved references refuse. Defined-name/table sources explicitly
+refuse in this initial producer; their metadata is never dropped to make a
+synthetic model parse. A deleted active-sheet baseline chooses a surviving
+visible model identity for the diff; actual XML view ownership remains the
+source writer's policy. The producer neither serializes SDK data as XLSX nor
+rewrites source styles or axes.
+
+A genuine SDK Delete now passes the real pending encoder/decoder rather than
+bypassing it with a seeded incompatible record. The original earlier refusal
+test is updated because this owning producer now derives that exact plan; forged
+pending membership still refuses. Another source test drives actual SDK Delete
+through Writer and a mocked remote checked receipt, fails device protection,
+then retries the same remote intent. The old-source pending checkpoint includes
+the selected pre-save history association before source retirement and preserves
+an unrelated earlier edit. This is a source-level mocked-transport proof, not a
+server/container/ACL, live browser command admission or durable Undo proof.
+
+Controls stay OFF. The awaited storage/lease/revision barrier and live controller
+are not installed. New/restored origins, multiple same-source deletion contexts
+for one ID (active-token selection), source metadata qualification, actual worker
+sheet mutation support, source-absent Undo/Redo and recovered server receipt
+rechecks still require their owning slices. No publication or pins change.
+
+Validation: 58 focused SDK-context/Writer/axis-controller/draft-store tests and
+nine baseline contract tests passed, plus final web typecheck, full repository
+typecheck and guard. The original actual SDK Delete projection test failed
+against the prior same-membership planner. No model, browser, container or
+production calls were made for this checkpoint.
+
+### Development checkpoint: awaited current-source Delete barrier
+
+`WorkbookWriter.protectSheetDeletion` is a separate awaited admission boundary;
+`retainSheetDeletion` remains non-authoritative synchronous pool retention. The
+barrier derives the exact post-command plan and validates its complete prospective
+pending checkpoint through the existing encoder/byte bound. It then writes only
+the current checkpoint plus candidate context through the existing journal queue.
+The temporary prospective UUIDs are not a remote operation, pending reservation
+or new journal. Later real saves still revalidate current storage/CAS normally;
+this does not promise future capacity for unknown receipt/history metadata.
+
+After that actual journal write succeeds, active writer/source identity, desired
+revision, pending/running state and the current recovery-session lease must still
+match before invoking a synchronous SDK callback. Candidate roots are published
+only at this point. Storage, ownership, close or newer-edit refusal never calls
+SDK and leaves the old in-memory pool and newer desired edits intact. A candidate
+which already reached storage before session withdrawal may remain redundant
+protected data; it grants no command or historical authority. Once SDK is invoked,
+the durable candidate remains rooted even if SDK throws, and a returned snapshot
+mismatch is surfaced rather than being silently accepted. Conflicting recovered
+sources refuse before storage. `close()` drains this barrier before lease release.
+
+The real recovery session supplies a current-session predicate which withdraws
+immediately on unmount while leaving legitimate journal shutdown drains possible;
+the editor preserves this predicate in its existing wrapper. Tests use explicit
+journal-entry handshakes, actual pinned SDK Remove and real SDK history. They prove
+no callback/history change before durability and under storage rejection, lost
+session, close or newer-edit races, plus preservation of the resulting genuine
+Undo descriptor. The recovery hook's predicate is checked across actual unmount.
+A first test's single-microtask assumption was corrected to the explicit storage
+handshake, with unchanged durability assertions.
+
+Validation: 62 focused context/Writer/recovery/editor tests and final web types
+passed. No live controller or UI control is installed. Permission, worker/editor
+readiness, actual history reachability/Undo outer gates, restored/birth sources
+and recovered server receipt validation remain required before activation.
+Final full repository typecheck and guard also passed on this barrier source.
+
+### Corrective checkpoint: quarantine unexpected protected SDK outcomes
+
+Independent review found that the previous barrier surfaced callback mismatch or
+throw but still allowed a later ordinary grid update/Save to submit that rejected
+SDK state. Two actual SDK regressions (Remove plus unexpected cell mutation, and
+Remove then throw) each called the remote writer against the prior code. They now
+remain fenced with zero remote calls after subsequent update/flush and recovery.
+
+The existing checkpoint carries an optional sticky `sheetActionConflict: true`.
+Writer preserves the protected pre-command source/desired and rooted contexts,
+sets dirty/error, and refuses new writes or ordinary update-based clearing. The
+same fence survives strict decode and Writer reconstruction. Observer updates are
+suppressed only within the synchronous protected callback, before verification;
+unexpected SDK snapshots are never published as saveable recovery data. Once a
+callback has run, mismatch or throw quarantines before storage or Save can admit
+that state. Flush also refuses while context protection is pending rather than
+racing a write of the older dirty state. Pre-callback refusals do not set the
+fence and still preserve usable newer edits.
+
+Quarantine persistence uses the existing journal. If that later transaction also
+fails, the in-memory fence remains and the earlier actual durable pre-command
+checkpoint still retains the legitimate prior edits and selected context. Tests
+explicitly report the absent durable flag in that failed-write case rather than
+inventing recovery proof. After a reload the uncertain mutated SDK instance is
+not reconstructed from that earlier checkpoint. A successful quarantine write
+retains the sticky flag across reload. Actual SDK history is retained in the live
+instance, not silently popped or serialized as a replacement history mechanism.
+
+No generic clear operation is exposed. Future deliberate recovery UX must reset
+the actual editor/kernel from the protected pre-command desired state under fresh
+source/permission validation before clearing the fence; it must preserve earlier
+legitimate edits rather than require discarding them. That recovery UX and the
+full live controller remain unqualified, so controls remain OFF.
+
+Validation: 66 focused context/Writer/recovery/editor tests passed; final 21
+context cases additionally assert nonsticky pre-command refusal. Final web types,
+full repository typecheck, guard and diff check passed. The two original failing
+regressions are retained in the source tests. No runtime, model, image, production,
+publication or pin changes were made.
+
+### Corrective checkpoint: clean saved metadata is not an unsaved draft
+
+Actual recovery-hook/Writer/IndexedDB lifecycle tests reproduced two false prompts:
+ordinary checked Save and completed SDK Delete/Save both reported a clean Writer,
+but retained history/context metadata became an “Unsaved drafts” head on reopen.
+The tests use real production hook, lease, Writer and storage implementations;
+only IndexedDB and the browser lock API use deterministic browser stand-ins.
+Pending receipt, quarantined and genuinely unsaved branches remain recovery.
+
+The same checkpoint now optionally holds one CURRENT versioned source/snapshot
+binding established only during the live checked history-ACK/fresh-preview
+transfer. Its bounded canonical hashes cover the full strict typed model (all
+style definitions and interpretation metadata), exact acknowledged SDK snapshot,
+complete checked receipt and complete journal/account/artifact/draft scope. No
+snapshot or history is duplicated. Encoder/decoder recompute the binding; discovery
+additionally compares the actual freshly authorized Preview model identity AND
+source byte SHA. Model identity is not inferred from a claimed SHA or style
+ordinal. JSON semantics reuse the existing bounded canonical encoder, including
+optional-key omission and -0 normalization.
+
+This is accidental-corruption/continuity evidence, NOT authentication or an
+access/history grant. Locally self-consistent forged data can recompute a SHA;
+it cannot become a checked host receipt or authorize a historical asset. Binding
+metadata is never accepted from file custom metadata. Missing/legacy/unknown or
+unprovable continuity remains conservatively recoverable, not automatically
+trusted clean. A changed current Preview model or raw-byte identity likewise
+retains recovery. Source adoption protects the new binding atomically with its
+current checkpoint and restores the former binding on transfer-storage failure.
+
+Existing heads receive an optional `needsRecovery` hint in the SAME atomic write
+as their existing workbook bytes. Pending, quarantine, dirty and unrepresentable
+states are recovery first. A clean hint is not deletion authority. Discovery only
+inspects explicitly known-clean candidates automatically; historical/unknown
+heads preserve their existing explicit-recovery prompt. A known-clean candidate
+is strictly reread/reclassified against current Preview after acquiring its EXACT
+branch lease before any atomic record/head removal. Active/unavailable leases
+are never released by this discovery owner: read-only reclassification can allow
+an independent editor while leaving live metadata intact. Corrupt, stale, pending
+or newly dirty records remain visible. Cleanup release failure uses the existing
+retirement fence; no second store, journal or history stack was added.
+
+Clean metadata is retained while the live editor lease can own Undo/Redo or a
+same-lease Writer handoff. `Writer.close()` does not blindly delete it. Once an
+exclusive cleanup lease proves that editor is gone, known-clean metadata can be
+retired because ordinary reload does not restore native SDK history. Pending
+ancestry, current unsaved desired state and quarantine are never collected as
+clean. The already-loaded authorized Preview is passed to recovery without
+restarting the live session on each own-ACK update.
+
+Coverage includes Save/close/reopen; completed actual SDK Delete/Save with a
+second active editor; real pending/quarantine/unsaved records even when their
+index hint is falsely clean; changed record between index and cleanup lease;
+corrupt JSON, same-ordinal model/ACK style drift, binding/identity version drift,
+self-consistent changed model versus actual Preview, changed current raw/model
+identity, legacy heads, unavailable cleanup acquisition and failed-release fencing.
+Fixture corrections used the SDK's actual saved defaults and IndexedDB's inline
+head-key overload; assertions were not relaxed. A root-undefined helper test
+asserts the reused encoder's existing TypeError rather than inventing a wrapper.
+
+This remains source-level qualification: controls are OFF, no companion/renderer
+or runtime was activated, and no browser visual/release qualification is claimed.
+
+Validation: 11 focused contract tests and 85 focused web/SDK/recovery tests passed,
+including the unchanged cross-runtime canonical identity vector. Final web types,
+full repository typecheck, guard and diff check passed. No full daemon/web suite
+or browser visual test was run. Main is intentionally not rebased during this
+qualified source checkpoint; later upstream integration is a separate check.
+
+### Corrective checkpoint: quarantine survives editor handoff and cancelled discard
+
+A later integration review found `use-workbook-editor` classified same-source
+handoffs only by their ordinary edit plan. Quarantine deliberately restores its
+pre-command desired snapshot, so that plan can be empty while its sticky flag
+remains essential. A second `ready()` or cancelled discard could drop that
+checkpoint, and the journal's already-consumed replay would not restore the fence.
+
+The hook now retains explicit quarantined checkpoints after its existing exact
+scope/journal/source guards and before considering ordinary clean-plan retirement.
+It does not revive every clean history record or use the fresh-model garbage
+collection classifier as handoff authority. Two real hook regressions start from
+an actual SDK Remove/mismatch-generated, encoded/decoded quarantine and drive
+ready/reset or the real prepare/cancel discard message protocol. Both failed on
+the prior code with the flag missing. They now retain dirty/error, source, protected
+pre-command desired and contexts; subsequent ordinary snapshot/Save does not call
+the remote transport.
+
+The source-SHA mismatch guard remains strict. The actual production caller,
+`WorkbookSurface`, refuses external source-stamp adoption while the editor reports
+dirty (including quarantine), preserving the loaded source and showing its refresh
+warning before a fresh-source `ready()` path could run. This fix does not force an
+old protected checkpoint into another source, artifact or account. Deliberate
+recovery/reset still needs its explicit validated editor reset; cancelling discard
+is not such permission.
+Validation: both new regressions were RED before the handoff guard. All 29 focused
+handoff/discard/recovery lifecycle cases, web typecheck, full repository typecheck,
+guard and diff check passed after the fix. Controls and runtime remain unchanged.

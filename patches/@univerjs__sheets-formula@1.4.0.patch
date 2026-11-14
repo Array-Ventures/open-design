@@ -1,0 +1,48 @@
+diff --git a/lib/cjs/index.js b/lib/cjs/index.js
+index e64a1cd48cbcca5d79c60f90fa8dc807703f0eef..210cb5f6345a375b5e4dcb63d1dc04c19e20edc9 100644
+--- a/lib/cjs/index.js
++++ b/lib/cjs/index.js
+@@ -778,9 +778,9 @@ function refRangeFormula(oldFormulaData, newFormulaData, formulaReferenceMovePar
+ 	const targetUnitId = formulaReferenceMoveParam.targetUnitId ?? fromUnitId;
+ 	const targetSheetId = formulaReferenceMoveParam.targetSheetId ?? fromSheetId;
+ 	const isCrossSheet = fromUnitId !== targetUnitId || fromSheetId !== targetSheetId;
+-	(/* @__PURE__ */ new Set([...Object.keys(oldFormulaData), ...Object.keys(newFormulaData)])).forEach((unitId) => {
++	(new Set([...Object.keys(oldFormulaData), ...Object.keys(newFormulaData)])).forEach((unitId) => {
+ 		if (checkFormulaDataNull(oldFormulaData, unitId, fromSheetId)) return;
+-		(/* @__PURE__ */ new Set([...Object.keys(oldFormulaData[unitId] || {}), ...Object.keys(newFormulaData[unitId] || {})])).forEach((currentSheetId) => {
++		(new Set([...Object.keys(oldFormulaData[unitId] || {}), ...Object.keys(newFormulaData[unitId] || {})])).forEach((currentSheetId) => {
+ 			var _oldFormulaData$unitI, _newFormulaData$unitI;
+ 			const currentOldFormulaData = (_oldFormulaData$unitI = oldFormulaData[unitId]) === null || _oldFormulaData$unitI === void 0 ? void 0 : _oldFormulaData$unitI[currentSheetId];
+ 			const currentNewFormulaData = (_newFormulaData$unitI = newFormulaData[unitId]) === null || _newFormulaData$unitI === void 0 ? void 0 : _newFormulaData$unitI[currentSheetId];
+diff --git a/lib/es/index.js b/lib/es/index.js
+index 3f1be49f62b3a61111da8bb04a56c6468dd58ff5..a4b53176d6b2d354a87ba66ae80b371d7675c857 100644
+--- a/lib/es/index.js
++++ b/lib/es/index.js
+@@ -777,9 +777,9 @@ function refRangeFormula(oldFormulaData, newFormulaData, formulaReferenceMovePar
+ 	const targetUnitId = formulaReferenceMoveParam.targetUnitId ?? fromUnitId;
+ 	const targetSheetId = formulaReferenceMoveParam.targetSheetId ?? fromSheetId;
+ 	const isCrossSheet = fromUnitId !== targetUnitId || fromSheetId !== targetSheetId;
+-	(/* @__PURE__ */ new Set([...Object.keys(oldFormulaData), ...Object.keys(newFormulaData)])).forEach((unitId) => {
++	(new Set([...Object.keys(oldFormulaData), ...Object.keys(newFormulaData)])).forEach((unitId) => {
+ 		if (checkFormulaDataNull(oldFormulaData, unitId, fromSheetId)) return;
+-		(/* @__PURE__ */ new Set([...Object.keys(oldFormulaData[unitId] || {}), ...Object.keys(newFormulaData[unitId] || {})])).forEach((currentSheetId) => {
++		(new Set([...Object.keys(oldFormulaData[unitId] || {}), ...Object.keys(newFormulaData[unitId] || {})])).forEach((currentSheetId) => {
+ 			var _oldFormulaData$unitI, _newFormulaData$unitI;
+ 			const currentOldFormulaData = (_oldFormulaData$unitI = oldFormulaData[unitId]) === null || _oldFormulaData$unitI === void 0 ? void 0 : _oldFormulaData$unitI[currentSheetId];
+ 			const currentNewFormulaData = (_newFormulaData$unitI = newFormulaData[unitId]) === null || _newFormulaData$unitI === void 0 ? void 0 : _newFormulaData$unitI[currentSheetId];
+diff --git a/lib/index.js b/lib/index.js
+index 3f1be49f62b3a61111da8bb04a56c6468dd58ff5..a4b53176d6b2d354a87ba66ae80b371d7675c857 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -777,9 +777,9 @@ function refRangeFormula(oldFormulaData, newFormulaData, formulaReferenceMovePar
+ 	const targetUnitId = formulaReferenceMoveParam.targetUnitId ?? fromUnitId;
+ 	const targetSheetId = formulaReferenceMoveParam.targetSheetId ?? fromSheetId;
+ 	const isCrossSheet = fromUnitId !== targetUnitId || fromSheetId !== targetSheetId;
+-	(/* @__PURE__ */ new Set([...Object.keys(oldFormulaData), ...Object.keys(newFormulaData)])).forEach((unitId) => {
++	(new Set([...Object.keys(oldFormulaData), ...Object.keys(newFormulaData)])).forEach((unitId) => {
+ 		if (checkFormulaDataNull(oldFormulaData, unitId, fromSheetId)) return;
+-		(/* @__PURE__ */ new Set([...Object.keys(oldFormulaData[unitId] || {}), ...Object.keys(newFormulaData[unitId] || {})])).forEach((currentSheetId) => {
++		(new Set([...Object.keys(oldFormulaData[unitId] || {}), ...Object.keys(newFormulaData[unitId] || {})])).forEach((currentSheetId) => {
+ 			var _oldFormulaData$unitI, _newFormulaData$unitI;
+ 			const currentOldFormulaData = (_oldFormulaData$unitI = oldFormulaData[unitId]) === null || _oldFormulaData$unitI === void 0 ? void 0 : _oldFormulaData$unitI[currentSheetId];
+ 			const currentNewFormulaData = (_newFormulaData$unitI = newFormulaData[unitId]) === null || _newFormulaData$unitI === void 0 ? void 0 : _newFormulaData$unitI[currentSheetId];
