@@ -1,3 +1,4 @@
+import { legacyWorkbookWrite } from '../fixtures/workbook-write-result';
 import { expect, it, vi } from 'vitest';
 import { CellValueType, type IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
@@ -12,7 +13,7 @@ function fixture() {
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
 it('keeps a clean workbook clean and clears dirty state after an acknowledged write', async () => {
-  const { source, initial, snapshot } = fixture(), changed = vi.fn(), write = vi.fn(async () => ({ ...source, sourceSha256: 'b'.repeat(64) }));
+  const { source, initial, snapshot } = fixture(), changed = vi.fn(), write = vi.fn(async () => legacyWorkbookWrite({ ...source, sourceSha256: 'b'.repeat(64) }));
   const writer = new WorkbookWriter(source, initial, write, changed);
   expect(writer.state().dirty).toBe(false); writer.update(snapshot(2)); expect(writer.state().dirty).toBe(true);
   await writer.flush(); expect(writer.state()).toEqual({ dirty: false, saving: false, error: null }); expect(write).toHaveBeenCalledTimes(1);
@@ -20,19 +21,19 @@ it('keeps a clean workbook clean and clears dirty state after an acknowledged wr
 it('reuses the frozen intent after uncertainty while retaining newer edits for a second save', async () => {
   const { source, initial, snapshot } = fixture(), intents: WorkbookWriteIntent[] = [];
   let calls = 0;
-  const writer = new WorkbookWriter(source, initial, async intent => { intents.push(intent); if (++calls === 1) throw new Error('Response lost'); return { ...source, sourceSha256: calls === 2 ? 'b'.repeat(64) : 'c'.repeat(64) }; }, () => {});
+  const writer = new WorkbookWriter(source, initial, async intent => { intents.push(intent); if (++calls === 1) throw new Error('Response lost'); return legacyWorkbookWrite({ ...source, sourceSha256: calls === 2 ? 'b'.repeat(64) : 'c'.repeat(64) }); }, () => {});
   writer.update(snapshot(2)); await writer.flush(); writer.update(snapshot(3)); await writer.flush();
   expect(intents).toHaveLength(3); expect(intents[0]).toBe(intents[1]); expect(intents[2]!.id).not.toBe(intents[0]!.id);
   expect(intents[1]!.plan.edits[0]!.cell.value).toBe(2); expect(intents[2]!.plan.edits[0]!.cell.value).toBe(3); expect(intents[2]!.plan.sourceSha256).toBe('b'.repeat(64));
   expect(writer.state().dirty).toBe(false);
 });
 it('serializes a concurrent flush and does not clear edits made while saving', async () => {
-  const { source, initial, snapshot } = fixture(), first = deferred<typeof source>(), second = deferred<typeof source>();
+  const { source, initial, snapshot } = fixture(), first = deferred<ReturnType<typeof legacyWorkbookWrite>>(), second = deferred<ReturnType<typeof legacyWorkbookWrite>>();
   const write = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
   const writer = new WorkbookWriter(source, initial, write, () => {});
   writer.update(snapshot(2)); const running = writer.flush(); expect(writer.flush()).toBe(running); await Promise.resolve();
-  writer.update(snapshot(3)); first.resolve({ ...source, sourceSha256: 'b'.repeat(64) }); await Promise.resolve(); await Promise.resolve();
-  expect(writer.state()).toMatchObject({ dirty: true, saving: true }); second.resolve({ ...source, sourceSha256: 'c'.repeat(64) }); await running;
+  writer.update(snapshot(3)); first.resolve(legacyWorkbookWrite({ ...source, sourceSha256: 'b'.repeat(64) })); await Promise.resolve(); await Promise.resolve();
+  expect(writer.state()).toMatchObject({ dirty: true, saving: true }); second.resolve(legacyWorkbookWrite({ ...source, sourceSha256: 'c'.repeat(64) })); await running;
   expect(write).toHaveBeenCalledTimes(2); expect(writer.state().dirty).toBe(false);
 });
 it('blocks unsupported changes without losing them and permits undo to the original', async () => {
@@ -42,13 +43,13 @@ it('blocks unsupported changes without losing them and permits undo to the origi
   writer.update(initial); expect(writer.state()).toEqual({ dirty: false, saving: false, error: null });
 });
 it('ignores late acknowledgements and publishes nothing after disposal', async () => {
-  const { source, initial, snapshot } = fixture(), response = deferred<typeof source>(), changed = vi.fn(), accepted = vi.fn();
+  const { source, initial, snapshot } = fixture(), response = deferred<ReturnType<typeof legacyWorkbookWrite>>(), changed = vi.fn(), accepted = vi.fn();
   const writer = new WorkbookWriter(source, initial, () => response.promise, changed, accepted);
-  writer.update(snapshot(2)); const running = writer.flush(); await Promise.resolve(); writer.dispose(); changed.mockClear(); response.resolve(source); await running;
+  writer.update(snapshot(2)); const running = writer.flush(); await Promise.resolve(); writer.dispose(); changed.mockClear(); response.resolve(legacyWorkbookWrite(source)); await running;
   expect(changed).not.toHaveBeenCalled(); expect(accepted).not.toHaveBeenCalled();
 });
 it('treats a resize-only workbook as dirty and sends its dimension intent', async () => {
-  const { source, initial } = fixture(), write = vi.fn(async (_intent: WorkbookWriteIntent) => ({ ...source, sourceSha256: 'b'.repeat(64) }));
+  const { source, initial } = fixture(), write = vi.fn(async (_intent: WorkbookWriteIntent) => legacyWorkbookWrite({ ...source, sourceSha256: 'b'.repeat(64) }));
   const writer = new WorkbookWriter(source, initial, write, () => {}), resized = structuredClone(initial);
   resized.sheets.s!.columnData![0] = { w: 180 }; writer.update(resized);
   expect(writer.state().dirty).toBe(true); await writer.flush();
@@ -59,7 +60,7 @@ it('persists a frozen save identity before calling the remote writer and blocks 
   const { source, initial, snapshot } = fixture(), saved: WorkbookCheckpoint[] = [], order: string[] = [];
   const journal = { save: vi.fn(async (value: WorkbookCheckpoint | null) => { if (value) saved.push(structuredClone(value)); order.push('checkpoint'); }) };
   const writer = new WorkbookWriter(source, initial, async intent => {
-    expect(saved.at(-1)?.pending?.intent).toEqual(intent); order.push('write'); return { ...source, sourceSha256: 'b'.repeat(64) };
+    expect(saved.at(-1)?.pending?.intent).toEqual(intent); order.push('write'); return legacyWorkbookWrite({ ...source, sourceSha256: 'b'.repeat(64) });
   }, () => {}, undefined, journal);
   writer.update(snapshot(2)); await writer.flush(); expect(order.indexOf('write')).toBeGreaterThan(order.indexOf('checkpoint'));
   expect(journal.save).toHaveBeenLastCalledWith(null);
@@ -74,7 +75,7 @@ it('recovers the exact pending intent and preserves edits made during the uncert
   // flush reuses the pending intent and guarantees the last local update was journaled.
   await first.flush(); const recovered = structuredClone(protectedState.checkpoint!), pending = recovered.pending!.intent;
   first.dispose(); const intents: WorkbookWriteIntent[] = [];
-  const next = new WorkbookWriter({ ...source, sourceSha256: 'b'.repeat(64) }, initial, async intent => { intents.push(intent); return { ...source, sourceSha256: intents.length === 1 ? 'b'.repeat(64) : 'c'.repeat(64) }; }, () => {}, undefined, { ...journal, restored: recovered });
+  const next = new WorkbookWriter({ ...source, sourceSha256: 'b'.repeat(64) }, initial, async intent => { intents.push(intent); return legacyWorkbookWrite({ ...source, sourceSha256: intents.length === 1 ? 'b'.repeat(64) : 'c'.repeat(64) }); }, () => {}, undefined, { ...journal, restored: recovered });
   expect(next.recoveredSnapshot()).toEqual(snapshot(3)); await next.flush();
   expect(intents[0]).toEqual(pending); expect(intents[0]!.plan.edits[0]!.cell.value).toBe(2); expect(intents[1]!.plan.edits[0]!.cell.value).toBe(3);
   expect(intents[1]!.id).not.toBe(pending.id); expect(next.state().dirty).toBe(false); expect(protectedState.checkpoint).toBeNull();
@@ -89,7 +90,7 @@ it('does not release ownership while a late transport checkpoint can still write
   const { source, initial, snapshot } = fixture(), transport = deferred<void>(), started = deferred<void>(), released = vi.fn();
   const journal = { save: vi.fn(async (_checkpoint: WorkbookCheckpoint | null) => {}) };
   const writer = new WorkbookWriter(source, initial, async (_intent, checkpoint) => {
-    started.resolve(); await transport.promise; await checkpoint(); return source;
+    started.resolve(); await transport.promise; await checkpoint(); return legacyWorkbookWrite(source);
   }, () => {}, undefined, journal);
   writer.update(snapshot(2)); void writer.flush(); await started.promise;
   const closing = writer.close().then(released);
@@ -116,7 +117,7 @@ it('keeps edits and permits a fresh explicit retry after a failed preparation is
   const writer = new WorkbookWriter(source, initial, async intent => {
     intents.push(intent.id);
     if (intents.length === 1) throw new WorkbookSaveUnadmittedError(intent.id, crypto.randomUUID(), 'failed', 'The calculation failed.');
-    return { ...source, sourceSha256: 'b'.repeat(64) };
+    return legacyWorkbookWrite({ ...source, sourceSha256: 'b'.repeat(64) });
   }, () => {}, undefined, { save: async checkpoint => { stored.push(checkpoint); } });
   writer.update(snapshot(2)); await writer.flush();
   expect(writer.checkpoint().pending).toBeNull(); expect(stored.at(-1)?.pending).toBeNull(); expect(writer.state().dirty).toBe(true);
@@ -134,7 +135,7 @@ it('retains the fence when a rejection identifies a different candidate', async 
 
 it('journals formatting-only intent and retries its exact identity after a lost response', async () => {
   const { source, initial } = fixture(), intents: WorkbookWriteIntent[] = [], checkpoints: (WorkbookCheckpoint | null)[] = [];
-  const write = vi.fn(async (intent: WorkbookWriteIntent) => { intents.push(intent); if (intents.length === 1) throw new Error('Response lost'); return { ...source, sourceSha256: 'b'.repeat(64) }; });
+  const write = vi.fn(async (intent: WorkbookWriteIntent) => { intents.push(intent); if (intents.length === 1) throw new Error('Response lost'); return legacyWorkbookWrite({ ...source, sourceSha256: 'b'.repeat(64) }); });
   const writer = new WorkbookWriter(source, initial, write, () => {}, undefined, { save: async checkpoint => { checkpoints.push(checkpoint); } });
   const next = structuredClone(initial); next.sheets.s!.cellData![0]![0]!.s = { bl: 1 }; writer.update(next);
   expect(writer.state().dirty).toBe(true); await writer.flush();
@@ -145,11 +146,11 @@ it('journals formatting-only intent and retries its exact identity after a lost 
 });
 
 it('keeps exact rich runs in a frozen pending intent and checkpoint, and ignores its late acknowledgement after disposal', async () => {
- const {source,initial}=fixture(),desired=structuredClone(initial),response=deferred<typeof source>(),accepted=vi.fn(),changed=vi.fn();
+ const {source,initial}=fixture(),desired=structuredClone(initial),response=deferred<ReturnType<typeof legacyWorkbookWrite>>(),accepted=vi.fn(),changed=vi.fn();
  desired.sheets.s!.cellData![0]![0]!.p={id:'rich',documentStyle:{},body:{dataStream:'rich 😀\r\n',paragraphs:[{startIndex:7,paragraphId:'p'}],textRuns:[{st:0,ed:5,ts:{bl:1}},{st:5,ed:7,ts:{it:1}}]}};
  const writer=new WorkbookWriter(source,initial,()=>response.promise,changed,accepted);writer.update(desired);const running=writer.flush();await Promise.resolve();
  const checkpoint=writer.checkpoint();expect(checkpoint.desired).toEqual(desired);expect(checkpoint.pending?.intent.plan.edits[0]!.cell).toMatchObject({kind:'string',value:'rich 😀',runs:[{text:'rich ',font:{bold:true}},{text:'😀',font:{italic:true}}]});
- writer.dispose();changed.mockClear();response.resolve({...source,sourceSha256:'b'.repeat(64)});await running;expect(changed).not.toHaveBeenCalled();expect(accepted).not.toHaveBeenCalled();expect(checkpoint.desired).toEqual(desired);
+ writer.dispose();changed.mockClear();response.resolve(legacyWorkbookWrite({...source,sourceSha256:'b'.repeat(64)}));await running;expect(changed).not.toHaveBeenCalled();expect(accepted).not.toHaveBeenCalled();expect(checkpoint.desired).toEqual(desired);
 });
 
 
@@ -160,7 +161,7 @@ it('continues one explicit save after journaling a matching cancelled preparatio
     intents.push(structuredClone(intent));
     if (intents.length === 1) throw new WorkbookSavePreparationCancelledError(intent.id, intent.preparationId, null);
     expect(checkpoints.some(checkpoint => checkpoint?.desired.sheets.s?.cellData?.[0]?.[0]?.v === 2 && !checkpoint.pending)).toBe(true);
-    return { ...source, sourceSha256: 'b'.repeat(64) };
+    return legacyWorkbookWrite({ ...source, sourceSha256: 'b'.repeat(64) });
   }, () => {}, undefined, { save: async checkpoint => { checkpoints.push(structuredClone(checkpoint)); } });
   writer.update(snapshot(2)); await writer.flush();
   expect(intents).toHaveLength(2); expect(intents[1]!.id).not.toBe(intents[0]!.id);
@@ -220,7 +221,7 @@ it('includes edits made while clearing a proven cancelled preparation in the rep
   const { source, initial, snapshot } = fixture(), clearing = deferred<void>(), release = deferred<void>(); let proven = false;
   const write = vi.fn(async (intent: WorkbookWriteIntent) => {
     if (!proven) { proven = true; throw new WorkbookSavePreparationCancelledError(intent.id, intent.preparationId, null); }
-    expect(intent.plan.edits[0]!.cell.value).toBe(3); return { ...source, sourceSha256: 'b'.repeat(64) };
+    expect(intent.plan.edits[0]!.cell.value).toBe(3); return legacyWorkbookWrite({ ...source, sourceSha256: 'b'.repeat(64) });
   });
   const writer = new WorkbookWriter(source, initial, write, () => {}, undefined, { save: async checkpoint => {
     if (proven && checkpoint && !checkpoint.pending) { clearing.resolve(); await release.promise; }
@@ -228,4 +229,44 @@ it('includes edits made while clearing a proven cancelled preparation in the rep
   writer.update(snapshot(2)); const saving = writer.flush(); await clearing.promise;
   writer.update(snapshot(3)); release.resolve(); await saving;
   expect(write).toHaveBeenCalledTimes(2); expect(writer.state()).toEqual({ dirty: false, saving: false, error: null });
+});
+
+
+it('protects a checked history ACK before baseline retirement and retries the same intent after transfer storage failure', async () => {
+  const { source, initial, snapshot } = fixture(), saved = { ...source, sourceSha256: 'b'.repeat(64) };
+  const records: (WorkbookCheckpoint | null)[] = [], accepted = vi.fn(); let failTransfer = true;
+  const write = vi.fn(async (intent: WorkbookWriteIntent) => {
+    intent.renderId ??= crypto.randomUUID();
+    return { preview: saved, acknowledgement: { kind: 'history' as const, provenance: {
+      operationId: intent.id, projectId: crypto.randomUUID(), fileName: 'book.xlsx', renderId: intent.renderId,
+      sourceSha256: source.sourceSha256, sourceVersionId: 'before', targetSha256: saved.sourceSha256, versionId: 'after',
+    } } };
+  });
+  // Use the identical immutable receipt on retry, not a replacement operation.
+  let receipt: Awaited<ReturnType<typeof write>> | undefined;
+  const writer = new WorkbookWriter(source, initial, async (intent) => receipt ??= await write(intent), () => {}, accepted, { save: async checkpoint => {
+    if (failTransfer && checkpoint?.sourceAcknowledgement) throw Error('Device storage failed');
+    records.push(structuredClone(checkpoint));
+  } });
+  writer.update(snapshot(2)); await writer.flush();
+  const protectedAck = [...records].reverse().find(record => record?.pending?.acknowledgement);
+  expect(protectedAck?.source.sourceSha256).toBe(source.sourceSha256);
+  expect(protectedAck?.pending?.acknowledgement).toMatchObject({ kind: 'history', provenance: { sourceVersionId: 'before', versionId: 'after' } });
+  expect(writer.checkpoint().pending?.intent.id).toBe(protectedAck?.pending?.intent.id);
+  expect(writer.checkpoint().source.sourceSha256).toBe(source.sourceSha256);
+  expect(writer.state()).toMatchObject({ dirty: true, error: expect.stringContaining('protected') }); expect(accepted).not.toHaveBeenCalled();
+  failTransfer = false; await writer.flush();
+  expect(write).toHaveBeenCalledOnce(); expect(accepted).toHaveBeenCalledOnce();
+  expect(writer.checkpoint()).toMatchObject({ source: saved, pending: null, sourceAcknowledgement: receipt!.acknowledgement });
+  expect(records.at(-1)?.sourceAcknowledgement).toEqual(receipt!.acknowledgement);
+});
+
+it('retains the original pending operation when protecting its prospective ACK fails', async () => {
+  const { source, initial, snapshot } = fixture(), accepted = vi.fn(); let received = false;
+  const writer = new WorkbookWriter(source, initial, async () => { received = true; return legacyWorkbookWrite({ ...source, sourceSha256: 'b'.repeat(64) }); }, () => {}, accepted, { save: async checkpoint => {
+    if (received && checkpoint?.pending?.acknowledgement) throw Error('Device storage failed');
+  } });
+  writer.update(snapshot(2)); await writer.flush();
+  expect(writer.checkpoint()).toMatchObject({ source, pending: { snapshot: snapshot(2), acknowledgement: { kind: 'unavailable', reason: 'legacy-receipt' } } });
+  expect(writer.state()).toMatchObject({ dirty: true, error: expect.stringContaining('protected') }); expect(accepted).not.toHaveBeenCalled();
 });

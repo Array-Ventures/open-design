@@ -435,3 +435,35 @@ it('highlights the exact saved range without changing editor state or native sel
     expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
   } finally { cleanup(); vi.unstubAllGlobals(); }
 });
+
+it('grows and shrinks the compact composer within five rows without losing its draft or focus', async () => {
+  render(<Harness />);
+  const input = await selectAndOpen() as HTMLTextAreaElement;
+  input.style.lineHeight = '20px';
+  // jsdom has no layout. Supply measured content heights to exercise the real
+  // component's native input sizing path; actual Chromium layout is separate.
+  Object.defineProperty(input, 'scrollHeight', { configurable: true, get: () => input.value ? input.value.split('\n').length * 20 : 20 });
+  expect(input).toHaveFocus(); expect(input).toHaveAttribute('rows', '1');
+  const draft = 'One\nTwo\nThree';
+  fireEvent.input(input, { target: { value: draft } });
+  expect(input).toHaveValue(draft); expect(input.style.height).toBe('60px'); expect(input.style.overflowY).toBe('hidden');
+  const long = 'One\nTwo\nThree\nFour\nFive\nSix\nSeven';
+  fireEvent.input(input, { target: { value: long } });
+  expect(input).toHaveValue(long); expect(input.style.height).toBe('100px'); expect(input.style.maxHeight).toBe('100px'); expect(input.style.overflowY).toBe('auto');
+  fireEvent.input(input, { target: { value: 'Short' } });
+  expect(input).toHaveValue('Short'); expect(input.style.height).toBe('20px'); expect(input.style.overflowY).toBe('hidden');
+  expect(input).toHaveFocus(); expect(api.save).not.toHaveBeenCalled(); expect(api.documentSave).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
+});
+
+it('keeps the comment placeholder separate from the draft and submission guard', async () => {
+  render(<Harness />);
+  const input = await selectAndOpen();
+  expect(screen.getByPlaceholderText('Add a comment')).toBe(input);
+  expect(input).toHaveValue(''); expect(screen.getByRole('button', { name: 'Save comment' })).toBeDisabled();
+  fireEvent.input(input, { target: { value: 'A real note' } });
+  expect(input).toHaveValue('A real note'); expect(screen.getByRole('button', { name: 'Save comment' })).toBeEnabled();
+  fireEvent.input(input, { target: { value: '' } });
+  expect(input).toHaveValue(''); expect(input).toHaveAttribute('placeholder', 'Add a comment');
+  expect(screen.getByRole('button', { name: 'Save comment' })).toBeDisabled();
+  expect(api.save).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
+});

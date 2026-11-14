@@ -214,6 +214,9 @@ it.each([false, true])('calculates source-qualified row and column structural ed
   // literal edit has warmed the worker's formula dependency graph.
   await settled(() => { commands.syncExecuteCommand(sheets.InsertRowByRangeCommand.id, { unitId: book!.getId(), subUnitId: 's', range: { startRow: 1, endRow: 1, startColumn: 0, endColumn: 5 }, direction: core.Direction.UP }); });
   await vi.waitFor(() => { expect(book!.save().sheets.s!.cellData?.[2]?.[2]?.v).toBe(10); expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.v).toBe(8); });
+  expect(book!.getActiveSheet().getRange('C3').getFormulas()).toEqual([['=SUM(B3:B4)+3']]);
+  expect(book!.save().sheets.s!.cellData?.[2]?.[2]?.f).toBe('=SUM(B3:B4)+3');
+  expect(book!.save().sheets.t!.cellData?.[0]?.[0]?.f).toBe('=Inputs!B3+1');
   await settled(() => api.undo());
   await settled(() => {
     commands.syncExecuteCommand(sheets.InsertRowByRangeCommand.id, { unitId: book!.getId(), subUnitId: 's', range: { startRow: 1, endRow: 1, startColumn: 0, endColumn: 5 }, direction: core.Direction.UP });

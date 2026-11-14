@@ -20,7 +20,7 @@ function fixture(array = false, scalarFormula = '=A1+3') {
   univer.registerPlugin(engine.UniverFormulaEnginePlugin, { notExecuteFormula: true }); univer.registerPlugin(sheets.UniverSheetsPlugin); univer.registerPlugin(formula.UniverSheetsFormulaPlugin, { initialFormulaComputing: formula.CalculationMode.NO_CALCULATION });
   const api = FUniver.newAPI(univer); api.createWorkbook(structuredClone(initial));
   const functions = univer.__getInjector().get(engine.IFunctionService), runtime = { sequenceNodesBuilder: (value: string) => api.getFormula().sequenceNodesBuilder(value), hasExecutor: (name: string) => functions.hasExecutor(name), deserializeRangeWithSheet: engine.deserializeRangeWithSheet, sequenceNodeType: engine.sequenceNodeType };
-  return { model, original, initial, display: new WorkbookFormulaDisplay(model, original, initial, runtime) };
+  return { api, univer, model, original, initial, display: new WorkbookFormulaDisplay(model, original, initial, runtime) };
 }
 function tag(current: IWorkbookData, generation = 1) { return { version: 1, unitId: current.id, inputSha256: workbookCalculationInputSha256(current), generation, valid: true }; }
 function graph(current: IWorkbookData) { return Object.entries(current.sheets.s!.cellData![0]!).flatMap(([column, cell]) => cell?.f ? [{ treeId: Number(column), unitId: current.id, subUnitId: 's', row: 0, column: Number(column), formula: cell.f, parents: Number(column) === 2 ? [3] : [] }] : []); }
@@ -120,4 +120,53 @@ it('settles only a fresh matching no-result graph without promoting stored cache
   expect(f.display.completeWithoutResult({ workbookCalculation: first })).toBe(false);
   expect(f.display.completeWithoutResult({ workbookCalculation: second })).toBe(true);
   expect(f.display.status('s', 0, 1)?.result).toBe('stored');
+});
+
+
+it('rebases only saved scalar source caches while retaining newer inputs, worker epoch and calculated provenance', () => {
+  const f = fixture(), acknowledged = structuredClone(f.initial), current = structuredClone(f.initial);
+  acknowledged.sheets.s!.cellData![0]![0]!.v = 7;
+  current.sheets.s!.cellData![0]![0]!.v = 8;
+  f.display.expectInputEpoch(3); f.display.update(current, true);
+  const model = structuredClone(f.model); model.sheets[0]!.cells[0]!.value = 7; model.sheets[0]!.cells[1]!.value = 10;
+  const saved = gridWorkbook(model, 'display', 'Display').data as IWorkbookData;
+  // The ACK owns a blank tail not materialized in the saved XML reader model.
+  acknowledged.sheets.s!.rowCount = current.sheets.s!.rowCount = 101;
+  f.display.rebaseSource(model, saved, acknowledged);
+  expect(current.sheets.s!.cellData![0]![0]!.v).toBe(8);
+  const stale = { ...tag(current, 4), inputEpoch: 2 };
+  const rejected = { workbookCalculation: stale, unitData: { display: { s: { 0: { 1: { v: 11, t: 2 } } } } } };
+  f.display.graphResult({ workbookCalculation: stale, result: graph(current) }); expect(f.display.scalarResult(rejected)).toBe(false);
+  const proof = { ...tag(current, 4), inputEpoch: 3 };
+  f.display.graphResult({ workbookCalculation: proof, result: graph(current) });
+  expect(f.display.scalarResult({ workbookCalculation: proof, unitData: { display: { s: { 0: { 1: { v: 11, t: 2 } } } } } })).toBe(true);
+  expect(f.display.status('s', 0, 1)?.result).toBe('calculated');
+  f.display.pause('Stored results');
+  expect(f.display.display('s', 0, 1, { v: 11 }, current.sheets.s!.cellData![0]![1]).v).toBe(10);
+  expect(f.original.sheets.s!.cellData![0]![1]!.v).toBe(999);
+});
+
+it('refuses a source rebase with different authored inputs or family without changing old cache authority', () => {
+  const f = fixture(), changed = structuredClone(f.original); changed.sheets.s!.cellData![0]![0]!.v = 777;
+  expect(() => f.display.rebaseSource(f.model, changed, f.initial)).toThrow('acknowledged');
+  const wrongUnit = structuredClone(f.original); wrongUnit.id = 'other';
+  expect(() => f.display.rebaseSource(f.model, wrongUnit, f.initial)).toThrow();
+  const array = fixture(true);
+  expect(() => array.display.rebaseSource(array.model, array.original, array.initial)).toThrow('scalar');
+  f.display.pause('Stored results'); expect(f.display.display('s', 0, 1, { v: 1 }, f.initial.sheets.s!.cellData![0]![1]).v).toBe(999);
+});
+
+
+it('keeps actual pinned SDK Undo/Redo history and unit identity across a scalar source-owner rebase', async () => {
+  const f = fixture(), book = f.api.getActiveWorkbook(), units = f.univer.__getInjector().get(core.IUniverInstanceService);
+  units.focusUnit(book.getId());
+  const unit = units.getUnit(book.getId()); expect(unit).toBeDefined();
+  book.getActiveSheet().getRange('A1').setValue(7);
+  const acknowledged = book.save(); f.display.update(acknowledged, false);
+  const model = structuredClone(f.model); model.sheets[0]!.cells[0]!.value = 7; model.sheets[0]!.cells[1]!.value = 10;
+  f.display.rebaseSource(model, gridWorkbook(model, book.getId(), 'Display').data as IWorkbookData, acknowledged);
+  expect(units.getUnit(book.getId())).toBe(unit);
+  await f.api.undo(); expect(book.save().sheets.s!.cellData![0]![0]!.v).toBe(2);
+  expect(units.getUnit(book.getId())).toBe(unit);
+  await f.api.redo(); expect(book.save().sheets.s!.cellData![0]![0]!.v).toBe(7);
 });

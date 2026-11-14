@@ -1,0 +1,44 @@
+import { assertWorkbookStructureIdentity } from './grid-structure-identity';
+import { assertWorkbookScalarSnapshot } from './grid-scalar-admission';
+import type { IWorkbookData } from '@univerjs/core';
+import { workbookSourceSheetProjectionSchema, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import { canonicalCommentJson, canonicalWorkbookSheetBaseline, workbookSheetBaseline } from '@open-design/contracts/runtime/workbook-sheet-baseline';
+import { workbookSourceDeleteContextSchema, type WorkbookSourceDeleteContext } from './sheet-delete-context';
+
+/** First source-present producer only. A marker is never a birth or restore
+ * grant. Historical/absent IDs remain unsupported until their owner is wired. */
+export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256: string, initial: IWorkbookData, current: IWorkbookData, contexts: readonly WorkbookSourceDeleteContext[]) {
+  if (initial.id !== current.id) throw Error('Workbook identity changed.');
+  const sourceIds = model.sheets.map(sheet => sheet.id), afterIds = current.sheetOrder;
+  const changed = canonicalCommentJson(sourceIds) !== canonicalCommentJson(afterIds) || model.sheets.some(sheet => current.sheets[sheet.id] && current.sheets[sheet.id]!.name !== sheet.name);
+  if (!changed) return null;
+  if (model.sourceFormat === 'csv' || !model.worksheetStructureEditable || model.calculationMetadata !== 'verified' || model.sheets.some(sheet => !sheet.arrayFormulas || sheet.arrayFormulas.length)) throw Error('Worksheet membership requires a qualified scalar source.');
+  // These metadata owners need a separately qualified producer. Never filter
+  // names/tables away to make a synthetic reduced workbook parse successfully.
+  if (model.definedNames?.length || model.tables?.length) throw Error('Worksheet membership with defined names or tables is not ready.');
+  if (canonicalCommentJson(Object.keys(initial.sheets).sort()) !== canonicalCommentJson([...sourceIds].sort()) || sourceIds.some(id => initial.sheets[id]?.id !== id) || afterIds.some(id => current.sheets[id]?.id !== id)) throw Error('Worksheet identity changed.');
+  if (canonicalCommentJson(initial.sheetOrder) !== canonicalCommentJson(sourceIds)) throw Error('The source worksheet baseline changed.');
+  if (new Set(afterIds).size !== afterIds.length || canonicalCommentJson([...afterIds].sort()) !== canonicalCommentJson(Object.keys(current.sheets).sort())) throw Error('Worksheet membership is inconsistent.');
+  if (afterIds.some(id => !sourceIds.includes(id))) throw Error('A new or restored worksheet requires its own protected owner.');
+  if (canonicalCommentJson(sourceIds.filter(id => afterIds.includes(id))) !== canonicalCommentJson(afterIds)) throw Error('Reordering source worksheets is unsupported.');
+  assertWorkbookStructureIdentity(initial); assertWorkbookStructureIdentity(current);
+  const checked = contexts.map(value => workbookSourceDeleteContextSchema.parse(value));
+  for (const id of sourceIds.filter(id => !afterIds.includes(id))) {
+    if (model.sheets.find(sheet => sheet.id === id)!.visibility === 'veryHidden') throw Error('A very hidden worksheet cannot be deleted here.');
+    const matches = checked.filter(value => value.descriptor.sheetId === id && value.sourceSha256 === sourceSha256);
+    if (matches.length !== 1) throw Error('The deleted worksheet has no unique current-source context.');
+    const context = matches[0]!;
+    if (canonicalCommentJson(context.axisOwner) !== canonicalCommentJson(initial.custom?.evebotStructureOwner) || `${context.scope.projectId}:${context.scope.fileName}` !== initial.id || canonicalCommentJson(context.acknowledgedSheet) !== canonicalCommentJson(initial.sheets[id])
+      || canonicalWorkbookSheetBaseline(context.baseline) !== canonicalWorkbookSheetBaseline(workbookSheetBaseline(model, id))) throw Error('The deleted worksheet source or ACK context changed.');
+  }
+  assertWorkbookScalarSnapshot(current);
+  const sheets = workbookSourceSheetProjectionSchema.parse(afterIds.map(id => ({ sheetId: id, name: current.sheets[id]!.name, origin: 'source' })));
+  const before = structuredClone(initial), after = structuredClone(current), projected = structuredClone(model);
+  before.sheetOrder = [...afterIds]; before.sheets = Object.fromEntries(afterIds.map(id => [id, before.sheets[id]!]));
+  projected.sheets = afterIds.map(id => { const sheet = projected.sheets.find(sheet => sheet.id === id)!; sheet.name = current.sheets[id]!.name!; before.sheets[id]!.name = sheet.name; return sheet; });
+  const active = projected.sheets.find(sheet => sheet.id === model.activeSheetId && current.sheets[sheet.id]?.hidden !== 1 && current.sheets[sheet.id]?.hidden !== 2)
+    ?? projected.sheets.find(sheet => current.sheets[sheet.id]?.hidden !== 1 && current.sheets[sheet.id]?.hidden !== 2);
+  if (!active) throw Error('Keep at least one worksheet visible.');
+  projected.activeSheetId = active.id;
+  return { model: projected, before, after, sheets };
+}
