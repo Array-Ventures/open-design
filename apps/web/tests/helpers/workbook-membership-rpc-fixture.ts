@@ -19,12 +19,17 @@ import { WorkbookSheetHistoryController } from '../../src/components/embedded/wo
 import { serializeWorkbookDraft } from '../../src/components/embedded/workbook/draft-store';
 import type { WorkbookCalculationState } from '../../src/components/embedded/workbook/calculation-state';
 
-export async function createWorkbookMembershipRpcFixture(formulas = true, sourceRows = 100, importedCache = 38) {
+export async function createWorkbookMembershipRpcFixture(formulas = true, sourceRows = 100, importedCache = 38, preserved = false) {
   const scope = { viewerId: 'rpc-person', projectId: 'e15f57b8-c463-4ff6-a469-ddc985e034b1', fileName: 'Membership.xlsx', draftId: crypto.randomUUID() };
   const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: '1', styles: [{}], calculationMetadata: 'verified', worksheetMembershipEditable: true, worksheetStructureEditable: true,
     features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
     sheets: ['1', '2', '3'].map(id => ({ id, name: `Sheet ${id}`, visibility: 'visible', rowCount: id === '2' ? sourceRows : 100, columnCount: 26, cells: [{ row: 0, column: 0, kind: 'number', value: id === '2' ? 17 : 21 }], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0, arrayFormulas: [] })) };
   if (formulas) model.sheets[2]!.cells.push({ row: 1, column: 0, kind: 'number', value: importedCache, formula: "='Sheet 2'!A1+'Sheet 1'!A1" });
+  if (preserved) {
+    model.worksheetMembershipEditable = false; model.worksheetStructureEditable = false;
+    model.sheets[2]!.cells.push({ row: 2, column: 0, kind: 'number', value: 55, formula: '=UNKNOWN(1)' },
+      { row: 3, column: 0, kind: 'number', value: 56, formula: '=A3+1' });
+  }
   const worker = new NodeWorkbookWorker(true, false, false, true);
   let failed = false;
   const owner = ownWorkbookCalculationWorker(() => { failed = true; }, () => worker as unknown as Worker);
@@ -42,7 +47,7 @@ export async function createWorkbookMembershipRpcFixture(formulas = true, source
   const statuses: WorkbookCalculationState[] = [];
   const calculation = attachWorkbookCalculation(univer, api, model, initial, book.save(), () => book.save(), owner, value => statuses.push(value), () => !failed);
   const writer = new WorkbookWriter({ model, sourceSha256 }, book.save(), async () => { throw Error('Unexpected remote write'); }, () => {}, undefined, { scope, isCurrent: () => true, validate: checkpoint => { serializeWorkbookDraft(scope, checkpoint); }, save: async () => {} });
-  const controller = new WorkbookSheetHistoryController(univer, writer, scope, () => book.save(), () => owner.ready, calculation.runProtectedSequence);
+  const controller = new WorkbookSheetHistoryController(univer, writer, scope, () => book.save(), () => model.worksheetMembershipEditable === true && owner.ready, calculation.runProtectedSequence);
   const observer = commands.onCommandExecuted(command => { if (command.type === core.CommandType.MUTATION) writer.update(book.save()); });
   await univer.__getInjector().get(rpc.IRemoteInstanceService).whenReady();
   return { scope, model, worker, owner, univer, api, book, commands, statuses, calculation, writer, controller, get failed() { return failed; },

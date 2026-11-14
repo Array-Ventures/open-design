@@ -1,0 +1,9 @@
+# Paused calculation cache normalization
+
+The initial pause guard compared a raw reverse-RPC cache vector with a key recorded after source-cache preservation. Those representations can differ legitimately: a sheet may contain a qualified formula alongside an unsupported formula and its dependent, whose stored source caches must survive calculation.
+
+A real production-worker regression paused authoring and requested an epoch-stamped host calculation. The raw reverse vector contained unsupported results; the accepted vector retained source values 55 and 56. The early raw comparison refused application and eventually withdrew an otherwise healthy worker. This is a generic calculation-owner invariant: the fixture explicitly disables both structural and membership editing, so it does not claim that unsupported sheet-management actions are eligible or enabled.
+
+The pause now refuses ordinary authored mutations immediately, while derived SetRange data reaches the existing non-promoting preservation and exact provenance/vector admission before its SDK handler. Unknown data is cleared/refused; a known mismatched computed vector withdraws the owner immediately and cannot become calculated or savable. A source object or fromFormula flag alone grants nothing. The paused corruption negative is separate from the positive readonly case; a compromised vector is not expected to keep its worker healthy.
+
+The original failure and initial focused results are retained. That initial run passed two positives but its paused-corruption case failed before scenario mutation at the unchanged 5-second worker readiness boundary. The fixture was then made explicit about both withdrawn capabilities. Final exact-source checks remain pending the post-build serial run; no final pass is claimed. No timeout, assertion or source capability was relaxed. No package/runtime/production change is claimed by this development checkpoint.
