@@ -36,6 +36,15 @@ it('refuses missing, duplicate, crossing and text-contaminated native owners', (
   ];
   for (const value of invalid) expect(() => projectDocumentDocxDividers(value, result.owners)).toThrow();
 });
+it('replaces conflicting relative width only on the owned pixel-width rule', () => {
+  const { result, xml } = fixture();
+  const unrelated = '<w:p><w:r><w:pict><v:rect id="unrelated" o:hr="t" o:hrpct="700"/></w:pict></w:r></w:p>';
+  const input = xml.replace('o:hrstd="t"', 'o:hrstd="t" o:hrpct="400"').replace('<w:body>', `<w:body>${unrelated}`);
+  const output = projectDocumentDocxDividers(input, [{ ...result.owners[0]!, width: '240px' }]);
+  expect(output).toContain('width:180pt;height:0pt');
+  expect(output).not.toContain('o:hrpct="400"');
+  expect(output).toContain(unrelated);
+});
 it('retains styled rules as raw Markdown blocks and refuses a lost owner', () => {
   const input = documentMarkdownInput('<html data-eve-document="1"><body><hr style="width:40%;color:red"></body></html>');
   const [id, html] = [...input.rawBlocks][0]!;

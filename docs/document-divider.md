@@ -70,3 +70,19 @@ Actual packaged browser interactions, both-theme/wide/narrow visual checks,
 conditional-write conflicts, native Word/Markdown/PDF downloads and independent
 export inspection remain required. No renderer image, preview activation,
 installer pin, archive publication or production update is included here.
+
+## Combined next-candidate source
+
+The next local source combines the separately reviewed native rule adapters and
+comment navigation: retained replies have consistent host/card list behavior,
+accepted root edits really discard, and a compact header icon recovers a deleted
+thread's retained reply without enabling writes. Source validation passed 208
+affected web cases, 81 daemon cases and 25 shared-style cases, full workspace types
+and guard. A small ownership regression additionally ensures an absolute-width
+rule clears a conflicting native percentage field only inside its generated
+owner, leaving unrelated rules unchanged. The renderer reuses the existing
+public color-request type instead of duplicating its shape.
+
+These are source/integration checks. They do not relabel111 or establish a new
+immutable pair. The documented Word paragraph spacing and native precision
+limits remain open, as does full browser/manual acceptance of these corrections.

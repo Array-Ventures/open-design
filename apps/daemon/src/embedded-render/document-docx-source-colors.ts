@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { load } from 'cheerio';
 import { documentDocxColorOwners, type DocumentDocxColors } from './document-docx-colors.js';
+import type { DocumentColorRequest } from '@open-design/document-style/color';
 
-export interface DocumentDocxColorRequest { id: string; kind: 'cell' | 'inline' | 'divider' }
+export type DocumentDocxColorRequest = DocumentColorRequest;
 export interface DocumentDocxColorSource { html: string; attributeName: string; requests: DocumentDocxColorRequest[] }
 const fail = (): never => { throw new Error('The document converter could not preserve normalized color ownership.'); };
 

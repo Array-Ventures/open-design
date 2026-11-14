@@ -89,7 +89,10 @@ export function projectDocumentDocxDividers(xml: string, owners: readonly Divide
     rect.setAttribute('style', 'width:0;height:0pt');
     rect.setAttribute('strokeweight', '0.75pt');
     if (owner.width?.endsWith('%')) rect.setAttributeNS(o, 'o:hrpct', String(Math.round(Number.parseFloat(owner.width) * 10)));
-    else if (owner.width) rect.setAttribute('style', `width:${Number.parseFloat(owner.width) * .75}pt;height:0pt`);
+    else if (owner.width) {
+      rect.removeAttributeNS(o, 'hrpct');
+      rect.setAttribute('style', `width:${Number.parseFloat(owner.width) * .75}pt;height:0pt`);
+    }
     if (owner.colors.foreground || owner.colors.background) {
       rect.removeAttributeNS(o, 'hrstd');
       if (owner.colors.background) rect.setAttribute('fillcolor', `#${owner.colors.background}`);
