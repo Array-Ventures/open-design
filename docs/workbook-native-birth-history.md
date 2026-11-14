@@ -1,5 +1,10 @@
 # Native birth history controller development checkpoint
 
+Later actual [120/63 qualification](workbook-history120-qualification.md) covers
+the existing editor and explicit manual historical-asset path. This record's
+source/stand-in evidence keeps its original scope; live membership controls,
+issued Delete/Undo and protected membership recovery remain unqualified.
+
 Controls remain off. The controller is not imported or installed by WorkbookGrid.
 This connects the real SDK Add/Undo/Redo path to the real Writer's pre-command
 storage barrier; it is not full worksheet membership or application qualification.
