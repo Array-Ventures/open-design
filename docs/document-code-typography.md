@@ -52,3 +52,8 @@ runtime, build an image, publish anything or update installer pins.
 
 Author checks: 81 focused daemon cases in five files, 54 shared cases in six
 files, full workspace types and guard passed. No full app suite was run.
+
+The later immutable126 check found a uniform child-CODE color-loss regression
+introduced by this size owner. The [paint correction](document-code-block-paint.md)
+retains that failure and the separate source-only correction; code-size evidence
+must not be treated as complete foreground/background or layout qualification.
