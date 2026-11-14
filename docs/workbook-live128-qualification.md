@@ -2,6 +2,8 @@
 
 This checkpoint connects the existing **Manage worksheets** host controls to the live private workbook controller. Add, Rename and Delete use negotiated capabilities, correlated results and an opaque controls revision. The frame independently checks the current Writer lease, source, history, permission and calculation owner; host packets and recovered JSON do not issue native worksheet authority.
 
+**PR status: draft; not merge-ready.** The successful core flow below does not close the recovery, ownership and broader acceptance gates.
+
 ## Immutable local candidate
 
 Candidate **128/71** was built from clean fork source `345cf770dc93839e1a6a838453d90192d829ba5d`, tree SHA-256 `e0dc4e92fda34a4d4ca2ded1c77a2118c7d359938be60322587a8f84d9a176be`. Later documentation does not change that build identity.
@@ -34,4 +36,26 @@ The source stages have focused actual SDK, Worker/RPC, hook, protocol and contra
 
 The preceding 127 Add failure is retained in [multi-sheet result provenance](workbook-multisheet-result-provenance.md); it is not relabeled as a successful run. See also [live host wiring](workbook-live-host-wiring.md), [consumer ownership](workbook-live-membership-consumer.md), [calculation application barrier](workbook-calculation-application-barrier.md), [clean History resume](workbook-clean-history-resume.md), [discarded capture cleanup](workbook-discarded-clean-capture.md) and [negotiated bridge](workbook-membership-host-bridge.md).
 
-Light, narrow, chat/fullscreen and broader visual combinations remain pending for this pair, as do packaged no-effect History handback, access/ownership withdrawal and crash/recovery qualification. Source-level tests do not replace those browser and durability gates. This checkpoint does not qualify arbitrary workbook features, all membership lifecycles, distribution or production readiness.
+Bounded layout and HTTP access evidence is appended below. Broader editing across visual combinations, packaged no-effect History handback, live ownership withdrawal and crash recovery through a successful Save remain open. Source-level tests do not replace those browser and durability gates. This checkpoint does not qualify arbitrary workbook features, all membership lifecycles, distribution or production readiness.
+
+## Separate HTTP access lanes
+
+The [128 access record](workbook-live128-access.md) distinguishes the **110-request scope/peer lane** from the **21-request active-owner grant lane**: 131 qualified HTTP requests in total, not 131 independent test cases. It records the actual active-human policy, exact source hashes, confounded and separately isolated revocation checks, cleanup limits and two earlier owner sessions without exact cleanup proof. These requests did not modify the core-flow workbook above and do not qualify live editor withdrawal or bot-session authority.
+
+## Calculation crash and the still-open recovery Save
+
+A separate owned team workbook was used for the calculation-worker fault check. A real Add created **Crash Draft**; exactly one retained calculation Worker was terminated, and a trusted GUI edit left A1 as **28**. The downloaded protected recovery copy retained all three sheets, the born sheet and 28, with no pending save. Reload in the same named browser context showed the actual unsaved-draft choice; Restore recovered the sheet and value.
+
+Recovered **Save failed** with “Rich cell drawings or document formatting are not supported.” The original source bytes remained unchanged. This is evidence of dirty draft survival and restoration, **not recovery-to-Save success**. A trusted Ctrl+Z left the restored born sheet and 28 visible; that is only a bounded observation that old native history was not resumed, not an adversarial recovered-authority matrix. Healthy typing and rich-editor normalization are a separate causal investigation; this receipt does not establish that the worker fault caused the save-guard refusal.
+
+The actual error alert had an automatic z-index while the canvas used z-index 8. The canvas painted above the alert, leaving red text over the grid. This confirmed presentation defect remains a UX followup; a background class or source-only style check is not proof of correct stacking.
+
+The browser closed normally, but the new crash fixture was intentionally retained for followup. Capture helpers ended with statuses 13/143 and no owned process left; their shutdown is not relabeled as exit 0. Earlier ineffective fault-hook and pointer-command attempts remain in the receipt. Evidence: `/tmp/workbook-crash128-ui/qualification.json`. Renderer/service failures, queued-job/ACK crash cuts, modified recovery payloads and the full crash matrix were not exercised by this lane.
+
+## Bounded layout appendix
+
+The manual layout receipt covers observations and DOM identity/geometry measurements at 1280×640, 1440×960 and 390×844. In Light, the grid/menu were readable, a Rename input remained through narrowing, Cancel returned focus to **Rename Research**, and Escape returned focus to **Manage worksheets**. Fullscreen and restore retained the same iframe, canvas and composer, including an unsent draft and its 20px composer height.
+
+Dark narrow inspection retained readable grid content. Fullscreen/restore retained those same instances and draft, and narrow **Show chat** followed by return retained the same iframe/canvas and unsent text. Choose-chat avatars were personally inspected by the manual author. The draft was cleared, Send was disabled, the original Dark theme was restored, and saved workbook bytes did not change. No message was sent.
+
+This is not a complete edit matrix for every theme/viewport, Tab-only navigation, another platform, or History/crash acceptance. Failed stale-reference attempts were followed by a fresh snapshot; no success is inferred from those failed commands. Evidence: `/tmp/workbook-live128-ui/manual-layout-flow.json`. No full-chat captures are added to this record.
