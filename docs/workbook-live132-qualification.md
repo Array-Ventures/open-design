@@ -86,8 +86,17 @@ notice is distinct from a freshly computed display result.
 
 ## Pending boundaries and evidence
 
-No final root browser/auth cleanup claim is made in this record yet. Broader
-pending-save Undo/Redo, repeated history/ownership withdrawal, large-source,
+The root browser closed normally (CLI exit 0) after restoring Dark, first sheet
+and 100% zoom. JSON signout returned 200 and the subsequent session request 401.
+The separate CDP observer ended with exit 13 when browser closure disconnected
+its socket while a top-level await still waited for SIGINT; this is not an
+observer exit-0 or intentional Ctrl+C result. No live observer/browser remained.
+Read-only exact-ID audits found all four captured root sessions and all eleven
+rich-fixture helper sessions absent in the asserted owned preview database. The
+one browser session was reused for the rich fixture, not counted as a new login.
+Only requested ledger IDs were queried, with no deletions or global cleanup claim.
+Audit receipts remain beside each qualification record. Broader pending-save
+Undo/Redo, repeated history/ownership withdrawal, large-source,
 viewport/chat/fullscreen and export matrices remain open. A source review also
 identified late correlated readiness probes being dropped after the
 visibility-listener handoff; its correction and qualification are separate from
