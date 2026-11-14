@@ -1,5 +1,5 @@
 diff --git a/lib/cjs/index.js b/lib/cjs/index.js
-index 1983d86dd070eac759419402adedccf75b2503ba..33a487dc152acf01b7218a6d1476c11274c50540 100644
+index 1983d86dd070eac759419402adedccf75b2503ba..f1962907264598f7fc2d9e0fa65cc124a8d795e5 100644
 --- a/lib/cjs/index.js
 +++ b/lib/cjs/index.js
 @@ -22394,6 +22394,7 @@ function SheetBarButton(props) {
@@ -15,12 +15,12 @@ index 1983d86dd070eac759419402adedccf75b2503ba..33a487dc152acf01b7218a6d1476c112
  		open: visible,
  		onOpenChange: onVisibleChange,
 -		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", { children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(SheetBarButton, { children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_univerjs_icons.ConvertIcon, {}) }) })
-+		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", { children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(SheetBarButton, { "aria-label": localeService.t("sheets-ui.sheetConfig.sheetTabs"), children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_univerjs_icons.ConvertIcon, {}) }) })
++		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_univerjs_design.Button, { "data-u-comp": "sheet-bar-append-button", size: "small", variant: "text", "aria-label": localeService.t("sheets-ui.sheetConfig.sheetTabs"), children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_univerjs_icons.ConvertIcon, {}) })
  	});
  }
  
 diff --git a/lib/es/index.js b/lib/es/index.js
-index f38c34f98b16f268ce5f481f7051ed6de17b1959..20d1806f2f2796010b04bf8866d0985f6be678fb 100644
+index f38c34f98b16f268ce5f481f7051ed6de17b1959..8879586216d65cc513b54b7ff1b5d649e1316d2c 100644
 --- a/lib/es/index.js
 +++ b/lib/es/index.js
 @@ -22393,6 +22393,7 @@ function SheetBarButton(props) {
@@ -36,12 +36,12 @@ index f38c34f98b16f268ce5f481f7051ed6de17b1959..20d1806f2f2796010b04bf8866d0985f
  		open: visible,
  		onOpenChange: onVisibleChange,
 -		children: /* @__PURE__ */ jsx("div", { children: /* @__PURE__ */ jsx(SheetBarButton, { children: /* @__PURE__ */ jsx(ConvertIcon, {}) }) })
-+		children: /* @__PURE__ */ jsx("div", { children: /* @__PURE__ */ jsx(SheetBarButton, { "aria-label": localeService.t("sheets-ui.sheetConfig.sheetTabs"), children: /* @__PURE__ */ jsx(ConvertIcon, {}) }) })
++		children: /* @__PURE__ */ jsx(Button, { "data-u-comp": "sheet-bar-append-button", size: "small", variant: "text", "aria-label": localeService.t("sheets-ui.sheetConfig.sheetTabs"), children: /* @__PURE__ */ jsx(ConvertIcon, {}) })
  	});
  }
  
 diff --git a/lib/index.js b/lib/index.js
-index f38c34f98b16f268ce5f481f7051ed6de17b1959..20d1806f2f2796010b04bf8866d0985f6be678fb 100644
+index f38c34f98b16f268ce5f481f7051ed6de17b1959..8879586216d65cc513b54b7ff1b5d649e1316d2c 100644
 --- a/lib/index.js
 +++ b/lib/index.js
 @@ -22393,6 +22393,7 @@ function SheetBarButton(props) {
@@ -57,7 +57,7 @@ index f38c34f98b16f268ce5f481f7051ed6de17b1959..20d1806f2f2796010b04bf8866d0985f
  		open: visible,
  		onOpenChange: onVisibleChange,
 -		children: /* @__PURE__ */ jsx("div", { children: /* @__PURE__ */ jsx(SheetBarButton, { children: /* @__PURE__ */ jsx(ConvertIcon, {}) }) })
-+		children: /* @__PURE__ */ jsx("div", { children: /* @__PURE__ */ jsx(SheetBarButton, { "aria-label": localeService.t("sheets-ui.sheetConfig.sheetTabs"), children: /* @__PURE__ */ jsx(ConvertIcon, {}) }) })
++		children: /* @__PURE__ */ jsx(Button, { "data-u-comp": "sheet-bar-append-button", size: "small", variant: "text", "aria-label": localeService.t("sheets-ui.sheetConfig.sheetTabs"), children: /* @__PURE__ */ jsx(ConvertIcon, {}) })
  	});
  }
  

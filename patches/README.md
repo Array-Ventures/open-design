@@ -235,3 +235,12 @@ Tab, cell editing or chat-draft qualification. Refresh with `pnpm patch` /
 `pnpm patch-commit`, preserve prior patches, update the lockfile and verify frozen
 installation. Remove only when equivalent upstream focus ownership passes both
 these cases and the required actual-grid keyboard/pointer acceptance.
+
+
+The sheets-ui patch also makes the existing design Button the direct Radix
+DropdownMenu trigger. The prior nonfocusable div wrapper receives Radix's ref
+and cannot receive Escape's return focus. The design Button already forwards
+that ref and preserves the small/text styling, marker, localized name and icon.
+The six real producer DOM cases cover Enter/Escape focus return and ARIA expanded
+state, then unchanged two-sheet navigation/data. This remains standalone source
+proof; actual full-grid keyboard entry and dismissal need packaged acceptance.

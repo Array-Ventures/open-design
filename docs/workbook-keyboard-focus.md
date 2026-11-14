@@ -47,3 +47,30 @@ after canvas entry and F2 activity: keyboard menu entry and dismissal, toolbar a
 Zoom input/popover focus, real edit/Save/Undo, and retention of chat drafts. Local
 122 remains unchanged and is not relabeled as a build of this correction. No new
 package, runtime activation, publication or pin update is included here.
+
+
+## Menu dismissal follow-up (source only)
+
+Actual candidate 123 preserves focus on a deliberately focused Sheet tabs button,
+so trusted Enter opens its menu. This is not keyboard-only Tab reachability:
+trusted Tab still enters the canvas and hidden editor. Root's actual Escape
+observation then leaves focus on the child document BODY rather than the trigger.
+
+The pinned design DropdownMenu passes its direct child to Radix's `asChild`
+trigger. SheetBarMenu supplies a plain, nonfocusable div around SheetBarButton;
+Radix therefore holds that div as its focus-return target. The narrow correction
+uses the existing design Button, which forwards its ref, as the direct child.
+It preserves the localized name, icon, small size, text variant and existing
+sheet-bar control marker. It adds no styled component, focus setter, observer,
+public type change or keyboard shortcut.
+
+The real standalone SDK producer cases now exercise Enter, Escape, closed-menu
+button focus and expanded state before the original two-sheet selection/data
+checks. Against the previous producer all six English/French cases across CJS,
+ESM and compatibility entries fail at the focus assertion, with BODY active.
+The correction passes all six alongside the existing 24 layout-policy cases.
+A frozen installation, full workspace typecheck and guard also passed.
+These jsdom producer/service tests do not include the complete rendered grid or
+prove trusted browser modality, Tab reachability or host chat focus. Candidate
+123 remains the original b7 source; this follow-up requires a new immutable
+pair and actual keyboard/pointer acceptance before any packaged claim.
