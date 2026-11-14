@@ -1,3 +1,4 @@
+import { completeWorkbookScalarSourceGuards } from './formula-result-sources';
 import { WORKBOOK_MEMBERSHIP_OPTION, protectedFormulaInputNormalization, membershipMutationIds, workbookMembershipConfigurationSchema, type WorkbookMembershipPermit, workbookMembershipReplica } from './sheet-calculation-permit';
 import { workbookCalculationInputSha256 } from './formula-input-provenance';
 import { assertWorkbookStructureIdentity } from './grid-structure-identity';
@@ -37,6 +38,7 @@ try {
       self.postMessage({ type: 'studio:workbook-calculation-worker', kind: 'membership-ready', configuration });
     } catch { fail(); }
   });
+  const calculationOutputs = new Set<string>([engine.SetFormulaCalculationResultMutation.id, engine.SetFormulaDependencyCalculationResultMutation.id, engine.SetArrayFormulaDataMutation.id]);
   const derivedSources = new WeakMap<object, ReturnType<typeof provenance.tag>>();
   const runtime = { sequenceNodesBuilder: (value: string) => api.getFormula().sequenceNodesBuilder(value), deserializeRangeWithSheet: engine.deserializeRangeWithSheet, sequenceNodeType: engine.sequenceNodeType, rangeType: RANGE_TYPE };
   // Register guards before any remote unit or formula controller can run.
@@ -44,6 +46,10 @@ try {
   commands.beforeCommandExecuted((command, options) => {
     if (unavailable) fail();
     try {
+      // RPC sets fromSync after spreading caller options. Scalar receipts
+      // originate only inside this worker. Do not generalize to array data:
+      // this pin also uses that mutation for authored sheet-removal metadata.
+      if (options?.fromSync && command.id === engine.SetFormulaCalculationResultMutation.id) fail();
       if (options?.fromFormula && (isWorkbookCalculationStructuralMutation(command.id) || membershipMutationIds.has(command.id))) fail();
       const current = books();
       const proof = options?.[WORKBOOK_MEMBERSHIP_OPTION];
@@ -53,7 +59,7 @@ try {
       if (permit && command.params && typeof command.params === 'object') permitted.set(command.params, permit);
       if (permit && command.id === SetRangeValuesMutation.id) authoredRange = command.params;
       if (!options?.fromFormula && (membershipMutationIds.has(command.id) || isWorkbookCalculationStructuralMutation(command.id) || command.id === SetRangeValuesMutation.id && workbookCalculationChangesInputs(command.params))) provenance.changed(Number(options?.[WORKBOOK_INPUT_EPOCH_OPTION]));
-      if ([engine.SetFormulaCalculationResultMutation.id, engine.SetFormulaDependencyCalculationResultMutation.id, engine.SetArrayFormulaDataMutation.id].includes(command.id)) {
+      if (calculationOutputs.has(command.id)) {
         const book = books()[0];
         if (book && command.params && typeof command.params === 'object') {
           const tag = provenance.tag(book);
@@ -61,9 +67,13 @@ try {
           if (command.id === engine.SetFormulaDependencyCalculationResultMutation.id) self.postMessage({ type: 'studio:workbook-calculation-worker', kind: 'graph', ...command.params });
           if (command.id === engine.SetArrayFormulaDataMutation.id) self.postMessage({ type: 'studio:workbook-calculation-worker', kind: 'arrays', workbookCalculation: tag, arrayFormulaRange: (command.params as { arrayFormulaRange?: unknown }).arrayFormulaRange });
           if (command.id === engine.SetFormulaCalculationResultMutation.id) {
-            const result = command.params as { unitData: Record<string, Record<string, object>>; unitOtherData?: unknown; sourceFormulaData?: Record<string, Record<string, object>> };
+            const result = command.params as engine.ISetFormulaCalculationResultMutation;
             if (!tag.valid) { result.unitData = {}; result.unitOtherData = {}; }
-            for (const sheet of Object.values(result.sourceFormulaData?.[book.id] ?? {})) derivedSources.set(sheet, tag);
+            // Complete omitted direct-reference guards before the SDK captures
+            // per-sheet source objects. Only this valid computed receipt can
+            // introduce those identities; supplied mismatches still refuse.
+            if (tag.valid) completeWorkbookScalarSourceGuards(result, book);
+            for (const sheet of Object.values(result.sourceFormulaData?.[book.id] ?? {})) if (sheet) derivedSources.set(sheet, tag);
           }
         }
       }

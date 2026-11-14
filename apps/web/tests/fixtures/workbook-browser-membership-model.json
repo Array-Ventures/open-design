@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "worksheetStructureEditable": true,
+  "worksheetMembershipEditable": true,
+  "worksheetVisibilityEditable": true,
+  "richTextMetadata": "verified",
+  "calculationMetadata": "verified",
+  "date1904": false,
+  "activeSheetId": "1",
+  "themeColors": [
+    "FFFFFFFF",
+    "FF000000",
+    "FFEEECE1",
+    "FF1F497D",
+    "FF4F81BD",
+    "FFC0504D",
+    "FF9BBB59",
+    "FF8064A2",
+    "FF4BACC6",
+    "FFF79646",
+    "FF0000FF",
+    "FF800080"
+  ],
+  "styles": [
+    {
+      "font": {
+        "name": "Calibri",
+        "family": 2,
+        "size": 11,
+        "color": {
+          "kind": "theme",
+          "index": 1
+        }
+      },
+      "fill": {
+        "pattern": "none"
+      }
+    },
+    {
+      "font": {
+        "name": "Calibri",
+        "family": 2,
+        "size": 22.25,
+        "bold": true,
+        "color": {
+          "kind": "theme",
+          "index": 1
+        }
+      },
+      "fill": {
+        "pattern": "none"
+      }
+    }
+  ],
+  "sheets": [
+    {
+      "id": "1",
+      "name": "Rich cells",
+      "visibility": "visible",
+      "rowCount": 100,
+      "columnCount": 26,
+      "defaultRowHeight": 15,
+      "cells": [
+        {
+          "row": 0,
+          "column": 0,
+          "kind": "string",
+          "value": "Blue Unicode 零 😀",
+          "runs": [
+            {
+              "text": "Blue ",
+              "font": {
+                "bold": true,
+                "color": {
+                  "kind": "theme",
+                  "index": 4
+                }
+              }
+            },
+            {
+              "text": "Unicode 零 😀",
+              "font": {
+                "italic": true,
+                "color": {
+                  "kind": "rgb",
+                  "argb": "FF00AA00"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "row": 1,
+          "column": 1,
+          "style": 1,
+          "kind": "number",
+          "value": 12
+        },
+        {
+          "row": 2,
+          "column": 2,
+          "formula": "=SUM(B2:B3)",
+          "kind": "number",
+          "value": 12
+        }
+      ],
+      "merges": [],
+      "arrayFormulas": [],
+      "rowDimensions": [
+        {
+          "index": 1,
+          "height": 37
+        }
+      ],
+      "columnDimensions": [
+        {
+          "index": 0,
+          "width": 28
+        },
+        {
+          "index": 1,
+          "width": 34
+        },
+        {
+          "index": 2,
+          "width": 16
+        }
+      ],
+      "frozenRows": 0,
+      "frozenColumns": 0
+    },
+    {
+      "id": "2",
+      "name": "Retained sheet",
+      "visibility": "visible",
+      "rowCount": 100,
+      "columnCount": 26,
+      "defaultRowHeight": 15,
+      "cells": [
+        {
+          "row": 0,
+          "column": 0,
+          "formula": "='Rich cells'!B2",
+          "kind": "number",
+          "value": 12
+        }
+      ],
+      "merges": [],
+      "arrayFormulas": [],
+      "rowDimensions": [],
+      "columnDimensions": [],
+      "frozenRows": 0,
+      "frozenColumns": 0
+    }
+  ],
+  "definedNames": [],
+  "tables": [],
+  "features": {
+    "charts": 0,
+    "drawings": 0,
+    "externalLinks": 0,
+    "macros": false,
+    "signed": false
+  }
+}

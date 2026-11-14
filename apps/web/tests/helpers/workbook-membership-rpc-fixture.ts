@@ -19,12 +19,12 @@ import { WorkbookSheetHistoryController } from '../../src/components/embedded/wo
 import { serializeWorkbookDraft } from '../../src/components/embedded/workbook/draft-store';
 import type { WorkbookCalculationState } from '../../src/components/embedded/workbook/calculation-state';
 
-export async function createWorkbookMembershipRpcFixture(formulas = true, sourceRows = 100, importedCache = 38, preserved = false) {
+export async function createWorkbookMembershipRpcFixture(formulas = true, sourceRows = 100, importedCache = 38, preserved = false, importedModel?: WorkbookDocument) {
   const scope = { viewerId: 'rpc-person', projectId: 'e15f57b8-c463-4ff6-a469-ddc985e034b1', fileName: 'Membership.xlsx', draftId: crypto.randomUUID() };
-  const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: '1', styles: [{}], calculationMetadata: 'verified', worksheetMembershipEditable: true, worksheetStructureEditable: true,
+  const model: WorkbookDocument = importedModel ? structuredClone(importedModel) : { version: 1, date1904: false, activeSheetId: '1', styles: [{}], calculationMetadata: 'verified', worksheetMembershipEditable: true, worksheetStructureEditable: true,
     features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
     sheets: ['1', '2', '3'].map(id => ({ id, name: `Sheet ${id}`, visibility: 'visible', rowCount: id === '2' ? sourceRows : 100, columnCount: 26, cells: [{ row: 0, column: 0, kind: 'number', value: id === '2' ? 17 : 21 }], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0, arrayFormulas: [] })) };
-  if (formulas) model.sheets[2]!.cells.push({ row: 1, column: 0, kind: 'number', value: importedCache, formula: "='Sheet 2'!A1+'Sheet 1'!A1" });
+  if (formulas && !importedModel) model.sheets[2]!.cells.push({ row: 1, column: 0, kind: 'number', value: importedCache, formula: "='Sheet 2'!A1+'Sheet 1'!A1" });
   if (preserved) {
     model.worksheetMembershipEditable = false; model.worksheetStructureEditable = false;
     model.sheets[2]!.cells.push({ row: 2, column: 0, kind: 'number', value: 55, formula: '=UNKNOWN(1)' },
