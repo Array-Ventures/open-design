@@ -99,6 +99,9 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
     try {
       const result = execute();
       if (workbookCalculationInputSha256(snapshot()) !== workbookCalculationInputSha256(prospective) || result !== true || active.index !== active.hashes.length || !membershipCurrent() || !owner.ready) throw Error('Protected worksheet calculation did not complete.');
+      // An unused sheet rename may produce no SDK dirty formula range. Request
+      // a real host-stamped calculation for this protected input epoch as well.
+      if (scalarRequired && formulas(snapshot())) commands.syncExecuteCommand(engine.SetFormulaCalculationStartMutation.id, { forceCalculation: true }, { onlyLocal: true });
       return true;
     } catch (error) { owner.deadline.fail(); throw error; }
     finally { protectedSequence = null; authoredRange = null; }
