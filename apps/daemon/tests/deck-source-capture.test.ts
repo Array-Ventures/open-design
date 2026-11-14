@@ -39,6 +39,10 @@ describe('source-owned deck image capture', () => {
     expect(checkedDeckRuntimeIndex({ index: 1, count: 2 })).toBe(1);
     for (const value of [undefined, null, {}, { index: undefined, count: 2 }, { index: NaN, count: 2 }, { index: Infinity, count: 2 }, { index: 0.5, count: 2 }, { index: -1, count: 2 }, { index: 2, count: 2 }, { index: 0, count: 201 }, { index: 0, count: 0 }]) expect(() => checkedDeckRuntimeIndex(value)).toThrow('source-owned');
   });
+  it('keeps the 200-slide bound at new PNG admission rather than changing existing source collection APIs', () => {
+    const raw = Buffer.from('<deck-stage>' + '<section class="slide">One</section>'.repeat(201) + '</deck-stage>');
+    expect(() => prepareDeckSourceCapture(raw, { index: 0, deckSourcePath: 'path-0-0', deckSourceSha256: createHash('sha256').update(raw).digest('hex') })).toThrow('source-owned');
+  });
   it('requires all new binding fields only for the new deck-image contract, preserving legacy explicit index', () => {
     const input = { fileName: 'index.html', format: 'image', deck: true, index: 1 };
     expect(RenderInput.safeParse(input).success).toBe(true);

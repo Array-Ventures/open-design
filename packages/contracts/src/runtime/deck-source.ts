@@ -31,7 +31,7 @@ export function canonicalDeckSourceSlides<Node>(root: Node, tree: DeckSourceTree
     for (let parent = tree.parent(node); parent && parent !== stage; parent = tree.parent(parent)) if (slides.includes(parent)) return false;
     return true;
   });
-  return result.length <= 200 ? result : [];
+  return result;
 }
 export function deckSourcePath<Node>(node: Node, tree: DeckSourceTree<Node>): string | null {
   const parts: number[] = [];

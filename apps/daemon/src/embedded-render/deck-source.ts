@@ -22,6 +22,7 @@ export function prepareDeckSourceCapture(bytes: Buffer, selection: { deckSourceS
   const notes = findSpeakerNotesScriptBlock(original);
   const visual = notes ? original.slice(0, notes.start) + original.slice(notes.end) : original;
   const $visual = load(visual), visualSlides = canonicalDeckSourceSlides($visual.root()[0]!, tree);
+  if (visualSlides.length < 1 || visualSlides.length > 200) return fail();
   const matches = visualSlides.filter(node => deckSourcePath(node, tree) === selection.deckSourcePath);
   if (matches.length !== 1 || visualSlides[selection.index] !== matches[0]) return fail();
   const $ = load(original), slides = canonicalDeckSourceSlides($.root()[0]!, tree);
