@@ -175,6 +175,20 @@ export class WorkbookSheetHistoryController {
       this.writer = next;
     };
   }
+  /** Detached display data from this exact live owner. This neither admits a
+   * command nor exports private issuers; execution must recheck its own stamp. */
+  inspectManagement(): { snapshot: IWorkbookData; historyRevision: number; busy: boolean } | null {
+    if (!this.isCurrent()) return null;
+    const writer = this.writer;
+    const history = this.history.getUndoRedoCheckpoint();
+    if (history.unitId !== this.unit.getUnitId()) return null;
+    const snapshot = structuredClone(this.snapshot());
+    const busy = this.busy || writer.protectedSheetWorkPending() || writer.state().saving;
+    const after = this.history.getUndoRedoCheckpoint();
+    if (writer !== this.writer || !this.isCurrent() || after.unitId !== history.unitId || after.revision !== history.revision) return null;
+    return { snapshot, historyRevision: history.revision, busy };
+  }
+
   private owns(descriptor: WorkbookSheetActionDescriptor): boolean {
     const owned = this.issued.get(descriptor.token);
     if (!owned || canonicalWorkbookJsonValue(owned) !== canonicalWorkbookJsonValue(descriptor)) return false;
