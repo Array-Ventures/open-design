@@ -135,7 +135,35 @@ export function documentCanvasColor(document: Document, read: DocumentColorReade
   try { return read(document.defaultView!.getComputedStyle(probe).backgroundColor); }
   finally { probe.remove(); }
 }
-export function normalizeDocumentPresentationOwners(document: Document, requests: readonly import('./presentation.js').DocumentPresentationRequest[], attributeName: string, ownedStyles: readonly string[], read: DocumentColorReader = documentColorReader(document)): Array<{ id: string; presentation: import('./presentation.js').NormalizedDocumentPresentation }> {
+/** A one-line, baseline-aligned image fits the actual heading strut. Tall,
+ * mixed, multi-image and repositioned content keep their existing behavior. */
+function headingImagePresentation(owner: HTMLElement, attributeName: string, id: string, contentWidthPx?: number): Partial<import('./presentation.js').NormalizedDocumentPresentation> {
+  if (!Number.isFinite(contentWidthPx) || contentWidthPx! <= 0) return {};
+  const images = owner.querySelectorAll('img');
+  if (images.length !== 1 || owner.textContent?.trim()) return {};
+  const image = images[0]!;
+  if (image.getAttribute(`${attributeName}-image`) !== id) return {};
+  if (Array.from(owner.querySelectorAll('*')).some(element => !['IMG','SPAN'].includes(element.tagName))) return {};
+  const view = owner.ownerDocument.defaultView!;
+  const block = view.getComputedStyle(owner), line = Number.parseFloat(block.lineHeight);
+  const box = owner.getBoundingClientRect(), imageBox = image.getBoundingClientRect();
+  if (!/^\d+(?:\.\d+)?px$/.test(block.lineHeight) || !Number.isFinite(line) || line <= 0
+    // Chromium rounds layout boxes to 1/64 CSS px; a second quantum is drift.
+    || Math.abs(box.height-line) > 1/64 || imageBox.height <= 0 || imageBox.width <= 0
+    || imageBox.height > line || imageBox.width > Math.min(box.width,contentWidthPx!) || Math.abs(imageBox.x-box.x) > .01) return {};
+  for (const element of Array.from(owner.querySelectorAll('*'))) {
+    const style = view.getComputedStyle(element);
+    if (style.display !== 'inline' || style.verticalAlign !== 'baseline' || !['','static'].includes(style.position)
+      || !['','none'].includes(style.cssFloat) || !['','none'].includes(style.transform)
+      || ['marginTop','marginBottom','marginLeft','marginRight'].some(key => !['','0px'].includes(style[key as keyof CSSStyleDeclaration] as string))) return {};
+    if (['fontSize','lineHeight','fontFamily','fontWeight','fontStyle'].some(key => style[key as keyof CSSStyleDeclaration] !== block[key as keyof CSSStyleDeclaration])) return {};
+  }
+  if (block.whiteSpace !== 'normal' && block.whiteSpace !== '') return {};
+  const result = { headingImageLineHeightPt: line*.75, headingImageWidthPt: imageBox.width*.75,
+    headingImageHeightPt: imageBox.height*.75, headingImageSource: 'single-baseline-image' as const };
+  return Object.values(result).some(value => typeof value === 'number' && (!Number.isFinite(value) || value <= 0 || value > 3277)) ? {} : result;
+}
+export function normalizeDocumentPresentationOwners(document: Document, requests: readonly import('./presentation.js').DocumentPresentationRequest[], attributeName: string, ownedStyles: readonly string[], read: DocumentColorReader = documentColorReader(document), contentWidthPx?: number): Array<{ id: string; presentation: import('./presentation.js').NormalizedDocumentPresentation }> {
   const fail = (): never => { throw new Error('The document color ownership or authored presentation is not representable.'); };
   if (!/^data-eve-docx-[a-z0-9-]{1,80}$/.test(attributeName) || requests.length > 20000 || !documentColorLayoutQualified(document, ownedStyles)) return fail();
   if (requests.some(request => !/^[A-Za-z0-9_-]{1,100}$/.test(request.id) || !['cell','inline','divider','heading'].includes(request.kind))) return fail();
@@ -159,6 +187,10 @@ export function normalizeDocumentPresentationOwners(document: Document, requests
       if (canonicalFrame && main.firstElementChild === owner && document.defaultView!.getComputedStyle(owner).marginTop === '0px') {
         if (!validDocumentHeadingLevel(level)) return fail();
         presentation.headingLevel = level; presentation.headingBeforePt = 0; presentation.headingSource = 'canonical-first-block';
+      }
+      if (canonicalFrame) {
+        const image = headingImagePresentation(owner, attributeName, request.id, contentWidthPx);
+        if (image.headingImageSource) { presentation.headingLevel = level as 1|2|3|4|5|6; Object.assign(presentation,image); }
       }
       return { id: request.id, presentation };
     }
