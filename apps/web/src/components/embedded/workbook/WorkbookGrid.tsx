@@ -269,7 +269,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
         && model.worksheetMembershipEditable === true && !format.current?.blocked && workbook.getWorkbookPermission().canEdit()
         && !univer.__getInjector().get(kernel.IEditorBridgeService).isVisible().visible);
       const calculationChanged = (value: WorkbookCalculationState) => { if (current()) { calculationState.current = value; publish.current(); } };
-      const scalarCalculation = arraySeed ? null : attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, calculationChanged, membershipCurrent);
+      const scalarCalculation = arraySeed ? null : attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, calculationChanged, membershipCurrent, { ready: univer.__getInjector().get(LifecycleService).onStage(LifecycleStages.Rendered), available: () => current() && Boolean(univer.__getInjector().get(IRenderManagerService).getRenderUnitById(id)) });
       const calculation = scalarCalculation ?? attachWorkbookArrayCalculation(univer, univerAPI, model, original, workbook.save(), sourceSha256!, readSnapshot, arrayOwner, calculationChanged, { ready: univer.__getInjector().get(LifecycleService).onStage(LifecycleStages.Rendered), available: () => Boolean(univer.__getInjector().get(IRenderManagerService).getRenderUnitById(id)) }, guardedArrayInput!);
       dispose = () => {
         try { const sheet = workbook.getActiveSheet(); view.current = { id, sourceFormat: model.sourceFormat, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() }; }
