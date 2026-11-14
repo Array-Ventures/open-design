@@ -1,3 +1,4 @@
+import { workbookImportView } from './import-view.js';
 import { assertWorkbookSheetsSupported } from './sheet-patch.js';
 import { assertWorkbookStructureSupported } from './structure-patch.js';
 import { WORKBOOK_STRUCTURE_AXIS_BUDGET } from '@open-design/contracts/runtime/workbook-structure';
@@ -6,7 +7,7 @@ import StylesXform from 'exceljs-community/lib/xlsx/xform/style/styles-xform.js'
 import { Readable } from 'node:stream';
 import ExcelJS from 'exceljs-community';
 import { workbookDocumentSchema, WORKBOOK_MODEL_LIMITS, WORKBOOK_MINIMUM_SHEET_WINDOW, type WorkbookCell, type WorkbookSheet, type WorkbookStyle } from '@open-design/contracts/runtime/workbook';
-import { WorkbookFormatError, readWorkbookPackage, type WorkbookParts } from './package.js';
+import { WorkbookFormatError, readWorkbookPackage, writeWorkbookPackage, type WorkbookParts } from './package.js';
 import { address, child, children, MAIN_NAMESPACES, range, relationships, xmlPart } from './parts.js';
 import { font, style } from './styles.js';
 import { readWorkbookTheme } from './theme.js';
@@ -93,8 +94,9 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
     const root = xmlPart(parts, name).documentElement;
     if (root?.localName === 'worksheet' && MAIN_NAMESPACES.has(root.namespaceURI ?? '')) preflightWorksheet(root, budget);
   }
+  const importParts = workbookImportView(parts, [mainPart, ...[...links.values()].filter(link => !link.external && ['/worksheet', '/styles', '/sharedStrings'].some(kind => link.type.endsWith(kind))).map(link => link.target)]);
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(Uint8Array.from(bytes).buffer);
+  await workbook.xlsx.load(Uint8Array.from(await writeWorkbookPackage(importParts)).buffer);
   // ExcelJS's cell reconciler deliberately skips styleId zero. Read that XF
   // through its same pinned style parser so omitted cells inherit the authored
   // Normal font/fill/alignment instead of an invented empty editor style.
@@ -123,7 +125,7 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
   };
   let normal: WorkbookStyle = {};
   if (styleLink && !styleLink.external) {
-    const parser = new StylesXform(); await parser.parseStream(Readable.from([parts.get(styleLink.target)!]));
+    const parser = new StylesXform(); await parser.parseStream(Readable.from([importParts.get(styleLink.target)!]));
     normal = sourceStyle(parser.getStyleModel(0) ?? {}, 0);
   }
   const styles: WorkbookStyle[] = [normal];
