@@ -1,3 +1,4 @@
+import { prepareWorkbookBirthReplay } from './sheet-birth-replay';
 import { prepareWorkbookBirthRemoval, bindWorkbookBirthRemovalsToCreation, convertWorkbookBirthRemovals } from './sheet-birth-removal';
 import type { WorkbookBirthRemoval } from './sheet-birth-removal-schema';
 import type { WorkbookSheetActionDescriptor } from './sheet-action-descriptor';
@@ -109,7 +110,7 @@ export class WorkbookWriter {
   /** Current-source Delete only. The future controller supplies the exact
    * post-command snapshot, then runs the real synchronous SDK command here.
    * No remote save intent is reserved and no authority comes from metadata. */
-  protectSheetDeletion(raw: WorkbookSourceDeleteContext, prospective: IWorkbookData, execute: () => IWorkbookData): Promise<void> {
+  protectSheetDeletion(raw: WorkbookSourceDeleteContext, prospective: IWorkbookData, execute: () => IWorkbookData, beforeExecute?: () => undefined): Promise<void> {
     if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
     const run = async () => {
       if (this.sheetActionConflict) throw Error(this.sheetActionConflictMessage);
@@ -128,6 +129,8 @@ export class WorkbookWriter {
       this.persistence = durable;
       await durable;
       if (!this.active || this.source !== source || this.revision !== revision || this.pending !== pending || !this.journal.isCurrent()) throw Error('The workbook changed while protecting its worksheet action.');
+      // Synchronous native-owner admission still belongs before command entry.
+      beforeExecute?.();
       // Old roots remain untouched on all pre-command refusals. After invoking
       // SDK, retain the durably protected candidate even if SDK itself throws.
       this.sheetDeletions = candidate;
@@ -139,7 +142,7 @@ export class WorkbookWriter {
   }
   /** Development source birth owner. Pending birth/history transfer remains
    * explicitly uninstalled until its checked target association is connected. */
-  protectSheetBirth(name: string, index: number, execute: (entry: WorkbookSheetBirthEntry) => IWorkbookData): Promise<WorkbookSheetBirthEntry> {
+  protectSheetBirth(name: string, index: number, execute: (entry: WorkbookSheetBirthEntry) => IWorkbookData, beforeExecute?: () => undefined): Promise<WorkbookSheetBirthEntry> {
     if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
     const run = async () => {
       if (!this.active || this.sheetActionConflict || this.recoveryConflict) throw Error('Protected worksheet birth is not ready.');
@@ -155,6 +158,8 @@ export class WorkbookWriter {
       this.persistence = durable;
       await durable;
       if (!this.active || this.source !== source || this.revision !== revision || this.pending !== pending || !this.journal.isCurrent()) throw Error('The workbook changed while protecting its worksheet action.');
+      // Synchronous native-owner admission still belongs before command entry.
+      beforeExecute?.();
       this.sheetBirths = prepared.state;
       await this.completeProtectedSheetCommand(checkpoint, prepared.snapshot, () => execute(prepared.entry));
       return structuredClone(prepared.entry);
@@ -169,9 +174,35 @@ export class WorkbookWriter {
     return promise;
   }
 
+  /** Replay the retained immutable native Add configuration. No template or
+   * new birth is issued here; native history/issuer checks belong to its owner. */
+  protectSheetBirthReplay(origin: WorkbookSheetActionDescriptor, index: number, execute: (snapshot: IWorkbookData) => IWorkbookData, beforeExecute?: () => undefined): Promise<void> {
+    if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
+    const run = async () => {
+      if (!this.active || this.sheetActionConflict || this.recoveryConflict || !this.journal?.scope || !this.journal.validate || !this.journal.isCurrent?.()) throw Error('Protected worksheet birth replay is not ready.');
+      const source = this.source, revision = this.revision, pending = this.pending;
+      const checkpoint = this.checkpoint();
+      const snapshot = prepareWorkbookBirthReplay(this.journal.scope, checkpoint, origin, index);
+      this.journal.validate({ ...checkpoint, desired: snapshot });
+      const durable = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
+      this.persistence = durable;
+      await durable;
+      if (!this.active || this.source !== source || this.revision !== revision || this.pending !== pending || !this.journal.isCurrent()) throw Error('The workbook changed while protecting its worksheet action.');
+      // Synchronous native-owner admission still belongs before command entry.
+      beforeExecute?.();
+      await this.completeProtectedSheetCommand(checkpoint, snapshot, () => execute(snapshot));
+    };
+    const promise = run();
+    this.protection = promise.then(() => {}, () => {});
+    const barrier = this.protection;
+    this.publish();
+    void promise.finally(() => { if (this.protection === barrier) this.protection = null; this.publish(); }).catch(() => {});
+    return promise;
+  }
+
   /** Data producer only: the installed controller must separately prove the
    * live birth/history issuer before asking for this durable native callback. */
-  protectSheetBirthRemoval(origin: WorkbookSheetActionDescriptor, execute: (removal: WorkbookBirthRemoval) => IWorkbookData): Promise<WorkbookBirthRemoval> {
+  protectSheetBirthRemoval(origin: WorkbookSheetActionDescriptor, execute: (removal: WorkbookBirthRemoval) => IWorkbookData, beforeExecute?: () => undefined): Promise<WorkbookBirthRemoval> {
     if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
     const run = async () => {
       if (!this.active || this.sheetActionConflict || this.recoveryConflict) throw Error('Protected worksheet birth removal is not ready.');
@@ -187,6 +218,8 @@ export class WorkbookWriter {
       this.persistence = durable;
       await durable;
       if (!this.active || this.source !== source || this.revision !== revision || this.pending !== pending || !this.journal.isCurrent()) throw Error('The workbook changed while protecting its worksheet action.');
+      // Synchronous native-owner admission still belongs before command entry.
+      beforeExecute?.();
       this.sheetBirths = prepared.state;
       await this.completeProtectedSheetCommand(checkpoint, prepared.snapshot, () => execute(structuredClone(prepared.removal)));
       return structuredClone(prepared.removal);
