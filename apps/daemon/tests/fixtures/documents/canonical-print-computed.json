@@ -1,0 +1,51 @@
+{
+  "body": {
+    "fontSize": "20px",
+    "lineHeight": "30px",
+    "marginTop": "0px",
+    "marginBottom": "0px",
+    "fontFamily": "system-ui, sans-serif"
+  },
+  "h1": {
+    "fontSize": "40px",
+    "lineHeight": "50px",
+    "marginTop": "0px",
+    "marginBottom": "16px",
+    "fontFamily": "Georgia, serif"
+  },
+  "h2": {
+    "fontSize": "30px",
+    "lineHeight": "39px",
+    "marginTop": "24px",
+    "marginBottom": "12px",
+    "fontFamily": "Georgia, serif"
+  },
+  "h3": {
+    "fontSize": "25px",
+    "lineHeight": "35px",
+    "marginTop": "24px",
+    "marginBottom": "12px",
+    "fontFamily": "Georgia, serif"
+  },
+  "h4": {
+    "fontSize": "20px",
+    "lineHeight": "25px",
+    "marginTop": "28px",
+    "marginBottom": "12px",
+    "fontFamily": "Georgia, serif"
+  },
+  "h5": {
+    "fontSize": "16.6px",
+    "lineHeight": "20.75px",
+    "marginTop": "23.24px",
+    "marginBottom": "9.96px",
+    "fontFamily": "Georgia, serif"
+  },
+  "h6": {
+    "fontSize": "13.4px",
+    "lineHeight": "16.75px",
+    "marginTop": "18.76px",
+    "marginBottom": "8.04px",
+    "fontFamily": "Georgia, serif"
+  }
+}

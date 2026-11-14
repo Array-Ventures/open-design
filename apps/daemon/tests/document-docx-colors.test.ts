@@ -53,8 +53,8 @@ it('projects actual pinned converter cells including merge continuations without
 });
 
 it('keeps unrelated bookmarks and gives nested authored colors precedence without dropping outer formatting', () => {
-  const outer = { id:'2000000000',name:'EveOuter',kind:'inline' as const,colors:{foreground:'FF0000',background:'FFFF00'} };
-  const inner = { id:'2000000001',name:'EveInner',kind:'inline' as const,colors:{foreground:'0000FF'} };
+  const outer = { id:'2000000000',name:'EveOuter',kind:'inline' as const,presentation:{foreground:'FF0000',background:'FFFF00'} };
+  const inner = { id:'2000000001',name:'EveInner',kind:'inline' as const,presentation:{foreground:'0000FF'} };
   const start=(o:typeof outer|typeof inner)=>`<w:bookmarkStart w:id="${o.id}" w:name="${o.name}"/>`;
   const end=(o:typeof outer|typeof inner)=>`<w:bookmarkEnd w:id="${o.id}"/>`;
   const xml=`<w:document xmlns:w="${ns}"><w:body><w:p><w:bookmarkStart w:id="7" w:name="authored-bookmark"/>${start(outer)}<w:r><w:t>outer</w:t></w:r>${start(inner)}<w:r><w:rPr><w:i/></w:rPr><w:t>inner</w:t></w:r>${end(inner)}${end(outer)}<w:bookmarkEnd w:id="7"/></w:p></w:body></w:document>`;
@@ -70,7 +70,7 @@ it('places owned properties in the primary OOXML schema order while retaining fo
   const { readFile } = await import('node:fs/promises');
   const { DOMParser } = await import('@xmldom/xmldom');
   const order = JSON.parse(await readFile(new URL('./fixtures/documents/openxml-color-property-order.json',import.meta.url),'utf8'));
-  const cell={id:'2000000000',name:'EveCell',kind:'cell' as const,rowSpan:1,columnSpan:1,colors:{background:'F2F3F5'}}, ink={id:'2000000001',name:'EveInk',kind:'inline' as const,colors:{foreground:'7F1D1D',background:'FFF6AA'}};
+  const cell={id:'2000000000',name:'EveCell',kind:'cell' as const,rowSpan:1,columnSpan:1,presentation:{background:'F2F3F5'}}, ink={id:'2000000001',name:'EveInk',kind:'inline' as const,presentation:{foreground:'7F1D1D',background:'FFF6AA'}};
   const start=(o:typeof cell|typeof ink)=>`<w:bookmarkStart w:id="${o.id}" w:name="${o.name}"/>`,end=(o:typeof cell|typeof ink)=>`<w:bookmarkEnd w:id="${o.id}"/>`;
   const xml=`<w:document xmlns:w="${ns}"><w:body><w:tbl><w:tr><w:tc><w:tcPr><w:tcW w:w="1200" w:type="dxa"/><w:noWrap/><w:tcMar><w:top w:w="80" w:type="dxa"/></w:tcMar><w:vAlign w:val="center"/></w:tcPr><w:p>${start(cell)}${start(ink)}<w:r><w:rPr><w:rFonts w:ascii="Arial"/><w:b/><w:sz w:val="28"/><w:u w:val="single"/><w:vertAlign w:val="superscript"/><w:lang w:val="fr-FR"/></w:rPr><w:t>Styled</w:t></w:r>${end(ink)}${end(cell)}</w:p></w:tc></w:tr></w:tbl></w:body></w:document>`;
   const result=projectDocumentDocxColors(xml,[cell,ink]),doc=new DOMParser().parseFromString(result,'application/xml');
@@ -79,4 +79,33 @@ it('places owned properties in the primary OOXML schema order while retaining fo
     expect(ranks.every((value,index)=>value>=0 && (index===0||value>ranks[index-1]!))).toBe(true);
   }
   for(const fragment of ['w:ascii="Arial"','w:sz w:val="28"','w:u w:val="single"','w:vertAlign w:val="superscript"','w:lang w:val="fr-FR"','w:top w:w="80"','w:vAlign w:val="center"'])expect(result).toContain(fragment);
+});
+it('projects nested native font owners without flattening links, formatting or paragraph spacing', () => {
+  const input = { blocks: [{ t: 'Para', c: [{ t: 'Span', c: [['outer', [], []], [{ t: 'Str', c: 'A' }, { t: 'Span', c: [['inner', [], []], [{ t: 'Str', c: 'B' }]] }, { t: 'Str', c: 'C' }]] }] }] };
+  const owners = documentDocxColorOwners(input, attributes => (attributes as unknown[])[0] === 'outer'
+    ? { fontSizePt:30, fontLineHeightPt:45 }
+    : { fontSizePt:15, fontLineHeightPt:22.5 });
+  const [outer, inner] = owners;
+  const start = (owner: typeof outer) => `<w:bookmarkStart w:id="${owner!.id}" w:name="${owner!.name}"/>`;
+  const end = (owner: typeof outer) => `<w:bookmarkEnd w:id="${owner!.id}"/>`;
+  const xml = `<w:document xmlns:w="${ns}" xmlns:r="urn:fixture"><w:body><w:p><w:pPr><w:spacing w:before="120" w:after="240"/><w:jc w:val="right"/></w:pPr>${start(outer)}<w:r><w:rPr><w:b/><w:u w:val="single"/><w:vertAlign w:val="superscript"/><w:lang w:val="fr-FR"/></w:rPr><w:t>A</w:t></w:r>${start(inner)}<w:hyperlink r:id="existing"><w:r><w:rPr><w:i/></w:rPr><w:t>B</w:t></w:r></w:hyperlink>${end(inner)}<w:r><w:t>C</w:t></w:r>${end(outer)}</w:p></w:body></w:document>`;
+  const result = projectDocumentDocxColors(xml, owners);
+  expect(result.match(/w:sz w:val="60"/g)).toHaveLength(2);
+  expect(result.match(/w:sz w:val="30"/g)).toHaveLength(1);
+  expect(result.match(/w:szCs w:val="60"/g)).toHaveLength(2);
+  expect(result).toContain('w:before="120" w:after="240" w:line="900" w:lineRule="atLeast"');
+  expect(result).toContain('<w:b/><w:sz w:val="60"/><w:szCs w:val="60"/><w:u');
+  expect(result).toContain('w:vertAlign w:val="superscript"');
+  expect(result).toContain('w:lang w:val="fr-FR"');
+  expect(result).toContain('r:id="existing"');
+  expect(result).toContain('<w:i/>');
+  expect(result).toContain('w:jc w:val="right"');
+  expect(result).not.toContain('bookmark');
+});
+it('refuses malformed, unbounded or incomplete native font descriptors', () => {
+  for (const value of [0,NaN,Infinity,2000,'30']) {
+    expect(() => documentDocxColorOwners(ast(), () => ({fontSizePt:value,fontLineHeightPt:45} as never))).toThrow('ownership');
+  }
+  expect(() => documentDocxColorOwners(ast(), () => ({fontSizePt:30}))).toThrow('ownership');
+  expect(() => documentDocxColorOwners(ast(), () => ({fontLineHeightPt:45}))).toThrow('ownership');
 });

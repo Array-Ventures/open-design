@@ -34,7 +34,7 @@ const page = {
 };
 beforeEach(() => {
   vi.clearAllMocks(); qualified = true; events = []; route = undefined; routeRequest = undefined; projectError = undefined;
-  result = [{ id: 'text', colors: { foreground: 'FFFFFF', foregroundSource: 'inherited' } }];
+  result = [{ id: 'text', presentation: { foreground: 'FFFFFF', foregroundSource: 'inherited' } }];
   mock.read.mockResolvedValue('/* owned color closure */');
   mock.launch.mockResolvedValue({ newPage: vi.fn().mockResolvedValue(page), close });
 });
@@ -56,7 +56,7 @@ it('does not impose a new ten-megabyte limit on valid bundled documents', async 
 it('resolves exact owners after print media and assets, then closes its browser', async () => {
   const resolved = await normalizeDocumentDocxColors(html, requests, attribute);
   expect([...resolved]).toEqual([['text', { foreground: 'FFFFFF', foregroundSource: 'inherited' }]]);
-  expect(events).toEqual(['print', 'content', 'assets', 'bundle', 'projection']);
+  expect(events).toEqual(['print', 'content', 'divider-style', 'assets', 'bundle', 'projection']);
   expect(page.emulateMedia).toHaveBeenCalledWith({ media: 'print' });
   expect(mock.read).toHaveBeenCalledWith('/opt/render/document-color.iife.js', 'utf8');
   expect(page.evaluate.mock.calls.at(-1)![0]).toContain(JSON.stringify(requests));
@@ -75,29 +75,29 @@ it.each(['data:image/png;base64,AA==', 'blob:null/owned'])('permits contained re
   expect(proceed).toHaveBeenCalledTimes(1); expect(abort).not.toHaveBeenCalled(); expect(close).toHaveBeenCalledTimes(1);
 });
 it.each([
-  null, {}, [], [{ id: 'wrong', colors: {} }], [{ id: 'text', colors: [] }],
-  [{ id: 'text', colors: { unknown: 'FFFFFF' } }],
-  [{ id: 'text', colors: { background: '#FFFFFF' } }],
-  [{ id: 'text', colors: { background: 'ffffff' } }],
-  [{ id: 'text', colors: { foreground: 'FFFFFF', foregroundSource: ['authored'] } }],
-  [{ id: 'text', colors: { foregroundSource: 'authored' } }],
-  [{ id: 'text', colors: { foreground: 'FFFFFF' } }],
-])('refuses malformed or incomplete owner colors: %j', async invalid => {
+  null, {}, [], [{ id: 'wrong', presentation: {} }], [{ id: 'text', presentation: [] }],
+  [{ id: 'text', presentation: { unknown: 'FFFFFF' } }],
+  [{ id: 'text', presentation: { background: '#FFFFFF' } }],
+  [{ id: 'text', presentation: { background: 'ffffff' } }],
+  [{ id: 'text', presentation: { foreground: 'FFFFFF', foregroundSource: ['authored'] } }],
+  [{ id: 'text', presentation: { foregroundSource: 'authored' } }],
+  [{ id: 'text', presentation: { foreground: 'FFFFFF' } }],
+])('refuses malformed or incomplete owner presentation: %j', async invalid => {
   result = invalid;
   await expect(normalizeDocumentDocxColors(html, requests, attribute)).rejects.toThrow();
   expect(close).toHaveBeenCalledTimes(1);
 });
 it('refuses duplicate owners even when the result count matches', async () => {
-  result = [{ id: 'text', colors: {} }, { id: 'text', colors: {} }];
+  result = [{ id: 'text', presentation: {} }, { id: 'text', presentation: {} }];
   await expect(normalizeDocumentDocxColors(html, [...requests, { id: 'cell', kind: 'cell' }], attribute)).rejects.toThrow();
   expect(close).toHaveBeenCalledTimes(1);
 });
 it('preserves empty color descriptors for uncolored native owners', async () => {
-  result = [{ id: 'text', colors: {} }];
+  result = [{ id: 'text', presentation: {} }];
   expect([...(await normalizeDocumentDocxColors(html, requests, attribute))]).toEqual([['text', {}]]);
 });
 it('does not accept inherited text ink on a parent cell owner', async () => {
-  result = [{ id: 'cell', colors: { foreground: 'FFFFFF', foregroundSource: 'inherited' } }];
+  result = [{ id: 'cell', presentation: { foreground: 'FFFFFF', foregroundSource: 'inherited' } }];
   await expect(normalizeDocumentDocxColors(html, [{ id: 'cell', kind: 'cell' }], attribute)).rejects.toThrow();
   expect(close).toHaveBeenCalledTimes(1);
 });
@@ -129,4 +129,23 @@ it('does not restyle an unqualified PDF document', async () => {
   await repairDocumentPdfColors(page as unknown as Page, html, ['owned-print-css']);
   expect(page.addStyleTag).not.toHaveBeenCalled();
   expect(events).toEqual(['print','assets','bundle','qualification','projection']);
+});
+it.each([
+  {fontSizePt:30},
+  {fontSizePt:30,fontLineHeightPt:45},
+  {fontSizePt:30,fontLineHeightPt:45,fontSizeSource:'inherited'},
+  {fontSizePt:'30',fontLineHeightPt:45,fontSizeSource:'authored'},
+  {fontSizePt:NaN,fontLineHeightPt:45,fontSizeSource:'authored'},
+  {fontSizePt:30,fontLineHeightPt:Infinity,fontSizeSource:'authored'},
+  {fontSizePt:2000,fontLineHeightPt:45,fontSizeSource:'authored'},
+])('rejects malformed or incomplete authored font provenance: %j', async presentation => {
+  result = [{id:'text',presentation}];
+  await expect(normalizeDocumentDocxColors(html,requests,attribute)).rejects.toThrow();
+});
+it('accepts only complete inline font ownership and rejects the old parallel descriptor key', async () => {
+  result = [{id:'text',presentation:{fontSizePt:30,fontLineHeightPt:45,fontSizeSource:'authored'}}];
+  expect(await normalizeDocumentDocxColors(html,requests,attribute)).toEqual(new Map([['text',{fontSizePt:30,fontLineHeightPt:45,fontSizeSource:'authored'}]]));
+  for (const kind of ['cell','divider'] as const) await expect(normalizeDocumentDocxColors(html,[{id:'text',kind}],attribute)).rejects.toThrow();
+  result = [{id:'text',colors:{foreground:'FFFFFF',foregroundSource:'authored'}}];
+  await expect(normalizeDocumentDocxColors(html,requests,attribute)).rejects.toThrow();
 });

@@ -77,3 +77,14 @@ it('preserves the actual ordinary-GFM MathML corpus and TeX annotations exactly 
   expect(restored('math').toArray().map(node=>restored(node).toString())).toEqual(originalMath);
   expect(restored('section.footnotes').text()).toBe(before('section.footnotes').text());
 });
+it.each(['<p><code>Code</code></p>','<pre>Code block</pre>','<p><span> </span></p>'])('retains font-only owners and refuses a lost native owner: %s', html => {
+  const source = documentDocxSourceColors(html), id = source.requests[0]!.id;
+  const resolved = new Map([[id,{fontSizePt:30,fontLineHeightPt:45,fontSizeSource:'authored' as const}]]);
+  expect(normalizedDocumentDocxHtml(source,resolved)).toContain(source.attributeName);
+  expect(() => resolvedDocumentDocxColorOwners({blocks:[]},source,resolved)).toThrow('ownership');
+});
+it('refuses missing or forged font-only provenance before wrapper normalization', () => {
+  const source = documentDocxSourceColors('<p>A</p>'), id = source.requests[0]!.id;
+  expect(() => normalizedDocumentDocxHtml(source,new Map([[id,{fontSizePt:30,fontLineHeightPt:45}]]))).toThrow('ownership');
+  expect(() => normalizedDocumentDocxHtml(source,new Map([[id,{fontSizePt:30,fontLineHeightPt:45,fontSizeSource:'inherited' as never}]]))).toThrow('ownership');
+});
