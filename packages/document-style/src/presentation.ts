@@ -13,6 +13,10 @@ export interface NormalizedDocumentPresentation {
   headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
   headingBeforePt?: 0;
   headingSource?: 'canonical-first-block';
+  headingImageLineHeightPt?: number;
+  headingImageWidthPt?: number;
+  headingImageHeightPt?: number;
+  headingImageSource?: 'single-baseline-image';
 }
 export function validDocumentFontSize(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= DOCUMENT_FONT_MAX_PT;
@@ -51,4 +55,21 @@ export function documentWordFontSize(points: number): string {
 
 export function validDocumentHeadingLevel(value: unknown): value is 1 | 2 | 3 | 4 | 5 | 6 {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 6;
+}
+
+export function validDocumentHeadingImage(value: Pick<NormalizedDocumentPresentation,'headingImageSource'|'headingImageLineHeightPt'|'headingImageWidthPt'|'headingImageHeightPt'>): boolean {
+  return value.headingImageSource === 'single-baseline-image'
+    && validDocumentFontLineHeight(value.headingImageLineHeightPt)
+    && validDocumentFontLineHeight(value.headingImageWidthPt)
+    && validDocumentFontLineHeight(value.headingImageHeightPt)
+    && value.headingImageHeightPt <= value.headingImageLineHeightPt;
+}
+/** The two heading receipts are independent; neither authorizes a partial or
+ * unpaired payload at the contained browser/AST boundary. */
+export function validDocumentHeadingMetadata(value: NormalizedDocumentPresentation): boolean {
+  const before = value.headingBeforePt !== undefined || value.headingSource !== undefined;
+  const image = [value.headingImageSource,value.headingImageLineHeightPt,value.headingImageWidthPt,value.headingImageHeightPt].some(field => field !== undefined);
+  return validDocumentHeadingLevel(value.headingLevel) && (before || image)
+    && (!before || (value.headingBeforePt === 0 && value.headingSource === 'canonical-first-block'))
+    && (!image || validDocumentHeadingImage(value));
 }

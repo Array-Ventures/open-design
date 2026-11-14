@@ -1,20 +1,21 @@
-import { documentWordFontSize, validDocumentFontSize, validDocumentFontLineHeight, validDocumentHeadingLevel } from '@open-design/document-style';
+import { documentWordFontSize, validDocumentFontSize, validDocumentFontLineHeight, validDocumentHeadingLevel, validDocumentHeadingImage } from '@open-design/document-style';
 import { randomBytes } from 'node:crypto';
 import { DOMParser, XMLSerializer, type Element, type Node } from '@xmldom/xmldom';
 
-export interface DocumentDocxPresentation { foreground?: string; background?: string; fontSizePt?: number; fontLineHeightPt?: number; headingLevel?: number; headingBeforePt?: 0 }
+export interface DocumentDocxPresentation { foreground?: string; background?: string; fontSizePt?: number; fontLineHeightPt?: number; headingLevel?: number; headingBeforePt?: 0; headingImageLineHeightPt?: number; headingImageWidthPt?: number; headingImageHeightPt?: number; headingImageSource?: 'single-baseline-image' }
 export type DocumentDocxColors = DocumentDocxPresentation;
 export interface DocumentDocxStyleOwner { id: string; name: string; kind: 'cell' | 'inline' | 'heading'; rowSpan?: number; columnSpan?: number; temporaryStart?: boolean; temporaryEnd?: boolean; presentation: DocumentDocxPresentation }
 type Ast = { t?: string; c?: unknown };
 const fail = (): never => { throw new Error('The document converter could not preserve authored presentation ownership.'); };
 const w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 function checkedPresentation(value: DocumentDocxPresentation): DocumentDocxPresentation {
-  if (Object.keys(value).some(key => !['foreground', 'background', 'fontSizePt', 'fontLineHeightPt', 'headingLevel', 'headingBeforePt'].includes(key))) return fail();
+  if (Object.keys(value).some(key => !['foreground', 'background', 'fontSizePt', 'fontLineHeightPt', 'headingLevel', 'headingBeforePt','headingImageLineHeightPt','headingImageWidthPt','headingImageHeightPt','headingImageSource'].includes(key))) return fail();
   for (const color of [value.foreground, value.background]) if (color !== undefined && !/^[A-Fa-f0-9]{6}$/.test(color)) return fail();
   if (value.fontSizePt !== undefined || value.fontLineHeightPt !== undefined) {
     if (!validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt)) return fail();
   }
-  if (value.headingLevel !== undefined || value.headingBeforePt !== undefined) { if (!validDocumentHeadingLevel(value.headingLevel) || value.headingBeforePt !== 0) return fail(); }
+  if (value.headingLevel !== undefined || value.headingBeforePt !== undefined) { if (!validDocumentHeadingLevel(value.headingLevel) || (value.headingBeforePt !== undefined && value.headingBeforePt !== 0) || (value.headingBeforePt === undefined && !value.headingImageSource)) return fail(); }
+  if (Object.keys(value).some(key => key.startsWith('headingImage')) && !validDocumentHeadingImage(value)) return fail();
   return value;
 }
 /** The caller supplies qualified normalized presentation. This owner never
@@ -25,8 +26,8 @@ export function documentDocxPresentationOwners(ast: unknown, resolve: (attribute
   const owner = (attributes: unknown, kind: 'cell' | 'inline' | 'heading') => {
     const value = checkedPresentation(resolve(attributes, kind));
     if (kind !== 'inline' && value.fontSizePt !== undefined) return fail();
-    if (kind === 'heading') { if (Object.keys(value).some(key => !['headingLevel','headingBeforePt'].includes(key))) return fail(); }
-    else if (value.headingLevel !== undefined || value.headingBeforePt !== undefined) return fail();
+    if (kind === 'heading') { if (Object.keys(value).some(key => !['headingLevel','headingBeforePt','headingImageLineHeightPt','headingImageWidthPt','headingImageHeightPt','headingImageSource'].includes(key))) return fail(); }
+    else if (value.headingLevel !== undefined || value.headingBeforePt !== undefined || value.headingImageSource !== undefined) return fail();
     if (!Object.keys(value).length) return undefined;
     if (owners.length >= 10000) return fail();
     const result: DocumentDocxStyleOwner = { id: String(2_000_000_000 + owners.length), name: `${prefix}_${owners.length}`, kind, presentation: value }; owners.push(result); return result;
@@ -117,10 +118,18 @@ export function projectDocumentDocxPresentation(xml: string, owners: readonly Do
   const parentParagraph = (node: Node): Element | undefined => { for (let parent = node.parentNode; parent; parent = parent.parentNode) if (parent.nodeType === 1 && (parent as Element).namespaceURI === w && (parent as Element).localName === 'p') return parent as Element; return undefined; };
   const headingParagraphs = new Map<string,Element>(), headingTargets = new Set<Element>();
   const paragraphLines = new Map<Element, number>();
+  const headingImages = new Map<string, Set<Element>>();
   const visit = (node: Node): void => {
     if (node.nodeType !== 1) return;
     const element = node as Element, name = element.namespaceURI === w ? element.localName : '';
     if (name === 'p' && stack.some(owner => owner.kind === 'heading' && headingParagraphs.get(owner.id) !== element)) return fail();
+    if (element.namespaceURI === 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing' && element.localName === 'inline') {
+      for (const own of stack.filter(owner => owner.kind === 'heading')) {
+        if (parentParagraph(element) !== headingParagraphs.get(own.id)) return fail();
+        const images = headingImages.get(own.id) ?? new Set<Element>();
+        images.add(element); headingImages.set(own.id,images);
+      }
+    }
     if (name === 'bookmarkStart' || name === 'bookmarkEnd') {
       const id = element.getAttributeNS(w, 'id')!, own = byId.get(id);
       if (!own && names.has(element.getAttributeNS(w, 'name') ?? '')) return fail();
@@ -188,7 +197,31 @@ export function projectDocumentDocxPresentation(xml: string, owners: readonly Do
     const spacing = paragraphSpacing(paragraph);
     spacing.setAttributeNS(w,'w:line',String(Math.round(minimum * 20))); spacing.setAttributeNS(w,'w:lineRule','atLeast');
   }
-  for (const paragraph of headingTargets) paragraphSpacing(paragraph).setAttributeNS(w,'w:before','0');
+  for (const own of owners.filter(owner => owner.kind === 'heading')) {
+    const paragraph = headingParagraphs.get(own.id) ?? fail();
+    if (own.presentation.headingBeforePt !== undefined) paragraphSpacing(paragraph).setAttributeNS(w,'w:before','0');
+    if (!own.presentation.headingImageSource) continue;
+    const elements = Array.from(paragraph.getElementsByTagName('*'));
+    const inlines = elements.filter(element => element.namespaceURI === 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing' && element.localName === 'inline');
+    if (inlines.length !== 1 || elements.filter(element => element.namespaceURI === w && element.localName === 'drawing').length !== 1 || elements.some(element => element.localName === 'anchor') || elements.some(element => element.namespaceURI === w && ['t','br','tab','pict'].includes(element.localName ?? '')) || paragraphLines.has(paragraph)) return fail();
+    const image = inlines[0]!;
+    const ownedImages = headingImages.get(own.id);
+    if (ownedImages?.size !== 1 || !ownedImages.has(image)) return fail();
+    const extents = Array.from(image.getElementsByTagNameNS(image.namespaceURI!,'extent'));
+    const drawing = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+    const picture = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
+    const relationship = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+    const graphics = image.getElementsByTagNameNS(drawing,'graphicData'), pictures = image.getElementsByTagNameNS(picture,'pic');
+    if (graphics.length !== 1 || graphics[0]!.getAttribute('uri') !== picture || pictures.length !== 1) return fail();
+    const blips = pictures[0]!.getElementsByTagNameNS(drawing,'blip');
+    if (blips.length !== 1 || !blips[0]!.getAttributeNS(relationship,'embed') || blips[0]!.hasAttributeNS(relationship,'link')) return fail();
+    if (extents.length !== 1 || Number(extents[0]!.getAttribute('cx')) !== Math.round(own.presentation.headingImageWidthPt!*12700)
+      || Number(extents[0]!.getAttribute('cy')) !== Math.round(own.presentation.headingImageHeightPt!*12700)) return fail();
+    for (const side of ['T','B','L','R']) image.setAttribute(`dist${side}`,'0');
+    const spacing = paragraphSpacing(paragraph);
+    spacing.setAttributeNS(w,'w:line',String(Math.round(own.presentation.headingImageLineHeightPt!*20)));
+    spacing.setAttributeNS(w,'w:lineRule','exact');
+  }
   for (const marker of markers) marker.parentNode?.removeChild(marker);
   for (const paragraph of temporary) {
     // Only our marker-only paragraphs can disappear; real empty authored

@@ -167,3 +167,20 @@ it('requires heading context on heading requests only, while keeping later headi
   result = [{id:'text',presentation:{}}];
   expect(await normalizeDocumentDocxColors(html,[{id:'text',kind:'heading'}],attribute)).toEqual(new Map([['text',{}]]));
 });
+it('requires a complete finite image-line receipt on its source heading, independently of a first-heading margin receipt', async () => {
+  const image = {headingLevel:1,headingImageLineHeightPt:37.5,headingImageWidthPt:18,headingImageHeightPt:18,headingImageSource:'single-baseline-image'};
+  result = [{id:'text',presentation:image}];
+  expect(await normalizeDocumentDocxColors(html,[{id:'text',kind:'heading'}],attribute)).toEqual(new Map([['text',image]]));
+  await expect(normalizeDocumentDocxColors(html,requests,attribute)).rejects.toThrow();
+  for (const invalid of [
+    {...image,headingLevel:undefined},
+    {...image,headingImageSource:undefined},
+    {...image,headingImageLineHeightPt:NaN},
+    {...image,headingImageHeightPt:38},
+    {...image,headingImageWidthPt:Infinity},
+    {...image,headingBeforePt:0},
+  ]) {
+    result = [{id:'text',presentation:invalid}];
+    await expect(normalizeDocumentDocxColors(html,[{id:'text',kind:'heading'}],attribute)).rejects.toThrow();
+  }
+});
