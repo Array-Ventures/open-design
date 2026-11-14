@@ -1,3 +1,4 @@
+import { MediaPlayback } from './MediaPlayback';
 import { sourceOwnedDeckExportSelection } from './embedded/deck-export';
 import { deckSlideStateFromMessage } from '../edit-mode/deck-source-identity';
 import { InspectorResizeHandle } from './embedded/InspectorResizeHandle';
@@ -20056,7 +20057,7 @@ function VideoViewer({
         <FileActions projectId={projectId} file={file} />
       </div>
       <div className="viewer-body video-body">
-        <video src={url} controls playsInline preload="metadata" />
+        <MediaPlayback kind="video" src={url} unavailable={t('fileViewer.previewUnavailable')} actions={<FileActions projectId={projectId} file={file} />} />
       </div>
     </div>
   );
@@ -20089,7 +20090,7 @@ function AudioViewer({
         <div className="audio-card">
           <Icon name="mic" size={28} />
           <div className="audio-card-name">{file.name}</div>
-          <audio src={url} controls preload="metadata" />
+          <MediaPlayback kind="audio" src={url} unavailable={t('fileViewer.previewUnavailable')} actions={<FileActions projectId={projectId} file={file} />} />
         </div>
       </div>
     </div>
