@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { expect, it } from 'vitest';
 import { z } from 'zod';
-import { workbookSheetBaseline, canonicalWorkbookSheetBaseline, workbookSheetBaselineSchema } from '../src/runtime/workbook-sheet-baseline';
+import { workbookSheetBaseline, canonicalWorkbookSheetBaseline, workbookSheetBaselineSchema, canonicalWorkbookJsonValue, canonicalWorkbookSourceModel } from '../src/runtime/workbook-sheet-baseline';
 import { workbookEditPlanSchema, type WorkbookDocument } from '../src/runtime/workbook';
 function source(): WorkbookDocument {
   return { version: 1, date1904: false, activeSheetId: '1', worksheetStructureEditable: true, calculationMetadata: 'verified', richTextMetadata: 'verified', themeColors: Array(12).fill('FF123456'),
@@ -94,4 +94,18 @@ it('fails the captured previous strict restore-entry boundary instead of silentl
   const manual = { sheetId: '1', name: 'Sheet', origin: 'restore', template: { versionId: 'checked', versionSha256: 'a'.repeat(64) } };
   expect(oldEntry.safeParse(manual).success).toBe(true);
   expect(oldEntry.safeParse({ ...manual, baselineIdentity: { version: 1, sha256: 'b'.repeat(64) } }).success).toBe(false);
+});
+
+it('uses the same bounded public JSON domain for full-model and SDK continuity data', () => {
+  const model = source(); expect(canonicalWorkbookSourceModel(model)).toBe(canonicalWorkbookSourceModel(JSON.parse(JSON.stringify(model))));
+  const sdk = { array: [null, true], optional: undefined, nested: { value: -0 } };
+  expect(canonicalWorkbookJsonValue(sdk)).toBe(canonicalWorkbookJsonValue(JSON.parse(JSON.stringify(sdk))));
+  expect(() => canonicalWorkbookJsonValue(undefined)).toThrowError(new TypeError('Comment receipt data must be JSON.'));
+  expect(() => canonicalWorkbookJsonValue({ array: Array(10) })).toThrow('dense');
+});
+it('binds the full strict source model including unused style definitions', () => {
+  const model = source(), changed = structuredClone(model); changed.styles[4]!.font!.italic = false;
+  expect(canonicalWorkbookSheetBaseline(workbookSheetBaseline(model, '1'))).toBe(canonicalWorkbookSheetBaseline(workbookSheetBaseline(changed, '1')));
+  expect(canonicalWorkbookSourceModel(model)).not.toBe(canonicalWorkbookSourceModel(changed));
+  expect(() => canonicalWorkbookSourceModel({ ...model, unknownInterpretation: true })).toThrow();
 });

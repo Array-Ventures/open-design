@@ -1,3 +1,4 @@
+import { matchesWorkbookSourceSnapshot, workbookSourceSnapshotBindingSchema } from './source-snapshot-binding';
 import { workbookSourceDeleteContextSchema } from './sheet-delete-context';
 import { workbookGridSnapshotSchema, workbookDraftScopeSchema, type WorkbookDraftScope } from './workbook-draft-schema';
 export { workbookDraftScopeSchema, type WorkbookDraftScope } from './workbook-draft-schema';
@@ -5,7 +6,7 @@ import { workbookSaveAcknowledgementSchema } from './save-provenance';
 import { z } from 'zod';
 import { workbookEditPlanSchema, workbookPreviewSchema } from '@open-design/contracts/runtime/workbook';
 import type { WorkbookCheckpoint } from './workbook-writer';
-import { workbookGridPlan } from './grid-plan';
+import { workbookGridPlan, workbookPlanHasChanges } from './grid-plan';
 
 const snapshot = workbookGridSnapshotSchema;
 const intent = z.object({ id: z.string().uuid(), preparationId: z.string().uuid(), previewId: z.string().uuid(), renderId: z.string().uuid().optional(), plan: workbookEditPlanSchema }).strict();
@@ -14,6 +15,7 @@ const checkpoint = z.object({ version: z.literal(1), source: workbookPreviewSche
   sourceAcknowledgement: workbookSaveAcknowledgementSchema.optional(),
   sheetDeletions: z.array(workbookSourceDeleteContextSchema).max(4096).optional(),
   sheetActionConflict: z.literal(true).optional(),
+  sourceSnapshotBinding: workbookSourceSnapshotBindingSchema.optional(),
 }).strict();
 const record = z.object({ version: z.literal(1), scope: workbookDraftScopeSchema, checkpoint, updatedAt: z.number().int().nonnegative() }).strict();
 export function workbookDraftArtifactKey(scope: Omit<WorkbookDraftScope, 'draftId'>): string {
@@ -55,9 +57,18 @@ export function decodeWorkbookDraft(value: unknown, scope: WorkbookDraftScope): 
     const derived = workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.pending.snapshot, state.sheetDeletions);
     if (JSON.stringify(derived) !== JSON.stringify(state.pending.intent.plan)) throw new Error('The pending workbook save does not match its protected snapshot.');
   }
+  if (state.sourceSnapshotBinding && !matchesWorkbookSourceSnapshot(state, scope, state.source)) throw Error('The protected source snapshot binding is inconsistent.');
   return state;
 }
 export function encodeWorkbookDraft(scope: WorkbookDraftScope, checkpoint: WorkbookCheckpoint) {
   const value = { version: 1, scope, checkpoint, updatedAt: Date.now() };
   decodeWorkbookDraft(value, scope); return value;
+}
+
+/** Recovery means unsaved/uncertain ownership, not merely live history metadata.
+ * Unsupported desired state stays recoverable rather than being discarded. */
+export function workbookCheckpointNeedsRecovery(state: WorkbookCheckpoint, scope: WorkbookDraftScope, fresh: WorkbookCheckpoint['source'] | null | undefined): boolean {
+  if (state.pending || state.sheetActionConflict) return true;
+  try { return workbookPlanHasChanges(workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.desired, state.sheetDeletions)) || !matchesWorkbookSourceSnapshot(state, scope, fresh); }
+  catch { return true; }
 }

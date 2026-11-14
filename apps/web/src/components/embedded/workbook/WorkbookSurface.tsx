@@ -35,7 +35,7 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
   }), []);
   const [error, setError] = useState<string | null>(null), [retry, setRetry] = useState(0);
   const close = useRef<() => Promise<void>>(async () => {});
-  const recovery = useWorkbookRecovery({ viewerId, projectId, fileName }, Boolean(loaded), () => close.current());
+  const recovery = useWorkbookRecovery({ viewerId, projectId, fileName }, Boolean(loaded), () => close.current(), loaded);
   const editorRef = useRef<ReturnType<typeof useWorkbookEditor> | null>(null);
   const history = useWorkbookHistory({ statusOnly, scope: { viewerId, projectId, fileName }, source: loaded, ready: Boolean(recovery.session),
     dirty: () => !editorRef.current || editorRef.current.stateRef.current.dirty || editorRef.current.discarding,

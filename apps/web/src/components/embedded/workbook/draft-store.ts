@@ -1,10 +1,10 @@
 import type { WorkbookCheckpoint } from './workbook-writer';
-import { decodeWorkbookDraft, encodeWorkbookDraft, workbookDraftArtifactKey, workbookDraftKey, workbookDraftScopeSchema, type WorkbookDraftScope } from './workbook-checkpoint';
+import { decodeWorkbookDraft, encodeWorkbookDraft, workbookDraftArtifactKey, workbookDraftKey, workbookDraftScopeSchema, workbookCheckpointNeedsRecovery, type WorkbookDraftScope } from './workbook-checkpoint';
 
 export const WORKBOOK_DRAFT_DATABASE = 'od-embedded-artifact-drafts';
 const STORE = 'workbooks', HEADS = 'heads';
 export const MAX_WORKBOOK_DRAFT_BYTES = 128 * 1024 * 1024;
-export interface WorkbookDraftHead { id: string; draftId: string; artifactKey: string; updatedAt: number }
+export interface WorkbookDraftHead { id: string; draftId: string; artifactKey: string; updatedAt: number; needsRecovery?: boolean }
 function bounded(text: string) {
   if (new Blob([text]).size > MAX_WORKBOOK_DRAFT_BYTES) throw new Error('The workbook draft exceeds this device’s recovery limit.');
   return text;
@@ -48,7 +48,7 @@ export async function listWorkbookDrafts(scope: Omit<WorkbookDraftScope, 'draftI
   const raw: unknown = await access([HEADS], 'readonly', tx => tx.objectStore(HEADS).index('artifact').getAll(artifactKey));
   if (!Array.isArray(raw) || raw.some(head => {
     const checked = workbookDraftScopeSchema.safeParse({ ...scope, draftId: head?.draftId });
-    return !checked.success || head.id !== workbookDraftKey(checked.data) || head.artifactKey !== artifactKey || !Number.isSafeInteger(head.updatedAt) || head.updatedAt < 0;
+    return !checked.success || head.id !== workbookDraftKey(checked.data) || head.artifactKey !== artifactKey || !Number.isSafeInteger(head.updatedAt) || head.updatedAt < 0 || head.needsRecovery !== undefined && typeof head.needsRecovery !== 'boolean';
   })) throw new Error('The workbook recovery index could not be read.');
   return raw.sort((a: WorkbookDraftHead, b: WorkbookDraftHead) => b.updatedAt - a.updatedAt);
 }
@@ -60,9 +60,10 @@ export function serializeWorkbookDraft(scope: WorkbookDraftScope, state: Workboo
 export async function saveWorkbookDraft(scope: WorkbookDraftScope, state: WorkbookCheckpoint | null): Promise<void> {
   const key = workbookDraftKey(scope);
   const serialized = state ? serializeWorkbookDraft(scope, state) : null;
+  const needsRecovery = state ? workbookCheckpointNeedsRecovery(state, scope, state.source) : false;
   if (serialized === null) await access([STORE, HEADS], 'readwrite', tx => { tx.objectStore(HEADS).delete(key); return tx.objectStore(STORE).delete(key); });
   else await access([STORE, HEADS], 'readwrite', tx => {
-    tx.objectStore(HEADS).put({ id: key, draftId: scope.draftId, artifactKey: workbookDraftArtifactKey(scope), updatedAt: Date.now() } satisfies WorkbookDraftHead);
+    tx.objectStore(HEADS).put({ id: key, draftId: scope.draftId, artifactKey: workbookDraftArtifactKey(scope), updatedAt: Date.now(), needsRecovery } satisfies WorkbookDraftHead);
     return tx.objectStore(STORE).put(serialized, key);
   });
 }

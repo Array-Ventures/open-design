@@ -84,9 +84,20 @@ function bounded(value: unknown): void {
  * the existing preview transport. Reader semantic changes require a version bump. */
 export function canonicalWorkbookSheetBaseline(raw: unknown): string {
   bounded(raw);
-  const baseline = workbookSheetBaselineSchema.parse(raw), json = canonicalCommentJson(baseline);
+  return encodeWorkbookJson(workbookSheetBaselineSchema.parse(raw));
+}
+function encodeWorkbookJson(value: unknown): string {
+  const json = canonicalCommentJson(value);
   if (new TextEncoder().encode(json).byteLength > WORKBOOK_SHEET_BASELINE_LIMITS.bytes) throw Error('Workbook baseline exceeds its byte limit.');
   return json;
+}
+/** Same bounded JSON domain/encoder for current local continuity metadata. */
+export function canonicalWorkbookJsonValue(raw: unknown): string {
+  bounded(raw); return encodeWorkbookJson(raw);
+}
+/** Full strict model identity, including unused styles and interpretation flags. */
+export function canonicalWorkbookSourceModel(raw: unknown): string {
+  bounded(raw); return encodeWorkbookJson(workbookDocumentSchema.parse(raw));
 }
 
 /** Extract the complete selected model semantics from one qualified full read.

@@ -1,3 +1,5 @@
+import { bindWorkbookSourceSnapshot, type WorkbookSourceSnapshotBinding } from './source-snapshot-binding';
+import type { WorkbookDraftScope } from './workbook-draft-schema';
 import { canonicalCommentJson } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import { associateWorkbookSourceDeletion, workbookSourceDeleteContextSchema, type WorkbookSourceDeleteContext } from './sheet-delete-context';
 import { workbookSaveAcknowledgementSchema, type WorkbookSaveAcknowledgement } from './save-provenance';
@@ -18,8 +20,9 @@ export interface WorkbookCheckpoint {
   sourceAcknowledgement?: WorkbookSaveAcknowledgement;
   sheetDeletions?: WorkbookSourceDeleteContext[];
   sheetActionConflict?: true;
+  sourceSnapshotBinding?: WorkbookSourceSnapshotBinding;
 }
-export interface WorkbookJournal { save(checkpoint: WorkbookCheckpoint | null): Promise<void>; validate?(checkpoint: WorkbookCheckpoint): void; isCurrent?(): boolean; restored?: WorkbookCheckpoint }
+export interface WorkbookJournal { scope?: WorkbookDraftScope; save(checkpoint: WorkbookCheckpoint | null): Promise<void>; validate?(checkpoint: WorkbookCheckpoint): void; isCurrent?(): boolean; restored?: WorkbookCheckpoint }
 /** Serializes edits against acknowledged bytes. A failed/uncertain intent keeps
  * its exact plan and identity; edits made during it are rebased only after its
  * receipt and refreshed model agree. This class never owns or remounts a grid. */
@@ -30,6 +33,7 @@ export class WorkbookWriter {
   private pending: WorkbookCheckpoint['pending'] = null;
   private sourceAcknowledgement: WorkbookSaveAcknowledgement | undefined;
   private sheetDeletions: WorkbookSourceDeleteContext[] = [];
+  private sourceSnapshotBinding: WorkbookSourceSnapshotBinding | undefined;
   private sheetActionConflict = false;
   private executingProtectedCommand = false;
   private readonly sheetActionConflictMessage = 'The worksheet command needs recovery. Keep the workbook open and recover the protected pre-command draft before saving.';
@@ -47,7 +51,7 @@ export class WorkbookWriter {
     this.source = source; this.acknowledged = structuredClone(initial); this.desired = structuredClone(initial);
     if (journal?.restored) {
       const restored = structuredClone(journal.restored);
-      this.source = restored.source; this.acknowledged = restored.acknowledged; this.desired = restored.desired; this.pending = restored.pending; this.sourceAcknowledgement = restored.sourceAcknowledgement; this.sheetDeletions = restored.sheetDeletions ?? []; this.sheetActionConflict = restored.sheetActionConflict === true;
+      this.source = restored.source; this.acknowledged = restored.acknowledged; this.desired = restored.desired; this.pending = restored.pending; this.sourceAcknowledgement = restored.sourceAcknowledgement; this.sheetDeletions = restored.sheetDeletions ?? []; this.sheetActionConflict = restored.sheetActionConflict === true; this.sourceSnapshotBinding = restored.sourceSnapshotBinding;
       if (source.sourceSha256 !== restored.source.sourceSha256) {
         this.recoveryConflict = !restored.pending;
         this.error = 'Recovered edits belong to an earlier workbook version. Keep this draft while checking the save status.';
@@ -72,7 +76,7 @@ export class WorkbookWriter {
     this.publish();
     void this.persist().catch(error => { if (this.active) { this.error = this.persistenceError(error); this.publish(); } });
   }
-  checkpoint(): WorkbookCheckpoint { return structuredClone({ version: 1, source: this.source, acknowledged: this.acknowledged, desired: this.desired, pending: this.pending, ...(this.sourceAcknowledgement ? { sourceAcknowledgement: this.sourceAcknowledgement } : {}), ...(this.sheetDeletions.length ? { sheetDeletions: this.sheetDeletions } : {}), ...(this.sheetActionConflict ? { sheetActionConflict: true as const } : {}) }); }
+  checkpoint(): WorkbookCheckpoint { return structuredClone({ version: 1, source: this.source, acknowledged: this.acknowledged, desired: this.desired, pending: this.pending, ...(this.sourceAcknowledgement ? { sourceAcknowledgement: this.sourceAcknowledgement } : {}), ...(this.sheetDeletions.length ? { sheetDeletions: this.sheetDeletions } : {}), ...(this.sheetActionConflict ? { sheetActionConflict: true as const } : {}), ...(this.sourceSnapshotBinding ? { sourceSnapshotBinding: this.sourceSnapshotBinding } : {}) }); }
   /** Synchronous context-pool admission through the real draft encoder.
    * A command owner must separately validate its post-command snapshot before
    * executing. This retains data, not Delete/Undo or historical authority. */
@@ -187,13 +191,17 @@ export class WorkbookWriter {
         pending.acknowledgement = structuredClone(acknowledgement);
         this.sheetDeletions = bound;
         await this.persist(); if (!this.active) return;
-        const previous = { source: this.source, acknowledged: this.acknowledged, sourceAcknowledgement: this.sourceAcknowledgement };
-        this.source = source; this.acknowledged = pending.snapshot; this.pending = null; this.sourceAcknowledgement = acknowledgement;
+        const previous = { source: this.source, acknowledged: this.acknowledged, sourceAcknowledgement: this.sourceAcknowledgement, sourceSnapshotBinding: this.sourceSnapshotBinding };
+        let binding: WorkbookSourceSnapshotBinding | undefined;
+        // Only the live checked transfer may establish this current continuity
+        // metadata. Unsupported JSON domains remain conservative recovery.
+        if (this.journal?.scope) { try { binding = bindWorkbookSourceSnapshot(this.journal.scope, source, pending.snapshot, acknowledgement); } catch { /* No clean proof. */ } }
+        this.source = source; this.acknowledged = pending.snapshot; this.pending = null; this.sourceAcknowledgement = acknowledgement; this.sourceSnapshotBinding = binding;
         try { await this.persist(); }
         catch (error) {
           // A failed ownership transfer must retry the same retained receipt,
           // never derive a second write against a prematurely advanced source.
-          this.source = previous.source; this.acknowledged = previous.acknowledged; this.sourceAcknowledgement = previous.sourceAcknowledgement; this.pending = pending;
+          this.source = previous.source; this.acknowledged = previous.acknowledged; this.sourceAcknowledgement = previous.sourceAcknowledgement; this.sourceSnapshotBinding = previous.sourceSnapshotBinding; this.pending = pending;
           throw error;
         }
         if (!this.active) return;

@@ -667,3 +667,71 @@ context cases additionally assert nonsticky pre-command refusal. Final web types
 full repository typecheck, guard and diff check passed. The two original failing
 regressions are retained in the source tests. No runtime, model, image, production,
 publication or pin changes were made.
+
+### Corrective checkpoint: clean saved metadata is not an unsaved draft
+
+Actual recovery-hook/Writer/IndexedDB lifecycle tests reproduced two false prompts:
+ordinary checked Save and completed SDK Delete/Save both reported a clean Writer,
+but retained history/context metadata became an “Unsaved drafts” head on reopen.
+The tests use real production hook, lease, Writer and storage implementations;
+only IndexedDB and the browser lock API use deterministic browser stand-ins.
+Pending receipt, quarantined and genuinely unsaved branches remain recovery.
+
+The same checkpoint now optionally holds one CURRENT versioned source/snapshot
+binding established only during the live checked history-ACK/fresh-preview
+transfer. Its bounded canonical hashes cover the full strict typed model (all
+style definitions and interpretation metadata), exact acknowledged SDK snapshot,
+complete checked receipt and complete journal/account/artifact/draft scope. No
+snapshot or history is duplicated. Encoder/decoder recompute the binding; discovery
+additionally compares the actual freshly authorized Preview model identity AND
+source byte SHA. Model identity is not inferred from a claimed SHA or style
+ordinal. JSON semantics reuse the existing bounded canonical encoder, including
+optional-key omission and -0 normalization.
+
+This is accidental-corruption/continuity evidence, NOT authentication or an
+access/history grant. Locally self-consistent forged data can recompute a SHA;
+it cannot become a checked host receipt or authorize a historical asset. Binding
+metadata is never accepted from file custom metadata. Missing/legacy/unknown or
+unprovable continuity remains conservatively recoverable, not automatically
+trusted clean. A changed current Preview model or raw-byte identity likewise
+retains recovery. Source adoption protects the new binding atomically with its
+current checkpoint and restores the former binding on transfer-storage failure.
+
+Existing heads receive an optional `needsRecovery` hint in the SAME atomic write
+as their existing workbook bytes. Pending, quarantine, dirty and unrepresentable
+states are recovery first. A clean hint is not deletion authority. Discovery only
+inspects explicitly known-clean candidates automatically; historical/unknown
+heads preserve their existing explicit-recovery prompt. A known-clean candidate
+is strictly reread/reclassified against current Preview after acquiring its EXACT
+branch lease before any atomic record/head removal. Active/unavailable leases
+are never released by this discovery owner: read-only reclassification can allow
+an independent editor while leaving live metadata intact. Corrupt, stale, pending
+or newly dirty records remain visible. Cleanup release failure uses the existing
+retirement fence; no second store, journal or history stack was added.
+
+Clean metadata is retained while the live editor lease can own Undo/Redo or a
+same-lease Writer handoff. `Writer.close()` does not blindly delete it. Once an
+exclusive cleanup lease proves that editor is gone, known-clean metadata can be
+retired because ordinary reload does not restore native SDK history. Pending
+ancestry, current unsaved desired state and quarantine are never collected as
+clean. The already-loaded authorized Preview is passed to recovery without
+restarting the live session on each own-ACK update.
+
+Coverage includes Save/close/reopen; completed actual SDK Delete/Save with a
+second active editor; real pending/quarantine/unsaved records even when their
+index hint is falsely clean; changed record between index and cleanup lease;
+corrupt JSON, same-ordinal model/ACK style drift, binding/identity version drift,
+self-consistent changed model versus actual Preview, changed current raw/model
+identity, legacy heads, unavailable cleanup acquisition and failed-release fencing.
+Fixture corrections used the SDK's actual saved defaults and IndexedDB's inline
+head-key overload; assertions were not relaxed. A root-undefined helper test
+asserts the reused encoder's existing TypeError rather than inventing a wrapper.
+
+This remains source-level qualification: controls are OFF, no companion/renderer
+or runtime was activated, and no browser visual/release qualification is claimed.
+
+Validation: 11 focused contract tests and 85 focused web/SDK/recovery tests passed,
+including the unchanged cross-runtime canonical identity vector. Final web types,
+full repository typecheck, guard and diff check passed. No full daemon/web suite
+or browser visual test was run. Main is intentionally not rebased during this
+qualified source checkpoint; later upstream integration is a separate check.
