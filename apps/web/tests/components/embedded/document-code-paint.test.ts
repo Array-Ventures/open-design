@@ -156,3 +156,23 @@ it('keeps ordinary unstyled code as a language fence and preserves its text on M
     } finally { reopened.close(); }
   } finally { f.close(); }
 });
+
+it('promotes a styled raw CODE language without trimming its real trailing newline', async () => {
+  const { readMarkdownDocument } = await import('../../../src/components/embedded/document/markdown-document');
+  const raw = '<pre data-od-id="code-anchor"><code class="language-ts" style="color:red;background-color:yellow;font-size:14px">  const n = 1;\n</code></pre>';
+  const loaded = await readMarkdownDocument(raw, 'Raw styled TypeScript');
+  const f = fixture(loaded.html);
+  try {
+    f.editor.getEditorState().read(() => {
+      const node = $getRoot().getFirstChild();
+      if (!$isCodeNode(node)) throw Error('Expected code block');
+      expect(node.getLanguage()).toBe('ts');
+      expect(node.getTextContent()).toBe('  const n = 1;\n');
+      expect($getState(node, documentBlockId)).toBe('code-anchor');
+    });
+    const pre = new DOMParser().parseFromString(exported(f.editor), 'text/html').querySelector('pre')!;
+    expect(pre.dataset.language).toBe('ts');
+    expect(pre.querySelector<HTMLElement>('code')?.style.color).toBe('red');
+    expect(pre.querySelector<HTMLElement>('code')?.style.backgroundColor).toBe('yellow');
+  } finally { f.close(); }
+});
