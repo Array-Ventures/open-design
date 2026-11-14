@@ -213,3 +213,25 @@ application accessibility tree, browser keyboard behavior or visual layout.
 Refresh through `pnpm patch` / `pnpm patch-commit`, update the lockfile and verify
 a frozen installation. Remove when the upstream producer provides the localized
 name and the same real DOM cases still pass. No dependency version changes.
+
+`@univerjs__ui@1.4.0.patch` preserves keyboard focus on interactive controls in
+`DesktopLayoutService`'s existing focus-return policy. The pinned service returns
+focus from selected control kinds to the editor in a microtask; that includes a
+keyboard-focused worksheet-menu button. The maintained ESM, CommonJS and
+compatibility entries now respect a native `:focus-visible` interactive owner and
+recheck that the queued target still owns focus inside the current root before
+returning focus. Canvas and pointer-toolbar editor delegation remain intact.
+There is no sheet-menu special case, DOM observer, service replacement or new
+public API. The existing localized sheet-button patch remains separate.
+
+`workbook-layout-focus.test.ts` exercises the real service's window listener,
+real SDK workbook/context and public focus registration against actual DOM
+controls. It explicitly models only the browser focus-visible predicate in
+jsdom; its registered editor handler is not the full render engine. The original
+producer fails 18 of the final 24 cases; six delegation/input controls already
+pass. All 24 pass with the patch across the three entries, alongside the six
+existing localized menu cases. This is source-policy proof, not packaged trusted
+Tab, cell editing or chat-draft qualification. Refresh with `pnpm patch` /
+`pnpm patch-commit`, preserve prior patches, update the lockfile and verify frozen
+installation. Remove only when equivalent upstream focus ownership passes both
+these cases and the required actual-grid keyboard/pointer acceptance.
