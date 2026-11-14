@@ -1,0 +1,78 @@
+diff --git a/lib/cjs/index.js b/lib/cjs/index.js
+index 709bf7ce62742fe611ffc30c01f329a15f7bc73c..167e95aeb723e25f71602d15ceac08fad8d7e491 100644
+--- a/lib/cjs/index.js
++++ b/lib/cjs/index.js
+@@ -117,6 +117,10 @@ const givingBackFocusElements = [
+ 	"render-canvas",
+ 	"workbench-layout"
+ ];
++function isKeyboardControlFocus(target) {
++	return target instanceof HTMLElement && target.matches(":focus-visible") && target.matches('button, a[href], input, textarea, select, summary, [role="button"], [role="tab"], [role="menuitem"], [role="slider"], [role="combobox"]');
++}
++
+ const ILayoutService = (0, _univerjs_core.createIdentifier)("ui.layout-service");
+ let DesktopLayoutService = class DesktopLayoutService extends _univerjs_core.Disposable {
+ 	get isFocused() {
+@@ -187,8 +191,9 @@ let DesktopLayoutService = class DesktopLayoutService extends _univerjs_core.Dis
+ 		this.disposeWithMe((0, rxjs.fromEvent)(window, "focusin").subscribe((event) => {
+ 			var _this$_rootContainerE;
+ 			const target = event.target;
+-			if (((_this$_rootContainerE = this._rootContainerElement) === null || _this$_rootContainerE === void 0 ? void 0 : _this$_rootContainerE.contains(target)) && givingBackFocusElements.some((item) => target.dataset.uComp === item) && !isEmbedBoundaryTarget(target)) {
++			if (((_this$_rootContainerE = this._rootContainerElement) === null || _this$_rootContainerE === void 0 ? void 0 : _this$_rootContainerE.contains(target)) && givingBackFocusElements.some((item) => target.dataset.uComp === item) && !isEmbedBoundaryTarget(target) && !isKeyboardControlFocus(target)) {
+ 				queueMicrotask(() => {
++					if (document.activeElement !== target || !this._rootContainerElement?.contains(target) || isKeyboardControlFocus(target)) return;
+ 					const targetUnitId = getFocusUnitIdFromElement(target);
+ 					if (targetUnitId && this._univerInstanceService.getUnit(targetUnitId)) this._univerInstanceService.focusUnit(targetUnitId);
+ 					this.focus();
+diff --git a/lib/es/index.js b/lib/es/index.js
+index ebc4587ffb5174f522ace4bd0d53a461abce73f3..66366136bbf14d8cd5d3c8d8e7c7a209b8e9f363 100644
+--- a/lib/es/index.js
++++ b/lib/es/index.js
+@@ -116,6 +116,10 @@ const givingBackFocusElements = [
+ 	"render-canvas",
+ 	"workbench-layout"
+ ];
++function isKeyboardControlFocus(target) {
++	return target instanceof HTMLElement && target.matches(":focus-visible") && target.matches('button, a[href], input, textarea, select, summary, [role="button"], [role="tab"], [role="menuitem"], [role="slider"], [role="combobox"]');
++}
++
+ const ILayoutService = createIdentifier("ui.layout-service");
+ let DesktopLayoutService = class DesktopLayoutService extends Disposable {
+ 	get isFocused() {
+@@ -186,8 +190,9 @@ let DesktopLayoutService = class DesktopLayoutService extends Disposable {
+ 		this.disposeWithMe(fromEvent(window, "focusin").subscribe((event) => {
+ 			var _this$_rootContainerE;
+ 			const target = event.target;
+-			if (((_this$_rootContainerE = this._rootContainerElement) === null || _this$_rootContainerE === void 0 ? void 0 : _this$_rootContainerE.contains(target)) && givingBackFocusElements.some((item) => target.dataset.uComp === item) && !isEmbedBoundaryTarget(target)) {
++			if (((_this$_rootContainerE = this._rootContainerElement) === null || _this$_rootContainerE === void 0 ? void 0 : _this$_rootContainerE.contains(target)) && givingBackFocusElements.some((item) => target.dataset.uComp === item) && !isEmbedBoundaryTarget(target) && !isKeyboardControlFocus(target)) {
+ 				queueMicrotask(() => {
++					if (document.activeElement !== target || !this._rootContainerElement?.contains(target) || isKeyboardControlFocus(target)) return;
+ 					const targetUnitId = getFocusUnitIdFromElement(target);
+ 					if (targetUnitId && this._univerInstanceService.getUnit(targetUnitId)) this._univerInstanceService.focusUnit(targetUnitId);
+ 					this.focus();
+diff --git a/lib/index.js b/lib/index.js
+index ebc4587ffb5174f522ace4bd0d53a461abce73f3..66366136bbf14d8cd5d3c8d8e7c7a209b8e9f363 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -116,6 +116,10 @@ const givingBackFocusElements = [
+ 	"render-canvas",
+ 	"workbench-layout"
+ ];
++function isKeyboardControlFocus(target) {
++	return target instanceof HTMLElement && target.matches(":focus-visible") && target.matches('button, a[href], input, textarea, select, summary, [role="button"], [role="tab"], [role="menuitem"], [role="slider"], [role="combobox"]');
++}
++
+ const ILayoutService = createIdentifier("ui.layout-service");
+ let DesktopLayoutService = class DesktopLayoutService extends Disposable {
+ 	get isFocused() {
+@@ -186,8 +190,9 @@ let DesktopLayoutService = class DesktopLayoutService extends Disposable {
+ 		this.disposeWithMe(fromEvent(window, "focusin").subscribe((event) => {
+ 			var _this$_rootContainerE;
+ 			const target = event.target;
+-			if (((_this$_rootContainerE = this._rootContainerElement) === null || _this$_rootContainerE === void 0 ? void 0 : _this$_rootContainerE.contains(target)) && givingBackFocusElements.some((item) => target.dataset.uComp === item) && !isEmbedBoundaryTarget(target)) {
++			if (((_this$_rootContainerE = this._rootContainerElement) === null || _this$_rootContainerE === void 0 ? void 0 : _this$_rootContainerE.contains(target)) && givingBackFocusElements.some((item) => target.dataset.uComp === item) && !isEmbedBoundaryTarget(target) && !isKeyboardControlFocus(target)) {
+ 				queueMicrotask(() => {
++					if (document.activeElement !== target || !this._rootContainerElement?.contains(target) || isKeyboardControlFocus(target)) return;
+ 					const targetUnitId = getFocusUnitIdFromElement(target);
+ 					if (targetUnitId && this._univerInstanceService.getUnit(targetUnitId)) this._univerInstanceService.focusUnit(targetUnitId);
+ 					this.focus();
