@@ -1,5 +1,5 @@
 import { documentHtml, isEditableDocument, isDocumentLinkSupported, supportedDocumentLanguage } from './document-html';
-import { supportedDocumentImageElement } from './document-image-source';
+import { supportedDocumentImageElement, documentImageCssDimension } from './document-image-source';
 import { documentImportStyles, documentTextStyles } from './document-styles';
 import styles from './DocumentEditor.module.css';
 
@@ -32,7 +32,11 @@ function supportedElement(element: HTMLElement): boolean {
   if (element.hasAttribute('aria-checked') && !['true', 'false'].includes(element.getAttribute('aria-checked')!)) return false;
   if (element.hasAttribute('__lexicallisttype') && element.getAttribute('__lexicallisttype') !== 'check') return false;
   if (element.hasAttribute('data-eve-document-image') && (element.getAttribute('data-eve-document-image') !== '1' || element.children.length !== 1 || element.firstElementChild?.tagName !== 'IMG' || element.textContent?.trim())) return false;
-  if (element.hasAttribute('data-od-id') && !['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'li', 'ul', 'ol', 'table', 'tr', 'td', 'th', 'pre', 'hr'].includes(tag) && !element.hasAttribute('data-eve-document-image')) return false;
+  if (element.hasAttribute('data-od-id') && !['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'li', 'ul', 'ol', 'table', 'tr', 'td', 'th', 'pre', 'hr', 'img'].includes(tag) && !element.hasAttribute('data-eve-document-image')) return false;
+  if (tag === 'img' && element.hasAttribute('data-od-id') && element.parentElement?.getAttribute('data-eve-document-image') === '1') {
+    const outer = element.parentElement.getAttribute('data-od-id');
+    if (outer !== null && outer !== element.getAttribute('data-od-id')) return false;
+  }
   if (tag === 'li' && ['role', 'tabindex', 'aria-checked'].some(name => element.hasAttribute(name)) && element.parentElement?.getAttribute('__lexicallisttype') !== 'check') return false;
   for (const name of ['colspan', 'rowspan', 'start', 'value']) {
     if (element.hasAttribute(name) && !/^[1-9]\d*$/.test(element.getAttribute(name)!)) return false;
@@ -63,6 +67,7 @@ function supportedElement(element: HTMLElement): boolean {
     const probe = document.createElement('span').style;
     probe.cssText = declaration;
     if (!probe.getPropertyValue(name)) return false;
+    if (tag === 'img' && (name === 'width' || name === 'height') && (probe.getPropertyPriority(name) || !documentImageCssDimension(probe.getPropertyValue(name), name))) return false;
     // A later default must not hide an earlier authored image or reset.
     if (canonicalBorderImageDefaults.has(name) && (probe.getPropertyValue(name).trim() !== 'initial' || probe.getPropertyPriority(name))) return false;
   }
@@ -78,6 +83,10 @@ function supportedElement(element: HTMLElement): boolean {
     if (canonicalCellBorder && /^border(?:-(?:top|right|bottom|left))?(?:-(?:width|style|color))?$/.test(name)) continue;
     // Flattening text wrappers cannot retain contextual CSS-wide values or currentColor.
     if (documentTextStyles.has(name) && /^(?:inherit|initial|unset|revert|revert-layer|currentcolor)$/i.test(value)) return false;
+    if (tag === 'img' && (name === 'width' || name === 'height')) {
+      if (!documentImageCssDimension(value, name)) return false;
+      continue;
+    }
     const pattern = documentImportStyles.get(name);
     if (!pattern?.test(value)) return false;
     const dividerColor = tag === 'hr' && ['color', 'background-color'].includes(name);
