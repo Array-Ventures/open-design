@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
+const { JSDOM } = createRequire(import.meta.url)('jsdom');
 import { load } from 'cheerio';
 import { findSpeakerNotesScriptBlock } from '@open-design/contracts/runtime/speaker-notes';
 import { prepareDeckSourceCapture, checkedDeckRuntimeIndex } from '../src/embedded-render/deck-source.js';
@@ -16,6 +19,19 @@ describe('source-owned deck image capture', () => {
     expect(capture.html).toContain(`window["__od_capture_${capture.nonce}"]();`);
     expect(capture.bootstrap).toContain("get(Document.prototype,'currentScript')");
     expect(capture.bootstrap).toContain("get(Node.prototype,'parentNode')");
+  });
+  // Chromium also proves the getter shim RED: jsdom's native getters live in
+  // another realm, so this unit's genuine pre-fix failure is the RegExp case.
+  it.each(['call-getter', 'regexp-test'])('retains the original source node under authored %s tampering', (name) => {
+    const raw = readFileSync(new URL(`./fixtures/decks/prototype-${name}.html`, import.meta.url));
+    const capture = prepareDeckSourceCapture(raw, { ...selection, deckSourceSha256: createHash('sha256').update(raw).digest('hex') });
+    const dom = new JSDOM(capture.html, { runScripts: 'dangerously', beforeParse(window: { eval(source: string): unknown }) { window.eval(capture.bootstrap); } });
+    try {
+      const original = dom.window.document.querySelector('.second');
+      expect(dom.window.eval(capture.targetExpression) === original).toBe(true);
+      expect(original.isConnected).toBe(true);
+      expect(original.textContent).toBe('Original second BLUE');
+    } finally { dom.window.close(); }
   });
   it('rejects forged file digest, mismatched path/index, ambiguous stage and unsupported insertion roots', () => {
     expect(() => prepareDeckSourceCapture(bytes, { ...selection, deckSourceSha256: '0'.repeat(64) })).toThrow('source revision');

@@ -36,9 +36,10 @@ export function prepareDeckSourceCapture(bytes: Buffer, selection: { deckSourceS
   if ($(`[${attribute}]`).length) return fail();
   $(target).attr(attribute, nonce).prepend(`<script ${attribute}="${nonce}">window[${JSON.stringify(capture)}]();</script>`);
   // Every getter/method used to acquire identity is captured before authored JS.
+  // Invoke captured natives through a pristine apply, never mutable .call/.test.
   // No authored argument supplies currentScript or parent identity.
   const bootstrap = `(()=>{
-    const get=Object.getOwnPropertyDescriptor;
+    const get=Object.getOwnPropertyDescriptor,apply=Reflect.apply;
     const current=get(Document.prototype,'currentScript').get;
     const parent=get(Node.prototype,'parentNode').get;
     const owner=get(Node.prototype,'ownerDocument').get;
@@ -48,20 +49,21 @@ export function prepareDeckSourceCapture(bytes: Buffer, selection: { deckSourceS
     const addedNodes=get(MutationRecord.prototype,'addedNodes').get;
     const listLength=get(NodeList.prototype,'length').get,item=NodeList.prototype.item;
     const attr=Element.prototype.getAttribute,remove=Node.prototype.removeChild;
-    const MO=MutationObserver,take=MO.prototype.takeRecords;
+    const MO=MutationObserver,take=MO.prototype.takeRecords,observe=MO.prototype.observe;
     let node=null,used=false,invalid=false;
     const expected=${JSON.stringify(nonce)},attribute=${JSON.stringify(attribute)};
-    function target(candidate){return candidate&&kind.call(candidate)===1&&ns.call(candidate)==='http://www.w3.org/1999/xhtml'&&attr.call(candidate,attribute)===expected&&/^(SECTION|DIV|ARTICLE|MAIN)$/.test(tag.call(candidate));}
-    function added(records){for(let r=0;r<records.length;r++){const list=addedNodes.call(records[r]);for(let i=0;i<listLength.call(list);i++){const candidate=item.call(list,i);if(target(candidate)){if(node&&node!==candidate)invalid=true;else node=candidate;}}}}
+    function allowedTag(value){return value==='SECTION'||value==='DIV'||value==='ARTICLE'||value==='MAIN';}
+    function target(candidate){return candidate&&apply(kind,candidate,[])===1&&apply(ns,candidate,[])==='http://www.w3.org/1999/xhtml'&&apply(attr,candidate,[attribute])===expected&&allowedTag(apply(tag,candidate,[]));}
+    function added(records){for(let r=0;r<records.length;r++){const list=apply(addedNodes,records[r],[]);for(let i=0;i<apply(listLength,list,[]);i++){const candidate=apply(item,list,[i]);if(target(candidate)){if(node&&node!==candidate)invalid=true;else node=candidate;}}}}
     const observer=new MO(added);
-    observer.observe(document,{childList:true,subtree:true});
+    apply(observe,observer,[document,{childList:true,subtree:true}]);
     Object.defineProperty(window,${JSON.stringify(capture)},{configurable:false,writable:false,value:function(){
-      added(take.call(observer));
-      const script=current.call(document),candidate=script&&parent.call(script);
-      if(used||invalid||!script||tag.call(script)!=='SCRIPT'||attr.call(script,attribute)!==expected||!target(candidate)||owner.call(candidate)!==document||candidate!==node){invalid=true;throw Error('Invalid source slide capture');}
-      used=true;remove.call(candidate,script);
+      added(apply(take,observer,[]));
+      const script=apply(current,document,[]),candidate=script&&apply(parent,script,[]);
+      if(used||invalid||!script||apply(tag,script,[])!=='SCRIPT'||apply(attr,script,[attribute])!==expected||!target(candidate)||apply(owner,candidate,[])!==document||candidate!==node){invalid=true;throw Error('Invalid source slide capture');}
+      used=true;apply(remove,candidate,[script]);
     }});
-    Object.defineProperty(window,${JSON.stringify(read)},{configurable:false,writable:false,value:()=>used&&!invalid&&node&&connected.call(node)&&attr.call(node,attribute)===expected?node:null});
+    Object.defineProperty(window,${JSON.stringify(read)},{configurable:false,writable:false,value:()=>used&&!invalid&&node&&apply(connected,node,[])&&apply(attr,node,[attribute])===expected?node:null});
   })();`;
 
   return { html: $.html(), bootstrap, targetExpression: `window[${JSON.stringify(read)}]()`, attribute, nonce };
