@@ -139,3 +139,20 @@ Undo/Redo ABA, grouped replacement, rollback, focus, empty focus, immutable outp
 disposal and test-injected exhaustion. Controller installation remains pending:
 real UI multi-implementation command dispatch must be qualified before selecting
 scoped replacement versus a pre-dispatch protection boundary.
+
+The optional `ICommand.syncHandler` supplies explicit synchronous behavior.
+Only `_syncExecute` selects it; ordinary `executeCommand` still invokes `handler`.
+The existing `asyncOnly: true` refusal remains earlier and unconditional, including
+when a sync handler exists. Params, options, listeners and registry dispatch stay
+unchanged. This permits a future identity-scoped Undo/Redo replacement to refuse
+protected worksheet sync calls without scheduling work, while delegating unrelated
+Docs paste-mode sync Undo/Redo to the exact known native handler. It does not
+loosen multiple-implementation replacement refusal or install a controller.
+
+Tests cover mode selection, protected no-delayed-work refusal, strict asyncOnly,
+params/options identity and listener order in real services and the three consumed
+runtime entries. An isolated full pinned SDK UI/worker probe also exercised actual
+keyboard and toolbar gated async dispatch, formula-editor history and native Docs
+clipboard Paste options mode changes with a scoped prototype. That scratch probe
+is evidence for this SDK dispatch seam, not Evebot application or durable Writer
+integration qualification. See `docs/workbook-history-sync-dispatch.md`.

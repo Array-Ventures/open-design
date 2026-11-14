@@ -1,5 +1,5 @@
 diff --git a/lib/cjs/index.js b/lib/cjs/index.js
-index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..c4bd846c3fa596ce5fe3409ced64ca391d521b49 100644
+index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..3ba5105321d44632ecaa4115d922b8c5a4dd634f 100644
 --- a/lib/cjs/index.js
 +++ b/lib/cjs/index.js
 @@ -2065,7 +2065,7 @@ var CommandRegistry = class {
@@ -71,6 +71,15 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..c4bd846c3fa596ce5fe3409ced64ca39
  				const commandInfo = {
  					id: command.id,
  					type: command.type,
+@@ -2305,7 +2335,7 @@ let CommandService = class CommandService extends Disposable {
+ 		this._commandExecutingLevel++;
+ 		let result;
+ 		try {
+-			result = this._injector.invoke(command.handler, params, options);
++			result = this._injector.invoke(command.syncHandler ?? command.handler, params, options);
+ 			if (result instanceof Promise) throw new TypeError("[CommandService]: Command handler should not return a promise.");
+ 			this._commandExecutingLevel--;
+ 		} catch (e) {
 @@ -25602,6 +25632,65 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
@@ -184,7 +193,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..c4bd846c3fa596ce5fe3409ced64ca39
  			this._itemGroups.delete(item);
  			sequenceExecute(item.undoMutations, this._commandService);
 diff --git a/lib/es/index.js b/lib/es/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..110c06927168f4bd267d64a24a919934273f0ad6 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..79db8aa2d81a5d17d52abc85ea221e3769dc27aa 100644
 --- a/lib/es/index.js
 +++ b/lib/es/index.js
 @@ -2036,7 +2036,7 @@ var CommandRegistry = class {
@@ -256,6 +265,15 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..110c06927168f4bd267d64a24a919934
  				const commandInfo = {
  					id: command.id,
  					type: command.type,
+@@ -2276,7 +2306,7 @@ let CommandService = class CommandService extends Disposable {
+ 		this._commandExecutingLevel++;
+ 		let result;
+ 		try {
+-			result = this._injector.invoke(command.handler, params, options);
++			result = this._injector.invoke(command.syncHandler ?? command.handler, params, options);
+ 			if (result instanceof Promise) throw new TypeError("[CommandService]: Command handler should not return a promise.");
+ 			this._commandExecutingLevel--;
+ 		} catch (e) {
 @@ -25573,6 +25603,65 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
@@ -369,7 +387,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..110c06927168f4bd267d64a24a919934
  			this._itemGroups.delete(item);
  			sequenceExecute(item.undoMutations, this._commandService);
 diff --git a/lib/index.js b/lib/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..110c06927168f4bd267d64a24a919934273f0ad6 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..79db8aa2d81a5d17d52abc85ea221e3769dc27aa 100644
 --- a/lib/index.js
 +++ b/lib/index.js
 @@ -2036,7 +2036,7 @@ var CommandRegistry = class {
@@ -441,6 +459,15 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..110c06927168f4bd267d64a24a919934
  				const commandInfo = {
  					id: command.id,
  					type: command.type,
+@@ -2276,7 +2306,7 @@ let CommandService = class CommandService extends Disposable {
+ 		this._commandExecutingLevel++;
+ 		let result;
+ 		try {
+-			result = this._injector.invoke(command.handler, params, options);
++			result = this._injector.invoke(command.syncHandler ?? command.handler, params, options);
+ 			if (result instanceof Promise) throw new TypeError("[CommandService]: Command handler should not return a promise.");
+ 			this._commandExecutingLevel--;
+ 		} catch (e) {
 @@ -25573,6 +25603,65 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
@@ -554,7 +581,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..110c06927168f4bd267d64a24a919934
  			this._itemGroups.delete(item);
  			sequenceExecute(item.undoMutations, this._commandService);
 diff --git a/lib/types/services/command/command.service.d.ts b/lib/types/services/command/command.service.d.ts
-index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..d89703ab1e9386a0b89031e9d9e3e73fb17eb796 100644
+index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..bda168408f522f0aec434a6cb780216ae4f67d12 100644
 --- a/lib/types/services/command/command.service.d.ts
 +++ b/lib/types/services/command/command.service.d.ts
 @@ -67,6 +67,8 @@ export interface ICommand<P extends object = object, R = boolean> {
@@ -566,7 +593,18 @@ index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..d89703ab1e9386a0b89031e9d9e3e73f
      /**
       * The handler of the command.
       * @param accessor The accessor to the dependency injection container.
-@@ -189,6 +191,10 @@ export declare const ICommandService: import("@wendellhu/redi").IdentifierDecora
+@@ -76,6 +78,10 @@ export interface ICommand<P extends object = object, R = boolean> {
+      * executed successfully or not.
+      */
+     handler(accessor: IAccessor, params?: P, options?: IExecutionOptions): Promise<R> | R;
++    /** Explicit synchronous dispatch only. Async executeCommand still uses handler.
++     * asyncOnly registrations continue to refuse before either handler.
++     * Must not schedule delayed work for a refused synchronous action. */
++    syncHandler?(accessor: IAccessor, params?: P, options?: IExecutionOptions): R;
+ }
+ /**
+  * A command that may have multiple implementations. Each implementation should have different `priority`
+@@ -189,6 +195,10 @@ export declare const ICommandService: import("@wendellhu/redi").IdentifierDecora
  /**
   * The service to register and execute commands.
   */
@@ -577,7 +615,7 @@ index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..d89703ab1e9386a0b89031e9d9e3e73f
  export interface ICommandService {
      disposed(): boolean;
      /**
-@@ -202,6 +208,9 @@ export interface ICommandService {
+@@ -202,6 +212,9 @@ export interface ICommandService {
       * @param command The command to register.
       */
      registerCommand(command: ICommand<object, unknown>): IDisposable;
@@ -587,7 +625,7 @@ index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..d89703ab1e9386a0b89031e9d9e3e73f
      /**
       * Unregister a command from the command service.
       * @param commandId The id of the command to unregister.
-@@ -254,6 +263,7 @@ declare class CommandRegistry {
+@@ -254,6 +267,7 @@ declare class CommandRegistry {
      unregisterCommand(commandId: string): void;
      hasCommand(id: string): boolean;
      getCommand(id: string): [ICommand] | null;
@@ -595,7 +633,7 @@ index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..d89703ab1e9386a0b89031e9d9e3e73f
      getCommandType(id: string): CommandType | undefined;
  }
  export declare const NilCommand: ICommand;
-@@ -266,6 +276,7 @@ export declare class CommandService extends Disposable implements ICommandServic
+@@ -266,6 +280,7 @@ export declare class CommandService extends Disposable implements ICommandServic
      private readonly _commandExecutedListeners;
      private readonly _collabMutationListeners;
      private _multiCommandDisposables;
@@ -603,7 +641,7 @@ index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..d89703ab1e9386a0b89031e9d9e3e73f
      private _commandExecutingLevel;
      private _commandExecutionStack;
      constructor(_injector: Injector, _logService: ILogService, _configService: IConfigService);
-@@ -274,6 +285,7 @@ export declare class CommandService extends Disposable implements ICommandServic
+@@ -274,6 +289,7 @@ export declare class CommandService extends Disposable implements ICommandServic
      private _warnCommandSkippedAfterDisposed;
      hasCommand(commandId: string): boolean;
      registerCommand(command: ICommand): IDisposable;
