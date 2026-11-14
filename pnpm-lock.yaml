@@ -30,7 +30,7 @@ patchedDependencies:
     hash: ccbe45478fdc7d975f364f86502e22e8d5c142d5631ad6300e7a479febd0799f
     path: patches/@univerjs__sheets-formula@1.4.0.patch
   '@univerjs/sheets-ui@1.4.0':
-    hash: 972a61e153d519592fc96f103b0630c3cbe0df1b40321c2e2f1b1f8f7ec8ebc9
+    hash: 897a071094626d0d35430d2c2373b73c3f7e5be0731fcfe9180d2da7a07abfd8
     path: patches/@univerjs__sheets-ui@1.4.0.patch
   '@univerjs/ui@1.4.0':
     hash: 382f4d92efed8a1581b0f9fae4b764a759bf62c76f1acaf347c9c4e01631561b
@@ -10899,7 +10899,7 @@ snapshots:
       '@univerjs/sheets-formula-ui': 1.4.0(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/sheets-numfmt': 1.4.0(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/sheets-numfmt-ui': 1.4.0(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
-      '@univerjs/sheets-ui': 1.4.0(patch_hash=972a61e153d519592fc96f103b0630c3cbe0df1b40321c2e2f1b1f8f7ec8ebc9)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
+      '@univerjs/sheets-ui': 1.4.0(patch_hash=897a071094626d0d35430d2c2373b73c3f7e5be0731fcfe9180d2da7a07abfd8)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/ui': 1.4.0(patch_hash=382f4d92efed8a1581b0f9fae4b764a759bf62c76f1acaf347c9c4e01631561b)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
@@ -10945,7 +10945,7 @@ snapshots:
       '@univerjs/icons': 1.47.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@univerjs/sheets': 1.4.0(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/sheets-formula': 1.4.0(patch_hash=ccbe45478fdc7d975f364f86502e22e8d5c142d5631ad6300e7a479febd0799f)(react@18.3.1)(rxjs@7.8.2)
-      '@univerjs/sheets-ui': 1.4.0(patch_hash=972a61e153d519592fc96f103b0630c3cbe0df1b40321c2e2f1b1f8f7ec8ebc9)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
+      '@univerjs/sheets-ui': 1.4.0(patch_hash=897a071094626d0d35430d2c2373b73c3f7e5be0731fcfe9180d2da7a07abfd8)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/ui': 1.4.0(patch_hash=382f4d92efed8a1581b0f9fae4b764a759bf62c76f1acaf347c9c4e01631561b)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
@@ -10974,7 +10974,7 @@ snapshots:
       '@univerjs/icons': 1.47.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@univerjs/sheets': 1.4.0(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/sheets-numfmt': 1.4.0(react@18.3.1)(rxjs@7.8.2)
-      '@univerjs/sheets-ui': 1.4.0(patch_hash=972a61e153d519592fc96f103b0630c3cbe0df1b40321c2e2f1b1f8f7ec8ebc9)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
+      '@univerjs/sheets-ui': 1.4.0(patch_hash=897a071094626d0d35430d2c2373b73c3f7e5be0731fcfe9180d2da7a07abfd8)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/ui': 1.4.0(patch_hash=382f4d92efed8a1581b0f9fae4b764a759bf62c76f1acaf347c9c4e01631561b)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
       react: 18.3.1
       rxjs: 7.8.2
@@ -10992,7 +10992,7 @@ snapshots:
     transitivePeerDependencies:
       - react
 
-  '@univerjs/sheets-ui@1.4.0(patch_hash=972a61e153d519592fc96f103b0630c3cbe0df1b40321c2e2f1b1f8f7ec8ebc9)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)':
+  '@univerjs/sheets-ui@1.4.0(patch_hash=897a071094626d0d35430d2c2373b73c3f7e5be0731fcfe9180d2da7a07abfd8)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)':
     dependencies:
       '@univerjs/core': 1.4.0(patch_hash=0be4acdc2ae55f7a48e509b6bc2a77c7a4fc7f3842d472b9c3ad9ed65cd7e358)(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/design': 1.4.0(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)

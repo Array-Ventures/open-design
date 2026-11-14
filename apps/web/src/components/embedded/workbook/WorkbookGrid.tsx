@@ -44,6 +44,7 @@ export interface WorkbookGridProps {
   exportScope?: WorkbookExportScope;
   structureSource?: () => WorkbookStructureSource | null;
   structureBlocked?: boolean;
+  navigationBlocked?: boolean;
   onSnapshot?(snapshot: IWorkbookData): void;
   onReady?(snapshot: IWorkbookData): void | Promise<void>;
   onDisplayGaps?(gaps: WorkbookDisplayGap[]): void;
@@ -53,14 +54,14 @@ export interface WorkbookGridProps {
  * its durable edit controller before edits are enabled. Refresh/theme changes
  * do not recreate the grid. Only a protected scalar own-ACK can rebase source
  * authority within one generation; external replacements retire its history. */
-export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration, acknowledgement, onKernelReset, initialSnapshot, onSnapshot, onReady, onDisplayGaps, formatScope, exportScope, structureSource, structureBlocked = true }: WorkbookGridProps) {
+export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration, acknowledgement, onKernelReset, initialSnapshot, onSnapshot, onReady, onDisplayGaps, formatScope, exportScope, structureSource, structureBlocked = true, navigationBlocked = false }: WorkbookGridProps) {
   const structure = useRef({ source: structureSource, blocked: structureBlocked }); structure.current = { source: structureSource, blocked: structureBlocked };
   const structureOwner = useRef<WorkbookStructureController | null>(null);
   const structureMenu = useRef(liveWorkbookStructureMenu(() => structureOwner.current));
-  const container = useRef<HTMLDivElement>(null), callbacks = useRef({ id, model, sourceSha256, title, onSnapshot, onReady, onDisplayGaps, onKernelReset });
+  const container = useRef<HTMLDivElement>(null), callbacks = useRef({ id, model, sourceSha256, title, onSnapshot, onReady, onDisplayGaps, onKernelReset, navigationBlocked });
   const views = useRef<WorkbookViewLayers | null>(null);
   const viewScope = useRef(id);
-  callbacks.current = { id, model, sourceSha256, title, onSnapshot, onReady, onDisplayGaps, onKernelReset };
+  callbacks.current = { id, model, sourceSha256, title, onSnapshot, onReady, onDisplayGaps, onKernelReset, navigationBlocked };
   const view = useRef<{ id: string; sourceFormat: WorkbookDocument['sourceFormat']; sheetId: string; snapshot: IWorkbookData; range?: IRange } | null>(null);
   const restored = useRef(initialSnapshot);
   const format = useRef(formatScope); format.current = formatScope;
@@ -218,7 +219,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
       };
       const selected = workbook.getActiveSheet();
       restoreWorkbookSelection(selected, previous?.range);
-      const navigation = attachWorkbookNavigation(univer, univerAPI, () => current() && readyForInput, kernel);
+      const navigation = attachWorkbookNavigation(univer, univerAPI, () => current() && readyForInput && !callbacks.current.navigationBlocked, kernel, model.sourceFormat !== 'csv');
       layer.own(() => navigation.dispose());
       // No mutations are accepted while the controller drains a previous
       // writer. An unmounted/revoked surface must never become editable later.

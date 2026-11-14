@@ -74,3 +74,43 @@ These jsdom producer/service tests do not include the complete rendered grid or
 prove trusted browser modality, Tab reachability or host chat focus. Candidate
 123 remains the original b7 source; this follow-up requires a new immutable
 pair and actual keyboard/pointer acceptance before any packaged claim.
+
+
+## Scoped sheet-menu chord (source only)
+
+The consumer now registers Alt+Shift+K (Option+Shift+K on Mac) for the existing
+public `ShowMenuListCommand`. This matches the documented Google Sheets
+[Display list of sheets shortcut](https://support.google.com/docs/answer/181110?hl=en).
+The inspected pinned SDK entries and host shortcuts have no matching binding.
+Chrome's [published shortcuts](https://support.google.com/chrome/answer/157179?hl=en)
+reserve F6 for browser focus; no F6 or Tab behavior is changed here. Operating
+system, keyboard-layout and extension overrides are not universally qualified.
+
+The binding uses the SDK shortcut service, not a new host key listener. It requires
+the current ready grid and the SDK's focused, nonediting sheet context; drawings,
+retired sources, history/discard pauses, pending saves and errors do not admit it.
+Navigation is independent of write permission, so an otherwise ready read-only
+workbook can view and switch sheets. The grid owner disposes the registration; CSV views without a sheet bar do not
+install it.
+The original first-cell shortcut retains the same scoped readiness policy.
+
+The native trigger's title derives the platform display from the actual shortcut
+service registration and subscribes to its changes. A standalone producer with no
+binding has no shortcut title; registering and removing the binding updates it.
+The existing forwarded native Button remains the direct Radix child. No wrapper,
+extra toolbar, custom focus handler or hardcoded translated shortcut label is added.
+
+A real SDK shortcut-service/window-listener fixture invokes the actual public
+menu command and SheetBarService callback. Two baseline cases fail for the absent
+binding/invocation; the negative control already passes. All three pass with the
+registration, alongside a CSV no-menu control: editing, unavailable readiness, wrong sheet context and outside
+layout owners do not consume the key; disposal removes dispatch and display.
+The fixture supplies layout containment and child-runtime lookup through the
+public service constructor rather than running a complete rendered grid. Its
+edit-API sentinel and unchanged workbook snapshot guard against edit calls.
+The six localized real menu cases additionally prove registered title updates,
+Escape focus return and original two-sheet switching. Together with the 24 focus
+policy cases, all 34 pass. Frozen installation, full workspace types and guard
+also passed. Actual packaged trusted-chord entry before/after cell
+editing, dismissal, host chat focus and source preservation remain pending; no
+new pair, runtime change or keyboard-only browser claim is included.

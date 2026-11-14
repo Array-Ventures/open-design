@@ -244,3 +244,11 @@ that ref and preserves the small/text styling, marker, localized name and icon.
 The six real producer DOM cases cover Enter/Escape focus return and ARIA expanded
 state, then unchanged two-sheet navigation/data. This remains standalone source
 proof; actual full-grid keyboard entry and dismissal need packaged acceptance.
+
+
+SheetBarMenu's optional native title reads `IShortcutService`'s registered display
+for the public show-menu command and updates on `shortcutChanged$`. This avoids
+advertising a fixed chord in standalone consumers where none is registered. The
+application owns the scoped registration and cleanup; this producer patch does
+not install a global shortcut or alter localization strings. The direct forwarded
+Button remains intact for Radix focus return.
