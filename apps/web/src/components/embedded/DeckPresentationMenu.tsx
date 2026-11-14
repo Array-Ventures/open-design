@@ -13,11 +13,12 @@ export function DeckPresentationMenu({ projectId, hosted = false, onPresent, exp
   useLayoutEffect(() => { handler.current = onPresent; selection.current = exportSelection; publishRef.current(); }, [onPresent, exportSelection]);
   useEffect(() => {
     if (!inHost) return;
+    const publishSelection = () => window.parent.postMessage({ type: 'studio:deck-export-state', projectId, controllerId, selection: selection.current }, window.location.origin);
     const publish = () => {
       window.parent.postMessage({ type: 'studio:presentation-state', projectId, controllerId }, window.location.origin);
-      window.parent.postMessage({ type: 'studio:deck-export-state', projectId, controllerId, selection: selection.current }, window.location.origin);
+      publishSelection();
     };
-    publishRef.current = publish;
+    publishRef.current = publishSelection;
     const receive = (event: MessageEvent) => {
       if (event.source !== window.parent || event.origin !== window.location.origin || event.data?.projectId !== projectId) return;
       if (event.data.type === 'studio:presentation-request' || event.data.type === 'studio:deck-export-request') { publish(); return; }
