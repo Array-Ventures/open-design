@@ -214,7 +214,6 @@ Refresh through `pnpm patch` / `pnpm patch-commit`, update the lockfile and veri
 a frozen installation. Remove when the upstream producer provides the localized
 name and the same real DOM cases still pass. No dependency version changes.
 
-
 The core patch additionally exposes `getUndoRedoEntryIds(unitId)`: a bounded,
 frozen snapshot of existing native item identities across both complete stacks
 of the requested focused history owner. It uses the existing WeakMap IDs without
@@ -224,3 +223,42 @@ never truncates or changes history. It is consistency data for future origin
 retention, not a retirement implementation or authority. The three maintained
 runtime entries and public declarations match. See
 `docs/workbook-history-reachable-ids.md` for the actual SDK fixtures and limits.
+
+`@univerjs__ui@1.4.0.patch` preserves keyboard focus on interactive controls in
+`DesktopLayoutService`'s existing focus-return policy. The pinned service returns
+focus from selected control kinds to the editor in a microtask; that includes a
+keyboard-focused worksheet-menu button. The maintained ESM, CommonJS and
+compatibility entries now respect a native `:focus-visible` interactive owner and
+recheck that the queued target still owns focus inside the current root before
+returning focus. Canvas and pointer-toolbar editor delegation remain intact.
+There is no sheet-menu special case, DOM observer, service replacement or new
+public API. The existing localized sheet-button patch remains separate.
+
+`workbook-layout-focus.test.ts` exercises the real service's window listener,
+real SDK workbook/context and public focus registration against actual DOM
+controls. It explicitly models only the browser focus-visible predicate in
+jsdom; its registered editor handler is not the full render engine. The original
+producer fails 18 of the final 24 cases; six delegation/input controls already
+pass. All 24 pass with the patch across the three entries, alongside the six
+existing localized menu cases. This is source-policy proof, not packaged trusted
+Tab, cell editing or chat-draft qualification. Refresh with `pnpm patch` /
+`pnpm patch-commit`, preserve prior patches, update the lockfile and verify frozen
+installation. Remove only when equivalent upstream focus ownership passes both
+these cases and the required actual-grid keyboard/pointer acceptance.
+
+
+The sheets-ui patch also makes the existing design Button the direct Radix
+DropdownMenu trigger. The prior nonfocusable div wrapper receives Radix's ref
+and cannot receive Escape's return focus. The design Button already forwards
+that ref and preserves the small/text styling, marker, localized name and icon.
+The six real producer DOM cases cover Enter/Escape focus return and ARIA expanded
+state, then unchanged two-sheet navigation/data. This remains standalone source
+proof; actual full-grid keyboard entry and dismissal need packaged acceptance.
+
+
+SheetBarMenu's optional native title reads `IShortcutService`'s registered display
+for the public show-menu command and updates on `shortcutChanged$`. This avoids
+advertising a fixed chord in standalone consumers where none is registered. The
+application owns the scoped registration and cleanup; this producer patch does
+not install a global shortcut or alter localization strings. The direct forwarded
+Button remains intact for Radix focus return.

@@ -60,4 +60,3 @@ export function createSourceDeleteHistoryFixture(owned: boolean, options: {
     async close() { await writer.close(); observer.dispose(); controller?.dispose(); univer.dispose(); },
   };
 }
-

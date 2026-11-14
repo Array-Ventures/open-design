@@ -328,4 +328,3 @@ it('directly re-deletes a privately restored but unsaved sheet, preserving its l
     expect(f.writer.checkpoint().sheetDeletions!.at(-1)!.removedSheet!.cellData![0]![0]!.v).toBe(23);
   } finally { axes.dispose(); await f.close(); }
 });
-
