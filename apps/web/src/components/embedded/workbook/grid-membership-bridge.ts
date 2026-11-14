@@ -115,6 +115,7 @@ export function workbookMembershipBridge(options: Options) {
     let finish!: () => void;
     const done = new Promise<void>(resolve => { finish = resolve; });
     const operation: Active = { current: value, request, identity, done }; active = operation;
+    let applied = false;
     try {
       let error = denial;
       try {
@@ -122,7 +123,7 @@ export function workbookMembershipBridge(options: Options) {
         const admitted = refresh();
         error = !sameOwner(value, admitted) || admitted!.stamp.historyRevision !== value.stamp.historyRevision ? 'changed' : error ?? allowed(admitted!, request.action);
         if (!error) {
-          try { await options.execute(Object.freeze({ ...request.action }), value.stamp); }
+          try { await options.execute(Object.freeze({ ...request.action }), value.stamp); applied = true; }
           catch (failure) {
             let code: ErrorCode | undefined;
             try { code = options.classifyError?.(failure); } catch { /* Never serialize or trust a failing classifier. */ }
@@ -136,7 +137,7 @@ export function workbookMembershipBridge(options: Options) {
         // Unknown getter lifetime cannot authorize another attempt.
         const report = !disposed;
         disposed = true; withdrawing = true; results.clear(); current = null; negotiated = null;
-        if (report) { try { post(result(request, 'failed')); } catch { /* Retired before any external delivery callback. */ } }
+        if (report) { try { post(result(request, applied ? null : 'failed')); } catch { /* Retired before any external delivery callback. */ } }
         return;
       }
       if (disposed || !sameOwner(value, next)) return;
@@ -148,11 +149,10 @@ export function workbookMembershipBridge(options: Options) {
       // Still active during publication and result delivery. The parent sees
       // its original active ID even if SDK state/revision already changed.
       try { options.publish(); } catch {
-        const failed = result(request, 'failed');
-        results.set(request.requestId, { identity, result: failed });
-        post(failed); return;
+        // Execution already settled. Publication failure cannot turn a known
+        // applied operation into a rejection or replace its cached receipt.
       }
-      post(reply);
+      if (!disposed) post(reply);
     } finally {
       if (active === operation) active = null;
       finish();

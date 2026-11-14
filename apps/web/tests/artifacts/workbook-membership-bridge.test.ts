@@ -138,3 +138,27 @@ it('retires incoherent private state after reservation without an executable sta
   expect(f.bridge.decorate(f.state.visibility).membership).toBeUndefined();
   f.state = { ...f.state, historyRevision: 1 }; await f.send(request); expect(f.calls).toBe(0);
 });
+it('preserves a known applied receipt and exact replay when later publication throws', async () => {
+  let applied = false;
+  const f = fixture(async () => { applied = true; }); await f.negotiate(); const request = f.request();
+  f.duringPublish = () => { if (applied) { f.duringPublish = undefined; throw Error('/private/after-apply'); } };
+  await f.send(request);
+  expect(applied).toBe(true); expect(f.calls).toBe(1);
+  expect(f.messages.find(value => value.type === 'studio:workbook-membership-result')).toMatchObject({ state: 'applied', error: null, requestId: request.requestId });
+  await f.send(request); expect(f.calls).toBe(1);
+  expect(f.messages.at(-1)).toMatchObject({ state: 'applied', error: null });
+});
+it('retires incoherent post-execution state without falsely reporting a known applied operation as failed', async () => {
+  const f = fixture(async () => { f.state = { ...f.state, historyRevision: -1 }; }); await f.negotiate(); const request = f.request();
+  await f.send(request); expect(f.calls).toBe(1);
+  expect(f.messages.find(value => value.type === 'studio:workbook-membership-result')).toMatchObject({ state: 'applied', error: null, requestId: request.requestId });
+  expect(f.bridge.decorate(f.state.visibility).membership).toBeUndefined();
+  f.state = { ...f.state, historyRevision: 1 }; await f.send(request); expect(f.calls).toBe(1);
+});
+it('suppresses an applied receipt when final publication explicitly disposes the session', async () => {
+  let applied = false;
+  const f = fixture(async () => { applied = true; }); await f.negotiate(); const request = f.request();
+  f.duringPublish = () => { if (applied) { f.duringPublish = undefined; f.bridge.dispose(); } };
+  await f.send(request); expect(f.calls).toBe(1);
+  expect(f.messages.some(value => value.type === 'studio:workbook-membership-result')).toBe(false);
+});

@@ -117,3 +117,34 @@ found that their built-in UUID predicates differ: Zod 3 accepts grouped hex with
 invalid RFC version/variant bits. A genuine contract RED captures that mismatch;
 the new wire schema adds the native RFC version/variant boundary (including its
 nil/max sentinels), without changing existing unrelated workbook/API schemas.
+
+## Known-applied receipt correction
+
+Independent review of `18f6985b` found that later publication or private-getter
+failure could downgrade a successfully resolved executor to `failed`. Two new
+callback regressions genuinely fail against that frozen source (17 prior cases
+still pass). The correction records known application immediately on executor
+resolution. Later publication failure preserves the original applied receipt and
+cached same-ticket replay, without a second execution. An incoherent getter after
+known application retires the bridge/mapping but reports that applied truth; it
+cannot invent a failed operation or execute the retired ticket again. Pre-execution
+publication failure still reports finite `failed` with zero execution, and explicit
+disposal still suppresses late result delivery.
+
+The installed native Zod 4.5.4 accepts lowercase MAX UUID and rejects uppercase
+MAX. Direct inspection and execution confirmed that boundary; the additional
+contract case preserves it without broadening RFC version/variant acceptance.
+This was a corrected review hypothesis, not a production UUID defect.
+
+Follow-up receipts: `/tmp/workbook-membership-applied-red.log` preserves both
+genuine failures; `/tmp/workbook-membership-applied-green.log` records the 20
+bridge cases and `/tmp/workbook-membership-applied-contracts.log` the six contract
+cases. Final full workspace types and guard results are reported separately.
+These remain injected-callback protocol tests, not Grid/worker/SDK execution or
+packaged/browser qualification. No runtime, pins or publication changed.
+
+A third genuine regression covers explicit disposal during FINAL publication,
+after executor resolution: the receipt must not escape a retired session. The
+post-publication disposal fence preserves this distinction from mere publication
+failure. `/tmp/workbook-membership-applied-dispose-red.log` retains that failure;
+final callback coverage passes without changing the original strict assertions.

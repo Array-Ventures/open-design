@@ -31,3 +31,7 @@ it("rejects a noneditable visibility fixture that still advertises top-level Hid
 it('matches the native host RFC UUID version/variant boundary instead of the older Zod loose UUID parser', () => {
   for (const ownerId of ['33333333-3333-4', '33333333-3333-0333-8333-333333333333', '33333333-3333-4333-0333-333333333333']) expect(schemas.workbookMembershipVisibilitySchema.safeParse({ ...base, membership: { ...membership, ownerId } }).success).toBe(false);
 });
+it('matches the installed native validator sentinel case boundary', () => {
+  expect(schemas.workbookMembershipVisibilitySchema.safeParse({ ...base, membership: { ...membership, ownerId: 'ffffffff-ffff-ffff-ffff-ffffffffffff' } }).success).toBe(true);
+  expect(schemas.workbookMembershipVisibilitySchema.safeParse({ ...base, membership: { ...membership, ownerId: 'FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF' } }).success).toBe(false);
+});
