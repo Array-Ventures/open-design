@@ -4,7 +4,7 @@
       "id": "2000000000",
       "name": "EveColorFixture_0",
       "kind": "cell",
-      "colors": {
+      "presentation": {
         "background": "f2f3f5"
       },
       "rowSpan": 1,
@@ -14,7 +14,7 @@
       "id": "2000000001",
       "name": "EveColorFixture_1",
       "kind": "inline",
-      "colors": {
+      "presentation": {
         "foreground": "7f1d1d",
         "background": "fff6aa"
       }
@@ -23,7 +23,7 @@
       "id": "2000000002",
       "name": "EveColorFixture_2",
       "kind": "cell",
-      "colors": {
+      "presentation": {
         "background": "182828"
       },
       "rowSpan": 2,
@@ -33,7 +33,7 @@
       "id": "2000000003",
       "name": "EveColorFixture_3",
       "kind": "cell",
-      "colors": {
+      "presentation": {
         "background": "fff6aa"
       },
       "rowSpan": 1,
@@ -45,7 +45,7 @@
       "id": "2000000004",
       "name": "EveColorFixture_4",
       "kind": "cell",
-      "colors": {
+      "presentation": {
         "background": "f2f3f5"
       },
       "rowSpan": 1,

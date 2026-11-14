@@ -211,3 +211,89 @@ matrix, all-error permutations or full comment/reference parity.
 ![Write failure remains visible after successful reads](images/document-comment-status/write-error-after-reads.png)
 
 ![Natural missing thread uses its deletion notice and retains the draft](images/document-comment-status/deleted-thread-notice.png)
+
+### Candidate 113 extended manual matrix
+
+A later manual run extended the same frozen 113/56 pair and native a8 checkpoint;
+it did not rebuild or relabel 7453. A new own fake document was checked in all
+four combinations of Light/Dark and 1440×1000/390×844, first with a retained
+write-refusal message and then with a natural deleted-root notice. Actual
+Settings radio actions changed the theme; every observation checked both the
+host dark class and embedded `data-theme`. No localStorage-only theme assumption
+or document reload stood in for those checks.
+
+| State | Light desktop | Light phone | Dark desktop | Dark phone |
+| --- | --- | --- | --- | --- |
+| POST 403 write feedback | Same exact draft/error | Same exact draft/error | Same exact draft/error | Same exact draft/error |
+| Natural GET 404 after deletion | Notice only; submission disabled | Notice only; submission disabled | Notice only; submission disabled | Notice only; submission disabled |
+
+All eight observations retained the same iframe, document and reply textarea,
+with the exact text Keep this matrix draft intact. All visible comment controls
+were inside the artifact viewport. Desktop split content was 640×936 and phone
+content 390×804. The document's Saved status remained visible. These are bounded
+legibility/control-placement observations, not a claim of universal visual
+parity; dark-card separation remains subtle with the current semantic surfaces.
+
+The same owned-URL POST-only 403 fault left other requests untouched. After the
+refusal, four real successful interval reads and one explicit Reload comments
+read retained the error and draft. The listener's receipt records those 200s at
+approximately 3.7, 34.0, 63.7, 73.7 and 93.7 seconds after the 403; the explicit read was
+at 73.7 seconds. Fetch interception was removed, the target detached and the CDP
+socket disconnected before a normal server-backed retry saved the own plain
+reply and cleared its error/draft. This remains fault-response handling proof,
+not permission/authorization proof.
+
+A fresh unsent reply with the same comparison text was typed after that
+successful retry. The subsequent own root DELETE and normal reply polling
+produced a real 404.
+Across all four views the deletion notice remained, the generic load error/alert
+was absent, and submission was disabled without losing the draft. Dark desktop
+Expand/Restore retained the same iframe/document/reply through 1140→640px content
+widths during the write-error phase. Light phone Show artifact chat→Choose Chief→
+Return to artifact retained the same iframe/document/reply and deleted-draft
+state; no chat text, staging or sends occurred. Close→Keep editing also retained
+that draft before it was explicitly cleared and the card closed.
+
+Final source remained 268 bytes, SHA256
+`2cddd831e78cb8d2faefe37776a9967622c8917bf5e83dec38e8c907897ad4d3`.
+The own root count was zero after deletion; no comment dialog, root composer or
+reply draft remained. The named browser closed normally, and both its process
+and the fault-listener process were absent. Theme was returned to Light.
+
+All eight screenshots were personally viewed. Four representative artifact-only
+captures are retained below. During capture, two stale accessibility screenshot
+references were refreshed from a new snapshot; the UI/source was not modified.
+Per-view measurements/screenshots remain under
+`/tmp/doc113-matrix-{write,deleted}-{light,dark}-{wide,phone}.{json,png}`;
+network receipt `/tmp/document-comment-matrix113-fault-events.json`, actual 404
+metadata `/tmp/doc113-matrix-natural404-requests.txt`, and final source/cleanup
+proof `/tmp/doc113-matrix-final-proof.json`. The original 113 record above remains
+its earlier light-desktop run; this addendum supplies the extended matrix.
+
+![Light desktop write refusal](images/document-comment-status/matrix/write-light-wide.png)
+
+![Dark phone write refusal](images/document-comment-status/matrix/write-dark-phone.png)
+
+![Light phone deleted-thread notice](images/document-comment-status/matrix/deleted-light-phone.png)
+
+![Dark desktop deleted-thread notice](images/document-comment-status/matrix/deleted-dark-wide.png)
+
+### Floating card edge source checkpoint
+
+Actual 113 inspection confirmed that the dark comment card's outer border and
+background both computed to `lab(15.204 0 -0.00000596046)`: its separator token is
+the same neutral 800 surface. The existing floating-panel border token instead
+resolves to `lab(27.036% 0 0)` (neutral 700). Light mode maps both border choices
+to `#ebebeb`, so the expected light edge does not change. The installed BoardUI
+`MENU_POPOVER_SURFACE` already uses `border-border-button-default` on its primary
+surface; the comment card now uses that semantic outer-edge token too. Its
+internal header separator, surface, shadow, spacing, placement, focus and
+handlers are unchanged. No raw palette value or new theme was introduced.
+
+A read-only authorized reference inspection found a dark Comments region with
+its own surface distinction, not the same layout/token system; it does not
+justify copying a new theme. The own audit restored Light and closed normally,
+and the reference card was closed without edits or sends. Actual next-pair
+light/dark desktop/phone card inspection remains required: 113 retains its old
+outer edge and is not relabelled by this source checkpoint. No class-name mirror
+test substitutes for that visual gate.

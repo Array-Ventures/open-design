@@ -1,10 +1,12 @@
+import { documentExportProfile, cssPxToTwips, cssPxToPoints } from './document-export-profile.js';
+import { createDocumentRuleDrawing, documentRuleWordWidth } from './document-rule-drawing.js';
 import { randomBytes } from 'node:crypto';
 import { load } from 'cheerio';
 import { DOMParser, XMLSerializer, type Element } from '@xmldom/xmldom';
 import type { DocumentDocxColorSource } from './document-docx-source-colors.js';
 import type { DocumentDocxColors } from './document-docx-colors.js';
 
-interface DividerOwner { name: string; width?: string; colors: DocumentDocxColors }
+interface DividerOwner { name: string; width?: string; colors: DocumentDocxColors; sourceBlock?: 'canonical-main' }
 const fail = (): never => { throw new Error('The document converter could not preserve divider presentation.'); };
 const w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const v = 'urn:schemas-microsoft-com:vml';
@@ -29,13 +31,20 @@ export function documentDocxDividers(html: string, source: DocumentDocxColorSour
       const [name, ...parts] = declaration.split(':');
       if (name!.trim().toLowerCase() === 'width') width = parts.join(':').trim();
     }
-    if (width && !/^(?:[1-9][0-9]{0,3}(?:\.[0-9]+)?px|(?:[1-9][0-9]?|100)(?:\.[0-9]+)?%)$/.test(width)) return fail();
-    if (width?.endsWith('%')) {
-      const tenths = Number.parseFloat(width) * 10;
-      if (tenths > 1000 || Math.abs(tenths - Math.round(tenths)) > 1e-8) return fail();
-    }
+    const geometry = documentRuleWordWidth(width);
+    const main = $('body > main');
+    // exportDocument has already required the exact owned canonical/print
+    // stylesheet closure in normalizeDocumentDocxPresentation. The marker
+    // alone is not stylesheet authority. Decline additional container geometry
+    // here; hidden/root-sized documents keep the prior VML conversion path.
+    const containers = $('html, body, body > main');
+    const canonicalMain = $('html').attr('data-eve-document') === '1' && main.length === 1 && $('main').length === 1
+      && containers.toArray().every(node => !$(node).attr('style')?.trim() && !$(node).is('[hidden]'))
+      && $('body').contents().toArray().every(node => node === main[0] || (node.type === 'text' && !/[^\t\n\f\r ]/.test(node.data)));
+    const modern = canonicalMain && element.parent()[0] === main[0]
+      && geometry.widthPt <= documentExportProfile.page.widthPt - 2*documentExportProfile.page.marginPt;
     const name = `${prefix}_${owners.length}`;
-    owners.push({ name: `_${name}`, ...(width ? { width } : {}), colors });
+    owners.push({ name: `_${name}`, ...(width ? { width } : {}), colors, ...(modern ? {sourceBlock:'canonical-main' as const} : {}) });
     element.removeAttr(source.attributeName).wrap(`<div id="${name}"></div>`);
   }
   return { html: $.html(), owners };
@@ -49,7 +58,9 @@ export function projectDocumentDocxDividers(xml: string, owners: readonly Divide
   const starts = Array.from(document.getElementsByTagNameNS(w, 'bookmarkStart'));
   const ends = Array.from(document.getElementsByTagNameNS(w, 'bookmarkEnd'));
   const names = new Set<string>(), ids = new Set<string>();
+  const drawing = owners.some(owner => owner.sourceBlock === 'canonical-main') ? createDocumentRuleDrawing(document) : undefined;
   for (const owner of owners) {
+    if (owner.sourceBlock !== undefined && owner.sourceBlock !== 'canonical-main') return fail();
     if (names.has(owner.name)) return fail(); names.add(owner.name);
     const matches = starts.filter(node => node.getAttributeNS(w, 'name') === owner.name);
     if (matches.length !== 1) return fail();
@@ -77,6 +88,18 @@ export function projectDocumentDocxDividers(xml: string, owners: readonly Divide
     const rect = rects[0]!; if (rect.getAttributeNS(o, 'hr') !== 't') return fail();
     let properties = Array.from(paragraph.childNodes).find(node => node.nodeType === 1 && (node as Element).namespaceURI === w && (node as Element).localName === 'pPr') as Element | undefined;
     if (!properties) { properties = document.createElementNS(w, 'w:pPr'); paragraph.insertBefore(properties, paragraph.firstChild); }
+    const spacingMatches = Array.from(properties.childNodes).filter(node => node.nodeType === 1 && (node as Element).namespaceURI === w && (node as Element).localName === 'spacing') as Element[];
+    if (spacingMatches.length > 1) return fail();
+    const spacing = spacingMatches[0] ?? document.createElementNS(w, 'w:spacing');
+    spacing.setAttributeNS(w, 'w:before', String(cssPxToTwips(documentExportProfile.rule.marginPx)));
+    spacing.setAttributeNS(w, 'w:after', String(cssPxToTwips(documentExportProfile.rule.marginPx)));
+    spacing.setAttributeNS(w, 'w:line', String(cssPxToTwips(documentExportProfile.rule.borderPx)));
+    spacing.setAttributeNS(w, 'w:lineRule', 'exact');
+    if (!spacing.parentNode) {
+      const later = new Set(['ind','contextualSpacing','mirrorIndents','suppressOverlap','jc','textDirection','textAlignment','textboxTightWrap','outlineLvl','divId','cnfStyle','rPr','sectPr','pPrChange']);
+      const successor = Array.from(properties.childNodes).find(node => node.nodeType === 1 && (node as Element).namespaceURI === w && later.has((node as Element).localName ?? ''));
+      properties.insertBefore(spacing, successor ?? null);
+    }
     const justification = Array.from(properties.childNodes).filter(node => node.nodeType === 1 && (node as Element).namespaceURI === w && (node as Element).localName === 'jc');
     if (justification.length > 1) return fail();
     const jc = justification[0] as Element | undefined ?? document.createElementNS(w, 'w:jc');
@@ -87,7 +110,7 @@ export function projectDocumentDocxDividers(xml: string, owners: readonly Divide
       properties.insertBefore(jc, successor ?? null);
     }
     rect.setAttribute('style', 'width:0;height:0pt');
-    rect.setAttribute('strokeweight', '0.75pt');
+    rect.setAttribute('strokeweight', `${cssPxToPoints(documentExportProfile.rule.borderPx)}pt`);
     if (owner.width?.endsWith('%')) rect.setAttributeNS(o, 'o:hrpct', String(Math.round(Number.parseFloat(owner.width) * 10)));
     else if (owner.width) {
       rect.removeAttributeNS(o, 'hrpct');
@@ -97,6 +120,13 @@ export function projectDocumentDocxDividers(xml: string, owners: readonly Divide
       rect.removeAttributeNS(o, 'hrstd');
       if (owner.colors.background) rect.setAttribute('fillcolor', `#${owner.colors.background}`);
       if (owner.colors.foreground) rect.setAttribute('strokecolor', `#${owner.colors.foreground}`);
+    }
+    if (owner.sourceBlock === 'canonical-main') {
+      const body = document.getElementsByTagNameNS(w,'body');
+      const picture = rect.parentNode as Element, run = picture.parentNode as Element;
+      if (body.length !== 1 || paragraph.parentNode !== body[0] || picture.namespaceURI !== w || picture.localName !== 'pict'
+        || run.namespaceURI !== w || run.localName !== 'r' || run.parentNode !== paragraph || !drawing) return fail();
+      run.replaceChild(drawing(picture,owner.width,owner.colors.foreground,owner.colors.background),picture);
     }
     start.parentNode!.removeChild(start); end.parentNode!.removeChild(end);
   }

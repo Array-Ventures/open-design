@@ -1,8 +1,9 @@
+import { documentFontSizePattern } from '@open-design/document-style';
 /** Inline text styling that Lexical stores verbatim and can export again. No URLs or CSS variables. */
 export const documentTextStyles = new Map<string, RegExp>([
   ['color', /^(?:#[\da-f]{3,8}|[a-z]+|rgba?\([\d.,%\s]+\)|hsla?\([\d.,%\s]+\))$/i],
   ['background-color', /^(?:#[\da-f]{3,8}|[a-z]+|rgba?\([\d.,%\s]+\)|hsla?\([\d.,%\s]+\))$/i],
-  ['font-size', /^(?:\d+(?:\.\d+)?)(?:px|pt|em|rem|%)$/],
+  ['font-size', documentFontSizePattern],
   ['font-family', /^[\w\s,"'-]+$/],
 ]);
 export const documentImportStyles = new Map<string, RegExp>([

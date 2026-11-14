@@ -24,3 +24,21 @@ it('keeps hosted presentation in the native header and accepts only its scoped p
   unmount();
   expect(parent.postMessage).toHaveBeenLastCalledWith({ type: 'studio:presentation-unavailable', projectId: 'project-a', controllerId: state.controllerId }, window.location.origin);
 });
+it('publishes source-bound selection and withdrawal under the same presentation owner, including a late export request', () => {
+  const parent = { postMessage: vi.fn() };
+  vi.spyOn(window, 'parent', 'get').mockReturnValue(parent as unknown as Window);
+  const selection = { fileName: 'index.html', sourceSha256: 'a'.repeat(64), sourceGeneration: 'generation-1', sourcePath: 'path-0-1', index: 1, count: 3 };
+  const onPresent = vi.fn();
+  const { rerender, unmount } = render(<DeckPresentationMenu projectId="project-a" hosted onPresent={onPresent} exportSelection={selection} />);
+  const states = () => parent.postMessage.mock.calls.map(call => call[0]).filter(message => message.type === 'studio:deck-export-state');
+  const owner = states().at(-1).controllerId;
+  expect(states().at(-1)).toMatchObject({ controllerId: owner, selection });
+  rerender(<DeckPresentationMenu projectId="project-a" hosted onPresent={onPresent} exportSelection={null} />);
+  expect(states().at(-1)).toMatchObject({ controllerId: owner, selection: null });
+  rerender(<DeckPresentationMenu projectId="project-a" hosted onPresent={onPresent} exportSelection={{ ...selection, index: 2, sourcePath: 'path-0-2' }} />);
+  parent.postMessage.mockClear();
+  window.dispatchEvent(new MessageEvent('message', { data: { type: 'studio:deck-export-request', projectId: 'project-a' }, source: parent as unknown as Window, origin: window.location.origin }));
+  expect(states().at(-1)).toMatchObject({ controllerId: owner, selection: { index: 2, sourcePath: 'path-0-2' } });
+  unmount();
+  expect(states().at(-1)).toMatchObject({ controllerId: owner, selection: null });
+});

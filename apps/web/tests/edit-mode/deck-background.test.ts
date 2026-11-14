@@ -72,3 +72,13 @@ it('matches the visual tree after notes are stripped without moving the source w
   expect(setDeckSlideBackground(source,deckSlideIndexForSourcePath(source,'path-0-1')!,'#123456')).toBe(source.replace('class="slide">Two','class="slide" style="background-color: #123456 !important;">Two'));
   expect(deckSlideIndexForSourcePath(source,'path-1-1')).toBeNull();
 });
+
+it('retains existing background editing and source-path mapping beyond the PNG renderer count limit', () => {
+  const source = '<deck-stage>' + Array.from({ length: 201 }, (_, index) => `<section class="slide" style="background:#fff">Slide ${index}</section>`).join('') + '</deck-stage>';
+  expect(readDeckSlideBackground(source, 200)).toMatchObject({ count: 201, editable: true, color: '#fff' });
+  expect(deckSlideIndexForSourcePath(source, 'path-0-200')).toBe(200);
+  const changed = setDeckSlideBackground(source, 200, '#123456');
+  expect(changed).not.toBeNull();
+  expect(readDeckSlideBackground(changed!, 199)?.color).toBe('#fff');
+  expect(readDeckSlideBackground(changed!, 200)?.color).toBe('#123456');
+});
