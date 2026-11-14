@@ -40,7 +40,8 @@ export function ownWorkbookCalculationWorker(unavailable: () => void, factory = 
       return new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => deadline.fail(), 5_000);
         configuration = { value, resolve, reject, timer };
-        worker.postMessage({ type: 'studio:workbook-membership-configure', configuration: value });
+        try { worker.postMessage({ type: 'studio:workbook-membership-configure', configuration: value }); }
+        catch { deadline.fail(); }
       });
     },
     onUnavailable(listener: () => void) { failures.add(listener); return () => { failures.delete(listener); }; },

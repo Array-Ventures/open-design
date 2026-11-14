@@ -35,3 +35,27 @@ it('delivers typed graph sidebands only to the active owner and fails closed on 
   expect(unavailable).toHaveBeenCalledOnce(); expect(worker.terminate).toHaveBeenCalledOnce();
   worker.message('ready'); expect(owner.ready).toBe(false); owner.dispose();
 });
+
+it('withdraws immediately when membership configuration cannot be posted', async () => {
+  vi.useFakeTimers();
+  const worker = new OwnedWorker();
+  Object.assign(worker, { postMessage: vi.fn(() => { throw Error('Transport closed'); }) });
+  const unavailable = vi.fn();
+  const owner = ownWorkbookCalculationWorker(unavailable, () => worker as unknown as Worker);
+  const failed = vi.fn();
+  owner.onUnavailable(failed);
+  worker.message('ready');
+  expect(await owner.loaded).toBe(true);
+  try {
+    await expect(owner.configureMembership({ version: 1, unitId: 'book', kernelGeneration: '00000000-0000-4000-8000-000000000001', sourceCapability: '0'.repeat(64) })).rejects.toThrow();
+    expect(owner.ready).toBe(false);
+    expect(unavailable).toHaveBeenCalledOnce();
+    expect(failed).toHaveBeenCalledOnce();
+    expect(worker.terminate).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { owner.dispose(); }
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(unavailable).toHaveBeenCalledOnce();
+  expect(worker.terminate).toHaveBeenCalledOnce();
+  expect(vi.getTimerCount()).toBe(0);
+});
