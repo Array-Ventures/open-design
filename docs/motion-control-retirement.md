@@ -47,3 +47,13 @@ capability downgrade, parking, cleanup and legacy basic playback.
 No immutable image, packaged app, chat/fullscreen visual or audible playback
 qualification has run for this slice. This repairs one control-lifetime gap;
 it does not qualify every media format, annotation or export path.
+
+Independent review found an inactive-load liveness gap in the first checkpoint:
+its active-only lookup discarded the current nonce reply while hidden, but the
+existing activation probe does not repeat that nonce. Two regressions failed
+before correction (inactive load and deactivation before the initial reply).
+They intentionally publish only raw state after reactivation, without generating
+a fresh handshake in their helper. Nonce replies now accept the exact contained,
+connected frame while inactive; state publication and controls remain active-only.
+The corrected focused activity/player/bridge suite passes 31 cases, with web
+types and repository guard. No frozen package was built from the failing source.

@@ -101,3 +101,21 @@ it('does not forget capable ownership when the same iframe parks outside the art
   f.rawEmit();
   expect(f.parent.postMessage.mock.calls.at(-1)![0].type).toBe('studio:motion-state');
 });
+it.each(['inactive-load', 'deactivated-before-reply'] as const)('accepts the current contained document handshake during %s, then activates without manufacturing another handshake', async reason => {
+  const f = fixture();
+  if (reason === 'inactive-load') f.emit();
+  else f.rawEmit();
+  await act(async () => { f.frame.dataset.odMotionActive = 'false'; });
+  if (reason === 'inactive-load') act(() => f.frame.dispatchEvent(new Event('load')));
+  const probe = f.send.mock.calls.slice().reverse().find(call => call[0]?.type === 'od:motion-preview-probe')![0].probe;
+  const count = f.parent.postMessage.mock.calls.length;
+  f.rawEmit({ type: 'od:motion-preview-request', probeVersion: 1, id: state.id, probe });
+  f.rawEmit();
+  expect(f.parent.postMessage).toHaveBeenCalledTimes(count);
+  await act(async () => { f.frame.dataset.odMotionActive = 'true'; });
+  // The activity owner's ordinary activation probe has no nonce. Its next
+  // state must work with the already received inactive handshake; emit() is
+  // deliberately not called here because it fabricates a new nonce reply.
+  f.rawEmit();
+  expect(f.parent.postMessage.mock.calls.at(-1)![0]).toMatchObject({ type: 'studio:motion-state', time: 1 });
+});

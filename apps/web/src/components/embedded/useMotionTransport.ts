@@ -44,8 +44,10 @@ export function useMotionTransport(projectId: string, surface: RefObject<HTMLDiv
         return;
       }
       if (![MOTION_PREVIEW_REQUEST, 'od:motion-state'].includes(data.type) || typeof data.id !== 'string' || !data.id.length || data.id.length > 128) return;
-      const frame = Array.from(surface.current?.querySelectorAll('iframe') ?? []).find(frame => frame.contentWindow === event.source && active(frame));
-      if (!frame) return;
+      const frame = Array.from(surface.current?.querySelectorAll('iframe') ?? []).find(frame => frame.contentWindow === event.source && frame.isConnected);
+      if (!frame || data.type === 'od:motion-state' && !active(frame)) return;
+      // Current-document nonce replies remain useful while playback is inactive.
+      // Publishing state and forwarding controls still require activity.
       const document = documentFor(frame);
       if (data.probeVersion === 1) { document.capable = true; capableFrames.add(frame); }
       if (data.type === MOTION_PREVIEW_REQUEST) {
