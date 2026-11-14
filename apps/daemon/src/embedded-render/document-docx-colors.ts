@@ -1,16 +1,18 @@
+import { projectDocumentCodeBlock } from './document-code-block.js';
 import { documentSimplePicture } from './document-picture.js';
-import { documentWordFontSize, validDocumentFontSize, validDocumentFontLineHeight, validDocumentHeadingLevel, validDocumentHeadingImage } from '@open-design/document-style';
+import { documentCodeBlockGeometryKeys, validDocumentCodeBlockGeometry, type DocumentCodeBlockGeometry, documentWordFontSize, validDocumentFontSize, validDocumentFontLineHeight, validDocumentHeadingLevel, validDocumentHeadingImage } from '@open-design/document-style';
 import { randomBytes } from 'node:crypto';
 import { DOMParser, XMLSerializer, type Element, type Node } from '@xmldom/xmldom';
 
-export interface DocumentDocxPresentation { foreground?: string; background?: string; fontSizePt?: number; fontLineHeightPt?: number; headingLevel?: number; headingBeforePt?: 0; headingImageLineHeightPt?: number; headingImageWidthPt?: number; headingImageHeightPt?: number; headingImageSource?: 'single-baseline-image' }
+export interface DocumentDocxPresentation extends Partial<DocumentCodeBlockGeometry> { foreground?: string; background?: string; fontSizePt?: number; fontLineHeightPt?: number; headingLevel?: number; headingBeforePt?: 0; headingImageLineHeightPt?: number; headingImageWidthPt?: number; headingImageHeightPt?: number; headingImageSource?: 'single-baseline-image' }
 export type DocumentDocxColors = DocumentDocxPresentation;
-export interface DocumentDocxStyleOwner { imageAssetSha256?: string; id: string; name: string; kind: 'cell' | 'inline' | 'heading'; rowSpan?: number; columnSpan?: number; temporaryStart?: boolean; temporaryEnd?: boolean; presentation: DocumentDocxPresentation }
+export interface DocumentDocxStyleOwner { imageAssetSha256?: string; id: string; name: string; codeText?: string; kind: 'cell' | 'inline' | 'heading' | 'code-block'; rowSpan?: number; columnSpan?: number; temporaryStart?: boolean; temporaryEnd?: boolean; presentation: DocumentDocxPresentation }
 type Ast = { t?: string; c?: unknown };
 const fail = (): never => { throw new Error('The document converter could not preserve authored presentation ownership.'); };
 const w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 function checkedPresentation(value: DocumentDocxPresentation): DocumentDocxPresentation {
-  if (Object.keys(value).some(key => !['foreground', 'background', 'fontSizePt', 'fontLineHeightPt', 'headingLevel', 'headingBeforePt','headingImageLineHeightPt','headingImageWidthPt','headingImageHeightPt','headingImageSource'].includes(key))) return fail();
+  if (Object.keys(value).some(key => !['foreground', 'background', 'fontSizePt', 'fontLineHeightPt', 'headingLevel', 'headingBeforePt','headingImageLineHeightPt','headingImageWidthPt','headingImageHeightPt','headingImageSource',...documentCodeBlockGeometryKeys].includes(key))) return fail();
+  if (documentCodeBlockGeometryKeys.some(key=>value[key] !== undefined) && (!validDocumentCodeBlockGeometry(value) || !validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt))) return fail();
   for (const color of [value.foreground, value.background]) if (color !== undefined && !/^[A-Fa-f0-9]{6}$/.test(color)) return fail();
   if (value.fontSizePt !== undefined || value.fontLineHeightPt !== undefined) {
     if (!validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt)) return fail();
@@ -21,12 +23,13 @@ function checkedPresentation(value: DocumentDocxPresentation): DocumentDocxPrese
 }
 /** The caller supplies qualified normalized presentation. This owner never
  * guesses authored styling or flattens native Pandoc content. */
-export function documentDocxPresentationOwners(ast: unknown, resolve: (attributes: unknown, kind: 'cell' | 'inline' | 'heading') => DocumentDocxPresentation): DocumentDocxStyleOwner[] {
+export function documentDocxPresentationOwners(ast: unknown, resolve: (attributes: unknown, kind: 'cell' | 'inline' | 'heading' | 'code-block') => DocumentDocxPresentation): DocumentDocxStyleOwner[] {
   const owners: DocumentDocxStyleOwner[] = [], prefix = `EveClr${randomBytes(8).toString('hex')}`;
   const marker = (owner: DocumentDocxStyleOwner, start: boolean) => ({ t: 'RawInline', c: ['openxml', start ? `<w:bookmarkStart w:id="${owner.id}" w:name="${owner.name}"/>` : `<w:bookmarkEnd w:id="${owner.id}"/>`] });
-  const owner = (attributes: unknown, kind: 'cell' | 'inline' | 'heading') => {
+  const owner = (attributes: unknown, kind: 'cell' | 'inline' | 'heading' | 'code-block') => {
     const value = checkedPresentation(resolve(attributes, kind));
-    if (kind !== 'inline' && value.fontSizePt !== undefined) return fail();
+    if (!['inline','code-block'].includes(kind) && value.fontSizePt !== undefined) return fail();
+    if (value.codeBlockSource && kind !== 'code-block') return fail();
     if (kind === 'heading') { if (Object.keys(value).some(key => !['headingLevel','headingBeforePt','headingImageLineHeightPt','headingImageWidthPt','headingImageHeightPt','headingImageSource'].includes(key))) return fail(); }
     else if (value.headingLevel !== undefined || value.headingBeforePt !== undefined || value.headingImageSource !== undefined) return fail();
     if (!Object.keys(value).length) return undefined;
@@ -53,7 +56,11 @@ export function documentDocxPresentationOwners(ast: unknown, resolve: (attribute
       return;
     }
     if (node.t === 'CodeBlock' && Array.isArray(node.c)) {
-      const entry = owner(node.c[0], 'inline');
+      const entry = owner(node.c[0], 'code-block');
+      if (entry?.presentation.codeBlockSource) {
+        if (typeof node.c[1] !== 'string' || !node.c[1].trim() || node.c[1].includes('\t') || node.c[1].split('\n').length !== entry.presentation.codeBlockLineCount) return fail();
+        entry.codeText = node.c[1];
+      }
       if (entry) {
         const code = { ...node, c: structuredClone(node.c) };
         const blockMarker = (start: boolean) => ({t:'RawBlock', c: marker(entry,start).c});
@@ -126,22 +133,28 @@ export function projectDocumentDocxPresentation(xml: string, owners: readonly Do
     // run extension properties), never append after superscript/alignment.
     const next = Array.from(p.childNodes).find(node => node.nodeType === 1 && ((node as Element).namespaceURI !== w || later.includes((node as Element).localName ?? '')));
     p.insertBefore(item, next ?? null); };
-  const paragraphSpacing = (paragraph: Element): Element => {
-    const pPr = properties(paragraph,'pPr'), existing = children(pPr,'spacing');
+  const paragraphProperty = (paragraph: Element, name: 'spacing' | 'ind'): Element => {
+    const pPr = properties(paragraph,'pPr'), existing = children(pPr,name);
     if (existing.length > 1) return fail();
     if (existing[0]) return existing[0];
-    const spacing = doc.createElementNS(w,'w:spacing');
-    const later = ['ind','contextualSpacing','mirrorIndents','suppressOverlap','jc','textDirection','textAlignment','textboxTightWrap','outlineLvl','divId','cnfStyle','rPr','sectPr','pPrChange'];
+    const spacing = doc.createElementNS(w,`w:${name}`);
+    const later = [...(name === 'spacing' ? ['ind'] : []),'contextualSpacing','mirrorIndents','suppressOverlap','jc','textDirection','textAlignment','textboxTightWrap','outlineLvl','divId','cnfStyle','rPr','sectPr','pPrChange'];
     const next = Array.from(pPr.childNodes).find(node => node.nodeType===1 && ((node as Element).namespaceURI!==w || later.includes((node as Element).localName ?? '')));
     pPr.insertBefore(spacing,next ?? null); return spacing;
   };
+  const paragraphSpacing = (paragraph: Element) => paragraphProperty(paragraph,'spacing');
   const parentParagraph = (node: Node): Element | undefined => { for (let parent = node.parentNode; parent; parent = parent.parentNode) if (parent.nodeType === 1 && (parent as Element).namespaceURI === w && (parent as Element).localName === 'p') return parent as Element; return undefined; };
   const headingParagraphs = new Map<string,Element>(), headingTargets = new Set<Element>();
   const paragraphLines = new Map<Element, number>();
+  const codeParagraphs = new Map<string,Element[]>(), codeParents = new Map<string,Node>();
   const headingImages = new Map<string, Set<Element>>();
   const visit = (node: Node): void => {
     if (node.nodeType !== 1) return;
     const element = node as Element, name = element.namespaceURI === w ? element.localName : '';
+    if (name === 'p') for (const own of stack.filter(owner=>owner.presentation.codeBlockSource)) {
+      if (element.parentNode !== codeParents.get(own.id)) return fail();
+      const paragraphs=codeParagraphs.get(own.id) ?? []; paragraphs.push(element); codeParagraphs.set(own.id,paragraphs);
+    }
     if (name === 'p' && stack.some(owner => owner.kind === 'heading' && headingParagraphs.get(owner.id) !== element)) return fail();
     if (element.namespaceURI === 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing' && element.localName === 'inline') {
       for (const own of stack.filter(owner => owner.kind === 'heading')) {
@@ -157,6 +170,11 @@ export function projectDocumentDocxPresentation(xml: string, owners: readonly Do
         if (name === 'bookmarkStart') {
           if (seen.has(id) || element.getAttributeNS(w, 'name') !== own.name) return fail();
           seen.add(id); stack.push(own);
+          if (own.presentation.codeBlockSource) {
+            const parent=element.parentNode;
+            if (parent?.nodeType !== 1 || (parent as Element).namespaceURI !== w || (parent as Element).localName !== 'body') return fail();
+            codeParents.set(id,parent);
+          }
           if (own.kind === 'heading') {
             const paragraph = parentParagraph(element);
             if (!paragraph || element.parentNode !== paragraph || headingTargets.has(paragraph)) return fail();
@@ -186,6 +204,7 @@ export function projectDocumentDocxPresentation(xml: string, owners: readonly Do
         } else {
           if (stack.at(-1)?.id !== id || ended.has(id) || cells.get(id) !== parentCell(element)) return fail();
           if (own.kind === 'heading' && (parentParagraph(element) !== headingParagraphs.get(id) || element.parentNode !== headingParagraphs.get(id))) return fail();
+          if (own.presentation.codeBlockSource && element.parentNode !== codeParents.get(id)) return fail();
           stack.pop(); ended.add(id);
         }
         markers.push(element);
@@ -197,7 +216,7 @@ export function projectDocumentDocxPresentation(xml: string, owners: readonly Do
     }
     if (name === 'r') {
       const effective: DocumentDocxPresentation = {};
-      for (const own of stack) { if (own.presentation.foreground) effective.foreground = own.presentation.foreground; if (own.kind === 'inline' && own.presentation.background) effective.background = own.presentation.background; if (own.kind === 'inline' && own.presentation.fontSizePt !== undefined) { effective.fontSizePt = own.presentation.fontSizePt; effective.fontLineHeightPt = own.presentation.fontLineHeightPt!; } }
+      for (const own of stack) { if (own.presentation.foreground) effective.foreground = own.presentation.foreground; if (['inline','code-block'].includes(own.kind) && own.presentation.background) effective.background = own.presentation.background; if (['inline','code-block'].includes(own.kind) && own.presentation.fontSizePt !== undefined) { effective.fontSizePt = own.presentation.fontSizePt; effective.fontLineHeightPt = own.presentation.fontLineHeightPt!; } }
       if (effective.foreground) set(properties(element, 'rPr'), 'color', { val: effective.foreground.toUpperCase() });
       if (effective.fontSizePt !== undefined) {
         set(properties(element, 'rPr'), 'sz', { val: documentWordFontSize(effective.fontSizePt) });
@@ -213,6 +232,16 @@ export function projectDocumentDocxPresentation(xml: string, owners: readonly Do
   };
   if (!doc.documentElement) return fail(); visit(doc.documentElement);
   if (stack.length || seen.size !== owners.length || ended.size !== owners.length) return fail();
+  const codeTargets = new Set<Element>();
+  for (const own of owners.filter(owner=>owner.presentation.codeBlockSource)) {
+    const paragraphs=codeParagraphs.get(own.id), value=own.presentation;
+    if (!validDocumentCodeBlockGeometry(value) || paragraphs?.length !== 1) return fail();
+    const paragraph=paragraphs[0]!;
+    if (codeTargets.has(paragraph)) return fail(); codeTargets.add(paragraph);
+    if (typeof own.codeText !== 'string') return fail();
+    projectDocumentCodeBlock(paragraph,value,own.codeText,paragraphProperty);
+  }
+
   for (const [paragraph, minimum] of paragraphLines) {
     const spacing = paragraphSpacing(paragraph);
     spacing.setAttributeNS(w,'w:line',String(Math.round(minimum * 20))); spacing.setAttributeNS(w,'w:lineRule','atLeast');

@@ -190,13 +190,13 @@ it('requires a complete finite image-line receipt on its source heading, indepen
   }
 });
 
-it('uses a second physical pass only for image geometry, retaining the original font and color receipts', async () => {
+it('copies only image geometry from the physical pass, retaining original font and color receipts', async () => {
   const owners = [{id:'heading',kind:'heading' as const},{id:'text',kind:'inline' as const}];
   const markup = `<html data-eve-document="1"><body><main><h1 ${attribute}="heading"><img ${attribute}-image="heading" src="data:image/png;base64,AA=="></h1><p>Text</p></main></body></html>`;
   const initial = page.evaluate.getMockImplementation()!;
   page.evaluate.mockImplementation(async script => {
     if (script.startsWith('Promise.all(')) return;
-    const physical = script.endsWith(',true)');
+    const physical = script.endsWith(',true,912)');
     return [
       {id:'heading',presentation: physical
         ? {headingLevel:1,headingImageSource:'single-baseline-image',headingImageLineHeightPt:37.5,headingImageWidthPt:252,headingImageHeightPt:18}
@@ -219,4 +219,43 @@ it('retains the previous conversion path for an image format outside the byte-pr
   result = [{id:'heading',presentation:{headingLevel:1,headingImageSource:'single-baseline-image',headingImageLineHeightPt:37.5,headingImageWidthPt:18,headingImageHeightPt:18}}];
   expect([...(await normalizeDocumentDocxColors(markup,heading,attribute))]).toEqual([['heading',{}]]);
   expect(close).toHaveBeenCalledTimes(1);
+});
+
+it('copies only qualified physical code geometry while keeping original font and paint receipts', async () => {
+  const owners = [{id:'code',kind:'code-block' as const}];
+  const markup = `<html data-eve-document="1"><body><main><pre ${attribute}="code"><code>line\nnext</code></pre></main></body></html>`;
+  const geometry = {codeBlockSource:'canonical-pre',codeBlockBeforePt:27,codeBlockAfterPt:22.5,codeBlockStartPt:12,codeBlockEndPt:12,codeBlockLineCount:2};
+  const initial = page.evaluate.getMockImplementation()!;
+  page.evaluate.mockImplementation(async script => {
+    if (script.startsWith('Promise.all(')) return;
+    const physical = script.endsWith(',true,912)');
+    return [{id:'code',presentation:{fontSizePt:10.5,fontLineHeightPt:15.75,fontSizeSource:'code-context',foreground:physical?'0000FF':'FF0000',foregroundSource:'authored',...(physical?geometry:{})}}];
+  });
+  try {
+    const normalized = await normalizeDocumentDocxColors(markup,owners,attribute);
+    expect(page.setViewportSize).toHaveBeenCalledExactlyOnceWith({width:672,height:900});
+    expect(normalized.get('code')).toEqual({fontSizePt:10.5,fontLineHeightPt:15.75,fontSizeSource:'code-context',foreground:'FF0000',foregroundSource:'authored',...geometry});
+  } finally {page.evaluate.mockImplementation(initial);}
+});
+
+it.each(['partial','wrong-kind','missing-font','early','changed-font'] as const)('refuses unproved %s code geometry at the browser boundary',async invalid=>{
+  const geometry = {codeBlockSource:'canonical-pre',codeBlockBeforePt:27,codeBlockAfterPt:22.5,codeBlockStartPt:12,codeBlockEndPt:12,codeBlockLineCount:2};
+  const owners = [{id:'code',kind:invalid==='wrong-kind'?'inline' as const:'code-block' as const}];
+  const markup = `<html data-eve-document="1"><body><main><pre ${attribute}="code"><code>line\nnext</code></pre></main></body></html>`;
+  const initial = page.evaluate.getMockImplementation()!;
+  page.evaluate.mockImplementation(async script=>{
+    if(script.startsWith('Promise.all('))return;
+    const physical=script.endsWith(',true,912)');
+    const value:Record<string,unknown>={fontSizePt:10.5,fontLineHeightPt:15.75,fontSizeSource:'code-context'};
+    if(physical||invalid==='early') Object.assign(value,geometry);
+    if(physical&&invalid==='partial') delete value.codeBlockEndPt;
+    if(physical&&invalid==='missing-font') {delete value.fontSizePt;delete value.fontLineHeightPt;delete value.fontSizeSource;}
+    if(physical&&invalid==='changed-font') value.fontSizePt=5;
+    // Inline-only requests never receive a physical pass, so inject the invalid
+    // wrong-kind receipt in its initial response instead.
+    if(invalid==='wrong-kind') Object.assign(value,geometry);
+    return [{id:'code',presentation:value}];
+  });
+  try {await expect(normalizeDocumentDocxColors(markup,owners,attribute)).rejects.toThrow('ownership');}
+  finally {page.evaluate.mockImplementation(initial);}
 });

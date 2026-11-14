@@ -1,4 +1,4 @@
-import { validDocumentFontSize, validDocumentFontLineHeight, validDocumentHeadingLevel, validDocumentHeadingMetadata } from '@open-design/document-style';
+import { documentCodeBlockGeometryKeys, validDocumentCodeBlockGeometry, validDocumentFontSize, validDocumentFontLineHeight, validDocumentHeadingLevel, validDocumentHeadingMetadata } from '@open-design/document-style';
 import { documentExportProfile, documentExportPrintCss } from './document-export-profile.js';
 import { readFile } from 'node:fs/promises';
 import { chromium, type Page } from 'playwright-core';
@@ -20,7 +20,8 @@ function validatedPresentations(result: unknown, requests: readonly DocumentPres
   for (const entry of result) {
     if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string' || !expected.has(entry.id) || presentations.has(entry.id) || !entry.presentation || typeof entry.presentation !== 'object' || Array.isArray(entry.presentation)) return fail();
     for (const [key, value] of Object.entries(entry.presentation)) {
-      if (key === 'foregroundSource') { if (typeof value !== 'string' || !['authored','inherited'].includes(value)) return fail(); }
+      if (documentCodeBlockGeometryKeys.includes(key as typeof documentCodeBlockGeometryKeys[number])) { /* Validate the complete paired receipt below. */ }
+      else if (key === 'foregroundSource') { if (typeof value !== 'string' || !['authored','inherited'].includes(value)) return fail(); }
       else if (key === 'fontSizeSource') { if (typeof value !== 'string' || !['authored','code-context'].includes(value)) return fail(); }
       else if (key === 'headingLevel') { if (!validDocumentHeadingLevel(value)) return fail(); }
       else if (key === 'headingBeforePt') { if (value !== 0) return fail(); }
@@ -33,7 +34,9 @@ function validatedPresentations(result: unknown, requests: readonly DocumentPres
     }
     if (Object.hasOwn(entry.presentation, 'foreground') !== Object.hasOwn(entry.presentation, 'foregroundSource') || (expected.get(entry.id) === 'cell' && (Object.hasOwn(entry.presentation, 'foreground') || Object.hasOwn(entry.presentation, 'foregroundSource')))) return fail();
     const fontFields = ['fontSizePt','fontLineHeightPt','fontSizeSource'].filter(key => Object.hasOwn(entry.presentation, key));
-    if (fontFields.length && (fontFields.length !== 3 || expected.get(entry.id) !== 'inline')) return fail();
+    if (fontFields.length && (fontFields.length !== 3 || !['inline','code-block'].includes(expected.get(entry.id)!))) return fail();
+    if (expected.get(entry.id) === 'code-block' && fontFields.length && entry.presentation.fontSizeSource !== 'code-context') return fail();
+    if (documentCodeBlockGeometryKeys.some(key=>Object.hasOwn(entry.presentation,key)) && (expected.get(entry.id) !== 'code-block' || fontFields.length !== 3 || !validDocumentCodeBlockGeometry(entry.presentation))) return fail();
     const headingKeys = ['headingLevel','headingBeforePt','headingSource'];
     const headingFields = headingKeys.filter(key => Object.hasOwn(entry.presentation,key));
     if (headingFields.length && (expected.get(entry.id) !== 'heading' || !validDocumentHeadingMetadata(entry.presentation))) return fail();
@@ -65,12 +68,21 @@ export async function normalizeDocumentDocxPresentation(html: string, requests: 
     await page.addScriptTag({ content: await readFile(browserScript, 'utf8') });
     const result: unknown = await page.evaluate(`globalThis.odDocumentColor.normalizeDocumentPresentationOwners(document,${JSON.stringify(requests)},${JSON.stringify(attributeName)},${JSON.stringify([...ownedStyles(html), documentExportPrintCss])},undefined,${(documentExportProfile.page.widthPt-2*documentExportProfile.page.marginPt)/.75})`);
     const presentations = validatedPresentations(result, requests);
-    if ($('h1 img,h2 img,h3 img,h4 img,h5 img,h6 img').length) {
-      // A separate physical-width pass reflows only image receipts. Existing
+    if ([...presentations.values()].some(value=>documentCodeBlockGeometryKeys.some(key=>value[key]!==undefined))) return fail();
+    if ($('h1 img,h2 img,h3 img,h4 img,h5 img,h6 img').length || requests.some(request=>request.kind==='code-block')) {
+      // A separate physical-width pass supplies image and code geometry. Existing
       // color/font measurements and the PDF renderer retain their own context.
       const contentWidthPx = (documentExportProfile.page.widthPt-2*documentExportProfile.page.marginPt)/.75;
       await page.setViewportSize({ width: contentWidthPx, height: 900 });
-      const measured = validatedPresentations(await page.evaluate(`globalThis.odDocumentColor.normalizeDocumentPresentationOwners(document,${JSON.stringify(requests)},${JSON.stringify(attributeName)},${JSON.stringify([...ownedStyles(html), documentExportPrintCss])},undefined,${contentWidthPx},true)`), requests);
+      const measured = validatedPresentations(await page.evaluate(`globalThis.odDocumentColor.normalizeDocumentPresentationOwners(document,${JSON.stringify(requests)},${JSON.stringify(attributeName)},${JSON.stringify([...ownedStyles(html), documentExportPrintCss])},undefined,${contentWidthPx},true,${(documentExportProfile.page.heightPt-2*documentExportProfile.page.marginPt)/.75})`), requests);
+      for (const request of requests.filter(request=>request.kind==='code-block')) {
+        const value=measured.get(request.id)!;
+        if (value.codeBlockSource) {
+          const original = presentations.get(request.id)!;
+          if (original.fontSizeSource !== 'code-context' || value.fontSizePt !== original.fontSizePt || value.fontLineHeightPt !== original.fontLineHeightPt) return fail();
+          Object.assign(original,Object.fromEntries(documentCodeBlockGeometryKeys.map(key=>[key,value[key]])));
+        }
+      }
       for (const request of requests.filter(request => request.kind === 'heading')) {
         const value = measured.get(request.id)!;
         if (!value.headingImageSource) continue;
