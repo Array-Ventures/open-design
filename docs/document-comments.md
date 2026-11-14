@@ -102,3 +102,25 @@ while the accepted new-root case and 38 other cases passed. The handler now
 resets any root composer after consent before listing comments; returning to a
 saved row shows its persisted note. Denied new/edit consent and retained reply
 navigation keep their separate protections.
+
+### Removed-thread recovery source follow-up
+
+A separate component refresh removed the selected root while its reply draft
+remained mounted. Both list entrypoints hid that draft, but the persisted row
+was gone, so there was no route back. Both recoverability regressions failed
+before this follow-up (40 other component cases passed).
+
+The list header now reuses a compact back icon labelled Return to deleted thread
+only when its retained selection is missing from the current comments. It opens
+the same retained thread and reply DOM with the exact draft. The existing deleted
+notice, disabled submission, readable draft and close-confirmation behavior stay
+in place. There is no fake persisted row, new storage, history or automatic write.
+The recovery control is disabled during a busy root operation.
+
+Viewing mode keeps the same member's retained reply available. A different
+existing boundary remains unchanged: withdrawing the member identity resets the
+reply scope and clears its draft before showing a disabled reply field. An
+initial combined test incorrectly expected draft retention across that identity
+boundary; separate final cases verify stable-member Viewing-mode retention and
+identity-withdrawal reset/disabled-write behavior. This source checkpoint does
+not claim cross-account draft retention. Packaged browser acceptance is pending.

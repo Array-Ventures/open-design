@@ -154,6 +154,7 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
         onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) { const parent = event.currentTarget.parentElement?.getBoundingClientRect(); if (parent) setWidth(Math.max(240, Math.min(480, (getComputedStyle(event.currentTarget).direction === 'rtl' ? event.clientX - parent.left : parent.right - event.clientX)))); } }} onPointerUp={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }} />
       {list || selected ? <header className="flex shrink-0 items-center gap-1 border-b border-separator-border px-3 py-2">
         {!list ? <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiArrowLeftLine} aria-label="All comments" onClick={showList} /> : null}
+        {list && selected && !current ? <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiArrowLeftLine} aria-label="Return to deleted thread" title="Return to deleted thread" disabled={busy} onClick={() => { void show(selected); }} /> : null}
         <span className="min-w-0 flex-1 truncate text-body-2-medium text-text-primary">{list ? 'Comments' : 'Selected text'}</span>
         <CommentReviewFilter />
         <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiCloseLine} aria-label="Close comments" onClick={() => { void close(); }} />
