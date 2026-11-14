@@ -661,3 +661,77 @@ it('protects a Delete started during receipt storage before retiring that same s
     await writer.close();
   }
 });
+
+it.each(['edit-undo', 'sheet-undo-redo', 'replacement-same-id'] as const)('refuses a protected command after actual SDK %s interleaving', async interleaving => {
+  const f = fixture();
+  const first = captureWorkbookSourceDeletion(scope, f.checkpoint, '2');
+  stampWorkbookSourceDeletion(f.unit.getSheetBySheetId('2')!, first.descriptor);
+  f.commands.syncExecuteCommand(RemoveSheetCommand.id, { unitId: f.book.getId(), subUnitId: '2' });
+  const storage = protectionGate(), started = protectionGate();
+  let held = false, commands = 0, writes = 0;
+  const writer = new WorkbookWriter(f.checkpoint.source, f.checkpoint.acknowledged, async () => {
+    writes++;
+    throw Error('A refused action must not make a remote write');
+  }, () => {}, undefined, {
+    scope, isCurrent: () => true,
+    validate: candidate => { serializeWorkbookDraft(scope, candidate); },
+    save: async candidate => {
+      if (candidate?.sheetDeletions?.length === 2 && !held) {
+        held = true; started.resolve(); await storage.promise;
+      }
+    },
+  });
+  writer.retainSheetDeletion(first);
+  writer.update(f.book.save());
+  const second = captureWorkbookSourceDeletion(scope, writer.checkpoint(), '3');
+  const top = () => f.history.getUndoRedoMutationStrings(f.book.getId(), InsertSheetMutation.id,
+    ['sheet', 'custom', WORKBOOK_SHEET_DELETE_MARKER, 'token'], 'top');
+  const beforeTop = top();
+  const protecting = writer.protectSheetDeletion(second, deletionSnapshot(writer.checkpoint(), '3'), () => {
+    commands++;
+    f.commands.syncExecuteCommand(RemoveSheetCommand.id, { unitId: f.book.getId(), subUnitId: '3' });
+    return f.book.save();
+  });
+  try {
+    await started.promise;
+    if (interleaving === 'edit-undo') {
+      f.book.getSheetBySheetId('1')!.getRange('A1').setValue(20);
+      writer.update(f.book.save());
+      await f.api.undo();
+      writer.update(f.book.save());
+    } else if (interleaving === 'sheet-undo-redo') {
+      await f.api.undo();
+      expect(f.book.save().sheets['2']?.id).toBe('2');
+      writer.update(f.book.save());
+      await f.api.redo();
+      writer.update(f.book.save());
+    }
+    if (interleaving === 'replacement-same-id') {
+      const replacement = structuredClone(f.book.save().sheets['3']!);
+      replacement.cellData![0]![0]!.v = 999;
+      f.commands.syncExecuteCommand(RemoveSheetCommand.id, { unitId: f.book.getId(), subUnitId: '3' });
+      writer.update(f.book.save());
+      f.commands.syncExecuteCommand(InsertSheetCommand.id, { unitId: f.book.getId(), index: 1, sheet: replacement });
+      writer.update(f.book.save());
+      expect(f.book.save().sheets['3']!.id).toBe('3');
+      expect(f.book.save().sheets['3']!.cellData![0]![0]!.v).toBe(999);
+      expect(top()).not.toEqual(beforeTop);
+    } else {
+      expect(top()).toEqual(beforeTop);
+    }
+    const beforeRelease = f.book.save(), status = f.history.getUndoRedoStatus(f.book.getId());
+    storage.resolve();
+    await expect(protecting).rejects.toThrow('changed while protecting');
+    expect(commands).toBe(0);
+    expect(writes).toBe(0);
+    expect(f.book.save()).toEqual(beforeRelease);
+    expect(f.history.getUndoRedoStatus(f.book.getId())).toEqual(status);
+    expect(writer.checkpoint().source.sourceSha256).toBe(sourceSha256);
+    expect(writer.checkpoint().sheetDeletions).toEqual([first]);
+    expect(writer.checkpoint().desired.sheets['3']).toBeDefined();
+  } finally {
+    storage.resolve();
+    await protecting.catch(() => {});
+    await writer.close();
+  }
+});

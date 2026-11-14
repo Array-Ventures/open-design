@@ -89,3 +89,13 @@ browser qualification remain mandatory before installing that controller. No
 wrapper or new controls are installed by this dependency checkpoint. Refresh via
 `pnpm patch` / `pnpm patch-commit`, preserve the existing primitive inspection
 patch, and rerun `workbook-sheet-history-command.test.ts` when updating the pin.
+
+The primitive history query accepts optional fourth argument `position: 'top'`.
+It inspects only the actual top entry on each native stack, while preserving both
+mutation directions, immutable string output and the same refusal limits.
+Omitting the argument retains the existing complete reachability query. Unknown
+positions refuse. This is a semantic projection, not an object identity or an
+authorization token. A pending sheet-action owner must also revalidate its
+source, Writer revision, lease and focused unit after awaiting storage: actual
+SDK edit/Undo and sheet Undo/Redo can return to the same top token after changing
+state in between. No top query or matching token alone admits a command.

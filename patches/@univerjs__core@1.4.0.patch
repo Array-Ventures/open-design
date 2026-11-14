@@ -1,5 +1,5 @@
 diff --git a/lib/cjs/index.js b/lib/cjs/index.js
-index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..de579ef6e6db5d9617f0d9130ec414c2629003d3 100644
+index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..4fd2e16893dbce9cdd61ec5b3d6186a0a622fd21 100644
 --- a/lib/cjs/index.js
 +++ b/lib/cjs/index.js
 @@ -2211,6 +2211,7 @@ let CommandService = class CommandService extends Disposable {
@@ -10,12 +10,13 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..de579ef6e6db5d9617f0d9130ec414c2
  				const commandInfo = {
  					id: command.id,
  					type: command.type,
-@@ -25602,6 +25603,50 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25602,6 +25603,52 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
-+	getUndoRedoMutationStrings(unitId, mutationId, propertyPath) {
++	getUndoRedoMutationStrings(unitId, mutationId, propertyPath, position) {
 +		this.ensureNotDisposed();
++		if (position !== undefined && position !== "top") throw new Error("History inspection position is invalid.");
 +		if (typeof unitId !== "string" || !unitId.length || unitId.length > 600 || typeof mutationId !== "string" || !/^[A-Za-z0-9_.-]{1,200}$/.test(mutationId) || !Array.isArray(propertyPath) || propertyPath.length < 1 || propertyPath.length > 16) throw new Error("History inspection query is invalid.");
 +		const path = [];
 +		for (let index = 0; index < propertyPath.length; index++) {
@@ -35,7 +36,8 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..de579ef6e6db5d9617f0d9130ec414c2
 +		};
 +		const inspect = (stack) => {
 +			const values = [];
-+			for (const item of stack ?? []) {
++			const entries = position === "top" ? stack === null || stack === void 0 ? void 0 : stack.slice(-1) : stack;
++			for (const item of entries ?? []) {
 +				if (data(item, "unitID") !== unitId) throw new Error("History inspection owner is invalid.");
 +				// Both directions remain reachable while an item is on either stack.
 +				for (const field of ["undoMutations", "redoMutations"]) {
@@ -62,7 +64,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..de579ef6e6db5d9617f0d9130ec414c2
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
 diff --git a/lib/es/index.js b/lib/es/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..e30218e976d8028a051527de936a54da4ce0f7b4 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..27014ba0a76614d29c4be0d53c27a210d9e3de88 100644
 --- a/lib/es/index.js
 +++ b/lib/es/index.js
 @@ -2182,6 +2182,7 @@ let CommandService = class CommandService extends Disposable {
@@ -73,12 +75,13 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..e30218e976d8028a051527de936a54da
  				const commandInfo = {
  					id: command.id,
  					type: command.type,
-@@ -25573,6 +25574,50 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25573,6 +25574,52 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
-+	getUndoRedoMutationStrings(unitId, mutationId, propertyPath) {
++	getUndoRedoMutationStrings(unitId, mutationId, propertyPath, position) {
 +		this.ensureNotDisposed();
++		if (position !== undefined && position !== "top") throw new Error("History inspection position is invalid.");
 +		if (typeof unitId !== "string" || !unitId.length || unitId.length > 600 || typeof mutationId !== "string" || !/^[A-Za-z0-9_.-]{1,200}$/.test(mutationId) || !Array.isArray(propertyPath) || propertyPath.length < 1 || propertyPath.length > 16) throw new Error("History inspection query is invalid.");
 +		const path = [];
 +		for (let index = 0; index < propertyPath.length; index++) {
@@ -98,7 +101,8 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..e30218e976d8028a051527de936a54da
 +		};
 +		const inspect = (stack) => {
 +			const values = [];
-+			for (const item of stack ?? []) {
++			const entries = position === "top" ? stack === null || stack === void 0 ? void 0 : stack.slice(-1) : stack;
++			for (const item of entries ?? []) {
 +				if (data(item, "unitID") !== unitId) throw new Error("History inspection owner is invalid.");
 +				// Both directions remain reachable while an item is on either stack.
 +				for (const field of ["undoMutations", "redoMutations"]) {
@@ -125,7 +129,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..e30218e976d8028a051527de936a54da
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
 diff --git a/lib/index.js b/lib/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..e30218e976d8028a051527de936a54da4ce0f7b4 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..27014ba0a76614d29c4be0d53c27a210d9e3de88 100644
 --- a/lib/index.js
 +++ b/lib/index.js
 @@ -2182,6 +2182,7 @@ let CommandService = class CommandService extends Disposable {
@@ -136,12 +140,13 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..e30218e976d8028a051527de936a54da
  				const commandInfo = {
  					id: command.id,
  					type: command.type,
-@@ -25573,6 +25574,50 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25573,6 +25574,52 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
-+	getUndoRedoMutationStrings(unitId, mutationId, propertyPath) {
++	getUndoRedoMutationStrings(unitId, mutationId, propertyPath, position) {
 +		this.ensureNotDisposed();
++		if (position !== undefined && position !== "top") throw new Error("History inspection position is invalid.");
 +		if (typeof unitId !== "string" || !unitId.length || unitId.length > 600 || typeof mutationId !== "string" || !/^[A-Za-z0-9_.-]{1,200}$/.test(mutationId) || !Array.isArray(propertyPath) || propertyPath.length < 1 || propertyPath.length > 16) throw new Error("History inspection query is invalid.");
 +		const path = [];
 +		for (let index = 0; index < propertyPath.length; index++) {
@@ -161,7 +166,8 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..e30218e976d8028a051527de936a54da
 +		};
 +		const inspect = (stack) => {
 +			const values = [];
-+			for (const item of stack ?? []) {
++			const entries = position === "top" ? stack === null || stack === void 0 ? void 0 : stack.slice(-1) : stack;
++			for (const item of entries ?? []) {
 +				if (data(item, "unitID") !== unitId) throw new Error("History inspection owner is invalid.");
 +				// Both directions remain reachable while an item is on either stack.
 +				for (const field of ["undoMutations", "redoMutations"]) {
@@ -201,7 +207,7 @@ index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..d169600c3c11394edf095dd5fdb5ef75
       * The handler of the command.
       * @param accessor The accessor to the dependency injection container.
 diff --git a/lib/types/services/undoredo/undoredo.service.d.ts b/lib/types/services/undoredo/undoredo.service.d.ts
-index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..af494bb27e8a141906209cb1110fc212f2308d15 100644
+index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..ece1845ef87ccf6c2da725b334e5afd1fe63d8a4 100644
 --- a/lib/types/services/undoredo/undoredo.service.d.ts
 +++ b/lib/types/services/undoredo/undoredo.service.d.ts
 @@ -37,6 +37,13 @@ export interface IUndoRedoService {
@@ -213,7 +219,7 @@ index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..af494bb27e8a141906209cb1110fc212
 +     * Limits: path 1..16 ASCII keys, strings <=512 characters, <=100000 scanned
 +     * mutations and <=4096 results across both stacks; refusal never truncates.
 +     */
-+    getUndoRedoMutationStrings(unitId: string, mutationId: string, propertyPath: readonly string[]): { readonly undos: readonly string[]; readonly redos: readonly string[] };
++    getUndoRedoMutationStrings(unitId: string, mutationId: string, propertyPath: readonly string[], position?: 'top'): { readonly undos: readonly string[]; readonly redos: readonly string[] };
 +
      pushUndoRedo(item: IUndoRedoItem): void;
      /**
@@ -227,7 +233,7 @@ index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..af494bb27e8a141906209cb1110fc212
 +     * Limits: path 1..16 ASCII keys, strings <=512 characters, <=100000 scanned
 +     * mutations and <=4096 results across both stacks; refusal never truncates.
 +     */
-+    getUndoRedoMutationStrings(unitId: string, mutationId: string, propertyPath: readonly string[]): { readonly undos: readonly string[]; readonly redos: readonly string[] };
++    getUndoRedoMutationStrings(unitId: string, mutationId: string, propertyPath: readonly string[], position?: 'top'): { readonly undos: readonly string[]; readonly redos: readonly string[] };
 +
      pushUndoRedo(item: IUndoRedoItem): void;
      beginUndoRedoGroup(unitId: string, groupId: string, mode?: 'replace' | 'append'): IDisposable;
