@@ -1,5 +1,10 @@
 # Projector to historical-asset acceptance handoff
 
+Later actual [120/63 qualification](workbook-history120-qualification.md) covers
+the existing editor and explicit manual historical-asset path. This record's
+source/stand-in evidence keeps its original scope; live membership controls,
+issued Delete/Undo and protected membership recovery remain unqualified.
+
 This is a test-only source boundary. It does not install membership controls or
 qualify a live Delete/Undo controller, protected journal recovery, receipt-server
 authority or container execution. The native contained harness separately owns
@@ -45,7 +50,7 @@ succeeded. No server, container, browser or production process was started.
 
 The intended native `--projected-sheet-restore` lane supplies actual previews,
 receipt and frozen plan from its own authorized disposable stack, then retains
-the original four delivery and three preparation crash cuts. That lane has not
-run for this source checkpoint. No companion build, renderer, pins, publication
+the original four delivery and three preparation crash cuts. That lane had not
+run at this earlier source checkpoint. No companion build, renderer, pins, publication
 or live control changed. Full contained qualification and native controller,
 worker epochs, retained-root retirement and protected recovery remain required.

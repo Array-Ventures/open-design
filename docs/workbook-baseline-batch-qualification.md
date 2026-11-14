@@ -1,5 +1,10 @@
 # One full read for worksheet baseline capture
 
+Later actual [120/63 qualification](workbook-history120-qualification.md) covers
+the existing editor and explicit manual historical-asset path. This record's
+source/stand-in evidence keeps its original scope; live membership controls,
+issued Delete/Undo and protected membership recovery remain unqualified.
+
 Independent review found that the earlier batch captured one global SDK view but
 called `workbookSheetBaseline(model,id)` for every request. That function bounded
 and strictly parsed the complete source each time. A batch of32 duplicate selected

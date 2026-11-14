@@ -1,5 +1,10 @@
 # Restored worksheet projection prototype
 
+Later actual [120/63 qualification](workbook-history120-qualification.md) covers
+the existing editor and explicit manual historical-asset path. This record's
+source/stand-in evidence keeps its original scope; live membership controls,
+issued Delete/Undo and protected membership recovery remain unqualified.
+
 This is an uninstalled source/plan checkpoint. Worksheet membership controls
 remain off. It does not qualify live source Delete Undo, HTTP history access,
 contained worker execution, recovery, retirement or packaged browser behavior.

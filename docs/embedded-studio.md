@@ -1,5 +1,16 @@
 # Evebot embedded Studio
 
+## Current workbook foundation qualification
+
+Local [120/63 qualification](workbook-history120-qualification.md) passed the six
+existing packaged workbook theme/history cases and the actual SDK-derived manual
+selected-history asset/recovery lane (three preparation and four delivery cuts).
+Its exact clean source is ced8532e; newer main/document merges are not relabeled
+as that build. Sheet Add/Delete/Rename controls and the native history controller
+remain uninstalled. Live issued membership operations, protected pending recovery
+and retirement still require qualification. Earlier dated source/probe records
+below retain their original scope. No installation pins or production changed.
+
 ## Workbook recovery development — November 11
 
 The editor now connects the account/artifact/editor-scoped IndexedDB journal to

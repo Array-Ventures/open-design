@@ -1,5 +1,5 @@
 import { documentImportStyles } from './document-styles';
-import { localDocumentImageSource, dataDocumentImageSource } from './document-image-source';
+import { localDocumentImageSource, dataDocumentImageSource, documentImageCssDimension } from './document-image-source';
 import DOMPurify from 'dompurify';
 import { findRealTagEnd, HTML_TAG_PATTERNS } from '@open-design/contracts/runtime/html-injection-points';
 
@@ -28,12 +28,13 @@ export function documentImport(html: string): Document {
       const colon = declaration.indexOf(':');
       if (colon < 1) return [];
       const name = declaration.slice(0, colon).trim().toLowerCase();
+      const imageDimension = element.tagName === 'IMG' && (name === 'width' || name === 'height');
       const pattern = documentImportStyles.get(name);
-      if (!pattern) return [];
+      if (!pattern && !imageDimension) return [];
       const probe = document.createElement('span').style;
       probe.cssText = declaration;
       const value = probe.getPropertyValue(name).trim();
-      return pattern.test(value) ? [[name, value]] : [];
+      return (imageDimension ? documentImageCssDimension(value, name as 'width' | 'height') !== null : pattern!.test(value)) ? [[name, value]] : [];
     });
     element.removeAttribute('style');
     for (const [name, value] of properties) element.style.setProperty(name!, value!);

@@ -1,0 +1,5 @@
+# Explicit document font preservation check
+
+An initial interpretation of the candidate119 image-editor walkthrough suggested that an unrelated text save changed an authored sans heading to serif. Inspection contradicted that premise: the owned fixture's `css-before-edit-source.json` already declared `data-eve-document-heading-font="serif"` with canonical Georgia heading CSS, and the saved source retained it. The manual receipt was corrected to `fontRegressionOpen: false`. No production font change is warranted by that observation.
+
+Three additional mounted-editor cases cover explicit sans/sans, serif/sans and sans/serif body/heading choices. Each makes an unrelated text edit, saves, checks both root font attributes and unchanged canonical stylesheet, then reopens the saved document and checks its heading font. All three passed on unchanged candidate119 source `fd09b474`; these are positive regression coverage, not a reproduced failure or a fix. No stack, browser or package build was run for this check.
