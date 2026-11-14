@@ -243,7 +243,9 @@ socket disconnected before a normal server-backed retry saved the own plain
 reply and cleared its error/draft. This remains fault-response handling proof,
 not permission/authorization proof.
 
-The subsequent own root DELETE and normal reply polling produced a real 404.
+A fresh unsent reply with the same comparison text was typed after that
+successful retry. The subsequent own root DELETE and normal reply polling
+produced a real 404.
 Across all four views the deletion notice remained, the generic load error/alert
 was absent, and submission was disabled without losing the draft. Dark desktop
 Expand/Restore retained the same iframe/document/reply through 1140→640px content
