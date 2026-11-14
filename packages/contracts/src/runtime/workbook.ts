@@ -260,5 +260,5 @@ export function workbookSheetSourcesForPlan(plan: z.infer<typeof workbookEditPla
   return refs.size ? [...refs.values()].sort((a,b) => a.versionId < b.versionId ? -1 : a.versionId > b.versionId ? 1 : 0) : undefined;
 }
 
-export { workbookMembershipVisibilitySchema, workbookMembershipControlsRequestSchema, workbookMembershipActionSchema, workbookMembershipResultSchema, workbookMembershipSheetNameSchema } from './workbook-membership.js';
+export { workbookMembershipVisibilitySchema, workbookMembershipControlsRequestSchema, workbookMembershipProbeSchema, workbookMembershipReadySchema, workbookMembershipActionSchema, workbookMembershipResultSchema, workbookMembershipSheetNameSchema } from './workbook-membership.js';
 export type { WorkbookMembershipVisibility, WorkbookMembershipAction, WorkbookMembershipResult } from './workbook-membership.js';

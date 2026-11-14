@@ -37,6 +37,9 @@ export type WorkbookMembershipVisibility = z.infer<typeof workbookMembershipVisi
 /** Negotiation data only. Old hosts must continue receiving the old strict
  * visibility shape; a future frame omits membership until its exact parent asks. */
 export const workbookMembershipControlsRequestSchema = z.object({ type: z.literal("studio:artifact-request"), projectId: scope.projectId, controllerId: scope.controllerId, workbookMembershipVersion: z.literal(1) }).strict();
+/** Readiness correlation only; these messages grant no action capability. */
+export const workbookMembershipProbeSchema = z.object({ type: z.literal("studio:workbook-membership-probe"), projectId: scope.projectId, controllerId: scope.controllerId, version: z.literal(1), handshakeId: uuid }).strict();
+export const workbookMembershipReadySchema = z.object({ type: z.literal("studio:workbook-membership-ready"), projectId: scope.projectId, controllerId: scope.controllerId, version: z.literal(1), documentId: uuid, epoch: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), handshakeId: uuid.optional() }).strict();
 export const workbookMembershipSheetNameSchema = z.string().min(1).max(31).refine(value => value.trim().length > 0 && !/[:\\/\?*\[\]\u0000-\u001f\uFFFE\uFFFF\p{Cs}]/u.test(value) && !value.startsWith("'") && !value.endsWith("'"), "Use a valid worksheet name.");
 const ticket = { ...scope, ownerId: uuid, revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), requestId: uuid };
 /** A UI request is not authority: the current frame must independently recheck

@@ -185,6 +185,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
       // cache only this frame's trusted context, never an executable owner.
       window.addEventListener('message', receiveManagement);
       layer.own(() => { window.removeEventListener('message', receiveManagement); management.dispose(); });
+      management.announceReady();
       let disableMembershipGrid = () => {};
       let arrayOwner: ReturnType<typeof ownArrayProjectionWorker> | null = null;
       let arrayInput: ReturnType<typeof ownArrayInputNormalization> | null = null;

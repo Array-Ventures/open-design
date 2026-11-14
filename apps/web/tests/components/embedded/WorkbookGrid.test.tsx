@@ -7,7 +7,7 @@ import { WorkbookWriter } from '../../../src/components/embedded/workbook/workbo
 import { gridWorkbook } from '../../../src/components/embedded/workbook/grid-model';
 import type { IWorkbookData } from '@univerjs/presets';
 import { CommandType } from '@univerjs/presets';
-import { ICommandService } from '@univerjs/core';
+import { ICommandService, IUndoRedoService } from '@univerjs/core';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookGrid } from '../../../src/components/embedded/workbook/WorkbookGrid';
 
@@ -16,11 +16,11 @@ const runtime = vi.hoisted(() => ({ rebaseSource: vi.fn(), calculationPublish: v
   input: null as null | ((message: string) => void), live: false, fail: null as null | (() => void), calculationDisposed: vi.fn(),
   getRange: vi.fn(), select: vi.fn(), createWorkbook: vi.fn(), editable: vi.fn(), activeSheet: vi.fn(), saved: vi.fn(), listener: null as null | ((event: { type: number; id: string }) => void) }));
 vi.mock('@univerjs/presets', async original => ({ ...await original<typeof import('@univerjs/presets')>(),
-  Univer: class { constructor() { runtime.created(this); } registerPlugin = runtime.register; dispose = () => { runtime.events.push(`univer:${runtime.created.mock.calls.findIndex(([instance]) => instance === this) + 1}`); runtime.dispose(this); }; __getInjector = () => ({ get: (token: unknown) => token === ICommandService ? { registerCommand: runtime.navigationCommand, beforeCommandExecuted: runtime.visibilityBefore } : token === 'IShortcutService' ? { registerShortcut: runtime.navigationShortcut } : { setContextValue: runtime.context, onStage: () => runtime.rendered } }); },
+  Univer: class { constructor() { runtime.created(this); } registerPlugin = runtime.register; dispose = () => { runtime.events.push(`univer:${runtime.created.mock.calls.findIndex(([instance]) => instance === this) + 1}`); runtime.dispose(this); }; __getInjector = () => ({ get: (token: unknown) => token === ICommandService ? { registerCommand: runtime.navigationCommand, beforeCommandExecuted: runtime.visibilityBefore, hasCommand: () => false, onCommandExecuted: () => ({ dispose() {} }) } : token === IUndoRedoService ? { getUndoRedoCheckpoint: () => ({ unitId: 'grid', revision: 0 }) } : token === 'IShortcutService' ? { registerShortcut: runtime.navigationShortcut } : { setContextValue: runtime.context, onStage: () => runtime.rendered } }); },
   FUniver: { newAPI: () => ({ createWorkbook: runtime.createWorkbook, getActiveWorkbook: () => runtime.createWorkbook.mock.results.at(-1)?.value, Event: { CommandExecuted: 'CommandExecuted', ActiveSheetChanged: 'ActiveSheetChanged' },
     addEvent: (event: string, callback: NonNullable<typeof runtime.listener>) => { if (event === 'CommandExecuted') { runtime.listener = callback; return { dispose: runtime.off }; } return { dispose() {} }; }, setTheme: runtime.theme, toggleDarkMode: runtime.dark }) },
 }));
-vi.mock('@univerjs/preset-sheets-core', () => ({ ...Object.fromEntries(['UniverRenderEnginePlugin', 'UniverFormulaEnginePlugin', 'UniverUIPlugin', 'UniverDocsPlugin', 'UniverDocsUIPlugin', 'UniverSheetsPlugin', 'UniverSheetsUIPlugin', 'UniverSheetsFormulaPlugin', 'UniverSheetsFormulaUIPlugin', 'UniverSheetsNumfmtPlugin', 'UniverSheetsNumfmtUIPlugin'].map(name => [name, name])), IShortcutService: 'IShortcutService', KeyCode: { HOME: 36 }, MetaKeys: { CTRL_COMMAND: 2048 }, whenSheetEditorFocused: (context: { focused: boolean }) => context.focused, SetSelectionsOperation: { id: 'sheet.operation.set-selections' }, IRenderManagerService: 'IRenderManagerService', DISABLE_AUTO_FOCUS_KEY: 'disableAutoFocus', CalculationMode: { NO_CALCULATION: 2 } }));
+vi.mock('@univerjs/preset-sheets-core', () => ({ ...Object.fromEntries(['UniverRenderEnginePlugin', 'UniverFormulaEnginePlugin', 'UniverUIPlugin', 'UniverDocsPlugin', 'UniverDocsUIPlugin', 'UniverSheetsPlugin', 'UniverSheetsUIPlugin', 'UniverSheetsFormulaPlugin', 'UniverSheetsFormulaUIPlugin', 'UniverSheetsNumfmtPlugin', 'UniverSheetsNumfmtUIPlugin'].map(name => [name, name])), IShortcutService: 'IShortcutService', ShowMenuListCommand: { id: 'ui-sheet.command.show-menu-list' }, KeyCode: { HOME: 36, K: 75 }, MetaKeys: { CTRL_COMMAND: 2048, ALT: 512, SHIFT: 1024 }, whenSheetEditorFocused: (context: { focused: boolean }) => context.focused, SetSelectionsOperation: { id: 'sheet.operation.set-selections' }, IRenderManagerService: 'IRenderManagerService', DISABLE_AUTO_FOCUS_KEY: 'disableAutoFocus', CalculationMode: { NO_CALCULATION: 2 } }));
 vi.mock('../../../src/components/embedded/workbook/grid-calculation', () => ({ workbookLiveCalculationEligible: () => runtime.live, attachWorkbookCalculation: (...args: unknown[]) => { runtime.calculation = args[7] as NonNullable<typeof runtime.calculation>; return { rebaseSource: runtime.rebaseSource, publish: runtime.calculationPublish, dispose() {} }; } }));
 vi.mock('../../../src/components/embedded/workbook/calculation-worker-owner', () => ({ ownWorkbookCalculationWorker: (fail: () => void) => { runtime.fail = fail; return { loaded: Promise.resolve(true), ready: true, worker: {}, dispose: runtime.calculationDisposed }; } }));
 vi.mock('../../../src/components/embedded/workbook/array-projection-owner', () => ({ ownArrayProjectionWorker: () => {
@@ -346,7 +346,7 @@ it('registers first-cell navigation with readiness and editor-focus guards and r
   let release!: () => void;
   const pending = new Promise<void>(resolve => { release = resolve; });
   const view = render(<WorkbookGrid id="navigation" title="Navigation" model={model} onReady={() => pending} onSnapshot={() => {}} />);
-  await waitFor(() => expect(runtime.navigationShortcut).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(runtime.navigationShortcut).toHaveBeenCalledTimes(2));
   const command = runtime.navigationCommand.mock.calls[0]![0] as { id: string; handler(): boolean };
   const shortcut = runtime.navigationShortcut.mock.calls[0]![0] as { id: string; preconditions(context: { focused: boolean }): boolean };
   expect(shortcut.id).toBe(command.id);
@@ -363,7 +363,7 @@ it('registers first-cell navigation with readiness and editor-focus guards and r
   expect(runtime.scrollToCell).toHaveBeenCalledWith(0, 0);
   view.unmount();
   expect(command.handler()).toBe(false);
-  expect(runtime.navigationShortcutOff).toHaveBeenCalledTimes(1);
+  expect(runtime.navigationShortcutOff).toHaveBeenCalledTimes(2);
   expect(runtime.navigationCommandOff).toHaveBeenCalledTimes(1);
 });
 
@@ -425,4 +425,36 @@ it.each(['controller', 'previous reference', 'target digest', 'project'] as cons
     acknowledgement: { kind: 'history' as const, provenance: { operationId: crypto.randomUUID(), projectId: invalid === 'project' ? crypto.randomUUID() : projectId, fileName: 'book.xlsx', renderId: crypto.randomUUID(), sourceSha256: previous.sourceSha256, sourceVersionId: 'before', targetSha256: invalid === 'target digest' ? 'c'.repeat(64) : target.sourceSha256, versionId: 'after' } } };
   view.rerender(<WorkbookGrid {...props} model={target.model} sourceSha256={target.sourceSha256} acknowledgement={ticket} />);
   await waitFor(() => expect(runtime.created).toHaveBeenCalledTimes(2)); expect(runtime.rebaseSource).not.toHaveBeenCalled();
+});
+
+it('installs the readiness receiver before announcing each same-frame kernel, even while writer startup waits', async () => {
+  const projectId = '11111111-1111-4111-8111-111111111111', controllerId = '22222222-2222-4222-8222-222222222222';
+  const handshakeId = '33333333-3333-4333-8333-333333333333';
+  const messages: Record<string, unknown>[] = [];
+  const post = vi.spyOn(window, 'postMessage').mockImplementation(data => {
+    const value = data as Record<string, unknown>;
+    messages.push(value);
+    if (value.type === 'studio:workbook-membership-ready' && value.handshakeId === undefined) {
+      window.dispatchEvent(new MessageEvent('message', { source: window.parent, origin: window.location.origin,
+        data: { type: 'studio:workbook-membership-probe', version: 1, projectId, controllerId, handshakeId } }));
+    }
+  });
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const props = { id: 'grid', title: 'Readiness', model, sourceSha256: 'a'.repeat(64), formatScope: { projectId, controllerId, blocked: false }, onReady: () => held };
+  const view = render(<WorkbookGrid {...props} />);
+  try {
+    await waitFor(() => expect(messages.filter(value => value.handshakeId === handshakeId)).toHaveLength(1));
+    const first = messages.find(value => value.type === 'studio:workbook-membership-ready')!;
+    expect(messages.find(value => value.handshakeId === handshakeId)).toEqual({ ...first, handshakeId });
+    view.rerender(<WorkbookGrid {...props} model={{ ...model }} />);
+    await waitFor(() => expect(messages.filter(value => value.handshakeId === handshakeId)).toHaveLength(2));
+    const hints = messages.filter(value => value.type === 'studio:workbook-membership-ready' && value.handshakeId === undefined);
+    expect(hints[1]).toMatchObject({ documentId: first.documentId, epoch: Number(first.epoch) + 1 });
+    view.unmount();
+    const count = messages.length;
+    window.dispatchEvent(new MessageEvent('message', { source: window.parent, origin: window.location.origin,
+      data: { type: 'studio:workbook-membership-probe', version: 1, projectId, controllerId, handshakeId } }));
+    expect(messages).toHaveLength(count);
+  } finally { release(); view.unmount(); post.mockRestore(); }
 });
