@@ -1,3 +1,4 @@
+import { decodeDeckSourceBytes } from '@open-design/contracts/runtime/deck-source';
 import { embeddedPreviewBaseScope, embeddedResourceUrl } from '../components/embedded/transport';
 import { RootCommentWriteError } from './comment-write-error';
 import { prepareAmrWebUrl } from "./amr-web-intent";
@@ -2802,6 +2803,7 @@ export async function fetchProjectFileText(
   projectId: string,
   name: string,
   options?: {
+    onSourceSnapshot?: (snapshot: { text: string; sha256: string } | null) => void;
     cache?: RequestCache;
     cacheBustKey?: string | number;
     signal?: AbortSignal;
@@ -2834,7 +2836,19 @@ export async function fetchProjectFileText(
       });
       return null;
     }
-    return await resp.text();
+    if (!options?.onSourceSnapshot) return await resp.text();
+    const bytes = await resp.arrayBuffer();
+    const text = new TextDecoder().decode(bytes);
+    const strict = decodeDeckSourceBytes(new Uint8Array(bytes));
+    let snapshot: { text: string; sha256: string } | null = null;
+    if (strict !== null && strict === text) {
+      try {
+        const digest = await crypto.subtle.digest('SHA-256', bytes);
+        snapshot = { text, sha256: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('') };
+      } catch { /* Optional export proof must never break legacy preview reads. */ }
+    }
+    options.onSourceSnapshot(snapshot);
+    return text;
   } catch (err) {
     if (
       options?.signal?.aborted ||

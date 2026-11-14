@@ -4,6 +4,7 @@ type HtmlSourceSnapshot = Readonly<{
   fileName: string;
   refreshKey: string;
   source: string;
+  sourceSha256?: string;
 }>;
 
 type HtmlSourceSnapshotCacheLimits = Readonly<{
