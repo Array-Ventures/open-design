@@ -145,17 +145,30 @@ function explicitImageDimension(image: HTMLImageElement, name: 'width'|'height')
 }
 /** A one-line, baseline-aligned image fits the actual heading strut. Tall,
  * mixed, multi-image and repositioned content keep their existing behavior. */
-function headingImagePresentation(owner: HTMLElement, attributeName: string, id: string, contentWidthPx?: number): Partial<import('./presentation.js').NormalizedDocumentPresentation> {
+function headingImagePresentation(owner: HTMLElement, attributeName: string, id: string, contentWidthPx?: number, physicalImages = false): Partial<import('./presentation.js').NormalizedDocumentPresentation> {
   if (!Number.isFinite(contentWidthPx) || contentWidthPx! <= 0) return {};
   const images = owner.querySelectorAll('img');
   if (images.length !== 1 || /[^\t\n\f\r ]/.test(owner.textContent ?? '')) return {};
   const image = images[0]!;
+  // A responsive candidate has a separate asset-selection owner; do not bind
+  // the source SRC while the browser may actually paint SRCSET instead.
+  if (image.hasAttribute('srcset') || image.hasAttribute('sizes')) return {};
   if (image.getAttribute(`${attributeName}-image`) !== id) return {};
   const width = explicitImageDimension(image,'width'), height = explicitImageDimension(image,'height');
-  if (width === undefined || height === undefined || image.style.getPropertyValue('aspect-ratio')) return {};
+  if (image.style.getPropertyValue('aspect-ratio')) return {};
+  if (physicalImages) {
+    const main = owner.parentElement;
+    if (!image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0 || image.currentSrc !== image.src) return {};
+    if (!main || Math.abs(main.getBoundingClientRect().width-contentWidthPx!) > 1/64
+      || owner.ownerDocument.defaultView!.innerWidth !== contentWidthPx
+      || [owner.ownerDocument.documentElement,owner.ownerDocument.body,main].some(container => container.hasAttribute('hidden') || container.style.cssText.trim())) return {};
+  } else if (width === undefined || height === undefined) return {};
   for (const property of ['width','height']) {
     const value = image.style.getPropertyValue(property);
-    if (value && !/^\d+(?:\.\d+)?(?:px|pt)$/.test(value)) return {};
+    // Percentage width is measured against the proved physical MAIN. Viewport
+    // units, expressions and relative height need their own print-context proof.
+    const syntax = physicalImages && property === 'width' ? /^(?:auto|\d+(?:\.\d+)?(?:px|pt|%))$/ : /^(?:auto|\d+(?:\.\d+)?(?:px|pt))$/;
+    if (value && !syntax.test(value)) return {};
   }
   for (let ancestor = image.parentElement; ancestor; ancestor = ancestor.parentElement) {
     if (['width','height','aspect-ratio'].some(property => ancestor.style.getPropertyValue(property))) return {};
@@ -172,7 +185,7 @@ function headingImagePresentation(owner: HTMLElement, attributeName: string, id:
   }
   const block = view.getComputedStyle(owner), line = Number.parseFloat(block.lineHeight);
   const box = owner.getBoundingClientRect(), imageBox = image.getBoundingClientRect();
-  if (Math.abs(imageBox.width-width) > 1/64 || Math.abs(imageBox.height-height) > 1/64) return {};
+  if (!physicalImages && (Math.abs(imageBox.width-width!) > 1/64 || Math.abs(imageBox.height-height!) > 1/64)) return {};
   if (!/^\d+(?:\.\d+)?px$/.test(block.lineHeight) || !Number.isFinite(line) || line <= 0
     // Chromium rounds layout boxes to 1/64 CSS px; a second quantum is drift.
     || Math.abs(box.height-line) > 1/64 || imageBox.height <= 0 || imageBox.width <= 0
@@ -193,7 +206,7 @@ function headingImagePresentation(owner: HTMLElement, attributeName: string, id:
     headingImageHeightPt: imageBox.height*.75, headingImageSource: 'single-baseline-image' as const };
   return Object.values(result).some(value => typeof value === 'number' && (!Number.isFinite(value) || value <= 0 || value > 3277)) ? {} : result;
 }
-export function normalizeDocumentPresentationOwners(document: Document, requests: readonly import('./presentation.js').DocumentPresentationRequest[], attributeName: string, ownedStyles: readonly string[], read: DocumentColorReader = documentColorReader(document), contentWidthPx?: number): Array<{ id: string; presentation: import('./presentation.js').NormalizedDocumentPresentation }> {
+export function normalizeDocumentPresentationOwners(document: Document, requests: readonly import('./presentation.js').DocumentPresentationRequest[], attributeName: string, ownedStyles: readonly string[], read: DocumentColorReader = documentColorReader(document), contentWidthPx?: number, physicalImages = false): Array<{ id: string; presentation: import('./presentation.js').NormalizedDocumentPresentation }> {
   const fail = (): never => { throw new Error('The document color ownership or authored presentation is not representable.'); };
   if (!/^data-eve-docx-[a-z0-9-]{1,80}$/.test(attributeName) || requests.length > 20000 || !documentColorLayoutQualified(document, ownedStyles)) return fail();
   if (requests.some(request => !/^[A-Za-z0-9_-]{1,100}$/.test(request.id) || !['cell','inline','divider','heading'].includes(request.kind))) return fail();
@@ -219,7 +232,7 @@ export function normalizeDocumentPresentationOwners(document: Document, requests
         presentation.headingLevel = level; presentation.headingBeforePt = 0; presentation.headingSource = 'canonical-first-block';
       }
       if (canonicalFrame) {
-        const image = headingImagePresentation(owner, attributeName, request.id, contentWidthPx);
+        const image = headingImagePresentation(owner, attributeName, request.id, contentWidthPx, physicalImages);
         if (image.headingImageSource) { presentation.headingLevel = level as 1|2|3|4|5|6; Object.assign(presentation,image); }
       }
       return { id: request.id, presentation };
