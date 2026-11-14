@@ -237,3 +237,23 @@ it('does not decorate private state from a different scope or borrow its earlier
   await f.negotiate(); expect(f.view().membership).toBeDefined();
   expect(f.calls).toBe(0);
 });
+
+it('announces each replacement bridge only once and answers only exact parent readiness probes', async () => {
+  const f = fixture();
+  f.bridge.announceReady(); f.bridge.announceReady();
+  expect(f.messages).toHaveLength(1);
+  const first = f.messages[0]!;
+  expect(first).toMatchObject({ type: 'studio:workbook-membership-ready', version: 1, projectId, controllerId });
+  expect(first.handshakeId).toBeUndefined();
+  const next = fixture(); next.bridge.announceReady();
+  expect(next.messages[0]).toMatchObject({ documentId: first.documentId, epoch: Number(first.epoch) + 1 });
+  const probe = { type: 'studio:workbook-membership-probe', version: 1, projectId, controllerId, handshakeId: crypto.randomUUID() };
+  await f.send(probe, null); await f.send(probe, undefined, 'https://foreign.test');
+  await f.send({ ...probe, controllerId: ownerId }); await f.send({ ...probe, version: 2 });
+  expect(f.messages).toHaveLength(1);
+  await f.send(probe);
+  expect(f.messages[1]).toEqual({ ...first, handshakeId: probe.handshakeId });
+  expect(f.view().membership).toBeUndefined(); expect(f.calls).toBe(0);
+  f.bridge.dispose(); f.bridge.announceReady(); await f.send(probe);
+  expect(f.messages).toHaveLength(2);
+});
