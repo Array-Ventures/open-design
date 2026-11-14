@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Popover } from 'react-aria-components';
 import { MENU_POPOVER_SURFACE, MENU_POPOVER_WIDTH } from './boardui/menu-styles';
 import { Button } from './boardui/button';
@@ -14,6 +14,16 @@ export function CommentMentions({ value, onChange, children }: { value: string; 
   const root = useRef<HTMLDivElement>(null);
   const id = useId();
   const composing = useRef(false);
+  const insertion = useRef<{ input: HTMLTextAreaElement; value: string; position: number } | null>(null);
+  useLayoutEffect(() => {
+    const receipt = insertion.current;
+    if (!receipt) return;
+    insertion.current = null;
+    // Restore the insertion caret only in the commit that accepted this value,
+    // before another native edit can supersede it. Never target a replacement.
+    if (receipt.value !== value || receipt.input !== root.current?.querySelector('textarea') || !receipt.input.isConnected || receipt.input.value !== value) return;
+    receipt.input.focus(); receipt.input.setSelectionRange(receipt.position, receipt.position);
+  });
   const before = value.slice(0, caret);
   const start = before.lastIndexOf('@');
   const query = before.slice(start + 1);
@@ -34,18 +44,21 @@ export function CommentMentions({ value, onChange, children }: { value: string; 
   const choose = (name: string) => {
     const next = value.slice(0, start) + `@${name} ` + value.slice(caret);
     const position = start + name.length + 2;
+    const input = root.current?.querySelector('textarea');
+    insertion.current = input ? { input, value: next, position } : null;
     onChange(next);
     setDismissed(true);
     setCaret(position);
-    requestAnimationFrame(() => { const input = root.current?.querySelector('textarea'); input?.focus(); input?.setSelectionRange(position, position); });
   };
   const updateCaret = (target: EventTarget | null) => {
+    insertion.current = null;
     if (target instanceof HTMLTextAreaElement) setCaret(target.selectionStart);
   };
   // Keep input bookkeeping in the bubble batch with the controlled textarea's
   // onChange. A document-delegated capture update can commit an older value
   // before the native input reaches its authoritative value handler.
-  return <div ref={root} className="relative min-w-0" onCompositionStartCapture={() => { composing.current = true; }} onCompositionEndCapture={() => { composing.current = false; }} onInput={event => { updateCaret(event.target); setDismissed(false); setIndex(0); }} onSelectCapture={event => updateCaret(event.target)} onKeyDownCapture={event => {
+  return <div ref={root} className="relative min-w-0" onPointerDownCapture={() => { insertion.current = null; }} onBlurCapture={() => { insertion.current = null; }} onCompositionStartCapture={() => { composing.current = true; }} onCompositionEndCapture={() => { composing.current = false; }} onInput={event => { updateCaret(event.target); setDismissed(false); setIndex(0); }} onSelectCapture={event => updateCaret(event.target)} onKeyDownCapture={event => {
+    insertion.current = null;
     if (composing.current || event.nativeEvent.isComposing || !options.length) return;
     if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(event.key)) {
       event.preventDefault(); event.stopPropagation();

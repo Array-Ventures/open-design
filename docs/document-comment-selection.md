@@ -30,6 +30,28 @@ Focused source checks cover these boundaries. Host-header blur, native selection
 scroll/resize/theme rendering, compact placement and actual save/reopen still need
 paired browser qualification before this follow-up is treated as accepted.
 
+### Candidate106 rapid-input failures and source follow-up
+
+Candidate106's first paired browser run passed selection ownership, explicit
+header composer, passive highlight, accessible quote and mention-only validation,
+then lost a letter during immediate typing after a mention. Three diagnostic
+runs reproduced the loss. A transparent pass-through value observer showed the
+browser had inserted the letter, then React committed the previous controlled
+value during native input capture, before the authoritative change handler.
+The element remained connected and editable, with no focus loss. The follow-up
+moves menu/caret input bookkeeping into the bubble batch with that change handler.
+It does not change typing speed or use forced synchronous updates.
+
+A separate hydrated-document scratch browser also exposed reordered typing from
+the old mention caret animation frame. A focused regression reproduced this
+independently: after a mention and newer native input, the pending frame moved
+the caret from 13 back to 7. Mention insertion now owns a receipt consumed only in
+the layout commit accepting that exact value on the original textarea; newer
+input, selection, pointer, keyboard or blur events invalidate it. No delayed
+focus/caret write remains. The scratch browser is a bounded component proof,
+not acceptance of the full candidate. Both fixes require the next paired native
+browser run, including unchanged rapid typing assertions.
+
 ## Candidate105 problems and resulting behavior
 
 Opening Comment before selecting text previously left the selection prompt
