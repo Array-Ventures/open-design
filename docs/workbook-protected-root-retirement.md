@@ -125,3 +125,24 @@ Correction author checks pass **79 cases in five affected suites**, full workspa
 `/tmp/workbook-retirement-buried-green.log`,
 `/tmp/workbook-retirement-buried-types.log`, and
 `/tmp/workbook-retirement-buried-guard.log`. No stack or packaged browser was run.
+
+## Clean Add Undo persistence correction
+
+The actual selector-abort qualification exposed an earlier persistence defect:
+`WorkbookWriter.persist()` kept a clean metadata checkpoint for source-deletion
+contexts or a checked ACK, but omitted `sheetBirths`. Real Add→Undo with a live
+native Redo item and no ACK therefore deleted the draft, despite still retaining
+birth/removal/high-water/axis data in memory. The new standalone actual-SDK plus
+real draft-store fixture genuinely fails on the preceding source (stored `null`)
+and passes after including `sheetBirths` in the existing persistence predicate.
+No source bytes, model or ACK are created by this correction. The fixture proves
+clean state/no ACK, exact birth entry and removal, high-water/axis data, persisted
+whole checkpoint, and an actual subsequent native Redo. Empty birth-state
+metadata is conservatively retained by the same predicate; explicit draft/root
+retirement remains responsible for later cleanup.
+
+Standalone author checks pass **73 cases in five affected suites**, full
+workspace types and guard, all terminal zero. Receipts are
+`/tmp/workbook-birth-pool-persistence-{red,green,types,guard}.log`.
+This is independent of the unfinished obsolete-selector transaction work and
+contains none of that protocol or UI/runtime activation.
