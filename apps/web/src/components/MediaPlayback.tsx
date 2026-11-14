@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode, type SyntheticEvent } from 'react';
-import styles from './MediaPlayback.module.css';
 
 interface Props {
   kind: 'audio' | 'video';
@@ -24,9 +23,12 @@ function PlaybackSource({ kind, src, unavailable, actions }: Props) {
   const error = (event: SyntheticEvent<HTMLMediaElement>) => {
     // A native MediaError, not arbitrary event text, witnesses failure. Its code
     // does not reliably distinguish codec support from network/decoding causes.
-    if (event.currentTarget.error) setFailed(true);
+    if (event.currentTarget.error) {
+      event.currentTarget.pause();
+      setFailed(true);
+    }
   };
-  if (failed) return <div role="alert" className={styles.failure}>
+  if (failed) return <div role="alert" className="flex flex-col items-center gap-2 p-4 text-center text-body-2-regular text-text-secondary">
     <p>{unavailable}</p>
     {actions}
   </div>;

@@ -62,3 +62,27 @@ frozen install passed. Logs: `/tmp/media-playback-failure-final-focused.log`,
 fixtures missing the existing required `projectKind`; explicit media kinds were
 added without changing assertions or product admission, and that failed log was
 retained separately. No new app package or renderer image was built.
+
+### Followup: failed-element ownership and semantic styling
+
+Review found that the fallback removed the native element without unmounting its
+source owner, so its existing cleanup did not pause playback immediately. Two
+new actual `FileViewer` tests model a playing native element and record pause
+ownership: a genuine `MediaError` must pause that exact element while connected,
+before fallback removal; an error event without `MediaError` must not pause it.
+A new source revision remains untouched by the retired element's cleanup.
+Both tests failed before the fix (`/tmp/media-playback-cleanup-red-clean.log`)
+and pass after pausing the failed event's `currentTarget` before state changes.
+The first test draft also threw during teardown; its retained initial log is
+separate, and the final regression records observations without teardown errors.
+This DOM test models playback state; actual codec playback remains the dated
+133 audit above.
+
+The fallback now uses installed semantic typography/color and Tailwind layout
+classes directly, replacing the unnecessary CSS module and its raw font size
+and legacy color variable. No file URL, action or decoder policy changed.
+
+Followup author checks: 31 cases across the same two focused suites passed;
+full workspace `pnpm typecheck`, `pnpm guard` and frozen install exited 0.
+Logs are `/tmp/media-playback-cleanup-{focused,types,guard,install}.log`.
+No new package, renderer, runtime or installer change was made.

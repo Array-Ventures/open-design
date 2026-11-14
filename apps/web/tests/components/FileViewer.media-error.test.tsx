@@ -91,3 +91,36 @@ it.each(['audio', 'video'] as const)('keeps healthy %s source and controls throu
   view.unmount();
   expect(vi.mocked(HTMLMediaElement.prototype.pause).mock.contexts).toContain(media);
 });
+
+
+it.each(['audio', 'video'] as const)('pauses playing %s before removing a failed element, without pausing its healthy replacement', kind => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({})));
+  const view = render(<FileViewer projectId="owned-media-project" projectKind={kind} file={file(kind)} />);
+  const media = view.container.querySelector(kind)!;
+  let playing = true;
+  Object.defineProperty(media, 'paused', { configurable: true, get: () => !playing });
+  const pauseObservations: { connected: boolean; fallbackVisible: boolean }[] = [];
+  const pause = vi.spyOn(media, 'pause').mockImplementation(() => {
+    pauseObservations.push({ connected: media.isConnected, fallbackVisible: screen.queryByRole('alert') !== null });
+    playing = false;
+  });
+  fireEvent.error(media);
+  expect(pause).not.toHaveBeenCalled();
+  expect(media.paused).toBe(false);
+  Object.defineProperty(media, 'error', { configurable: true, value: { code: 3 } });
+  fireEvent.error(media);
+  expect(pause).toHaveBeenCalledTimes(1);
+  expect(pauseObservations).toEqual([{ connected: true, fallbackVisible: false }]);
+  expect(media.paused).toBe(true);
+  expect(media.isConnected).toBe(false);
+  expect(screen.getByRole('alert')).toBeInTheDocument();
+  // Later source cleanup owns the detached old element, never the replacement.
+  pause.mockImplementation(() => { playing = false; });
+  view.rerender(<FileViewer projectId="owned-media-project" projectKind={kind} file={file(kind, 2)} />);
+  const fresh = view.container.querySelector(kind)!;
+  expect(fresh).not.toBe(media);
+  expect(vi.mocked(HTMLMediaElement.prototype.pause).mock.contexts).not.toContain(fresh);
+  fireEvent.error(fresh);
+  expect(vi.mocked(HTMLMediaElement.prototype.pause).mock.contexts).not.toContain(fresh);
+  expect(screen.queryByRole('alert')).toBeNull();
+});
