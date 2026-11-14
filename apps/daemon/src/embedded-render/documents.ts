@@ -48,7 +48,9 @@ export async function prepareDocument(content: string, fileName: string, title: 
   let html = content;
   if (markdownFile(fileName)) {
     const source = markdownSource(content);
-    const body = await pandoc(['--sandbox', '--from=gfm+raw_html', '--to=html', '--wrap=none', '--fail-if-warnings'], source.body);
+    // Browser GFM treats YAML-looking blocks as visible Markdown, not metadata.
+    // Only markdownSource's validated Eve directive owns document metadata.
+    const body = await pandoc(['--sandbox', '--from=gfm+raw_html-yaml_metadata_block', '--to=html', '--wrap=none', '--fail-if-warnings'], source.body);
     html = documentHtml(title, body.toString('utf8'), source.fonts.text, source.fonts.headings);
   }
   const $ = load(html);
