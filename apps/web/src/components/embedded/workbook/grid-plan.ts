@@ -7,7 +7,7 @@ import { workbookGridEdits } from './grid-edits';
 /** Live writing and protected-draft validation must derive identical plans.
  * CSV dimensions are view state; XLSX dimensions remain persisted edits. */
 export function workbookGridPlan(model: WorkbookDocument, sha256: string, initial: IWorkbookData, current: IWorkbookData, contexts?: readonly WorkbookSourceDeleteContext[]) {
-  const projection = contexts?.length ? gridSourceSheetProjection(model, sha256, initial, current, contexts) : null;
+  const projection = gridSourceSheetProjection(model, sha256, initial, current, contexts ?? []);
   if (projection) return { ...workbookGridEdits(projection.model, sha256, projection.before, projection.after), sheets: projection.sheets };
   return (model.sourceFormat === 'csv' ? csvGridEdits : workbookGridEdits)(model, sha256, initial, current);
 }
