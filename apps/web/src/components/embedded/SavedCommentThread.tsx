@@ -79,7 +79,7 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
     const controller = scope.current;
     if (!controller || controller.signal.aborted) return;
     const version = ++readVersion.current;
-    if (!quiet) setLoading(true); setError(null); setReadFailure(null);
+    if (!quiet) setLoading(true); setReadFailure(null);
     try { const next = await fetchCommentReplies(projectId, comment.id, controller.signal); if (!controller.signal.aborted && readVersion.current === version) setReplies(next); }
     catch (error) { if (!controller.signal.aborted && readVersion.current === version) setReadFailure(error instanceof CommentReplyError && error.status === 404 ? 'missing' : 'failed'); }
     finally { if (!controller.signal.aborted && readVersion.current === version) setLoading(false); }

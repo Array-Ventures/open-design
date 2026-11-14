@@ -370,3 +370,49 @@ it('keeps a failed write visible when deletion is subsequently confirmed', async
   expect(screen.getByText('The reply could not be saved. Your draft is still available.')).toBeVisible();
   expect(input).toHaveValue('Unsaved after write refusal'); expect(screen.getByRole('button', { name: 'Add reply' })).toBeDisabled();
 });
+
+it.each([403, 404])('keeps a definite write %s failure through successful quiet reads and explicit reload', async status => {
+  vi.useFakeTimers(); vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+  api.createCommentReply.mockRejectedValue(new CommentReplyError(status));
+  await act(async () => { render(<SavedCommentThread {...props()} />); });
+  const input = screen.getByRole('textbox', { name: 'Reply' });
+  fireEvent.change(input, { target: { value: 'Keep this refused write' } });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Add reply' })); });
+  const message = 'The reply could not be saved. Your draft is still available.';
+  expect(screen.getByText(message)).toBeVisible();
+  await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+  expect(api.fetchCommentReplies).toHaveBeenCalledTimes(2);
+  expect(screen.getByText(message)).toBeVisible(); expect(input).toHaveValue('Keep this refused write');
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Reload comments' })); });
+  expect(api.fetchCommentReplies).toHaveBeenCalledTimes(3);
+  expect(screen.getByText(message)).toBeVisible(); expect(input).toHaveValue('Keep this refused write');
+  api.createCommentReply.mockResolvedValue({ ...reply, note: 'Keep this refused write' });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Add reply' })); });
+  expect(screen.queryByText(message)).toBeNull(); expect(input).toHaveValue('');
+  expect(screen.getByText('Keep this refused write')).toBeVisible();
+});
+
+it('clears a read failure after a successful explicit reload without writing a reply', async () => {
+  api.fetchCommentReplies.mockRejectedValueOnce(new CommentReplyError(500));
+  render(<SavedCommentThread {...props()} />);
+  expect(await screen.findByText('Comments could not be loaded.')).toBeVisible();
+  api.fetchCommentReplies.mockResolvedValue([]);
+  fireEvent.click(screen.getByRole('button', { name: 'Reload comments' }));
+  await waitFor(() => expect(screen.queryByText('Comments could not be loaded.')).toBeNull());
+  expect(api.createCommentReply).not.toHaveBeenCalled();
+});
+
+it('keeps attachment validation feedback through reads until the attachment action resolves it', async () => {
+  vi.useFakeTimers(); vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+  await act(async () => { render(<SavedCommentThread {...props()} />); });
+  const picker = screen.getByLabelText('Reply image files');
+  fireEvent.change(picker, { target: { files: [new File(['bad'], 'unsafe.txt', { type: 'text/plain' })] } });
+  expect(screen.getByText('Use PNG, JPEG, GIF or WebP images.')).toBeVisible();
+  await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+  expect(screen.getByText('Use PNG, JPEG, GIF or WebP images.')).toBeVisible();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Reload comments' })); });
+  expect(screen.getByText('Use PNG, JPEG, GIF or WebP images.')).toBeVisible();
+  fireEvent.change(picker, { target: { files: [new File(['png'], 'safe.png', { type: 'image/png' })] } });
+  expect(screen.queryByText('Use PNG, JPEG, GIF or WebP images.')).toBeNull();
+  expect(api.createCommentReply).not.toHaveBeenCalled();
+});

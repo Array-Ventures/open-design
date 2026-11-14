@@ -141,3 +141,13 @@ disable submission, cover 403/500/network errors and preserve a failed write.
 Abort signals, request versions, thread/member reset, draft protection and the
 underlying requests are unchanged. This is source verification; actual packaged
 browser acceptance of the notice-only change is still pending.
+
+Review additionally found that the existing quiet refresh cleared the shared
+write-error state, even after a definite refused write. Two genuine regression
+cases showed successful polling erasing 403/404 write messages without a retry
+(two failures, 34 passing cases). Refresh now clears only its read-failure state.
+Both quiet polling and explicit Reload comments retain a definite write or
+attachment-validation message and the exact draft. A successful write retry or
+resolving attachment action still clears its own feedback; a successful read
+still clears its own load failure. This follow-up does not change request or
+write admission.
