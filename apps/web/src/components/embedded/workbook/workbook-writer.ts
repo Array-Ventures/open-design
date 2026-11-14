@@ -1,3 +1,5 @@
+import { workbookProtectedRootRetirement, type WorkbookNativeRoot } from './sheet-root-retirement';
+import { MAX_WORKBOOK_SHEET_CONTEXTS } from './workbook-draft-limits';
 import { prepareWorkbookBirthReplay } from './sheet-birth-replay';
 import { prepareWorkbookBirthRemoval, bindWorkbookBirthRemovalsToCreation, convertWorkbookBirthRemovals } from './sheet-birth-removal';
 import type { WorkbookBirthRemoval } from './sheet-birth-removal-schema';
@@ -7,6 +9,7 @@ import { bindWorkbookSourceSnapshot, type WorkbookSourceSnapshotBinding } from '
 import type { WorkbookDraftScope } from './workbook-draft-schema';
 import { canonicalCommentJson } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import { associateWorkbookSourceDeletion, workbookSourceDeleteContextSchema, type WorkbookSourceDeleteContext } from './sheet-delete-context';
+import { assertDerivedWorkbookDeletion } from './sheet-delete-derived';
 import { workbookSaveAcknowledgementSchema, type WorkbookSaveAcknowledgement } from './save-provenance';
 import { workbookGridPlan, workbookPlanHasChanges } from './grid-plan';
 import type { IWorkbookData } from '@univerjs/presets';
@@ -28,7 +31,16 @@ export interface WorkbookCheckpoint {
   sheetActionConflict?: true;
   sourceSnapshotBinding?: WorkbookSourceSnapshotBinding;
 }
-export interface WorkbookJournal { scope?: WorkbookDraftScope; save(checkpoint: WorkbookCheckpoint | null): Promise<void>; validate?(checkpoint: WorkbookCheckpoint): void; isCurrent?(): boolean; restored?: WorkbookCheckpoint }
+export interface WorkbookJournal {
+  scope?: WorkbookDraftScope;
+  save(checkpoint: WorkbookCheckpoint | null): Promise<void>;
+  /** Same owned draft transaction, with synchronous guards before writes and
+   * at its last successful request before explicit commit. */
+  saveGuarded?(checkpoint: WorkbookCheckpoint, guard: () => void): Promise<void>;
+  validate?(checkpoint: WorkbookCheckpoint): void;
+  isCurrent?(): boolean;
+  restored?: WorkbookCheckpoint;
+}
 /** Serializes edits against acknowledged bytes. A failed/uncertain intent keeps
  * its exact plan and identity; edits made during it are rebased only after its
  * receipt and refreshed model agree. This class never owns or remounts a grid. */
@@ -92,13 +104,14 @@ export class WorkbookWriter {
   /** Synchronous context-pool admission through the real draft encoder.
    * A command owner must separately validate its post-command snapshot before
    * executing. This retains data, not Delete/Undo or historical authority. */
-  private prospectiveDeletionContexts(raw: WorkbookSourceDeleteContext): WorkbookSourceDeleteContext[] {
+  private prospectiveDeletionContexts(raw: WorkbookSourceDeleteContext, retainedOrigin?: WorkbookSheetActionDescriptor): WorkbookSourceDeleteContext[] {
     if (!this.active || this.sheetActionConflict || this.protection || !this.journal?.validate) throw Error('Protected worksheet deletion is not ready.');
     const context = workbookSourceDeleteContextSchema.parse(raw);
-    if (context.sourceSha256 !== this.source.sourceSha256) throw Error('The deletion source changed.');
+    if (retainedOrigin) assertDerivedWorkbookDeletion(this.currentCheckpoint(), context, retainedOrigin);
+    else if (context.sourceSha256 !== this.source.sourceSha256) throw Error('The deletion source changed.');
     const previous = this.sheetDeletions.find(value => value.descriptor.token === context.descriptor.token);
     if (previous) { if (JSON.stringify(previous) !== JSON.stringify(context)) throw Error('The deletion context cannot be replaced.'); return this.sheetDeletions; }
-    if (this.sheetDeletions.length >= 4096) throw Error('The worksheet deletion recovery limit was reached.');
+    if (this.sheetDeletions.length >= MAX_WORKBOOK_SHEET_CONTEXTS) throw Error('The worksheet deletion recovery limit was reached.');
     const candidate = [...this.sheetDeletions, structuredClone(context)];
     this.journal.validate({ ...this.checkpoint(), sheetDeletions: candidate });
     return candidate;
@@ -110,13 +123,15 @@ export class WorkbookWriter {
   /** Current-source Delete only. The future controller supplies the exact
    * post-command snapshot, then runs the real synchronous SDK command here.
    * No remote save intent is reserved and no authority comes from metadata. */
-  protectSheetDeletion(raw: WorkbookSourceDeleteContext, prospective: IWorkbookData, execute: () => IWorkbookData, beforeExecute?: () => undefined): Promise<void> {
+  protectSheetDeletion(raw: WorkbookSourceDeleteContext, prospective: IWorkbookData, execute: () => IWorkbookData, beforeExecute?: () => undefined,
+    retainedOrigin?: WorkbookSheetActionDescriptor): Promise<void> {
     if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
     const run = async () => {
       if (this.sheetActionConflict) throw Error(this.sheetActionConflictMessage);
       if (this.recoveryConflict) throw Error('The recovered workbook source is not ready for worksheet actions.');
       if (!this.journal?.validate || !this.journal.isCurrent?.()) throw Error('The workbook recovery lease is no longer current.');
-      const candidate = this.prospectiveDeletionContexts(raw), source = this.source, revision = this.revision, pending = this.pending;
+      if (retainedOrigin && !beforeExecute) throw Error('A restored deletion requires its current private issuer guard.');
+      const candidate = this.prospectiveDeletionContexts(raw, retainedOrigin), source = this.source, revision = this.revision, pending = this.pending;
       const snapshot = structuredClone(prospective);
       if (snapshot.sheets[raw.descriptor.sheetId] || snapshot.sheetOrder.includes(raw.descriptor.sheetId)) throw Error('The prospective worksheet deletion changed.');
       workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { scope: this.journal?.scope, pending: this.pending, deletions: candidate, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() });
@@ -142,7 +157,7 @@ export class WorkbookWriter {
   }
   /** Development source birth owner. Pending birth/history transfer remains
    * explicitly uninstalled until its checked target association is connected. */
-  protectSheetBirth(name: string, index: number, execute: (entry: WorkbookSheetBirthEntry) => IWorkbookData, beforeExecute?: () => undefined): Promise<WorkbookSheetBirthEntry> {
+  protectSheetBirth(name: string, index: number, execute: (entry: WorkbookSheetBirthEntry) => IWorkbookData, beforeExecute?: (entry: WorkbookSheetBirthEntry) => undefined): Promise<WorkbookSheetBirthEntry> {
     if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
     const run = async () => {
       if (!this.active || this.sheetActionConflict || this.recoveryConflict) throw Error('Protected worksheet birth is not ready.');
@@ -160,7 +175,7 @@ export class WorkbookWriter {
       await durable;
       if (!this.active || this.source !== source || this.revision !== revision || this.pending !== pending || !this.journal.isCurrent()) throw Error('The workbook changed while protecting its worksheet action.');
       // Synchronous native-owner admission still belongs before command entry.
-      beforeExecute?.();
+      beforeExecute?.(structuredClone(prepared.entry));
       this.sheetBirths = prepared.state;
       await this.completeProtectedSheetCommand(checkpoint, prepared.snapshot, () => execute(prepared.entry));
       return structuredClone(prepared.entry);
@@ -206,13 +221,26 @@ export class WorkbookWriter {
    * issuer/payload again immediately before invoking the protected callback. */
   protectSheetDeletionReplay(origin: WorkbookSheetActionDescriptor, prospective: IWorkbookData,
     execute: () => IWorkbookData, beforeExecute: () => undefined): Promise<void> {
+    return this.protectSheetHistoryReplay(prospective, execute, beforeExecute, origin);
+  }
+
+  protectSheetRename(prospective: IWorkbookData, execute: () => IWorkbookData, beforeExecute: () => undefined): Promise<void> {
+    return this.protectSheetHistoryReplay(prospective, execute, beforeExecute);
+  }
+
+  private protectSheetHistoryReplay(prospective: IWorkbookData, execute: () => IWorkbookData,
+    beforeExecute: () => undefined, deletion?: WorkbookSheetActionDescriptor): Promise<void> {
     if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
     const run = async () => {
       if (!this.active || this.sheetActionConflict || this.recoveryConflict || !this.journal?.scope || !this.journal.validate || !this.journal.isCurrent?.()) throw Error('Protected worksheet Delete replay is not ready.');
       const source = this.source, revision = this.revision, pending = this.pending;
       const checkpoint = this.checkpoint();
-      const matches = this.sheetDeletions.filter(value => canonicalCommentJson(value.descriptor) === canonicalCommentJson(origin));
-      if (matches.length !== 1) throw Error('The worksheet Delete has no unique retained context.');
+      if (deletion) {
+        const matches = [...this.sheetDeletions, ...(this.sheetBirths?.removals ?? [])]
+          .filter(value => canonicalCommentJson(value.descriptor) === canonicalCommentJson(deletion));
+        if (matches.length !== 1) throw Error('The worksheet Delete has no unique retained context.');
+      } else if (canonicalCommentJson(this.desired.sheetOrder) !== canonicalCommentJson(prospective.sheetOrder)
+        || canonicalCommentJson(Object.keys(this.desired.sheets).sort()) !== canonicalCommentJson(Object.keys(prospective.sheets).sort())) throw Error('Rename cannot change worksheet membership.');
       const snapshot = structuredClone(prospective);
       workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { scope: this.journal.scope,
         pending, deletions: this.sheetDeletions, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() });
@@ -234,26 +262,30 @@ export class WorkbookWriter {
 
   /** Data producer only: the installed controller must separately prove the
    * live birth/history issuer before asking for this durable native callback. */
-  protectSheetBirthRemoval(origin: WorkbookSheetActionDescriptor, execute: (removal: WorkbookBirthRemoval) => IWorkbookData, beforeExecute?: () => undefined): Promise<WorkbookBirthRemoval> {
+  protectSheetBirthRemoval(origin: WorkbookSheetActionDescriptor, execute: (removal: WorkbookBirthRemoval) => IWorkbookData, beforeExecute?: (removal: WorkbookBirthRemoval) => undefined,
+    project?: (removal: WorkbookBirthRemoval, snapshot: IWorkbookData) => IWorkbookData): Promise<WorkbookBirthRemoval> {
     if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
     const run = async () => {
       if (!this.active || this.sheetActionConflict || this.recoveryConflict) throw Error('Protected worksheet birth removal is not ready.');
       if (!this.journal?.scope || !this.journal.validate || !this.journal.isCurrent?.()) throw Error('The workbook recovery lease is no longer current.');
       const source = this.source, revision = this.revision, pending = this.pending;
       const prepared = prepareWorkbookBirthRemoval(this.journal.scope, this.currentCheckpoint(), origin);
+      const snapshot = project ? project(structuredClone(prepared.removal), structuredClone(prepared.snapshot)) : prepared.snapshot;
       const checkpoint = { ...this.currentCheckpoint(), sheetBirths: prepared.state };
       this.journal.validate(checkpoint);
       // Preserve the ORIGINAL pending root. A provisional target record depends
       // on that exact creation, never on an invented future operation.
-      this.journal.validate({ ...checkpoint, desired: prepared.snapshot });
+      workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { scope: this.journal.scope,
+        pending, deletions: this.sheetDeletions, births: prepared.state, sourceOwner: this.sheetProjectionOwner() });
+      this.journal.validate({ ...checkpoint, desired: snapshot });
       const durable = this.persistence.catch(() => {}).then(() => this.journal!.save(structuredClone(checkpoint)));
       this.persistence = durable;
       await durable;
       if (!this.active || this.source !== source || this.revision !== revision || this.pending !== pending || !this.journal.isCurrent()) throw Error('The workbook changed while protecting its worksheet action.');
       // Synchronous native-owner admission still belongs before command entry.
-      beforeExecute?.();
+      beforeExecute?.(structuredClone(prepared.removal));
       this.sheetBirths = prepared.state;
-      await this.completeProtectedSheetCommand(checkpoint, prepared.snapshot, () => execute(structuredClone(prepared.removal)));
+      await this.completeProtectedSheetCommand(checkpoint, snapshot, () => execute(structuredClone(prepared.removal)));
       return structuredClone(prepared.removal);
     };
     const promise = run();
@@ -262,6 +294,55 @@ export class WorkbookWriter {
     const barrier = this.protection;
     this.publish();
     void promise.finally(() => { if (this.protection === barrier) this.protection = null; this.publish(); }).catch(() => {});
+    return promise;
+  }
+
+  /** Retire data only after a serialized durable checkpoint and live native
+   * owner rechecks. No source/snapshot/intent or SDK history mutation occurs. */
+  protectSheetRootRetirement(live: IWorkbookData, native: readonly WorkbookNativeRoot[], verify: () => void,
+    commit: (retained: ReadonlySet<string>) => void): Promise<{ retiredContexts: number }> {
+    if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
+    const run = async () => {
+      if (!this.active || this.sheetActionConflict || this.recoveryConflict || !this.journal?.validate || !this.journal.saveGuarded || !this.journal.isCurrent?.()) throw Error('Protected worksheet retirement is not ready.');
+      const before = this.checkpoint(), identity = canonicalCommentJson(before), revision = this.revision;
+      this.journal.validate(before);
+      if (canonicalCommentJson(live) !== canonicalCommentJson(before.desired)) throw Error('The live worksheet snapshot is not current.');
+      const reduced = workbookProtectedRootRetirement(before, live, native);
+      const candidate: WorkbookCheckpoint = { ...before };
+      if (reduced.births) candidate.sheetBirths = reduced.births;
+      if (reduced.deletions.length) candidate.sheetDeletions = reduced.deletions;
+      else delete candidate.sheetDeletions;
+      this.journal.validate(candidate);
+      const check = () => {
+        if (!this.active || !this.journal!.isCurrent?.() || this.revision !== revision
+          || canonicalCommentJson(this.currentCheckpoint()) !== identity) throw Error('The workbook changed while retiring worksheet roots.');
+        verify();
+      };
+      const durable = this.persistence.catch(() => {}).then(async () => {
+        check();
+        await this.journal!.saveGuarded!(structuredClone(candidate), check);
+        // The guarded storage commit is the linearization point. No protected
+        // issuer can be created while this barrier is held; scalar edits and
+        // public copied history cannot grant a newly retained origin. Even if
+        // focus/lease is lost after commit, the Writer must adopt the committed
+        // reduced pool before refusing private-map maintenance. Never restore
+        // unpruned in-memory authority over a durably retired origin.
+        this.sheetBirths = reduced.births;
+        this.sheetDeletions = reduced.deletions;
+        verify();
+        commit(reduced.retained);
+      });
+      this.persistence = durable;
+      await durable;
+      return { retiredContexts: (before.sheetDeletions?.length ?? 0) + (before.sheetBirths?.entries.length ?? 0)
+        + (before.sheetBirths?.removals?.length ?? 0) - reduced.deletions.length - (reduced.births?.entries.length ?? 0)
+        - (reduced.births?.removals?.length ?? 0) };
+    };
+    const promise = run();
+    const barrier = promise.then(() => {}, () => {});
+    this.protection = barrier;
+    this.publish();
+    void barrier.finally(() => { if (this.protection === barrier) this.protection = null; this.publish(); });
     return promise;
   }
 
@@ -297,7 +378,7 @@ export class WorkbookWriter {
     const next = this.persistence.catch(() => {}).then(() => {
       let dirty = Boolean(this.pending);
       try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
-      const checkpoint = dirty || this.sheetActionConflict || this.sheetDeletions.length || this.sourceAcknowledgement?.kind === 'history' ? this.checkpoint() : null;
+      const checkpoint = dirty || this.sheetActionConflict || this.sheetDeletions.length || this.sheetBirths || this.sourceAcknowledgement?.kind === 'history' ? this.checkpoint() : null;
       return journal.save(checkpoint);
     });
     this.persistence = next;

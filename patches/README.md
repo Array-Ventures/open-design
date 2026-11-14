@@ -214,6 +214,16 @@ Refresh through `pnpm patch` / `pnpm patch-commit`, update the lockfile and veri
 a frozen installation. Remove when the upstream producer provides the localized
 name and the same real DOM cases still pass. No dependency version changes.
 
+The core patch additionally exposes `getUndoRedoEntryIds(unitId)`: a bounded,
+frozen snapshot of existing native item identities across both complete stacks
+of the requested focused history owner. It uses the existing WeakMap IDs without
+allocating them, reading payloads or executing handlers. The total limit is 4,096
+items, with strict owner, revision, data-property and identity validation; refusal
+never truncates or changes history. It is consistency data for future origin
+retention, not a retirement implementation or authority. The three maintained
+runtime entries and public declarations match. See
+`docs/workbook-history-reachable-ids.md` for the actual SDK fixtures and limits.
+
 `@univerjs__ui@1.4.0.patch` preserves keyboard focus on interactive controls in
 `DesktopLayoutService`'s existing focus-return policy. The pinned service returns
 focus from selected control kinds to the editor in a microtask; that includes a

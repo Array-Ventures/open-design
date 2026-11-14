@@ -1,5 +1,9 @@
 # Source Delete native history checkpoint
 
+The later [origin-aware Delete and Rename checkpoint](workbook-origin-delete-rename.md)
+extends this source-present path to private unsaved/restored origins and protected
+Rename. Its source evidence remains separate from actual worker/UI qualification.
+
 This source slice connects privately issued source Delete actions to the existing
 Writer, source-preserving restoration projector and historical-asset declaration
 path. `WorkbookSheetHistoryController` remains uninstalled. It is not packaged
@@ -125,3 +129,22 @@ installation completed before integration full-workspace types and guard, which
 both passed. The125 focused cases were not repeated merely for this disjoint
 merge. Existing120/63 editor/manual-asset qualification predates this live Delete
 issuer and does not qualify it.
+
+## Calculation-consumer adapter
+
+The optional `WorkbookProtectedSheetSequence` constructor boundary wraps the
+exact synchronous native Add/Delete/Undo/Redo input sequence inside the already
+admitted Writer callback and mutation owner. It also receives the existing final
+prospective snapshot for whole-operation admission. It is not a serialized grant
+or an installed calculation consumer; source-only fixtures keep their direct
+execution default until the actual kernel supplies its independently guarded
+runner.
+
+Two real SDK cases failed against the original controller because the injected
+runner was never invoked. Three adapter cases now cover exact native sequences,
+the complete prospective result, and no invocation before denied storage.
+Actual native formula updates additionally emit derived `fromFormula` cache
+clearing events. The fixture records those separately and checks their null
+scalar caches rather than silently treating them as extra authored input.
+Affected author checks passed52 cases across four suites, web types and guard.
+Actual main/worker admission and RPC qualification remain a separate gate.
