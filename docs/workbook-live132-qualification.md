@@ -12,7 +12,14 @@ The local pair was built from clean fork
 `72f8c5902eec0274c57154460a35b4b62e883ba6`. The PR preparation normally merges
 that reviewed source and fork main. Every non-documentation blob in the prepared
 PR matches the candidate exactly; retained PR documentation does not relabel the
-build. No live source overlay, release, pin or production change is implied.
+build. Companion build `e54e41ebfe86e3d3c467dc8bcdb84b4fe6e4e3046419bf2cf63f70f261c7417f`
+and renderer image
+`sha256:84196a0327eb7157ea26f7624968b52622f81c3d5eb5236721eba3b6a2844885`
+passed author and independent root inventory/source/image checks. The worker
+bytes changed from 131 only through the maintained core input; the four other
+renderer helpers remained exact. Receipts are `/tmp/artifact132-pair-receipt.json`
+and `/tmp/artifact132-root-pair-receipt.json`. No live source overlay, release,
+pin or production change is implied.
 
 The joined source passed 163 focused cases in 16 files, 31 actual RPC cases in
 three files, workspace types and guard before the immutable build. These are
@@ -58,18 +65,39 @@ DOCX literal newline-byte preservation and a new Word-app/LibreOffice visual
 matrix are not claimed. The serializer-shaped 131 positive remains separate
 from this original raw-source acceptance.
 
+## Worker fault, protected recovery and source persistence
+
+After the numeric/formula Save, exactly one owned calculation Worker was
+terminated and a trusted edit changed original B2 from 12 to 13. Source stayed
+at SHA `9ab8aa272486f923da2566e94b0fb5646b2743f192c8c63ad5c06f2cc84577a8`
+through the fault. The downloaded protected copy survived whole reload and
+Restore. Normal Save produced 7,222 bytes at SHA
+`37a02a0e04dd77eece8da23ee14445d4fc97685409cf59f963f750dda7f53a22`.
+
+Independent XML checks found B2=13, local C3 SUM cache=13 and the cross-sheet
+formula cache=13. The born sheet retained A1/C1/G1 values 28 and its entire
+worksheet part stayed byte-identical. Only the original edited/dependent
+worksheet parts changed. Immediately after Restore, C3 still displayed stored
+12; after actual Save the personally inspected canvas and XML both showed 13.
+This does not qualify complete initial/live restore recalculation. The grid
+initially disables automatic calculation and retains original source caches
+until a qualified result or checked source rebase exists; a stored-results
+notice is distinct from a freshly computed display result.
+
 ## Pending boundaries and evidence
 
-The root's final Worker-fault Restore/Save and immediate repaint check is still
-being recorded. No final root browser/auth cleanup claim is made in this record
-yet. Broader pending-save Undo/Redo, repeated history/ownership withdrawal,
-large-source, viewport/chat/fullscreen and export matrices remain open. A source
-review also identified late correlated readiness probes being dropped after the
+No final root browser/auth cleanup claim is made in this record yet. Broader
+pending-save Undo/Redo, repeated history/ownership withdrawal, large-source,
+viewport/chat/fullscreen and export matrices remain open. A source review also
+identified late correlated readiness probes being dropped after the
 visibility-listener handoff; its correction and qualification are separate from
 this immutable pair's successful observed timing.
 
-Scratch evidence: `/tmp/artifact132-rich-ui/` retains original and saved XLSX,
-rich-run XML and each Add/Rename/Undo/Redo readback. Raw Markdown evidence is in
+Scratch evidence: `/tmp/artifact132-rich-ui/qualification.json` retains original
+and saved XLSX, rich-run XML, each Add/Rename/Undo/Redo readback and the fault/
+recovery oracles. An earlier separate rich tester sequence that replaced text
+rather than appending is retained separately and does not qualify the successful
+cancel-to-rehydrate path. Raw Markdown evidence is in
 `/tmp/document-code-paint132-ui/qualification.json`, including native Word
 properties and scope limits. Its two captured test sessions were independently
 queried by exact ID and captured user in the asserted owned preview database;
