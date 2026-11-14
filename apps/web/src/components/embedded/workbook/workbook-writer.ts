@@ -221,11 +221,18 @@ export class WorkbookWriter {
   recoveredSnapshot(): IWorkbookData { return structuredClone(this.desired); }
   private persistenceError(_error: unknown) { return 'This draft could not be protected on this device. Keep the workbook open and try saving again.'; }
   private async persist() {
-    if (!this.journal) return;
-    let dirty = Boolean(this.pending);
-    try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
-    const checkpoint = dirty || this.sheetActionConflict || this.sheetDeletions.length || this.sourceAcknowledgement?.kind === 'history' ? this.checkpoint() : null;
-    const next = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
+    const journal = this.journal;
+    if (!journal) return;
+    // A provider checkpoint queued during protected storage must not overwrite
+    // that candidate later with an older pool/desired branch. Capture current
+    // state only when this generic write reaches its serialized storage turn.
+    // Explicit pre-command writes above retain their exact validated candidate.
+    const next = this.persistence.catch(() => {}).then(() => {
+      let dirty = Boolean(this.pending);
+      try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
+      const checkpoint = dirty || this.sheetActionConflict || this.sheetDeletions.length || this.sourceAcknowledgement?.kind === 'history' ? this.checkpoint() : null;
+      return journal.save(checkpoint);
+    });
     this.persistence = next;
     try { await next; }
     catch (error) { throw new Error(this.persistenceError(error)); }
