@@ -88,7 +88,7 @@ export async function renderSnapshot(source: string, output: string, value: unkn
       const url = new URL(req.url ?? '/', 'http://127.0.0.1');
       const name = decodeURIComponent(url.pathname.slice(1));
       const buffer = name === input.fileName ? Buffer.from(deck ? injectDeckStageFallback(html) : html) : await asset(name);
-      res.writeHead(200, { 'content-type': name === input.fileName && document ? 'text/html' : mime(name), 'x-content-type-options': 'nosniff', 'cache-control': 'no-store' }).end(buffer);
+      res.writeHead(200, { 'content-type': name === input.fileName && slideCapture ? 'text/html; charset=utf-8' : name === input.fileName && document ? 'text/html' : mime(name), 'x-content-type-options': 'nosniff', 'cache-control': 'no-store' }).end(buffer);
     } catch { res.writeHead(404).end(); }
   });
   server.listen(0, '127.0.0.1');
@@ -152,13 +152,13 @@ export async function renderSnapshot(source: string, output: string, value: unkn
         const captured = slideCapture ? await page.evaluateHandle(slideCapture.targetExpression) : null;
         let runtimeIndex = index;
         if (slideCapture && captured) {
-          runtimeIndex = await captured.evaluate(`(node, args) => {
+          runtimeIndex = await page.evaluate<number>(`(() => { const node=${slideCapture.targetExpression}; const args=${JSON.stringify({ attribute: slideCapture.attribute, nonce: slideCapture.nonce, selector: realSlideSelector })};
             if (!(node instanceof HTMLElement) || !node.isConnected || document.querySelectorAll("["+args.attribute+"]").length !== 1 || node.getAttribute(args.attribute) !== args.nonce) throw new Error('The source-owned slide was replaced or duplicated.');
             const list = Array.from(document.querySelectorAll(args.selector));
             const current = list.indexOf(node);
             if (current < 0) throw new Error('The source-owned slide is unavailable.');
             return current;
-          }`, { attribute: slideCapture.attribute, nonce: slideCapture.nonce, selector: realSlideSelector });
+          })()`);
         }
         await page.evaluate(`window.postMessage({type:'od:slide',action:'go',index:${runtimeIndex}},'*')`);
         await page.evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
@@ -167,9 +167,9 @@ export async function renderSnapshot(source: string, output: string, value: unkn
         const visible = await selected.count();
         const target = captured ? captured.asElement() : visible === 1 ? selected.first() : slides.nth(index);
         if (!target) throw new Error('The selected slide is unavailable.');
-        if (slideCapture && captured) await captured.evaluate(`(node, args) => {
-          if (!(node instanceof HTMLElement) || !node.isConnected || document.querySelectorAll("["+args.attribute+"]").length !== 1 || node.getAttribute(args.attribute) !== args.nonce || !node.checkVisibility()) throw new Error('The source-owned slide is not visible or was replaced.');
-        }`, { attribute: slideCapture.attribute, nonce: slideCapture.nonce });
+        if (slideCapture && captured) await page.evaluate(`(() => { const node=${slideCapture.targetExpression}; const args=${JSON.stringify({ attribute: slideCapture.attribute, nonce: slideCapture.nonce })};
+          if (!(node instanceof HTMLElement) || !node.isConnected || document.querySelectorAll("["+args.attribute+"]").length !== 1 || node.getAttribute(args.attribute) !== args.nonce || !node.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) throw new Error('The source-owned slide is not visible or was replaced.');
+        })()`);
         const type = input.format === 'image' ? input.imageFormat : 'png';
         images.push({ buffer: await target.screenshot({ type, timeout: 10_000 }), jpeg: type === 'jpeg' });
       }
