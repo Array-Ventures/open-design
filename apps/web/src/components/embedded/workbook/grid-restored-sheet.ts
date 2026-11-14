@@ -35,21 +35,32 @@ export function appendRestoredSheetModel(model: WorkbookDocument, context: Workb
   return sheet;
 }
 
+function indexHistoricalSheet(context: WorkbookSourceDeleteContext) {
+  return {
+    cells: new Map(context.baseline.sheet.cells.map(cell => [`${cell.row}:${cell.column}`, cell])),
+    styles: new Map(context.baseline.styleDefinitions.map(entry => [entry.index, entry.style])),
+  };
+}
+
 /** Translate only an exact historical cell's preservation guard. Formatting
  * edits remain in their existing adapter; absent/new coordinates cannot borrow
  * a neighboring style or turn a synthetic diff ordinal into source authority. */
 export function restoreHistoricalCellGuards(plan: WorkbookEditPlan, model: WorkbookDocument, contexts: ReadonlyMap<string, WorkbookSourceDeleteContext>): WorkbookEditPlan {
+  const owners = new Map<string, ReturnType<typeof indexHistoricalSheet>>();
+  const structures = new Map(plan.structure?.map(item => [item.sheetId, item]));
   for (const edit of plan.edits) {
     const context = contexts.get(edit.sheetId);
     if (!context || edit.cell.style === undefined) continue;
-    const structure = plan.structure?.find(item => item.sheetId === edit.sheetId);
+    let owner = owners.get(edit.sheetId);
+    if (!owner) { owner = indexHistoricalSheet(context); owners.set(edit.sheetId, owner); }
+    const structure = structures.get(edit.sheetId);
     const row = structure ? structure.rows[edit.cell.row] : edit.cell.row;
     const column = structure ? structure.columns[edit.cell.column] : edit.cell.column;
     if (row === null || row === undefined || column === null || column === undefined) throw Error('A new restored coordinate has no historical cell style guard.');
-    const historical = context.baseline.sheet.cells.find(cell => cell.row === row && cell.column === column);
+    const historical = owner.cells.get(`${row}:${column}`);
     const originalStyle = historical?.style;
-    const definition = context.baseline.styleDefinitions.find(item => item.index === (originalStyle ?? 0));
-    if (!historical || !definition || canonicalCommentJson(definition.style) !== canonicalCommentJson(model.styles[edit.cell.style])) throw Error('The restored cell style guard changed.');
+    const definition = owner.styles.get(originalStyle ?? 0);
+    if (!historical || !definition || canonicalCommentJson(definition) !== canonicalCommentJson(model.styles[edit.cell.style])) throw Error('The restored cell style guard changed.');
     if (originalStyle === undefined) delete edit.cell.style;
     else edit.cell.style = originalStyle;
   }

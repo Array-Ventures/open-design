@@ -98,3 +98,39 @@ it('translates only the exact historical cell across validated structural origin
   const fresh = structuredClone(base); fresh.edits[0]!.cell.row = 0;
   expect(() => restoreHistoricalCellGuards(fresh, model, contexts)).toThrow('no historical');
 });
+it('indexes many historical coordinates and style definitions once rather than scanning per edit', async () => {
+  const f = await fixture(), context = structuredClone(f.deletion), model = structuredClone(f.current);
+  const count = 1024, styleCount = 128;
+  let coordinateReads = 0, styleIndexReads = 0;
+  context.baseline.styleDefinitions = [context.baseline.styleDefinitions[0]!, ...Array.from({ length: styleCount }, (_, offset) => {
+    const index = offset + 1, style = { font: { size: index } };
+    model.styles.push(style);
+    return Object.defineProperty({ index, style }, 'index', { enumerable: true, get: () => { styleIndexReads++; return index; } });
+  })];
+  context.baseline.sheet.cells = Array.from({ length: count }, (_, index) => {
+    const row = Math.floor(index / 26), column = index % 26;
+    const cell = { row, column, kind: 'number' as const, value: index, style: index % styleCount + 1 };
+    // Deterministic access accounting, not a wall-clock performance assertion.
+    return Object.defineProperty(cell, 'row', { enumerable: true, get: () => { coordinateReads++; return row; } });
+  });
+  const edits = context.baseline.sheet.cells.map((_cell, index) => ({ sheetId: '2', cell: { row: Math.floor(index / 26), column: index % 26, kind: 'number' as const, value: index + 1, style: index % styleCount + 2 } }));
+  const plan = restoreHistoricalCellGuards({ sourceSha256: targetSha256, edits }, model, new Map([['2', context]]));
+  expect(plan.edits.map(edit => edit.cell.style)).toEqual(Array.from({ length: count }, (_, index) => index % styleCount + 1));
+  expect(coordinateReads).toBeLessThanOrEqual(count * 2);
+  expect(styleIndexReads).toBeLessThanOrEqual(styleCount * 2);
+});
+it('keeps absent default guards omitted and original ordinals when equal definitions deduplicate', async () => {
+  const f = await fixture(), context = structuredClone(f.deletion), model = structuredClone(f.current);
+  context.baseline.sheet.cells.push({ row: 0, column: 1, kind: 'number', value: 4 });
+  // Historical index1 may reuse a current index2; it must still replay as1.
+  model.styles.push(structuredClone(context.baseline.styleDefinitions[1]!.style));
+  const sheet = appendRestoredSheetModel(model, context);
+  expect(sheet.cells[0]!.style).toBe(2);
+  expect(model.styles).toHaveLength(3);
+  const plan = restoreHistoricalCellGuards({ sourceSha256: targetSha256, edits: [
+    { sheetId: '2', cell: { row: 0, column: 0, kind: 'number', value: 19, style: 2 } },
+    { sheetId: '2', cell: { row: 0, column: 1, kind: 'number', value: 5, style: 0 } },
+  ] }, model, new Map([['2', context]]));
+  expect(plan.edits[0]!.cell.style).toBe(1);
+  expect(plan.edits[1]!.cell).not.toHaveProperty('style');
+});

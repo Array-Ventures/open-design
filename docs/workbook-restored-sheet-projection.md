@@ -69,3 +69,17 @@ private issued entry identity, pre-pop durable protection, checked historical
 receipt association, pending/lost ACK recovery, worker epochs and retained-root
 retirement. This prototype does not enable any of those controls or claim the
 complete worksheet feature.
+
+## Bounded guard indexing follow-up
+
+The first helper scanned historical cells and style definitions for every edit.
+At the existing100000-cell/20000-style bounds that could become quadratic. A
+1024-cell regression counted524800 coordinate reads before correction; no timing
+threshold is used. Per-call, lazily created coordinate/style indexes now visit
+each touched context once, and structure lookup is indexed once. They retain
+only existing references for this one derivation and create no durable cache or
+authority. The same test bounds coordinate reads to2048 and style-index reads
+to256 for128 definitions. Explicit cases also preserve omitted historical
+default style and original ordinal1 when its equal definition deduplicates to
+synthetic index2. Final affected checks passed90 cases in9 files, full fork
+typecheck and guard. Controls and remaining qualification scope are unchanged.
