@@ -49,6 +49,7 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
   const [deletingRoot, setDeletingRoot] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [readFailure, setReadFailure] = useState<'missing' | 'failed' | null>(null);
   const scope = useRef<AbortController | null>(null);
   const pending = useRef(false);
   const composing = useRef(false);
@@ -67,9 +68,9 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
   useLayoutEffect(() => {
     const controller = new AbortController(); scope.current = controller;
     const version = ++readVersion.current;
-    setReplies([]); setDraft(''); setEditing(null); setLoading(true); setError(null); setBusy(false); pending.current = false; receipt.current = null; images.reset();
+    setReplies([]); setDraft(''); setEditing(null); setLoading(true); setError(null); setReadFailure(null); setBusy(false); pending.current = false; receipt.current = null; images.reset();
     void fetchCommentReplies(projectId, comment.id, controller.signal).then(next => { if (!controller.signal.aborted && readVersion.current === version) setReplies(next); })
-      .catch(() => { if (!controller.signal.aborted && readVersion.current === version) setError('Comments could not be loaded.'); })
+      .catch(error => { if (!controller.signal.aborted && readVersion.current === version) setReadFailure(error instanceof CommentReplyError && error.status === 404 ? 'missing' : 'failed'); })
       .finally(() => { if (!controller.signal.aborted && readVersion.current === version) setLoading(false); });
     const timer = setInterval(() => { if (document.visibilityState === 'visible') void refresh(true); }, 30_000);
     return () => { clearInterval(timer); controller.abort(); notify.current(false); };
@@ -78,9 +79,9 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
     const controller = scope.current;
     if (!controller || controller.signal.aborted) return;
     const version = ++readVersion.current;
-    if (!quiet) setLoading(true); setError(null);
+    if (!quiet) setLoading(true); setReadFailure(null);
     try { const next = await fetchCommentReplies(projectId, comment.id, controller.signal); if (!controller.signal.aborted && readVersion.current === version) setReplies(next); }
-    catch { if (!controller.signal.aborted && readVersion.current === version) setError('Comments could not be loaded.'); }
+    catch (error) { if (!controller.signal.aborted && readVersion.current === version) setReadFailure(error instanceof CommentReplyError && error.status === 404 ? 'missing' : 'failed'); }
     finally { if (!controller.signal.aborted && readVersion.current === version) setLoading(false); }
   }
   async function changeEditor(next: PreviewCommentReply | null, root = false) {
@@ -152,6 +153,8 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
     } catch (failure) { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : 'The reply could not be deleted.'); }
     finally { if (!controller.signal.aborted) { pending.current = false; setBusy(false); } }
   }
+  // A missing reply endpoint is expected only after the root owner confirms deletion.
+  const visibleError = error || (readFailure && !(deleted && readFailure === 'missing') ? 'Comments could not be loaded.' : null);
   return <section hidden={hidden} aria-label="Comment thread" className={cx('min-h-0 flex-1 flex-col gap-3', hidden ? 'hidden' : 'flex')} data-testid="saved-comment-thread">
     <header className="flex min-w-0 items-center gap-1">
       <CommentAuthor name={comment.authorDisplayName} createdAt={comment.createdAt} />
@@ -182,7 +185,7 @@ export function SavedCommentThread({ projectId, comment, hidden, deleted = false
     <ScrollFade progress={historyFade.progress} />
     </div>
     <div className="flex shrink-0 flex-col gap-3">
-    {error || receipt.current?.uncertain ? <div role="alert" className="flex items-center gap-2 text-caption-1-regular text-text-error-primary"><span className="min-w-0 flex-1">{error || 'Save not confirmed.'}</span>{receipt.current?.uncertain ? <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry reply save" title="Retry save" disabled={busy} onClick={() => { void submit(); }} /> : null}<Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Reload comments" title="Reload comments" disabled={busy} onClick={() => { void refresh(); }} /></div> : null}
+    {visibleError || receipt.current?.uncertain ? <div role="alert" className="flex items-center gap-2 text-caption-1-regular text-text-error-primary"><span className="min-w-0 flex-1">{visibleError || 'Save not confirmed.'}</span>{receipt.current?.uncertain ? <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Retry reply save" title="Retry save" disabled={busy} onClick={() => { void submit(); }} /> : null}<Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Reload comments" title="Reload comments" disabled={busy} onClick={() => { void refresh(); }} /></div> : null}
     {editStale ? <div role="status" className="flex items-center gap-2 text-caption-1-regular text-text-tertiary"><span className="min-w-0 flex-1">{latestEditing ? 'This reply changed. Your draft is preserved.' : 'This reply was deleted. Your draft is preserved.'}</span>
       {latestEditing ? <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine} aria-label="Continue editing latest reply" title="Keep your draft and edit the latest revision" disabled={busy} onClick={() => { images.rebase(editing?.attachments ?? [], latestEditing.attachments ?? []); setEditing(latestEditing); setError(null); }} />
         : !deleted ? <Button className={iconButton} variant="ghost" size="small" iconOnly leadingIcon={RiChatNewLine} aria-label="Keep draft as a new reply" title="Keep draft as a new reply" disabled={busy || !viewer} onClick={() => { setEditing(null); receipt.current = null; setError(null); }} /> : null}
