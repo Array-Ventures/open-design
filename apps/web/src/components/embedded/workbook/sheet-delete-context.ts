@@ -1,3 +1,4 @@
+import { MAX_WORKBOOK_DRAFT_BYTES } from './workbook-draft-limits';
 import { z } from 'zod';
 import { workbookActionSheetIdSchema, workbookSheetActionDescriptorSchema as workbookSheetDeleteDescriptorSchema } from './sheet-action-descriptor';
 import { sha256 } from '@noble/hashes/sha256';
@@ -110,11 +111,19 @@ export function captureWorkbookDeletionBaselines(scope: WorkbookDraftScope, sour
   assertWorkbookStructureIdentity(acknowledged);
   assertWorkbookSourceSnapshotInputs(gridWorkbook(model, unitId, 'Workbook').data as IWorkbookData, acknowledged, unitId);
   const axisOwner = acknowledged.custom!.evebotStructureOwner as { generation: string; sourceSha256: string };
-  return selected.map(request => workbookSourceDeleteContextSchema.parse(structuredClone({
-    descriptor: request.descriptor ?? { version: 1, token: crypto.randomUUID(), generation: axisOwner.generation, sheetId: request.sheetId },
-    scope: { viewerId: scope.viewerId, projectId: scope.projectId, fileName: scope.fileName }, sourceSha256,
-    baseline: workbookSheetBaseline(model, request.sheetId), acknowledgedSheet: acknowledged.sheets[request.sheetId], axisOwner,
-  })));
+  let bytes = 2; // JSON array brackets; each subsequent result adds a comma.
+  const results: WorkbookSourceDeleteContext[] = [];
+  for (const request of selected) {
+    const candidate = {
+      descriptor: request.descriptor ?? { version: 1, token: crypto.randomUUID(), generation: axisOwner.generation, sheetId: request.sheetId },
+      scope: { viewerId: scope.viewerId, projectId: scope.projectId, fileName: scope.fileName }, sourceSha256,
+      baseline: workbookSheetBaseline(model, request.sheetId), acknowledgedSheet: acknowledged.sheets[request.sheetId], axisOwner,
+    };
+    bytes += new Blob([JSON.stringify(candidate)]).size + (results.length ? 1 : 0);
+    if (bytes > MAX_WORKBOOK_DRAFT_BYTES) throw Error('The selected worksheet baselines exceed the recovery limit.');
+    results.push(workbookSourceDeleteContextSchema.parse(structuredClone(candidate)));
+  }
+  return results;
 }
 
 /** Replace custom metadata before RemoveSheetCommand's undo factory reads it.

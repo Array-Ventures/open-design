@@ -1,9 +1,10 @@
+import { MAX_WORKBOOK_DRAFT_BYTES } from './workbook-draft-limits';
+export { MAX_WORKBOOK_DRAFT_BYTES } from './workbook-draft-limits';
 import type { WorkbookCheckpoint } from './workbook-writer';
 import { decodeWorkbookDraft, encodeWorkbookDraft, workbookDraftArtifactKey, workbookDraftKey, workbookDraftScopeSchema, workbookCheckpointNeedsRecovery, type WorkbookDraftScope } from './workbook-checkpoint';
 
 export const WORKBOOK_DRAFT_DATABASE = 'od-embedded-artifact-drafts';
 const STORE = 'workbooks', HEADS = 'heads';
-export const MAX_WORKBOOK_DRAFT_BYTES = 128 * 1024 * 1024;
 export interface WorkbookDraftHead { id: string; draftId: string; artifactKey: string; updatedAt: number; needsRecovery?: boolean }
 function bounded(text: string) {
   if (new Blob([text]).size > MAX_WORKBOOK_DRAFT_BYTES) throw new Error('The workbook draft exceeds this device’s recovery limit.');
