@@ -111,6 +111,57 @@ edit-API sentinel and unchanged workbook snapshot guard against edit calls.
 The six localized real menu cases additionally prove registered title updates,
 Escape focus return and original two-sheet switching. Together with the 24 focus
 policy cases, all 34 pass. Frozen installation, full workspace types and guard
-also passed. Actual packaged trusted-chord entry before/after cell
+also passed. At that source checkpoint, packaged trusted-chord entry before/after cell
 editing, dismissal, host chat focus and source preservation remain pending; no
 new pair, runtime change or keyboard-only browser claim is included.
+
+## Packaged manual acceptance: candidate 124 / renderer 67
+
+The owned Evebot preview on port 6261 now uses a companion built from clean fork source
+`4f20994ce24b8b9c6dba9759cdf532e64676ba1e`, companion build
+`e0122fe6d07f493a09cd119922235b91ba72f2ef995660fc787f979f6050c0d5`,
+and renderer image
+`sha256:65663e8f5a7998541720c13b541f6ecdeef8688d1cc9de9158aaf3719963e32c`.
+Full inventory, clean-source provenance and actual contained image checks passed.
+All five renderer payload hashes match candidate 123. Only the three Studio
+selectors changed; all other preview configuration bytes and data were preserved.
+This does not update distributed installer pins or production.
+
+Manual Chromium interaction opened the sheet list from the canvas with the
+trusted shortcut, navigated its sheets, and verified that Escape returns focus
+to the native Sheet tabs button in both dark and light themes. Its title displays
+the registered `Shift+Alt+K` binding. Enter can reopen the focused trigger.
+No programmatic focus is needed for shortcut entry. A Tab-only route remains
+unqualified; macOS and other keyboard layouts have not been tested in a browser.
+
+During an actual cell edit the chord does not open the sheet list. Outside the
+grid, chat retains its textarea focus and 20-pixel input height. Native browser
+text handling still applies: the chord inserted `K` into both the active cell
+text and the unsent chat draft. These checks prove no menu interception or focus
+capture, not unchanged text. The chat draft was cleared and observed empty;
+no message was sent.
+
+A numeric 12 → 19 Save → chat switch → Undo → 12 Save cycle passed actual raw
+XLSX readback: local and cross-sheet formula caches, font weight/size, row height,
+header, namespaces and unrelated parts were checked independently. Every OOXML
+part after Undo equals the immediately preceding numeric-12 baseline. Read-only
+theme/menu/reload operations left the saved archive bytes unchanged. Cleanup
+restored the first sheet, dark mode and 100% zoom and closed the browser normally.
+
+**Open gap found during this check:** saving plain text `19K` into the numeric
+cell recreated the grid and lost its native Undo history. The saved file contains
+the correct inline string and formula result; the history continuity is broken.
+Read-only browser draft inspection captured the actual live cell as
+`{s: "1", t: 1, v: "19K"}`, without rich text. The reader adapter imports that
+string as FORCE_STRING rather than the SDK's live STRING representation, and a
+source probe reproduced the strict rebase mismatch. The fix is separate and is
+not present in candidate 124. The fixture was restored to numeric 12 and checked.
+
+Private receipts are `/tmp/workbook-sheet-navigation124-pair-receipt.json` and
+`/tmp/workbook-sheet-navigation124-browser/qualification.json`, with raw XLSX
+and browser draft evidence beside the latter. Screenshots containing existing
+preview chat/sidebar data remain private. Candidate 123's narrower targeted-focus
+acceptance is recorded separately in
+`/tmp/workbook-keyboard123-browser/qualification.json`; its Escape failure was
+reproduced before the trigger-ref correction. Neither checkpoint installs the
+new membership controller/worker or qualifies Add/Delete/Rename controls.
