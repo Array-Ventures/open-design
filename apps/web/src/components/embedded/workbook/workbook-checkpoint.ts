@@ -54,7 +54,7 @@ export function decodeWorkbookDraft(value: unknown, scope: WorkbookDraftScope): 
       : proof.targetSha256 !== state.source.sourceSha256)) throw Error('The protected workbook acknowledgement identity is inconsistent.');
   }
   if (state.pending) {
-    const derived = workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.pending.snapshot, state.sheetDeletions);
+    const derived = workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.pending.snapshot, state.sheetDeletions, state.sourceAcknowledgement && state.sourceSnapshotBinding ? { scope, acknowledgement: state.sourceAcknowledgement, binding: state.sourceSnapshotBinding } : undefined);
     if (JSON.stringify(derived) !== JSON.stringify(state.pending.intent.plan)) throw new Error('The pending workbook save does not match its protected snapshot.');
   }
   if (state.sourceSnapshotBinding && !matchesWorkbookSourceSnapshot(state, scope, state.source)) throw Error('The protected source snapshot binding is inconsistent.');
@@ -69,6 +69,6 @@ export function encodeWorkbookDraft(scope: WorkbookDraftScope, checkpoint: Workb
  * Unsupported desired state stays recoverable rather than being discarded. */
 export function workbookCheckpointNeedsRecovery(state: WorkbookCheckpoint, scope: WorkbookDraftScope, fresh: WorkbookCheckpoint['source'] | null | undefined): boolean {
   if (state.pending || state.sheetActionConflict) return true;
-  try { return workbookPlanHasChanges(workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.desired, state.sheetDeletions)) || !matchesWorkbookSourceSnapshot(state, scope, fresh); }
+  try { return workbookPlanHasChanges(workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.desired, state.sheetDeletions, state.sourceAcknowledgement && state.sourceSnapshotBinding ? { scope, acknowledgement: state.sourceAcknowledgement, binding: state.sourceSnapshotBinding } : undefined)) || !matchesWorkbookSourceSnapshot(state, scope, fresh); }
   catch { return true; }
 }

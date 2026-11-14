@@ -59,7 +59,11 @@ export class WorkbookWriter {
       if (this.sheetActionConflict) this.error = this.sheetActionConflictMessage;
     }
   }
-  private plan() { return workbookGridPlan(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired, this.sheetDeletions); }
+  private sheetProjectionOwner() {
+    return this.journal?.scope && this.sourceAcknowledgement && this.sourceSnapshotBinding
+      ? { scope: this.journal.scope, acknowledgement: this.sourceAcknowledgement, binding: this.sourceSnapshotBinding } : undefined;
+  }
+  private plan() { return workbookGridPlan(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired, this.sheetDeletions, this.sheetProjectionOwner()); }
   state(): WorkbookWriteState {
     let dirty = Boolean(this.pending || this.running || this.protection || this.sheetActionConflict);
     try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
@@ -81,7 +85,7 @@ export class WorkbookWriter {
    * A command owner must separately validate its post-command snapshot before
    * executing. This retains data, not Delete/Undo or historical authority. */
   private prospectiveDeletionContexts(raw: WorkbookSourceDeleteContext): WorkbookSourceDeleteContext[] {
-    if (!this.active || this.sheetActionConflict || this.pending || this.running || this.protection || !this.journal?.validate) throw Error('Protected worksheet deletion is not ready.');
+    if (!this.active || this.sheetActionConflict || this.protection || !this.journal?.validate) throw Error('Protected worksheet deletion is not ready.');
     const context = workbookSourceDeleteContextSchema.parse(raw);
     if (context.sourceSha256 !== this.source.sourceSha256) throw Error('The deletion source changed.');
     const previous = this.sheetDeletions.find(value => value.descriptor.token === context.descriptor.token);
@@ -104,18 +108,19 @@ export class WorkbookWriter {
       if (this.sheetActionConflict) throw Error(this.sheetActionConflictMessage);
       if (this.recoveryConflict) throw Error('The recovered workbook source is not ready for worksheet actions.');
       if (!this.journal?.validate || !this.journal.isCurrent?.()) throw Error('The workbook recovery lease is no longer current.');
-      const candidate = this.prospectiveDeletionContexts(raw), source = this.source, revision = this.revision;
+      const candidate = this.prospectiveDeletionContexts(raw), source = this.source, revision = this.revision, pending = this.pending;
       const snapshot = structuredClone(prospective);
       if (snapshot.sheets[raw.descriptor.sheetId] || snapshot.sheetOrder.includes(raw.descriptor.sheetId)) throw Error('The prospective worksheet deletion changed.');
-      const plan = workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, candidate);
+      const plan = workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, candidate, this.sheetProjectionOwner());
       const checkpoint = { ...this.checkpoint(), sheetDeletions: candidate };
+      this.journal.validate({ ...checkpoint, desired: snapshot });
       // Same decoder and exact byte limit as real pending storage. These local
       // identities validate the prospective shape, not a future save reservation.
       this.journal.validate({ ...checkpoint, desired: snapshot, pending: { snapshot, intent: { id: crypto.randomUUID(), preparationId: crypto.randomUUID(), previewId: crypto.randomUUID(), renderId: crypto.randomUUID(), plan } } });
       const durable = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
       this.persistence = durable;
       await durable;
-      if (!this.active || this.source !== source || this.revision !== revision || this.pending || this.running || !this.journal.isCurrent()) throw Error('The workbook changed while protecting its worksheet action.');
+      if (!this.active || this.source !== source || this.revision !== revision || this.pending !== pending || !this.journal.isCurrent()) throw Error('The workbook changed while protecting its worksheet action.');
       // Old roots remain untouched on all pre-command refusals. After invoking
       // SDK, retain the durably protected candidate even if SDK itself throws.
       this.sheetDeletions = candidate;
@@ -183,14 +188,23 @@ export class WorkbookWriter {
           const proof = acknowledgement.provenance;
           if (proof.operationId !== pending.intent.id || proof.renderId !== pending.intent.renderId || proof.sourceSha256 !== this.source.sourceSha256 || proof.targetSha256 !== source.sourceSha256) throw Error('The workbook acknowledgement does not match its owned save.');
         }
-        if (pending.acknowledgement && JSON.stringify(pending.acknowledgement) !== JSON.stringify(acknowledgement)) throw Error('The workbook acknowledgement changed while protecting its save.');
-        // Protect the checked pre-save history association together with the
-        // original intent before retiring any source or SDK baseline.
-        const bound = this.sheetDeletions.map(context => context.sourceSha256 === this.source.sourceSha256 && !pending.snapshot.sheets[context.descriptor.sheetId]
-          ? associateWorkbookSourceDeletion(context, acknowledgement) : context);
-        pending.acknowledgement = structuredClone(acknowledgement);
-        this.sheetDeletions = bound;
-        await this.persist(); if (!this.active) return;
+        // A protected command never awaits this transport. Repeat if another
+        // command starts during receipt storage, so no protected context can
+        // cross source retirement without its original history association.
+        while (true) {
+          await this.protection?.catch(() => {});
+          if (!this.active) return;
+          if (this.pending !== pending) throw Error('The pending workbook save changed while protecting its receipt.');
+          if (pending.acknowledgement && JSON.stringify(pending.acknowledgement) !== JSON.stringify(acknowledgement)) throw Error('The workbook acknowledgement changed while protecting its save.');
+          const bound = this.sheetDeletions.map(context => context.sourceSha256 === this.source.sourceSha256 && !context.receiptAssociation
+            ? associateWorkbookSourceDeletion(context, acknowledgement) : context);
+          pending.acknowledgement = structuredClone(acknowledgement);
+          this.sheetDeletions = bound;
+          await this.persist();
+          if (!this.active) return;
+          if (this.sheetActionConflict) throw Error(this.sheetActionConflictMessage);
+          if (!this.protection && this.sheetDeletions === bound) break;
+        }
         const previous = { source: this.source, acknowledged: this.acknowledged, sourceAcknowledgement: this.sourceAcknowledgement, sourceSnapshotBinding: this.sourceSnapshotBinding };
         let binding: WorkbookSourceSnapshotBinding | undefined;
         // Only the live checked transfer may establish this current continuity

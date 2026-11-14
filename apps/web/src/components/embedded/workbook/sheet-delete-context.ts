@@ -36,7 +36,7 @@ export type WorkbookSourceDeleteContext = z.infer<typeof workbookSourceDeleteCon
 export function captureWorkbookSourceDeletion(scope: WorkbookDraftScope, checkpoint: WorkbookCheckpoint, selectedId: string): WorkbookSourceDeleteContext {
   scope = workbookDraftScopeSchema.parse(scope); selectedId = sheetId.parse(selectedId);
   const { model, sourceSha256 } = checkpoint.source;
-  if (checkpoint.pending || model.sourceFormat === 'csv' || !model.worksheetStructureEditable || model.calculationMetadata !== 'verified' || model.sheets.some(sheet => !sheet.arrayFormulas || sheet.arrayFormulas.length)) throw Error('Source deletion capture requires a ready qualified scalar baseline.');
+  if (model.sourceFormat === 'csv' || !model.worksheetStructureEditable || model.calculationMetadata !== 'verified' || model.sheets.some(sheet => !sheet.arrayFormulas || sheet.arrayFormulas.length)) throw Error('Source deletion capture requires a ready qualified scalar baseline.');
   const unitId = `${scope.projectId}:${scope.fileName}`;
   if (checkpoint.acknowledged.id !== unitId || checkpoint.desired.id !== unitId) throw Error('The deletion context belongs to another workbook.');
   const sourceSheet = model.sheets.find(sheet => sheet.id === selectedId), acknowledgedSheet = checkpoint.acknowledged.sheets[selectedId];

@@ -1,3 +1,6 @@
+import { matchesWorkbookSourceSnapshot, type WorkbookSourceSnapshotBinding } from './source-snapshot-binding';
+import type { WorkbookSaveAcknowledgement } from './save-provenance';
+import type { WorkbookDraftScope } from './workbook-draft-schema';
 import { assertWorkbookStructureIdentity } from './grid-structure-identity';
 import { assertWorkbookScalarSnapshot } from './grid-scalar-admission';
 import type { IWorkbookData } from '@univerjs/core';
@@ -5,9 +8,18 @@ import { workbookSourceSheetProjectionSchema, type WorkbookDocument } from '@ope
 import { canonicalCommentJson, canonicalWorkbookSheetBaseline, workbookSheetBaseline } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import { workbookSourceDeleteContextSchema, type WorkbookSourceDeleteContext } from './sheet-delete-context';
 
+/** Current continuity is an explicit checked-ACK owner input, not metadata on
+ * an imported sheet. It is recomputed from the actual model and ACK snapshot;
+ * this local consistency proof never authorizes historical asset access. */
+export interface WorkbookSheetProjectionOwner {
+  scope: WorkbookDraftScope;
+  acknowledgement: WorkbookSaveAcknowledgement;
+  binding: WorkbookSourceSnapshotBinding;
+}
+
 /** First source-present producer only. A marker is never a birth or restore
  * grant. Historical/absent IDs remain unsupported until their owner is wired. */
-export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256: string, initial: IWorkbookData, current: IWorkbookData, contexts: readonly WorkbookSourceDeleteContext[]) {
+export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256: string, initial: IWorkbookData, current: IWorkbookData, contexts: readonly WorkbookSourceDeleteContext[], owner?: WorkbookSheetProjectionOwner) {
   if (initial.id !== current.id) throw Error('Workbook identity changed.');
   const sourceIds = model.sheets.map(sheet => sheet.id), afterIds = current.sheetOrder;
   const changed = canonicalCommentJson(sourceIds) !== canonicalCommentJson(afterIds) || model.sheets.some(sheet => current.sheets[sheet.id] && current.sheets[sheet.id]!.name !== sheet.name);
@@ -23,13 +35,28 @@ export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256:
   if (canonicalCommentJson(sourceIds.filter(id => afterIds.includes(id))) !== canonicalCommentJson(afterIds)) throw Error('Reordering source worksheets is unsupported.');
   assertWorkbookStructureIdentity(initial); assertWorkbookStructureIdentity(current);
   const checked = contexts.map(value => workbookSourceDeleteContextSchema.parse(value));
+  const carriedSource = owner && matchesWorkbookSourceSnapshot({
+    version: 1, source: { model, sourceSha256 }, acknowledged: initial, desired: initial,
+    pending: null, sourceAcknowledgement: owner.acknowledgement, sourceSnapshotBinding: owner.binding,
+  }, owner.scope, { model, sourceSha256 });
   for (const id of sourceIds.filter(id => !afterIds.includes(id))) {
     if (model.sheets.find(sheet => sheet.id === id)!.visibility === 'veryHidden') throw Error('A very hidden worksheet cannot be deleted here.');
-    const matches = checked.filter(value => value.descriptor.sheetId === id && value.sourceSha256 === sourceSha256);
+    const matches = checked.filter(value => {
+      if (value.descriptor.sheetId !== id) return false;
+      if (value.sourceSha256 === sourceSha256) return true;
+      return Boolean(carriedSource && owner && value.receiptAssociation
+        && owner.scope.viewerId === value.scope.viewerId
+        && owner.scope.projectId === value.scope.projectId && owner.scope.fileName === value.scope.fileName);
+    });
     if (matches.length !== 1) throw Error('The deleted worksheet has no unique current-source context.');
     const context = matches[0]!;
-    if (canonicalCommentJson(context.axisOwner) !== canonicalCommentJson(initial.custom?.evebotStructureOwner) || `${context.scope.projectId}:${context.scope.fileName}` !== initial.id || canonicalCommentJson(context.acknowledgedSheet) !== canonicalCommentJson(initial.sheets[id])
-      || canonicalWorkbookSheetBaseline(context.baseline) !== canonicalWorkbookSheetBaseline(workbookSheetBaseline(model, id))) throw Error('The deleted worksheet source or ACK context changed.');
+    const sameAxisOwner = canonicalCommentJson(context.axisOwner) === canonicalCommentJson(initial.custom?.evebotStructureOwner);
+    const sameArtifact = `${context.scope.projectId}:${context.scope.fileName}` === initial.id;
+    if (!sameAxisOwner || !sameArtifact) throw Error('The deleted worksheet source or ACK context changed.');
+    if (context.sourceSha256 === sourceSha256 && (
+      canonicalCommentJson(context.acknowledgedSheet) !== canonicalCommentJson(initial.sheets[id])
+      || canonicalWorkbookSheetBaseline(context.baseline) !== canonicalWorkbookSheetBaseline(workbookSheetBaseline(model, id))
+    )) throw Error('The deleted worksheet source or ACK context changed.');
   }
   assertWorkbookScalarSnapshot(current);
   const sheets = workbookSourceSheetProjectionSchema.parse(afterIds.map(id => ({ sheetId: id, name: current.sheets[id]!.name, origin: 'source' })));

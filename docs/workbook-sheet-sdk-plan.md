@@ -764,3 +764,45 @@ is not such permission.
 Validation: both new regressions were RED before the handoff guard. All 29 focused
 handoff/discard/recovery lifecycle cases, web typecheck, full repository typecheck,
 guard and diff check passed after the fix. Controls and runtime remain unchanged.
+
+### Development checkpoint: Delete during an owned pending scalar save
+
+The uninstalled source-present producer now captures a qualified source/ACK
+while an unrelated save is pending. The existing Writer durably protects the
+prospective Delete and unchanged original pending intent before invoking the
+real synchronous SDK command. Neither protection nor its journal waits for the
+running save. A returned receipt waits for protection; if another action starts
+during receipt storage, that same barrier and context binding repeat before
+source retirement. Post-command divergence remains quarantined even when the
+remote scalar save already returned a checked receipt.
+
+The first checked receipt associates the context with its immutable pre-save
+history version even if the frozen pending snapshot still contains that sheet.
+Its original selected baseline and ACK are retained, rather than replaced with
+the later edited sheet. Source-present projection after transfer accepts a
+carried context only with an explicit owner input recomputed from the existing
+full `sourceSnapshotBinding`, current model/ACK and scoped receipt. This is
+local continuity evidence, not historical access or authenticity; recovered
+restoration still needs server-authorized same-file history and exact asset
+SHA/baseline verification.
+
+Author tests first demonstrated the pending admission/capture refusal and
+missing pre-retirement association. A separate actual SDK test proves that an
+insert's Redo recreates the original blank configuration, and a later cell-edit
+Redo independently restores its value. These source tests do not qualify an
+installed membership feature. Birth allocation, restored-sheet projection,
+repeated Delete token selection, pre-pop Undo protection, worker mutation
+admission, and full pending/ACK/history/recovery UI remain unfinished. Controls
+stay off; no package, contained renderer, or runtime was activated for this
+checkpoint.
+
+Checkpoint author checks: 107 affected web tests across eight files, full fork
+`pnpm typecheck`, `pnpm guard`, and `git diff --check` passed. The initial affected
+run exposed three pre-existing fixture failures; all three reproduced on exact
+unchanged `496dff0e` source. The unsupported membership case now asserts its
+actual exact refusal while preserving zero writes, dirty state and Undo checks.
+Two legacy hook cases now return complete, attempt-bound receipts and the actual
+saved value instead of a target-only receipt/unchanged old model; they assert the
+explicit absent kernel ticket. No receipt/source guard or timeout was loosened.
+The author preserved the failed runs separately; they are not new product
+regressions and are not described as flaky.

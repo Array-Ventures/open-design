@@ -39,7 +39,7 @@ it('serializes a concurrent flush and does not clear edits made while saving', a
 it('blocks unsupported changes without losing them and permits undo to the original', async () => {
   const { source, initial } = fixture(), write = vi.fn(), writer = new WorkbookWriter(source, initial, write, () => {});
   const changed = structuredClone(initial); changed.sheetOrder.push('new'); writer.update(changed); await writer.flush();
-  expect(write).not.toHaveBeenCalled(); expect(writer.state()).toMatchObject({ dirty: true, error: expect.stringContaining('structure') });
+  expect(write).not.toHaveBeenCalled(); expect(writer.state()).toMatchObject({ dirty: true, error: 'Worksheet membership requires a qualified scalar source.' });
   writer.update(initial); expect(writer.state()).toEqual({ dirty: false, saving: false, error: null });
 });
 it('ignores late acknowledgements and publishes nothing after disposal', async () => {
