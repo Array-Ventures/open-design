@@ -65,7 +65,10 @@ entry IDs reserve their maximum integer serialization before SDK entry. Quota
 refusal does not mutate or pop history and does not quarantine untouched edits.
 Disposal clears the private maps, tokens and byte ledger.
 
-**Reachable-root retirement is not implemented.** There is no timestamp/revision
+**At source checkpoint `20038fee`, reachable-root retirement was not implemented.**
+The later [unreferenced-root checkpoint](workbook-protected-root-retirement.md)
+adds conservative retirement while leaving obsolete-selector cleanup and
+automatic maintenance open. There is no timestamp/revision
 eviction heuristic. A private restored origin may remain needed after an edit
 clears its original SDK redo item; future retirement must include live selected
 origins and protected pending/draft/template roots, not only native stack entries.
