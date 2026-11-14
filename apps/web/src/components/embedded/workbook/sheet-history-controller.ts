@@ -1,3 +1,5 @@
+import { copyWorkbookRemovalMap } from './sheet-selector-retirement';
+import { WORKBOOK_SHEET_REMOVALS } from './sheet-removal-selection';
 import type { WorkbookNativeRoot } from './sheet-root-retirement';
 import { assertNativeWorkbookBirthHistory } from './native-birth-history';
 import { ICommandService, IUndoRedoService, IUniverInstanceService, RedoCommand, UndoCommand, UniverInstanceType, type ICommand, type IWorkbookData, type Univer, type Workbook } from '@univerjs/core';
@@ -39,6 +41,7 @@ export class WorkbookSheetHistoryController {
   private issuerBytes = 2;
   private readonly injector;
   private busy = false;
+  private retirementBarrier: Promise<void> | null = null;
   private disposed = false;
 
   constructor(univer: Univer, private readonly writer: WorkbookWriter, private readonly scope: WorkbookDraftScope,
@@ -149,6 +152,23 @@ export class WorkbookSheetHistoryController {
     this.issuerBytes = admitted.total;
   }
 
+  /** Read-only drain for a History/clean-resume gate that already withdrew
+   * operational admission. It never starts maintenance, flushes or closes. */
+  settleMaintenance(): Promise<void> { return this.retirementBarrier ?? Promise.resolve(); }
+
+  private beginRetirement(): () => void {
+    if (this.busy || !this.isCurrent()) throw Error('The worksheet action owner is not current.');
+    this.busy = true;
+    let settle!: () => void;
+    const barrier = new Promise<void>(resolve => { settle = resolve; });
+    this.retirementBarrier = barrier;
+    return () => {
+      this.busy = false;
+      if (this.retirementBarrier === barrier) this.retirementBarrier = null;
+      settle();
+    };
+  }
+
   private protectedNativeRoots(history: ReturnType<IUndoRedoService['getUndoRedoEntryIds']>): WorkbookNativeRoot[] {
     const reachable = new Set([...history.undos, ...history.redos]);
     const roots: WorkbookNativeRoot[] = [];
@@ -172,11 +192,29 @@ export class WorkbookSheetHistoryController {
     return roots;
   }
 
+  private pruneRetiredIssuers(retained: ReadonlySet<string>): number {
+    let retired = 0;
+    // Compute the retained accounting first; all following Map/Set deletes
+    // are synchronous and cannot call application/native callbacks.
+    let count = 0, bytes = 2;
+    for (const [token, descriptor] of this.issued) if (retained.has(token)) {
+      const birth = this.births.get(token), action = this.deletions.get(token) ?? this.renames.get(token);
+      const detail = birth ? this.birthIssuerData(birth.entry, birth.index)
+        : action ? this.historyIssuerData(action.purpose, descriptor, action.payload) : undefined;
+      bytes = admitWorkbookNativeIssuer(count++, bytes, { descriptor, ...(detail ? { owned: detail } : {}) }).total;
+    }
+    for (const token of this.issued.keys()) if (!retained.has(token)) {
+      this.issued.delete(token); this.births.delete(token); this.deletions.delete(token); this.renames.delete(token); this.renameTokens.delete(token);
+      retired++;
+    }
+    this.issuerBytes = bytes;
+    return retired;
+  }
+
   /** Explicit live-controller maintenance; returned IDs are retention evidence,
    * never durable issuance. Referenced snapshot metadata is not cleaned here. */
   async retireProtectedRoots(): Promise<{ retiredContexts: number; retiredIssuers: number }> {
-    if (this.busy || !this.isCurrent()) throw Error('The worksheet action owner is not current.');
-    this.busy = true;
+    const finish = this.beginRetirement();
     try {
       const writer = this.writer, snapshot = this.snapshot();
       const history = this.history.getUndoRedoEntryIds(this.unit.getUnitId());
@@ -190,23 +228,61 @@ export class WorkbookSheetHistoryController {
       };
       let retiredIssuers = 0;
       const result = await writer.protectSheetRootRetirement(snapshot, roots, verify, retained => {
-        // Compute the retained accounting first; all following Map/Set deletes
-        // are synchronous and cannot call application/native callbacks.
-        let count = 0, bytes = 2;
-        for (const [token, descriptor] of this.issued) if (retained.has(token)) {
-          const birth = this.births.get(token), action = this.deletions.get(token) ?? this.renames.get(token);
-          const detail = birth ? this.birthIssuerData(birth.entry, birth.index)
-            : action ? this.historyIssuerData(action.purpose, descriptor, action.payload) : undefined;
-          bytes = admitWorkbookNativeIssuer(count++, bytes, { descriptor, ...(detail ? { owned: detail } : {}) }).total;
-        }
-        for (const token of this.issued.keys()) if (!retained.has(token)) {
-          this.issued.delete(token); this.births.delete(token); this.deletions.delete(token); this.renames.delete(token); this.renameTokens.delete(token);
-          retiredIssuers++;
-        }
-        this.issuerBytes = bytes;
+        retiredIssuers = this.pruneRetiredIssuers(retained);
       });
       return { ...result, retiredIssuers };
-    } finally { this.busy = false; }
+    } finally { finish(); }
+  }
+
+  async retireObsoleteSelectors(): Promise<{ retiredSelectors: number; retiredIssuers: number }> {
+    const finish = this.beginRetirement();
+    try {
+      const writer = this.writer, before = this.snapshot();
+      const sourceSha256 = writer.checkpoint().source.sourceSha256;
+      const history = this.history.getUndoRedoEntryIds(this.unit.getUnitId());
+      const checkpoint = this.history.getUndoRedoCheckpoint();
+      const roots = this.protectedNativeRoots(history);
+      let expected = before;
+      let applied = false;
+      const mapIdentity = (book: IWorkbookData) => canonicalWorkbookJsonValue(book.custom?.[WORKBOOK_SHEET_REMOVALS] ?? null);
+      const verify = () => {
+        if (this.writer !== writer || !this.isCurrent() || canonicalWorkbookJsonValue(this.snapshot()) !== canonicalWorkbookJsonValue(expected)
+          || canonicalWorkbookJsonValue(this.history.getUndoRedoEntryIds(history.unitId)) !== canonicalWorkbookJsonValue(history)) throw Error('The worksheet history changed while retiring selectors.');
+        this.assertHistoryCheckpoint(checkpoint);
+        this.protectedNativeRoots(history);
+      };
+      const metadata = {
+        apply: (next: IWorkbookData) => {
+          verify();
+          if (canonicalWorkbookJsonValue(copyWorkbookRemovalMap(before, next)) !== canonicalWorkbookJsonValue(next)) throw Error('Selector retirement changed unrelated SDK data.');
+          applied = true;
+          expected = next;
+          this.unit.setCustomMetadata(copyWorkbookRemovalMap(this.snapshot(), next).custom);
+          if (canonicalWorkbookJsonValue(this.snapshot()) !== canonicalWorkbookJsonValue(next)) throw Error('The selector metadata did not match its protected result.');
+        },
+        rollback: () => {
+          if (!applied) return this.snapshot();
+          // A private one-operation rollback lifetime, independent of focus or
+          // lease visibility. Disposal/replacement ends that lifetime; it can
+          // never patch a new controller/kernel just because its ID matches.
+          if (this.disposed || !this.handles.every(handle => handle.isCurrent())
+            || this.instances.getUnit(this.unit.getUnitId(), UniverInstanceType.UNIVER_SHEET) !== this.unit
+            || this.writer !== writer || writer.checkpoint().source.sourceSha256 !== sourceSha256) return null;
+          const current = this.snapshot();
+          if (canonicalWorkbookJsonValue(current.custom?.evebotStructureOwner) !== canonicalWorkbookJsonValue(before.custom?.evebotStructureOwner)
+            || mapIdentity(current) !== mapIdentity(expected)) return null;
+          const restored = copyWorkbookRemovalMap(current, before);
+          this.unit.setCustomMetadata(restored.custom);
+          expected = restored;
+          return canonicalWorkbookJsonValue(this.snapshot()) === canonicalWorkbookJsonValue(restored) ? restored : null;
+        },
+      };
+      let retiredIssuers = 0;
+      const result = await writer.protectObsoleteSheetSelectors(before, roots,
+        descriptor => this.owns(descriptor) && !this.births.has(descriptor.token) && !this.renameTokens.has(descriptor.token), verify, metadata,
+        retained => { retiredIssuers = this.pruneRetiredIssuers(retained); });
+      return { ...result, retiredIssuers };
+    } finally { finish(); }
   }
 
   async remove(sheetId: string): Promise<void> {

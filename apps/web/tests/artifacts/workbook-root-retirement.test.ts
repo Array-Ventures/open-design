@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { createSourceDeleteHistoryFixture as rawFixture, sourceDeleteScope } from '../helpers/workbook-source-delete-fixture';
+import { sourceDeleteScope } from '../helpers/workbook-source-delete-fixture';
 import { captureWorkbookSourceDeletion } from '../../src/components/embedded/workbook/sheet-delete-context';
 import { membershipResult } from '../helpers/workbook-membership-result';
 import { prepareWorkbookSheetBirth } from '../../src/components/embedded/workbook/sheet-birth-context';
@@ -7,22 +7,12 @@ import { workbookProtectedRootRetirement } from '../../src/components/embedded/w
 import * as budget from '../../src/components/embedded/workbook/native-history-budget';
 
 import { IUniverInstanceService } from '@univerjs/core';
+import { createRetirementFixture as fixture } from '../helpers/workbook-retirement-fixture';
 import { IDBFactory } from 'fake-indexeddb';
-import { readWorkbookDraft, saveWorkbookDraft } from '../../src/components/embedded/workbook/draft-store';
+import { readWorkbookDraft } from '../../src/components/embedded/workbook/draft-store';
 
 beforeEach(() => vi.stubGlobal('indexedDB', new IDBFactory()));
 afterEach(() => vi.unstubAllGlobals());
-function fixture(_owned: true, options: NonNullable<Parameters<typeof rawFixture>[1]> & { afterCommit?: () => void } = {}) {
-  return rawFixture(true, { ...options,
-    save: async state => { await options.save?.(state); await saveWorkbookDraft(sourceDeleteScope, state); },
-    saveGuarded: async (state, guard) => {
-      await options.save?.(state);
-      await saveWorkbookDraft(sourceDeleteScope, state, guard);
-      options.afterCommit?.();
-    },
-  });
-}
-
 it('retires forgotten native Rename issuers after actual native history clear without changing live data or history', async () => {
   const f = fixture(true);
   const admission = vi.spyOn(budget, 'admitWorkbookNativeIssuer');
