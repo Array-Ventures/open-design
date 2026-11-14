@@ -272,12 +272,32 @@ export class WorkbookSheetHistoryController {
       this.history.pushUndoRedo({ unitID: before.id, undoMutations: structuredClone(payload.undoMutations), redoMutations: structuredClone(payload.redoMutations) });
       return true;
     });
-    const native = this.history.getUndoRedoCheckpoint();
-    if (native.unitId !== before.id || native.undoEntryId === null || native.revision !== checkpoint.revision + 1) throw Error('The native worksheet history entry is unavailable.');
+    const native = this.assertHistoryPush(checkpoint);
     const issued = { purpose, descriptor: structuredClone(descriptor), nativeEntryId: native.undoEntryId, payload: structuredClone(payload) };
     this.assertNativePayload(issued, this.history.getUndoRedoMutationData(before.id, 'undo', native.undoEntryId));
     (purpose === 'delete' ? this.deletions : this.renames).set(descriptor.token, issued);
     return result;
+  }
+
+  private assertHistoryCheckpoint(checkpoint: ReturnType<IUndoRedoService['getUndoRedoCheckpoint']>): void {
+    if (!this.isCurrent() || canonicalWorkbookJsonValue(this.history.getUndoRedoCheckpoint()) !== canonicalWorkbookJsonValue(checkpoint)) {
+      throw Error('The worksheet history changed while protecting its action.');
+    }
+  }
+
+  private assertHistoryPush(checkpoint: ReturnType<IUndoRedoService['getUndoRedoCheckpoint']>) {
+    const native = this.history.getUndoRedoCheckpoint();
+    if (!this.isCurrent() || native.unitId !== this.unit.getUnitId() || native.undoEntryId === null
+      || native.revision !== checkpoint.revision + 1) throw Error('The native worksheet history entry is unavailable.');
+    return { ...native, undoEntryId: native.undoEntryId };
+  }
+
+  private assertHistoryTransfer(checkpoint: ReturnType<IUndoRedoService['getUndoRedoCheckpoint']>, direction: Direction, entryId: number): Direction {
+    const native = this.history.getUndoRedoCheckpoint();
+    const opposite = direction === 'undo' ? 'redo' : 'undo';
+    if (!this.isCurrent() || native.unitId !== checkpoint.unitId || native.revision !== checkpoint.revision + 1
+      || native[opposite === 'undo' ? 'undoEntryId' : 'redoEntryId'] !== entryId) throw Error('The protected native worksheet history transfer changed.');
+    return opposite;
   }
 
   private assertNativePayload(issued: IssuedNativeSheetAction, data: Parameters<typeof nativeSheetPayloadIdentity>[0]): void {
@@ -316,11 +336,8 @@ export class WorkbookSheetHistoryController {
           verify();
           return this.runNativeSequence(descriptor, before, mutations, () => {
             if (execute() !== true) return false;
-            const after = this.history.getUndoRedoCheckpoint();
-            const opposite = action.direction === 'undo' ? 'redo' : 'undo';
-            if (after.unitId !== action.checkpoint.unitId || after.revision !== action.checkpoint.revision + 1
-              || after[opposite === 'undo' ? 'undoEntryId' : 'redoEntryId'] !== action.issued.nativeEntryId) throw Error('The protected native worksheet history transfer changed.');
-            this.assertNativePayload(action.issued, this.history.getUndoRedoMutationData(after.unitId, opposite, action.issued.nativeEntryId));
+            const opposite = this.assertHistoryTransfer(action.checkpoint, action.direction, action.issued.nativeEntryId);
+            this.assertNativePayload(action.issued, this.history.getUndoRedoMutationData(action.checkpoint.unitId, opposite, action.issued.nativeEntryId));
             return true;
           });
         };
@@ -340,9 +357,10 @@ export class WorkbookSheetHistoryController {
   async add(name: string, index: number): Promise<WorkbookSheetBirthEntry> {
     if (this.busy || !this.isCurrent()) throw Error('The worksheet action owner is not current.');
     this.busy = true;
+    const checkpoint = this.history.getUndoRedoCheckpoint();
     try {
       return await this.writer.protectSheetBirth(name, index, entry => {
-        if (!this.isCurrent()) throw Error('The worksheet action owner changed.');
+        this.assertHistoryCheckpoint(checkpoint);
         this.issue(entry.descriptor, this.birthIssuerData(entry, index));
         const before = this.snapshot(), after = structuredClone(before);
         after.sheets[entry.descriptor.sheetId] = structuredClone(entry.initialSheet);
@@ -351,13 +369,12 @@ export class WorkbookSheetHistoryController {
         const result = this.mutation.run('insert', entry.descriptor, before, after, () => this.runProtectedSequence(sequence, after, () => this.commands.syncExecuteCommand(InsertSheetCommand.id, {
           unitId: before.id, index, sheet: structuredClone(entry.initialSheet),
         })));
-        const native = this.history.getUndoRedoCheckpoint();
-        if (native.unitId !== this.unit.getUnitId() || native.undoEntryId === null) throw Error('The native Add history entry is unavailable.');
+        const native = this.assertHistoryPush(checkpoint);
         assertNativeWorkbookBirthHistory(this.history.getUndoRedoMutationData(before.id, 'undo', native.undoEntryId), before.id, entry, index);
         this.births.set(entry.descriptor.token, { entry: structuredClone(entry), index, nativeEntryId: native.undoEntryId });
         return result;
       }, entry => {
-        if (!this.isCurrent()) throw Error('The worksheet action owner changed.');
+        this.assertHistoryCheckpoint(checkpoint);
         this.issuerAdmission(entry.descriptor, this.birthIssuerData(entry, index));
         return undefined;
       });
@@ -404,13 +421,20 @@ export class WorkbookSheetHistoryController {
     this.busy = true;
     try {
       const origin = action.birth.entry.descriptor;
+      const checkedExecute = () => {
+        if (execute() !== true) return false;
+        const opposite = this.assertHistoryTransfer(action.checkpoint, action.direction, action.birth.nativeEntryId);
+        assertNativeWorkbookBirthHistory(this.history.getUndoRedoMutationData(action.checkpoint.unitId, opposite, action.birth.nativeEntryId),
+          action.checkpoint.unitId, action.birth.entry, action.birth.index);
+        return true;
+      };
       const sequence: NativeSheetMutation[] = action.direction === 'redo'
         ? [{ id: InsertSheetMutation.id, params: { unitId: this.unit.getUnitId(), index: action.birth.index, sheet: structuredClone(action.birth.entry.initialSheet) } }]
         : [{ id: RemoveSheetMutation.id, params: { unitId: this.unit.getUnitId(), subUnitId: origin.sheetId, subUnitName: action.birth.entry.initialSheet.name } }];
       if (action.direction === 'redo') {
         await this.writer.protectSheetBirthReplay(origin, action.birth.index, after => {
           this.verify(action);
-          return this.mutation.run('insert', origin, this.snapshot(), after, () => this.runProtectedSequence(sequence, after, execute));
+          return this.mutation.run('insert', origin, this.snapshot(), after, () => this.runProtectedSequence(sequence, after, checkedExecute));
         }, () => { this.verify(action); return undefined; });
       } else {
         const state = this.writer.checkpoint();
@@ -421,7 +445,7 @@ export class WorkbookSheetHistoryController {
           const prospective = workbookSheetMutationSnapshot(before, after, 'remove', context.descriptor);
           await this.writer.protectSheetDeletion(context, prospective, () => {
             this.verify(action); this.issue(context.descriptor);
-            return this.mutation.run('remove', context.descriptor, before, prospective, () => this.runProtectedSequence(sequence, prospective, execute));
+            return this.mutation.run('remove', context.descriptor, before, prospective, () => this.runProtectedSequence(sequence, prospective, checkedExecute));
           }, () => { this.verify(action); this.issuerAdmission(context.descriptor); return undefined; });
         } else {
           await this.writer.protectSheetBirthRemoval(origin, removal => {
@@ -429,7 +453,7 @@ export class WorkbookSheetHistoryController {
             const before = this.snapshot(), after = structuredClone(before);
             delete after.sheets[origin.sheetId]; after.sheetOrder = after.sheetOrder.filter(id => id !== origin.sheetId);
             const prospective = workbookSheetMutationSnapshot(before, after, 'remove', removal.descriptor);
-            return this.mutation.run('remove', removal.descriptor, before, prospective, () => this.runProtectedSequence(sequence, prospective, execute));
+            return this.mutation.run('remove', removal.descriptor, before, prospective, () => this.runProtectedSequence(sequence, prospective, checkedExecute));
           }, removal => { this.verify(action); this.issuerAdmission(removal.descriptor); return undefined; });
         }
       }

@@ -97,3 +97,30 @@ synchronous dispatch for an asynchronous SDK command; that harness failure was
 preserved and corrected before the proper source-absent Delete baseline RED.
 Next gates are the actual main/worker consumer, exact protected-root
 retirement, then matched packaged UI and authorized save/recovery qualification.
+
+## Add native-history ownership correction
+
+The frozen `20038fee` source checkpoint did not bind Add across its awaited
+journal write or verify that the native handler pushed exactly one history
+entry. Four real-SDK regressions failed against that checkpoint: a public
+Insert command listener could copy the freshly pushed birth item into another
+native item that the controller adopted; a history-only push during Add's
+storage wait was accepted; and birth Undo/Redo callbacks could add unrelated
+history entries without quarantine. These are controller ownership defects,
+not worker or packaged-browser results.
+
+The correction captures and rechecks the original checkpoint before native
+entry, and shares exact one-revision push/transfer assertions with Delete and
+Rename. A pre-entry history change refuses without changing workbook data or
+quarantining. Unexpected history changes after the native callback quarantine
+and retain the protected pre-command recovery snapshot. Exact birth payload
+validation still applies after the original entry transfers between stacks.
+
+Author checks: all four regressions are now green; the complete affected suite
+passes **172 cases in 12 files**, full workspace `pnpm typecheck` and `pnpm guard`
+exit zero. Receipts: `/tmp/workbook-birth-history-ownership-red.log`,
+`/tmp/workbook-birth-history-correction-focused.log`,
+`/tmp/workbook-birth-history-correction-types.log`, and
+`/tmp/workbook-birth-history-correction-guard.log`. This remains uninstalled
+source qualification with the same stand-in transport and retention limits
+above; it does not qualify real worker/SDK integration or private-root retirement.
