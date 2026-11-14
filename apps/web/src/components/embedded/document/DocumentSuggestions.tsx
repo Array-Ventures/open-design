@@ -9,6 +9,7 @@ import { cx } from '../boardui/cx';
 import { $documentSuggestions, $resolveDocumentSuggestion } from './document-suggestion-commands';
 import { DOCUMENT_SUGGESTION_UPDATE_TAG, DocumentSuggestionInputError } from './document-suggestion-policy';
 import { attachDocumentSuggestionInput, type DocumentMode, type SuggestionNotice } from './document-suggestion-input';
+import { DOCUMENT_ICON_BUTTON } from './document-controls';
 import { useDocumentCommentPlacement } from './useDocumentCommentPlacement';
 type Review = { id: string; inserted: string; deleted: string };
 const noticeKeys: Record<SuggestionNotice, keyof Dict> = {
@@ -76,21 +77,21 @@ export function DocumentSuggestions({ mode, suspended, onPending, onOpenChange }
   };
   return <>
     {notice && !suspended ? <div role="status" className="absolute bottom-3 end-3 z-30 max-w-[calc(100%_-24px)] rounded-xl border border-border-button-default bg-background-primary-default px-3 py-2 text-body-2-regular text-text-secondary">{t(noticeKeys[notice])}</div> : null}
-    {current && !open && !suspended ? <Button ref={trigger} variant="ghost" size="small" className="absolute end-3 top-3 z-30 bg-background-primary-default" onClick={() => { focusCard.current = true; setOpen(true); }}>{t('documentSuggestions.review')}</Button> : null}
+    {current && !open && !suspended ? <Button ref={trigger} variant="secondary" size="small" className="absolute end-3 top-3 z-30 bg-background-primary-default" onClick={() => { focusCard.current = true; setOpen(true); }}>{t('documentSuggestions.review')}</Button> : null}
     {current && open && !suspended ? <aside ref={placement.card} tabIndex={-1} role="dialog" aria-label={t('documentSuggestions.review')} onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); close(); } }} className={cx('absolute z-30 flex w-80 max-w-[calc(100%_-24px)] flex-col overflow-hidden rounded-2xl border border-border-button-default bg-background-primary-default shadow-lg focus-visible:ring-2 focus-visible:ring-border-focus-ring', placement.style ? 'left-[var(--document-comment-left)] right-auto top-[var(--document-comment-top)] max-h-[var(--document-comment-max-height)]' : 'end-3 top-3 max-h-[calc(100%_-24px)]')} style={{ width: 320, ...placement.style }}>
       <header className="flex shrink-0 items-center gap-1 border-b border-separator-border px-3 py-2">
         <span className="min-w-0 flex-1 text-caption-1-regular text-text-secondary">{t('documentSuggestions.count', { current: index + 1, count: changes.length })}</span>
-        <Button variant="ghost" size="xs" iconOnly leadingIcon={RiArrowLeftSLine} aria-label={t('documentSuggestions.previous')} disabled={changes.length < 2} onClick={() => setSelected(changes[(index + changes.length - 1) % changes.length]!.id)} />
-        <Button variant="ghost" size="xs" iconOnly leadingIcon={RiArrowRightSLine} aria-label={t('documentSuggestions.next')} disabled={changes.length < 2} onClick={() => setSelected(changes[(index + 1) % changes.length]!.id)} />
-        <Button variant="ghost" size="xs" iconOnly leadingIcon={RiCloseLine} aria-label={t('common.close')} onClick={close} />
+        <Button variant="ghost" size="xs" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiArrowLeftSLine} aria-label={t('documentSuggestions.previous')} disabled={changes.length < 2} onClick={() => setSelected(changes[(index + changes.length - 1) % changes.length]!.id)} />
+        <Button variant="ghost" size="xs" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiArrowRightSLine} aria-label={t('documentSuggestions.next')} disabled={changes.length < 2} onClick={() => setSelected(changes[(index + 1) % changes.length]!.id)} />
+        <Button variant="ghost" size="xs" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiCloseLine} aria-label={t('common.close')} onClick={close} />
       </header>
       <div className="min-h-0 overflow-auto whitespace-pre-wrap break-words px-3 py-2 text-body-2-regular text-text-primary">
         {current.deleted ? <p><span className="text-text-secondary">{t('documentSuggestions.delete')} </span><del>{current.deleted}</del></p> : null}
         {current.inserted ? <p><span className="text-text-secondary">{t('documentSuggestions.insert')} </span><ins>{current.inserted}</ins></p> : null}
       </div>
       <footer className="flex shrink-0 justify-end gap-1 px-3 py-2">
-        <Button variant="ghost" size="small" disabled={mode === 'viewing'} onClick={() => review(false)}>{t('documentSuggestions.reject')}</Button>
-        <Button variant="ghost" size="small" disabled={mode === 'viewing'} onClick={() => review(true)}>{t('documentSuggestions.accept')}</Button>
+        <Button variant="secondary" size="small" disabled={mode === 'viewing'} onClick={() => review(false)}>{t('documentSuggestions.reject')}</Button>
+        <Button variant="secondary" size="small" disabled={mode === 'viewing'} onClick={() => review(true)}>{t('documentSuggestions.accept')}</Button>
       </footer>
     </aside> : null}
   </>;
