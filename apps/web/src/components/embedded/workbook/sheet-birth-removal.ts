@@ -1,3 +1,4 @@
+import { MAX_WORKBOOK_SHEET_CONTEXTS } from './workbook-draft-limits';
 import { withWorkbookRemovedConfiguration, type WorkbookSourceDeleteContext } from './sheet-delete-context';
 import { assertWorkbookPendingAcknowledgement, type WorkbookSaveAcknowledgement } from './save-provenance';
 import { canonicalWorkbookJsonValue } from '@open-design/contracts/runtime/workbook-sheet-baseline';
@@ -60,7 +61,7 @@ export function prepareWorkbookBirthRemoval(scope: WorkbookDraftScope, state: Wo
   if (!selected || index < 0 || state.desired.sheetOrder.filter(value => value === id).length !== 1
     || canonicalWorkbookJsonValue(selected.custom?.[WORKBOOK_SHEET_BIRTH_MARKER]) !== canonicalWorkbookJsonValue(origin)
     || state.source.model.sheets.some(sheet => sheet.id === id) || state.acknowledged.sheets[id]) throw Error('The selected worksheet is not an unsaved owned birth.');
-  if ((state.sheetDeletions?.length ?? 0) + (births.removals?.length ?? 0) >= 4096) throw Error('The worksheet removal recovery limit was reached.');
+  if ((state.sheetDeletions?.length ?? 0) + (births.removals?.length ?? 0) >= MAX_WORKBOOK_SHEET_CONTEXTS) throw Error('The worksheet removal recovery limit was reached.');
   const descriptor = { version: 1 as const, token: crypto.randomUUID(), generation: origin.generation, sheetId: id };
   canonicalWorkbookJsonValue(selected);
   const common = { descriptor, birthToken: origin.token, captureSourceSha256: state.source.sourceSha256, removedSheet: structuredClone(selected), removedIndex: index };

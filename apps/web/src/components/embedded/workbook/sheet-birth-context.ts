@@ -1,3 +1,4 @@
+import { MAX_WORKBOOK_SHEET_CONTEXTS } from './workbook-draft-limits';
 import { workbookBirthRemovalSchema } from './sheet-birth-removal-schema';
 import { z } from 'zod';
 import { mergeWorksheetSnapshotWithDefault, type IWorkbookData, type IWorksheetData } from '@univerjs/core';
@@ -22,7 +23,7 @@ const birthState = z.object({
   version: z.literal(1), scope: workbookDraftScopeSchema.omit({ draftId: true }).extend({ fileName: workbookCommitRequestSchema.shape.fileName }),
   axisOwner: z.object({ generation: z.string().uuid(), sourceSha256: digest }).strict(),
   highWaterId: z.number().int().min(1).max(WORKBOOK_SHEET_ID_MAX),
-  entries: z.array(entry).max(4096), removals: z.array(workbookBirthRemovalSchema).max(4096).optional(),
+  entries: z.array(entry).max(MAX_WORKBOOK_SHEET_CONTEXTS), removals: z.array(workbookBirthRemovalSchema).max(MAX_WORKBOOK_SHEET_CONTEXTS).optional(),
 }).strict().superRefine((state, check) => {
   const ids = new Set<string>(), tokens = new Set<string>();
   for (const item of state.entries) {

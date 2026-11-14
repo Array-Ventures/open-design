@@ -1,10 +1,10 @@
 import { expect, it } from 'vitest';
 import type { IMutationInfo } from '@univerjs/core';
-import { InsertSheetMutation, RemoveSheetMutation, SetRangeValuesMutation, type ISetRangeValuesMutationParams } from '@univerjs/sheets';
+import { InsertSheetMutation, RemoveSheetMutation, SetRangeValuesMutation, SetWorksheetNameMutation, type ISetRangeValuesMutationParams } from '@univerjs/sheets';
 import { createSourceDeleteHistoryFixture as fixture } from '../helpers/workbook-source-delete-fixture';
-import { nativeDeletePayloadIdentity } from '../../src/components/embedded/workbook/native-delete-history';
+import { nativeSheetPayloadIdentity } from '../../src/components/embedded/workbook/native-delete-history';
 
-it.each(['birth', 'source-delete'] as const)('offers the exact real native %s/Undo/Redo sequence only inside its admitted callback', async kind => {
+it.each(['birth', 'source-delete', 'rename'] as const)('offers the exact real native %s/Undo/Redo sequence only inside its admitted callback', async kind => {
   const calls: Array<{ expected: readonly IMutationInfo<object>[]; actual: IMutationInfo<object>[]; derived: IMutationInfo<object>[] }> = [];
   let active: typeof calls[number] | undefined;
   const f = fixture(true, { runProtectedSequence: (sequence, prospective, execute) => {
@@ -18,7 +18,7 @@ it.each(['birth', 'source-delete'] as const)('offers the exact real native %s/Un
       return result;
     } finally { active = undefined; }
   } });
-  const observed = new Set([InsertSheetMutation.id, RemoveSheetMutation.id, SetRangeValuesMutation.id]);
+  const observed = new Set([InsertSheetMutation.id, RemoveSheetMutation.id, SetRangeValuesMutation.id, SetWorksheetNameMutation.id]);
   const observer = f.commands.onCommandExecuted((command, options) => {
     if (!active || !observed.has(command.id)) return;
     if (command.params === undefined) throw Error('The actual native fixture mutation has no params.');
@@ -27,16 +27,17 @@ it.each(['birth', 'source-delete'] as const)('offers the exact real native %s/Un
   });
   try {
     if (kind === 'birth') await f.controller!.add('Permitted new sheet', 3);
-    else await f.controller!.remove('2');
+    else if (kind === 'source-delete') await f.controller!.remove('2');
+    else await f.controller!.rename('2', 'Permitted rename');
     await f.api.undo();
     await f.api.redo();
     expect(active).toBeUndefined();
     expect(calls).toHaveLength(3);
     for (const call of calls) {
       expect(call.actual.length).toBeGreaterThan(0);
-      expect(nativeDeletePayloadIdentity({ undoMutations: [], redoMutations: call.actual }))
-        .toBe(nativeDeletePayloadIdentity({ undoMutations: [], redoMutations: call.expected }));
-      expect(call.derived).toHaveLength(kind === 'source-delete' ? 1 : 0);
+      expect(nativeSheetPayloadIdentity({ undoMutations: [], redoMutations: call.actual }))
+        .toBe(nativeSheetPayloadIdentity({ undoMutations: [], redoMutations: call.expected }));
+      expect(call.derived).toHaveLength(kind === 'birth' ? 0 : 1);
       for (const derived of call.derived) {
         expect(derived.id).toBe(SetRangeValuesMutation.id);
         const params = derived.params as ISetRangeValuesMutationParams;

@@ -1,5 +1,9 @@
 # Source Delete native history checkpoint
 
+The later [origin-aware Delete and Rename checkpoint](workbook-origin-delete-rename.md)
+extends this source-present path to private unsaved/restored origins and protected
+Rename. Its source evidence remains separate from actual worker/UI qualification.
+
 This source slice connects privately issued source Delete actions to the existing
 Writer, source-preserving restoration projector and historical-asset declaration
 path. `WorkbookSheetHistoryController` remains uninstalled. It is not packaged

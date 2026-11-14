@@ -3,7 +3,7 @@ import { RemoveSheetCommand, RemoveSheetMutation, InsertSheetMutation, SheetInte
 import { expect, it } from 'vitest';
 import type { WorkbookCheckpoint, WorkbookWriteIntent } from '../../src/components/embedded/workbook/workbook-writer';
 import { standInWorkbookResult } from '../helpers/workbook-birth-transport';
-import { nativeDeletePayloadIdentity } from '../../src/components/embedded/workbook/native-delete-history';
+import { nativeSheetPayloadIdentity } from '../../src/components/embedded/workbook/native-delete-history';
 import { captureWorkbookSourceDeletion, WORKBOOK_SHEET_DELETE_MARKER } from '../../src/components/embedded/workbook/sheet-delete-context';
 import { appendRestoredSheetModel } from '../../src/components/embedded/workbook/grid-restored-sheet';
 
@@ -32,7 +32,7 @@ it.each([false, true])('matches the original native Delete dependency sequence, 
     const inserted = (insert.params as { sheet: { custom?: Record<string, unknown> } }).sheet;
     delete inserted.custom![WORKBOOK_SHEET_DELETE_MARKER];
     if (!Object.keys(inserted.custom!).length) delete inserted.custom;
-    expect(JSON.parse(nativeDeletePayloadIdentity(ownedData))).toEqual(JSON.parse(nativeDeletePayloadIdentity(data)));
+    expect(JSON.parse(nativeSheetPayloadIdentity(ownedData))).toEqual(JSON.parse(nativeSheetPayloadIdentity(data)));
     expect(owned.book.save().sheets).toEqual(f.book.save().sheets);
     expect(owned.book.save().sheetOrder).toEqual(f.book.save().sheetOrder);
     expect(owned.book.getActiveSheet().getSheetId()).toBe(f.book.getActiveSheet().getSheetId());
