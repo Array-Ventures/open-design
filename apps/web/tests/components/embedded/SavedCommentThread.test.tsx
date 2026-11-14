@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { PreviewComment, PreviewCommentReply } from '@open-design/contracts';
+import { CommentReplyError } from '../../../src/components/embedded/comment-reply-api';
 import { SavedCommentThread } from '../../../src/components/embedded/SavedCommentThread';
 const api = vi.hoisted(() => ({ fetchCommentReplies: vi.fn(), createCommentReply: vi.fn(), editCommentReply: vi.fn(), deleteCommentReply: vi.fn() }));
 const uploads = vi.hoisted(() => ({ prepare: vi.fn(), clear: vi.fn() }));
@@ -316,4 +317,56 @@ it('keeps an uncertain reply retry and discard guard when newer text is cleared'
   fireEvent.click(screen.getByRole('button', { name: 'Retry reply save' }));
   await screen.findByText('Original note');
   expect(screen.getByRole('textbox')).toHaveValue('');
+});
+
+it('uses the deletion notice for an initial expected 404 without clearing the reply draft', async () => {
+  api.fetchCommentReplies.mockRejectedValue(new CommentReplyError(404));
+  render(<SavedCommentThread {...props()} deleted />);
+  const input = screen.getByRole('textbox', { name: 'Reply' });
+  fireEvent.change(input, { target: { value: 'Keep the deleted thread draft' } });
+  await waitFor(() => expect(screen.queryByText('Loading comments…')).toBeNull());
+  expect(screen.getByText('This thread was deleted. Your unsaved reply is still here.')).toBeVisible();
+  expect(screen.queryByText('Comments could not be loaded.')).toBeNull();
+  expect(input).toHaveValue('Keep the deleted thread draft');
+  expect(screen.getByRole('button', { name: 'Add reply' })).toBeDisabled();
+  expect(api.createCommentReply).not.toHaveBeenCalled();
+});
+
+it('reconciles a polling 404 only after deletion is known and keeps later server failures visible', async () => {
+  vi.useFakeTimers(); vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+  const p = props(); let view!: ReturnType<typeof render>;
+  await act(async () => { view = render(<SavedCommentThread {...p} />); });
+  const input = screen.getByRole('textbox', { name: 'Reply' });
+  fireEvent.change(input, { target: { value: 'Same pending reply' } });
+  api.fetchCommentReplies.mockRejectedValue(new CommentReplyError(404));
+  await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+  expect(screen.getByText('Comments could not be loaded.')).toBeVisible();
+  view.rerender(<SavedCommentThread {...p} deleted />);
+  expect(screen.queryByText('Comments could not be loaded.')).toBeNull();
+  expect(screen.getByRole('textbox', { name: 'Reply' })).toBe(input);
+  expect(input).toHaveValue('Same pending reply');
+  api.fetchCommentReplies.mockRejectedValue(new CommentReplyError(500));
+  await act(async () => { await vi.advanceTimersByTimeAsync(30000); });
+  expect(screen.getByText('Comments could not be loaded.')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Reload comments' })).toBeEnabled();
+  expect(input).toHaveValue('Same pending reply'); expect(api.createCommentReply).not.toHaveBeenCalled();
+});
+
+it.each([new CommentReplyError(403), new CommentReplyError(500), new Error('Offline')])('does not hide an unexpected read failure for a deleted thread: %s', async failure => {
+  api.fetchCommentReplies.mockRejectedValue(failure);
+  render(<SavedCommentThread {...props()} deleted />);
+  expect(await screen.findByText('Comments could not be loaded.')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Reload comments' })).toBeEnabled();
+});
+
+it('keeps a failed write visible when deletion is subsequently confirmed', async () => {
+  api.createCommentReply.mockRejectedValue(new CommentReplyError(404));
+  const p = props(), view = render(<SavedCommentThread {...p} />);
+  const input = screen.getByRole('textbox', { name: 'Reply' });
+  fireEvent.change(input, { target: { value: 'Unsaved after write refusal' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add reply' }));
+  expect(await screen.findByText('The reply could not be saved. Your draft is still available.')).toBeVisible();
+  view.rerender(<SavedCommentThread {...p} deleted />);
+  expect(screen.getByText('The reply could not be saved. Your draft is still available.')).toBeVisible();
+  expect(input).toHaveValue('Unsaved after write refusal'); expect(screen.getByRole('button', { name: 'Add reply' })).toBeDisabled();
 });

@@ -124,3 +124,20 @@ initial combined test incorrectly expected draft retention across that identity
 boundary; separate final cases verify stable-member Viewing-mode retention and
 identity-withdrawal reset/disabled-write behavior. This source checkpoint does
 not claim cross-account draft retention. Packaged browser acceptance is pending.
+
+### Expected missing-thread reads
+
+The actual 112 deleted-thread walk-through retained the reply and disabled its
+writes, but the reply poll's 404 also displayed the generic red Comments could
+not be loaded message beside the accurate deletion notice. The next source
+checkpoint distinguishes read failure from write failure. Only a typed 404 read
+for a root already confirmed deleted uses the existing deletion notice alone.
+An unconfirmed 404, permission/server refusal or network failure remains a
+retryable load error; write failures remain visible even after deletion.
+
+Initial-load and polling/deletion-transition component cases failed before this
+change (two failures, 30 passing cases). Final cases retain the exact reply,
+disable submission, cover 403/500/network errors and preserve a failed write.
+Abort signals, request versions, thread/member reset, draft protection and the
+underlying requests are unchanged. This is source verification; actual packaged
+browser acceptance of the notice-only change is still pending.
