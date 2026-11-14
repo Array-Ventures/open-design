@@ -69,3 +69,23 @@ qualify the real production companion with row/column actions, actual formula
 readback, Save, post-ACK Undo/Redo and independent XLSX inspection before removing
 the patch. The frozen72 production failure and subsequent candidate qualification
 are recorded separately; source test success does not claim a fixed bundle.
+
+The core patch also adds optional public `ICommand.asyncOnly` registration
+metadata. `syncExecuteCommand` refuses such a registered command before trigger
+attachment, listeners, command-stack changes or handler invocation. The existing
+Promise check runs after invocation and cannot prevent a rejected synchronous
+call from causing a delayed async side effect. `executeCommand` and ordinary
+synchronous registrations remain unchanged. No execution-option stamp or RPC
+payload is added.
+
+A future owned worksheet-history controller can register a scoped wrapper using
+a fresh command object and call the original exported Undo/Redo handler only
+after durable protection. It must not mutate the global exported commands.
+Actual source tests prove blocked storage, denied protection, exact retry and no
+late Undo after synchronous refusal. Entry-loader tests cover ES/CJS/compat;
+the unused standalone UMD is not patched or qualified. Public keyboard/toolbar,
+post-await unit/top-entry/lease validation, membership projection and production
+browser qualification remain mandatory before installing that controller. No
+wrapper or new controls are installed by this dependency checkpoint. Refresh via
+`pnpm patch` / `pnpm patch-commit`, preserve the existing primitive inspection
+patch, and rerun `workbook-sheet-history-command.test.ts` when updating the pin.

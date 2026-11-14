@@ -1,8 +1,16 @@
 diff --git a/lib/cjs/index.js b/lib/cjs/index.js
-index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..1bd4c07bf34e6e199cbe6c11d3ba18f2e63751cf 100644
+index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..de579ef6e6db5d9617f0d9130ec414c2629003d3 100644
 --- a/lib/cjs/index.js
 +++ b/lib/cjs/index.js
-@@ -25602,6 +25602,50 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -2211,6 +2211,7 @@ let CommandService = class CommandService extends Disposable {
+ 			const item = this._commandRegistry.getCommand(id);
+ 			if (item) {
+ 				const [command] = item;
++				if (command.asyncOnly === true) throw new TypeError(`[CommandService]: Async-only command "${id}" cannot be executed synchronously.`);
+ 				const commandInfo = {
+ 					id: command.id,
+ 					type: command.type,
+@@ -25602,6 +25603,50 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
@@ -54,10 +62,18 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..1bd4c07bf34e6e199cbe6c11d3ba18f2
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
 diff --git a/lib/es/index.js b/lib/es/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..c5ccbd24b0e8a206d4cb7f6a01ac2c4556a10204 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..e30218e976d8028a051527de936a54da4ce0f7b4 100644
 --- a/lib/es/index.js
 +++ b/lib/es/index.js
-@@ -25573,6 +25573,50 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -2182,6 +2182,7 @@ let CommandService = class CommandService extends Disposable {
+ 			const item = this._commandRegistry.getCommand(id);
+ 			if (item) {
+ 				const [command] = item;
++				if (command.asyncOnly === true) throw new TypeError(`[CommandService]: Async-only command "${id}" cannot be executed synchronously.`);
+ 				const commandInfo = {
+ 					id: command.id,
+ 					type: command.type,
+@@ -25573,6 +25574,50 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
@@ -109,10 +125,18 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..c5ccbd24b0e8a206d4cb7f6a01ac2c45
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
 diff --git a/lib/index.js b/lib/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..c5ccbd24b0e8a206d4cb7f6a01ac2c4556a10204 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..e30218e976d8028a051527de936a54da4ce0f7b4 100644
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -25573,6 +25573,50 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -2182,6 +2182,7 @@ let CommandService = class CommandService extends Disposable {
+ 			const item = this._commandRegistry.getCommand(id);
+ 			if (item) {
+ 				const [command] = item;
++				if (command.asyncOnly === true) throw new TypeError(`[CommandService]: Async-only command "${id}" cannot be executed synchronously.`);
+ 				const commandInfo = {
+ 					id: command.id,
+ 					type: command.type,
+@@ -25573,6 +25574,50 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
@@ -163,6 +187,19 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..c5ccbd24b0e8a206d4cb7f6a01ac2c45
  	getUndoRedoStatus(unitId) {
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
+diff --git a/lib/types/services/command/command.service.d.ts b/lib/types/services/command/command.service.d.ts
+index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..d169600c3c11394edf095dd5fdb5ef750717f883 100644
+--- a/lib/types/services/command/command.service.d.ts
++++ b/lib/types/services/command/command.service.d.ts
+@@ -67,6 +67,8 @@ export interface ICommand<P extends object = object, R = boolean> {
+      * The type of the command.
+      */
+     readonly type: CommandType;
++    /** Refuse synchronous execution before listeners or handler invocation. */
++    readonly asyncOnly?: boolean;
+     /**
+      * The handler of the command.
+      * @param accessor The accessor to the dependency injection container.
 diff --git a/lib/types/services/undoredo/undoredo.service.d.ts b/lib/types/services/undoredo/undoredo.service.d.ts
 index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..af494bb27e8a141906209cb1110fc212f2308d15 100644
 --- a/lib/types/services/undoredo/undoredo.service.d.ts
