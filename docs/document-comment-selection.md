@@ -104,6 +104,28 @@ reply/chat drafts were cleared. No chat handoff or external message was sent.
 
 ![Dark 390-wide saved thread with a retained unsent reply](images/document-comment-workflow/dark-phone-thread.png)
 
+### Composer surface follow-up (source checked, packaged acceptance pending)
+
+A fresh scoped reference inspection measured a transparent, borderless focused
+comment editor with no inner shadow. Candidate 107's real textarea was already
+transparent, but its enclosing field supplied an opaque fill, two-pixel inset
+ring, eight-pixel padding and a fixed three-row input in both themes.
+
+The separate follow-up keeps the existing BoardUI textarea and removes that
+nested surface for document root composers only. It grows from one to five rows,
+then scrolls; keyboard-visible focus is indicated on the outer comment card.
+List placement, saved replies and mention batching/caret ownership are unchanged.
+
+The integration sizing test fails against the old three-row source and passes
+the actual component sizing path with explicit jsdom layout measurements. All 80
+focused checks pass, including the unchanged 69 functional checks and existing
+BoardUI controls. A separate real-Chromium hydrated component fixture with
+compiled Tailwind rules verified native 20→60→100→20-pixel grow/cap/shrink, exact
+text retention, transparent/no-inner-ring presentation, and keyboard Tab focus
+showing the outer ring and removing it after focus leaves. This is bounded
+component evidence, not a new immutable companion or full product visual proof.
+Actual paired light/dark desktop/phone inspection and rapid typing remain pending.
+
 ### Remaining reference and visual differences
 
 The composer still has a nested gray textarea fill/focus ring, visibly heavier
