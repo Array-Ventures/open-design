@@ -22,6 +22,15 @@ plain-string source checks. Receipts are
 `/tmp/workbook-protected-origins-pr-{install,types,guard,focused}.log`.
 Independent source reviewers did not rerun tests.
 
+A later real SDK/IndexedDB regression found that Add → Undo could look clean
+without a save receipt, causing generic persistence to delete a still-owned
+birth/removal/high-water pool. The isolated correction `4e7cd5e6` is included:
+birth metadata now keeps that same draft checkpoint durable. After integration,
+**80 cases in seven affected suites**, full workspace types and guard passed;
+the earlier keyboard/string source is unchanged. Follow-up receipts are
+`/tmp/workbook-protected-origins-pr-birth-{followup,types,guard}.log`. This is
+retention of data, not persistence of native SDK issuer identities across reload.
+
 The reviewed buried-entry defect is corrected: complete native ID sets retain
 older items, while payload inspection remains top-only. Four genuine SDK REDs
 and the actual preserved Undo/Redo traversals are documented in the retirement
