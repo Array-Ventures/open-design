@@ -128,6 +128,23 @@ function inlineBackground(owner: HTMLElement): boolean {
   for (let current: HTMLElement | null = owner; current && inline.has(current.tagName.toLowerCase()); current = current.parentElement) if (current.style.getPropertyValue('background-color')) return true;
   return false;
 }
+/** One PRE receipt can describe its direct CODE only when every glyph shares
+ * that exact inline context. Mixed surrounding text or rich descendants need
+ * separate ownership; never borrow one child's paint for the entire block. */
+function blockCodePresentationOwner(owner: HTMLElement): HTMLElement | null {
+  if (owner.tagName !== 'PRE') return owner;
+  const codes = owner.querySelectorAll('code');
+  if (!codes.length) return owner;
+  const code = codes[0] as HTMLElement;
+  // Inspect authored declarations: CSSOM expands a color-only background
+  // shorthand into additional default longhands that are not new intent.
+  if ((code.getAttribute('style') ?? '').split(';').some(declaration => declaration.trim()
+    && !['color','background','background-color','font-size'].includes(declaration.slice(0,declaration.indexOf(':')).trim().toLowerCase()))) return null;
+  if (codes.length !== 1 || code.parentElement !== owner
+    || Array.from(owner.childNodes).some(node => node !== code && (node.nodeType !== 3 || Boolean(node.textContent)))
+    || Array.from(code.childNodes).some(node => node.nodeType !== 3 && !(node.nodeType === 1 && (node as Element).tagName === 'BR' && !(node as Element).attributes.length))) return null;
+  return code;
+}
 /** Resolve the actual print canvas after print media/color-scheme is installed. */
 export function documentCanvasColor(document: Document, read: DocumentColorReader): DocumentColor | null {
   const probe = document.createElement('span'); probe.style.cssText = 'display:none;background-color:Canvas';
@@ -223,6 +240,7 @@ export function normalizeDocumentPresentationOwners(document: Document, requests
     const owner = elements.get(request.id)!;
     if (request.kind === 'cell' ? !['TD','TH'].includes(owner.tagName) : request.kind === 'divider' ? owner.tagName !== 'HR' : request.kind === 'heading' ? !/^H[1-6]$/.test(owner.tagName) : !['SPAN','CODE','PRE'].includes(owner.tagName)) return fail();
     const presentation: import('./presentation.js').NormalizedDocumentPresentation = {};
+    const textOwner = blockCodePresentationOwner(owner) ?? fail();
     if (request.kind === 'heading') {
       const main = owner.parentElement, level = Number(owner.tagName.slice(1));
       const canonicalFrame = document.body.children.length === 1 && main?.tagName === 'MAIN'
@@ -245,8 +263,7 @@ export function normalizeDocumentPresentationOwners(document: Document, requests
       const codeContext = ['CODE','PRE'].includes(owner.tagName);
       if ((authoredSize || codeContext) && (!codeContext || Boolean(owner.textContent))) {
         const view = document.defaultView!;
-        const measured = owner.tagName === 'PRE' && owner.children.length === 1 && owner.firstElementChild?.tagName === 'CODE' ? owner.firstElementChild : owner;
-        const computed = view.getComputedStyle(measured);
+        const computed = view.getComputedStyle(textOwner);
         const px = (value: string): number => /^\d+(?:\.\d+)?px$/.test(value) ? Number.parseFloat(value) : NaN;
         let block: HTMLElement | null = owner.tagName === 'PRE' ? owner : owner.parentElement;
         while (block && !['P','H1','H2','H3','H4','H5','H6','LI','PRE','TD','TH','BLOCKQUOTE','MAIN','BODY'].includes(block.tagName)) block = block.parentElement;
@@ -281,17 +298,17 @@ export function normalizeDocumentPresentationOwners(document: Document, requests
         return { id: request.id, presentation };
       }
     }
-    const background = documentEffectiveBackground(owner, read, canvas); if (!background) return fail();
+    const background = documentEffectiveBackground(textOwner, read, canvas); if (!background) return fail();
     if (request.kind === 'cell') {
       // Never put automatic inherited foreground on a parent cell.
       if (owner.style.getPropertyValue('background-color')) presentation.background = opaqueDocumentColorHex(background);
     } else {
-      if (inlineBackground(owner)) presentation.background = opaqueDocumentColorHex(background);
-      if (authoredForeground(owner)) {
-        const ink = read(document.defaultView!.getComputedStyle(owner).color); if (!ink) return fail();
+      if (inlineBackground(textOwner)) presentation.background = opaqueDocumentColorHex(background);
+      if (authoredForeground(textOwner)) {
+        const ink = read(document.defaultView!.getComputedStyle(textOwner).color); if (!ink) return fail();
         presentation.foreground = opaqueDocumentColorHex(compositeDocumentColor(ink, background)); presentation.foregroundSource = 'authored';
       } else {
-        const correction = documentTextInk(owner, read, canvas);
+        const correction = documentTextInk(textOwner, read, canvas);
         if (correction) { const ink = read(correction); if (!ink) return fail(); presentation.foreground = opaqueDocumentColorHex(ink); presentation.foregroundSource = 'inherited'; }
       }
     }

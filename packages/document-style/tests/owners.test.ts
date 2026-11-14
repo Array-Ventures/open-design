@@ -224,3 +224,70 @@ it('does not create a nonempty size owner for glyph-free empty code that the nat
     expect(normalizeDocumentColorOwners(document,[{id:'empty',kind:'inline'}],attribute,[style],read)).toEqual([{id:'empty',presentation:{}}]);
   } finally { range.mockRestore(); }
 });
+
+function mockBlockCodeMeasurement() {
+  const original = window.getComputedStyle.bind(window);
+  return vi.spyOn(window,'getComputedStyle').mockImplementation(element => new Proxy(original(element),{get(target,key) {
+    if (key === 'fontSize') return element.tagName === 'CODE' ? '21.3333px' : '14px';
+    if (key === 'lineHeight') return element.tagName === 'CODE' ? '32px' : '21px';
+    const value = Reflect.get(target,key,target); return typeof value === 'function' ? value.bind(target) : value;
+  }}));
+}
+
+it('preserves uniform child CODE paint through its exact PRE owner', () => {
+  source(`<pre ${attribute}="block"><code style="font-size:16pt;color:red;background-color:yellow">Colored</code></pre>`);
+  const computed = mockBlockCodeMeasurement();
+  try {
+    expect(normalizeDocumentColorOwners(document,[{id:'block',kind:'inline'}],attribute,[style],read)).toEqual([{id:'block',presentation:{
+      fontSizePt:16,fontLineHeightPt:24,fontSizeSource:'code-context',foreground:'FF0000',foregroundSource:'authored',background:'FFFF00',
+    }}]);
+  } finally { computed.mockRestore(); }
+});
+
+it.each([
+  'outside<code style="color:red">inside</code>',
+  '<code style="color:red">first</code><code style="color:blue">second</code>',
+  '<code><span style="color:red">nested</span>tail</code>',
+])('refuses unqualified mixed block code rather than assigning one child paint to the whole PRE: %s', content => {
+  source(`<pre ${attribute}="block">${content}</pre>`);
+  const computed = mockBlockCodeMeasurement();
+  try {
+    expect(() => normalizeDocumentColorOwners(document,[{id:'block',kind:'inline'}],attribute,[style],read)).toThrow('representable');
+  } finally { computed.mockRestore(); }
+});
+
+it.each([
+  ['color:red', {foreground:'FF0000',foregroundSource:'authored'}],
+  ['background:yellow', {background:'FFFF00'}],
+  ['background-color:rgb(20,20,20)', {background:'141414',foreground:'FFFFFF',foregroundSource:'inherited'}],
+  ['color:white;background-color:yellow', {background:'FFFF00',foreground:'FFFFFF',foregroundSource:'authored'}],
+] as const)('retains uniform CODE paint provenance without overriding authored ink: %s', (paint, expected) => {
+  source(`<pre ${attribute}="block"><code style="${paint}">Code</code></pre>`);
+  const computed = mockBlockCodeMeasurement();
+  try {
+    expect(normalizeDocumentColorOwners(document,[{id:'block',kind:'inline'}],attribute,[style],read)).toEqual([{id:'block',presentation:{
+      fontSizePt:16,fontLineHeightPt:24,fontSizeSource:'code-context',...expected,
+    }}]);
+  } finally { computed.mockRestore(); }
+});
+
+it.each(['font-weight:bold','text-decoration:underline','white-space:normal','width:100px'])('refuses unowned child CODE styling rather than claiming complete presentation: %s', unowned => {
+  source(`<pre ${attribute}="block"><code style="color:red;${unowned}">Code</code></pre>`);
+  const computed = mockBlockCodeMeasurement();
+  try {
+    expect(() => normalizeDocumentColorOwners(document,[{id:'block',kind:'inline'}],attribute,[style],read)).toThrow('representable');
+  } finally { computed.mockRestore(); }
+});
+
+it.each(['url(https://fixture.test/image.png)','linear-gradient(red,blue)'])('retains the existing refusal for non-color CODE background shorthand: %s', background => {
+  source(`<pre ${attribute}="block"><code style="background:${background}">Code</code></pre>`);
+  expect(documentColorLayoutQualified(document,[style])).toBe(false);
+  expect(() => normalizeDocumentColorOwners(document,[{id:'block',kind:'inline'}],attribute,[style],read)).toThrow('representable');
+});
+
+it('does not admit authored CODE decoration or paint through an unowned stylesheet', () => {
+  source(`<pre ${attribute}="block"><code>Code</code></pre>`);
+  document.head.insertAdjacentHTML('beforeend','<style>code{color:red;text-decoration:underline}</style>');
+  expect(documentColorLayoutQualified(document,[style])).toBe(false);
+  expect(() => normalizeDocumentColorOwners(document,[{id:'block',kind:'inline'}],attribute,[style],read)).toThrow('representable');
+});
