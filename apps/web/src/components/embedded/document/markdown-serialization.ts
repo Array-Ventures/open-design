@@ -1,3 +1,4 @@
+import { documentCodeNeedsHtml } from './document-code-paint';
 import { $convertToMarkdownString, TRANSFORMERS, CODE, LINK, type ElementTransformer, type TextMatchTransformer } from '@lexical/markdown';
 import { $generateHtmlFromNodes } from '@lexical/html';
 import { $getRoot, $getState, $isElementNode, $isLineBreakNode, $isTextNode, type LexicalEditor, type LexicalNode } from 'lexical';
@@ -24,6 +25,7 @@ export function serializeMarkdownDocument(editor: LexicalEditor): string {
   };
   const code = { ...CODE, export: (node: LexicalNode) => {
     if (!$isCodeNode(node)) return null;
+    if (documentCodeNeedsHtml(node)) return htmlFor(node);
     const text = node.getTextContent();
     const longest = Math.max(0, ...[...text.matchAll(/`+/g)].map(match => match[0].length));
     const fence = '`'.repeat(Math.max(3, longest + 1));

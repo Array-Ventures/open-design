@@ -185,6 +185,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
       // cache only this frame's trusted context, never an executable owner.
       window.addEventListener('message', receiveManagement);
       layer.own(() => { window.removeEventListener('message', receiveManagement); management.dispose(); });
+      management.announceReady();
       let disableMembershipGrid = () => {};
       let arrayOwner: ReturnType<typeof ownArrayProjectionWorker> | null = null;
       let arrayInput: ReturnType<typeof ownArrayInputNormalization> | null = null;
@@ -268,7 +269,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
         && model.worksheetMembershipEditable === true && !format.current?.blocked && workbook.getWorkbookPermission().canEdit()
         && !univer.__getInjector().get(kernel.IEditorBridgeService).isVisible().visible);
       const calculationChanged = (value: WorkbookCalculationState) => { if (current()) { calculationState.current = value; publish.current(); } };
-      const scalarCalculation = arraySeed ? null : attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, calculationChanged, membershipCurrent);
+      const scalarCalculation = arraySeed ? null : attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, calculationChanged, membershipCurrent, { ready: univer.__getInjector().get(LifecycleService).onStage(LifecycleStages.Rendered), available: () => current() && Boolean(univer.__getInjector().get(IRenderManagerService).getRenderUnitById(id)) });
       const calculation = scalarCalculation ?? attachWorkbookArrayCalculation(univer, univerAPI, model, original, workbook.save(), sourceSha256!, readSnapshot, arrayOwner, calculationChanged, { ready: univer.__getInjector().get(LifecycleService).onStage(LifecycleStages.Rendered), available: () => Boolean(univer.__getInjector().get(IRenderManagerService).getRenderUnitById(id)) }, guardedArrayInput!);
       dispose = () => {
         try { const sheet = workbook.getActiveSheet(); view.current = { id, sourceFormat: model.sourceFormat, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() }; }
@@ -410,6 +411,6 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
     <WorkbookStructureMenu controller={structureMenu.current} resetKey={`${id}:${sourceSha256 ?? ""}:${kernel}`} disabled={structureBlocked || Boolean(formatScope?.blocked) || Boolean(formatScope?.saving) || !editable}>
     <div ref={container} className={cx(styles.grid, 'h-full min-h-0 w-full')} role="region" aria-label="Workbook grid" tabIndex={0} />
     </WorkbookStructureMenu>
-    {error ? <div role="alert" className="absolute inset-0 bg-background-primary-default p-4 text-body-2-regular text-text-error-primary">{error}</div> : null}
+    {error ? <div role="alert" className="absolute inset-0 z-20 bg-background-primary-default p-4 text-body-2-regular text-text-error-primary">{error}</div> : null}
   </div>;
 }

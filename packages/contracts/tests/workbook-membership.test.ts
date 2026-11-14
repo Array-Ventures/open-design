@@ -35,3 +35,13 @@ it('matches the installed native validator sentinel case boundary', () => {
   expect(schemas.workbookMembershipVisibilitySchema.safeParse({ ...base, membership: { ...membership, ownerId: 'ffffffff-ffff-ffff-ffff-ffffffffffff' } }).success).toBe(true);
   expect(schemas.workbookMembershipVisibilitySchema.safeParse({ ...base, membership: { ...membership, ownerId: 'FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF' } }).success).toBe(false);
 });
+
+it("validates readiness correlation without changing the old strict controls request", () => {
+  const probe = { type: "studio:workbook-membership-probe", projectId: base.projectId, controllerId: base.controllerId, version: 1, handshakeId: scope.requestId };
+  expect(schemas.workbookMembershipProbeSchema.parse(probe)).toEqual(probe);
+  const ready = { type: "studio:workbook-membership-ready", projectId: base.projectId, controllerId: base.controllerId, version: 1, documentId: scope.requestId, epoch: 1 };
+  expect(schemas.workbookMembershipReadySchema.parse(ready)).toEqual(ready);
+  expect(schemas.workbookMembershipReadySchema.parse({ ...ready, handshakeId: scope.requestId })).toEqual({ ...ready, handshakeId: scope.requestId });
+  for (const change of [{ version: 2 }, { epoch: 0 }, { epoch: NaN }, { epoch: 1.5 }, { epoch: Number.MAX_SAFE_INTEGER + 1 }, { documentId: "bad" }, { handshakeId: "bad" }, { capability: true }]) expect(schemas.workbookMembershipReadySchema.safeParse({ ...ready, ...change }).success).toBe(false);
+  expect(schemas.workbookMembershipControlsRequestSchema.safeParse({ type: "studio:artifact-request", projectId: base.projectId, controllerId: base.controllerId, workbookMembershipVersion: 1, handshakeId: scope.requestId }).success).toBe(false);
+});

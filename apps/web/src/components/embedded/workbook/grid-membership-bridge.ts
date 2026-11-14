@@ -1,4 +1,4 @@
-import { workbookMembershipActionSchema, workbookMembershipControlsRequestSchema, workbookMembershipResultSchema, workbookMembershipVisibilitySchema,
+import { workbookMembershipActionSchema, workbookMembershipControlsRequestSchema, workbookMembershipResultSchema, workbookMembershipVisibilitySchema, workbookMembershipProbeSchema, workbookMembershipReadySchema,
   type WorkbookMembershipAction, type WorkbookMembershipResult, type WorkbookMembershipVisibility } from '@open-design/contracts/runtime/workbook';
 
 type LegacyVisibility = Omit<WorkbookMembershipVisibility, 'membership'>;
@@ -35,10 +35,17 @@ interface Options {
 interface Current { state: WorkbookMembershipBridgeState; stamp: WorkbookMembershipPrivateStamp; fingerprint: string; revision: number }
 interface Active { current: Current; request: WorkbookMembershipAction; identity: string; done: Promise<void> }
 const CACHE_LIMIT = 32;
+// One identity per iframe document, shared across disposable grid bridges.
+// It is readiness correlation data, never a native issuer or permission.
+let documentId: string | undefined;
+let documentEpoch = 0;
 
 /** Negotiated UI adapter only. No SDK command, durable issuance or independent
  * visibility publisher. The installer owns event attachment and disposal. */
 export function workbookMembershipBridge(options: Options) {
+  if (documentEpoch === Number.MAX_SAFE_INTEGER) throw Error('Worksheet readiness epochs are exhausted. Reopen this frame.');
+  const readiness = { documentId: documentId ??= crypto.randomUUID(), epoch: ++documentEpoch };
+  let announced = false;
   let disposed = false, exhausted = false, revision = 0;
   let withdrawing = false;
   let current: Current | null = null;
@@ -111,6 +118,15 @@ export function workbookMembershipBridge(options: Options) {
   };
   const receive = async (event: Pick<MessageEvent, 'source' | 'origin' | 'data'>): Promise<void> => {
     if (disposed || event.source !== options.parentWindow || event.origin !== options.origin) return;
+    const probe = workbookMembershipProbeSchema.safeParse(event.data);
+    if (probe.success) {
+      const scope = options.getScope ? trustedScope() : refresh()?.stamp;
+      if (scope && contextKey(probe.data) === contextKey(scope)) {
+        options.parentWindow.postMessage(workbookMembershipReadySchema.parse({ type: 'studio:workbook-membership-ready',
+          version: 1, projectId: scope.projectId, controllerId: scope.controllerId, ...readiness, handshakeId: probe.data.handshakeId }), options.origin);
+      }
+      return;
+    }
     const negotiation = workbookMembershipControlsRequestSchema.safeParse(event.data);
     if (negotiation.success) {
       // Cache only against an independently known frame context. In the
@@ -185,5 +201,13 @@ export function workbookMembershipBridge(options: Options) {
       if (!disposed || withdrawing) { withdrawing = false; try { options.publish(); } catch { /* No automatic retry. */ } }
     }
   };
-  return { decorate, receive, dispose() { disposed = true; results.clear(); current = null; negotiated = null; } };
+  return { decorate, receive, announceReady() {
+    if (disposed || announced) return;
+    const scope = options.getScope ? trustedScope() : refresh()?.stamp;
+    if (!scope) return;
+    // The installer calls this only after its receive listener exists.
+    announced = true;
+    options.parentWindow.postMessage(workbookMembershipReadySchema.parse({ type: 'studio:workbook-membership-ready',
+      version: 1, projectId: scope.projectId, controllerId: scope.controllerId, ...readiness }), options.origin);
+  }, dispose() { disposed = true; results.clear(); current = null; negotiated = null; } };
 }

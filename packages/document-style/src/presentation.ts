@@ -2,8 +2,22 @@
 export const documentFontSizePattern = /^(?:\d+(?:\.\d+)?)(?:px|pt|em|rem|%)$/;
 export const DOCUMENT_FONT_MAX_PT = 1638.5;
 export const DOCUMENT_FONT_LINE_MAX_PT = 3277;
-export interface DocumentPresentationRequest { id: string; kind: 'cell' | 'inline' | 'divider' | 'heading' }
-export interface NormalizedDocumentPresentation {
+export interface DocumentPresentationRequest { id: string; kind: 'cell' | 'inline' | 'divider' | 'heading' | 'code-block' }
+export interface DocumentCodeBlockGeometry {
+  codeBlockSource: 'canonical-pre';
+  codeBlockBeforePt: number;
+  codeBlockAfterPt: number;
+  codeBlockStartPt: number;
+  codeBlockEndPt: number;
+  codeBlockLineCount: number;
+}
+export const documentCodeBlockGeometryKeys = ['codeBlockSource','codeBlockBeforePt','codeBlockAfterPt','codeBlockStartPt','codeBlockEndPt','codeBlockLineCount'] as const;
+export function validDocumentCodeBlockGeometry<T extends Partial<DocumentCodeBlockGeometry>>(value: T): value is T & DocumentCodeBlockGeometry {
+  return value.codeBlockSource === 'canonical-pre'
+    && [value.codeBlockBeforePt,value.codeBlockAfterPt,value.codeBlockStartPt,value.codeBlockEndPt].every(point => typeof point === 'number' && Number.isFinite(point) && point >= 0 && point <= DOCUMENT_FONT_LINE_MAX_PT)
+    && Number.isSafeInteger(value.codeBlockLineCount) && value.codeBlockLineCount! > 0;
+}
+export interface NormalizedDocumentPresentation extends Partial<DocumentCodeBlockGeometry> {
   foreground?: string;
   background?: string;
   foregroundSource?: 'authored' | 'inherited';
