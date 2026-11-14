@@ -2,9 +2,9 @@ import { z } from 'zod';
 import { workbookActionSheetIdSchema, workbookSheetActionDescriptorSchema as workbookSheetDeleteDescriptorSchema } from './sheet-action-descriptor';
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex } from '@noble/hashes/utils';
-import { canonicalWorkbookSheetBaseline, workbookSheetBaseline, workbookSheetBaselineSchema, WORKBOOK_SHEET_BASELINE_VERSION, type WorkbookSheetBaselineIdentity } from '@open-design/contracts/runtime/workbook-sheet-baseline';
+import { canonicalWorkbookJsonValue, canonicalWorkbookSheetBaseline, workbookSheetBaseline, workbookSheetBaselineSchema, WORKBOOK_SHEET_BASELINE_VERSION, type WorkbookSheetBaselineIdentity } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import type { IWorkbookData, Worksheet } from '@univerjs/core';
-import { workbookCommitRequestSchema } from '@open-design/contracts/runtime/workbook';
+import { WORKBOOK_MODEL_LIMITS, workbookCommitRequestSchema } from '@open-design/contracts/runtime/workbook';
 import type { WorkbookCheckpoint } from './workbook-writer';
 import { workbookDraftScopeSchema, workbookGridSnapshotSchema, type WorkbookDraftScope } from './workbook-draft-schema';
 import { workbookSaveProvenanceSchema, type WorkbookSaveAcknowledgement } from './save-provenance';
@@ -16,6 +16,7 @@ export const WORKBOOK_SHEET_DELETE_MARKER = 'evebotSheetDeletion';
 const sheetId = workbookActionSheetIdSchema;
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const templateSideSchema = z.enum(['pre-save', 'saved-target']);
+const removedSheetSchema = z.preprocess(raw => { canonicalWorkbookJsonValue(raw); return raw; }, workbookGridSnapshotSchema.shape.sheets.valueSchema);
 export { workbookSheetActionDescriptorSchema as workbookSheetDeleteDescriptorSchema } from './sheet-action-descriptor';
 export type WorkbookSheetDeleteDescriptor = z.infer<typeof workbookSheetDeleteDescriptorSchema>;
 /** Serialized context is data, never proof of a Delete or a historical grant.
@@ -27,8 +28,17 @@ export const workbookSourceDeleteContextSchema = z.object({
   axisOwner: z.object({ generation: z.string().uuid(), sourceSha256: digest }).strict(),
   receiptAssociation: workbookSaveProvenanceSchema.optional(),
   templateSide: templateSideSchema.optional(),
+  removedSheet: removedSheetSchema.optional(),
+  removedIndex: z.number().int().min(0).max(63).optional(),
 }).strict().superRefine((context, check) => {
-  const { descriptor, receiptAssociation: receipt } = context;
+  const { descriptor, receiptAssociation: receipt, removedSheet, removedIndex } = context;
+  if ((removedSheet === undefined) !== (removedIndex === undefined)) check.addIssue({ code: 'custom', message: 'The removed worksheet configuration and position must be paired.' });
+  if (removedSheet) {
+    if (removedSheet.id !== descriptor.sheetId || removedSheet.rowCount * removedSheet.columnCount > WORKBOOK_MODEL_LIMITS.cells) check.addIssue({ code: 'custom', message: 'The removed worksheet geometry or identity changed.' });
+    for (const [row, cells] of Object.entries(removedSheet.cellData ?? {})) {
+      if (Number(row) >= removedSheet.rowCount || Object.keys(cells).some(column => Number(column) >= removedSheet.columnCount)) check.addIssue({ code: 'custom', message: 'The removed worksheet contains out-of-bounds cells.' });
+    }
+  }
   if (descriptor.sheetId !== context.baseline.sheet.id || descriptor.sheetId !== context.acknowledgedSheet.id || descriptor.generation !== context.axisOwner.generation) check.addIssue({ code: 'custom', message: 'The deletion context identity changed.' });
   if (context.templateSide && !receipt) check.addIssue({ code: 'custom', message: 'The template side requires its receipt association.' });
   const templateSha256 = context.templateSide === 'saved-target' ? receipt?.targetSha256 : receipt?.sourceSha256;
@@ -42,7 +52,18 @@ export function captureWorkbookSourceDeletion(scope: WorkbookDraftScope, checkpo
   const captured = captureWorkbookDeletionBaseline(scope, checkpoint.source, checkpoint.acknowledged, selectedId);
   if (checkpoint.desired.id !== checkpoint.acknowledged.id) throw Error('The deletion context belongs to another workbook.');
   if (!checkpoint.desired.sheets[selectedId]) throw Error('This worksheet has no current source-owned deletion baseline.');
-  return captured;
+  assertWorkbookStructureIdentity(checkpoint.desired);
+  const position = checkpoint.desired.sheetOrder.indexOf(selectedId);
+  if (position < 0 || checkpoint.desired.sheetOrder.filter(id => id === selectedId).length !== 1) throw Error('The removed worksheet position changed.');
+  return withWorkbookRemovedConfiguration(captured, checkpoint.desired.sheets[selectedId], position);
+}
+
+/** Selected-sheet data only. A checked pending-target conversion can retain
+ * its exact removed desired configuration separately from the actual target
+ * baseline. Parsing this pair does not issue or restore a native command. */
+export function withWorkbookRemovedConfiguration(context: WorkbookSourceDeleteContext, removedSheet: unknown, removedIndex: number): WorkbookSourceDeleteContext {
+  canonicalWorkbookJsonValue(removedSheet);
+  return workbookSourceDeleteContextSchema.parse({ ...context, removedSheet: structuredClone(removedSheet), removedIndex });
 }
 
 /** Data-only capture from a complete validated source read and its exact SDK
