@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { injectMotionSourcePlayer, MOTION_AUDIO_SYNC_RUNTIME, MOTION_PREVIEW_ACTIVITY, MOTION_PREVIEW_REQUEST } from '@open-design/contracts/runtime/motion-source-player';
+import { injectMotionSourcePlayer, MOTION_AUDIO_SYNC_RUNTIME, MOTION_PREVIEW_ACTIVITY, MOTION_PREVIEW_REQUEST, MOTION_PREVIEW_PROBE } from '@open-design/contracts/runtime/motion-source-player';
 
 type MotionWindow = Window & {
   __odMotionSourcePlayer?: boolean;
@@ -261,4 +261,16 @@ it('keeps a generating preview visual-only through reload activation, transport 
   await vi.advanceTimersByTimeAsync(0);
   expect(audio.paused).toBe(true);
   expect(audio.muted).toBe(true);
+});
+
+it('echoes only a bounded current-parent probe without replacing its document identity', () => {
+  boot(true);
+  const post = vi.mocked(window.parent.postMessage);
+  const initial = post.mock.calls.find(([data]) => data.type === MOTION_PREVIEW_REQUEST)![0];
+  post.mockClear();
+  window.dispatchEvent(new MessageEvent('message', { source: null, data: { type: MOTION_PREVIEW_PROBE, probe: 'owned-probe' } }));
+  window.dispatchEvent(new MessageEvent('message', { source: window.parent, data: { type: MOTION_PREVIEW_PROBE, probe: 'x'.repeat(129) } }));
+  expect(post).not.toHaveBeenCalled();
+  window.dispatchEvent(new MessageEvent('message', { source: window.parent, data: { type: MOTION_PREVIEW_PROBE, probe: 'owned-probe' } }));
+  expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: MOTION_PREVIEW_REQUEST, id: initial.id, probeVersion: 1, probe: 'owned-probe' }), '*');
 });
