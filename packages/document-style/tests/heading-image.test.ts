@@ -113,3 +113,42 @@ it('declines authored container sizing and a measured size that disagrees with t
   vi.mocked(document.querySelector('img')!.getBoundingClientRect).mockReturnValue(new DOMRect(0,15,336,24));
   expect(normalize()).not.toHaveProperty('headingImageSource');
 });
+
+it('measures CSS and intrinsic dimensions only in the independently qualified physical print viewport', () => {
+  const physical = () => normalizeDocumentPresentationOwners(document,[{id:'heading',kind:'heading'}],attribute,[css],()=>[255,255,255,1],672,true)[0]!.presentation;
+  for (const [content,width] of [
+    [`<img ${attribute}-image="heading" src="pixel.png" style="width:50%;height:24px">`,336],
+    [`<img ${attribute}-image="heading" src="pixel.png" style="width:336px;height:24px">`,336],
+    [`<img ${attribute}-image="heading" src="pixel.png">`,24],
+  ] as const) {
+    fixture(content);
+    const image = document.querySelector('img')!;
+    Object.defineProperties(image,{complete:{value:true},naturalWidth:{value:24},naturalHeight:{value:24},currentSrc:{value:image.src}});
+    vi.mocked(image.getBoundingClientRect).mockReturnValue(new DOMRect(0,15,width,24));
+    vi.spyOn(window,'innerWidth','get').mockReturnValue(672);
+    vi.mocked(document.querySelector('h1')!.getBoundingClientRect).mockReturnValue(new DOMRect(0,0,672,50));
+    vi.spyOn(document.querySelector('main')!,'getBoundingClientRect').mockReturnValue(new DOMRect(0,0,672,96));
+    expect(physical()).toHaveProperty('headingImageWidthPt',width*.75);
+    vi.restoreAllMocks();
+  }
+});
+
+it.each(['srcset="other.png 2x"','sizes="50vw"'])('does not substitute SRC ownership for responsive resource selection: %s', attributes => {
+  fixture(`<img ${attribute}-image="heading" src="pixel.png" width="24" height="24" ${attributes}>`);
+  expect(normalize()).not.toHaveProperty('headingImageSource');
+});
+
+it.each(['viewport','hidden','resource','decode'])('refuses an unproved physical image context: %s', failure => {
+  fixture();
+  const image = document.querySelector('img')!;
+  Object.defineProperties(image, {
+    complete:{value:failure !== 'decode'}, naturalWidth:{value:24}, naturalHeight:{value:24},
+    currentSrc:{value:failure === 'resource' ? 'https://fixture.invalid/other.png' : image.src},
+  });
+  vi.spyOn(window,'innerWidth','get').mockReturnValue(failure === 'viewport' ? 1280 : 672);
+  vi.mocked(document.querySelector('h1')!.getBoundingClientRect).mockReturnValue(new DOMRect(0,0,672,50));
+  vi.spyOn(document.querySelector('main')!,'getBoundingClientRect').mockReturnValue(new DOMRect(0,0,672,96));
+  if (failure === 'hidden') document.querySelector('main')!.setAttribute('hidden','');
+  const value = normalizeDocumentPresentationOwners(document,[{id:'heading',kind:'heading'}],attribute,[css],()=>[255,255,255,1],672,true)[0]!.presentation;
+  expect(value).not.toHaveProperty('headingImageSource');
+});

@@ -17,6 +17,7 @@ const close = vi.fn(), proceed = vi.fn(), abort = vi.fn();
 const page = {
   route: vi.fn(async (_pattern: string, handler: (value: unknown) => Promise<void>) => { route = handler; }),
   on: vi.fn(),
+  setViewportSize: vi.fn(async () => { events.push('physical-image-viewport'); }),
   emulateMedia: vi.fn(async () => { events.push('print'); }),
   setContent: vi.fn(async () => {
     events.push('content');
@@ -170,7 +171,11 @@ it('requires heading context on heading requests only, while keeping later headi
 it('requires a complete finite image-line receipt on its source heading, independently of a first-heading margin receipt', async () => {
   const image = {headingLevel:1,headingImageLineHeightPt:37.5,headingImageWidthPt:18,headingImageHeightPt:18,headingImageSource:'single-baseline-image'};
   result = [{id:'text',presentation:image}];
-  expect(await normalizeDocumentDocxColors(html,[{id:'text',kind:'heading'}],attribute)).toEqual(new Map([['text',image]]));
+  const ownedImage = `<html data-eve-document="1"><body><main><h1 ${attribute}="text"><img ${attribute}-image="text" src="data:image/png;base64,AA=="></h1></main></body></html>`;
+  // A complete receipt now also needs its actual generated source Image owner;
+  // the former generic paragraph fixture could not supply that identity.
+  expect(await normalizeDocumentDocxColors(ownedImage,[{id:'text',kind:'heading'}],attribute)).toEqual(new Map([['text',image]]));
+  await expect(normalizeDocumentDocxColors(html,[{id:'text',kind:'heading'}],attribute)).rejects.toThrow();
   await expect(normalizeDocumentDocxColors(html,requests,attribute)).rejects.toThrow();
   for (const invalid of [
     {...image,headingLevel:undefined},
@@ -183,4 +188,35 @@ it('requires a complete finite image-line receipt on its source heading, indepen
     result = [{id:'text',presentation:invalid}];
     await expect(normalizeDocumentDocxColors(html,[{id:'text',kind:'heading'}],attribute)).rejects.toThrow();
   }
+});
+
+it('uses a second physical pass only for image geometry, retaining the original font and color receipts', async () => {
+  const owners = [{id:'heading',kind:'heading' as const},{id:'text',kind:'inline' as const}];
+  const markup = `<html data-eve-document="1"><body><main><h1 ${attribute}="heading"><img ${attribute}-image="heading" src="data:image/png;base64,AA=="></h1><p>Text</p></main></body></html>`;
+  const initial = page.evaluate.getMockImplementation()!;
+  page.evaluate.mockImplementation(async script => {
+    if (script.startsWith('Promise.all(')) return;
+    const physical = script.endsWith(',true)');
+    return [
+      {id:'heading',presentation: physical
+        ? {headingLevel:1,headingImageSource:'single-baseline-image',headingImageLineHeightPt:37.5,headingImageWidthPt:252,headingImageHeightPt:18}
+        : {headingLevel:1,headingBeforePt:0,headingSource:'canonical-first-block'}},
+      {id:'text',presentation:{fontSizePt:physical ? 5 : 30,fontLineHeightPt:45,fontSizeSource:'authored',foreground:'FF0000',foregroundSource:'authored'}},
+    ];
+  });
+  try {
+    const normalized = await normalizeDocumentDocxColors(markup,owners,attribute);
+    expect(page.setViewportSize).toHaveBeenCalledExactlyOnceWith({width:672,height:900});
+    expect(normalized.get('text')).toMatchObject({fontSizePt:30,foreground:'FF0000'});
+    expect(normalized.get('heading')).toMatchObject({headingBeforePt:0,headingImageWidthPt:252,headingImageHeightPt:18});
+    expect(close).toHaveBeenCalledTimes(1);
+  } finally { page.evaluate.mockImplementation(initial); }
+});
+
+it('retains the previous conversion path for an image format outside the byte-proven producer', async () => {
+  const heading = [{id:'heading',kind:'heading' as const}];
+  const markup = `<html data-eve-document="1"><body><main><h1 ${attribute}="heading"><img ${attribute}-image="heading" src="data:image/svg+xml;base64,PHN2Zy8+"></h1></main></body></html>`;
+  result = [{id:'heading',presentation:{headingLevel:1,headingImageSource:'single-baseline-image',headingImageLineHeightPt:37.5,headingImageWidthPt:18,headingImageHeightPt:18}}];
+  expect([...(await normalizeDocumentDocxColors(markup,heading,attribute))]).toEqual([['heading',{}]]);
+  expect(close).toHaveBeenCalledTimes(1);
 });

@@ -1,3 +1,4 @@
+import { documentSourceImageIdentity } from './document-image-assets.js';
 import { randomBytes } from 'node:crypto';
 import { load } from 'cheerio';
 import { documentDocxPresentationOwners } from './document-docx-colors.js';
@@ -86,6 +87,8 @@ export function resolvedDocumentDocxPresentationOwners(ast: unknown, source: Doc
   const expected = new Map(source.requests.map(request => [request.id, request.kind])), seen = new Set<string>(), key = source.attributeName.slice(5);
   if (resolved.size !== expected.size || [...resolved.keys()].some(id => !expected.has(id))) return fail();
   const imageKey = `${key}-image`;
+  const html = load(source.html), imageHashes = new Map<string,string>();
+  const presentationHashes = new Map<object,string>();
   const inspect = (node: unknown): void => {
     if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) { node.forEach(inspect); return; }
@@ -106,7 +109,18 @@ export function resolvedDocumentDocxPresentationOwners(ast: unknown, source: Doc
           if (!Array.isArray(pairs)) return false;
           const matches = pairs.filter(pair => Array.isArray(pair) && pair[0] === imageKey);
           if (matches.length !== 1 || (matches[0] as string[])[1] !== own![1]) return false;
-          attr[2] = pairs.filter(pair => pair !== matches[0]); count++; return true;
+          const sourceImage = html(`img[${source.attributeName}-image="${own![1]}"]`);
+          if (sourceImage.length !== 1 || !Array.isArray(inline.c?.[2]) || typeof inline.c[2][0] !== 'string') return fail();
+          const originalTarget = sourceImage.attr('src') ?? '', astTarget = inline.c[2][0];
+          const originalAsset = documentSourceImageIdentity(originalTarget);
+          const astAsset = astTarget === originalTarget ? originalAsset : documentSourceImageIdentity(astTarget);
+          if (originalAsset.mime !== astAsset.mime || originalAsset.sha256 !== astAsset.sha256) return fail();
+          imageHashes.set(own![1]!, originalAsset.sha256);
+          // Point dimensions are conversion-only native intent. Original HTML,
+          // CSS, source bytes, image target and alternative text stay unchanged.
+          attr[2] = pairs.filter(pair => pair !== matches[0] && !(Array.isArray(pair) && ['width','height'].includes(String(pair[0]))));
+          (attr[2] as unknown[]).push(['width',`${value.headingImageWidthPt}pt`],['height',`${value.headingImageHeightPt}pt`]);
+          count++; return true;
         });
         if (!imageOnly(item.c[2]) || count !== 1) return fail();
       }
@@ -133,8 +147,11 @@ export function resolvedDocumentDocxPresentationOwners(ast: unknown, source: Doc
       if (kind !== 'heading' || !validDocumentHeadingMetadata(value)) return fail();
     }
     const { foreground, background, fontSizePt, fontLineHeightPt, headingLevel, headingBeforePt, headingImageLineHeightPt, headingImageWidthPt, headingImageHeightPt, headingImageSource } = value;
-    return { ...(foreground ? {foreground} : {}), ...(background ? {background} : {}), ...(fontSizePt !== undefined ? { fontSizePt, fontLineHeightPt: fontLineHeightPt! } : {}), ...(headingLevel !== undefined ? { headingLevel, ...(headingBeforePt !== undefined ? {headingBeforePt} : {}) } : {}), ...(headingImageSource ? {headingImageLineHeightPt,headingImageWidthPt,headingImageHeightPt,headingImageSource} : {}) };
+    const presentation = { ...(foreground ? {foreground} : {}), ...(background ? {background} : {}), ...(fontSizePt !== undefined ? { fontSizePt, fontLineHeightPt: fontLineHeightPt! } : {}), ...(headingLevel !== undefined ? { headingLevel, ...(headingBeforePt !== undefined ? {headingBeforePt} : {}) } : {}), ...(headingImageSource ? {headingImageLineHeightPt,headingImageWidthPt,headingImageHeightPt,headingImageSource} : {}) };
+    if (headingImageSource) presentationHashes.set(presentation, imageHashes.get(id) ?? fail());
+    return presentation;
   });
+  for (const owner of owners) if (owner.presentation.headingImageSource) owner.imageAssetSha256 = presentationHashes.get(owner.presentation) ?? fail();
   for (const [id, value] of resolved) if (Object.keys(value).length && !seen.has(id)) return fail();
   return owners;
 }

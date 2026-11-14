@@ -1,10 +1,11 @@
+import { documentSimplePicture } from './document-picture.js';
 import { documentWordFontSize, validDocumentFontSize, validDocumentFontLineHeight, validDocumentHeadingLevel, validDocumentHeadingImage } from '@open-design/document-style';
 import { randomBytes } from 'node:crypto';
 import { DOMParser, XMLSerializer, type Element, type Node } from '@xmldom/xmldom';
 
 export interface DocumentDocxPresentation { foreground?: string; background?: string; fontSizePt?: number; fontLineHeightPt?: number; headingLevel?: number; headingBeforePt?: 0; headingImageLineHeightPt?: number; headingImageWidthPt?: number; headingImageHeightPt?: number; headingImageSource?: 'single-baseline-image' }
 export type DocumentDocxColors = DocumentDocxPresentation;
-export interface DocumentDocxStyleOwner { id: string; name: string; kind: 'cell' | 'inline' | 'heading'; rowSpan?: number; columnSpan?: number; temporaryStart?: boolean; temporaryEnd?: boolean; presentation: DocumentDocxPresentation }
+export interface DocumentDocxStyleOwner { imageAssetSha256?: string; id: string; name: string; kind: 'cell' | 'inline' | 'heading'; rowSpan?: number; columnSpan?: number; temporaryStart?: boolean; temporaryEnd?: boolean; presentation: DocumentDocxPresentation }
 type Ast = { t?: string; c?: unknown };
 const fail = (): never => { throw new Error('The document converter could not preserve authored presentation ownership.'); };
 const w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -85,7 +86,7 @@ export function documentDocxPresentationOwners(ast: unknown, resolve: (attribute
 
 /** Verify generated bookmarks before projecting into editable native OOXML.
  * Never identify cells/runs by text or positional guesses. */
-export function projectDocumentDocxPresentation(xml: string, owners: readonly DocumentDocxStyleOwner[]): string {
+export function projectDocumentDocxPresentation(xml: string, owners: readonly DocumentDocxStyleOwner[], imageAssets?: ReadonlyMap<string,string>): string {
   if (!owners.length) return xml;
   const doc = new DOMParser({ onError: fail }).parseFromString(xml, 'application/xml');
   const byId = new Map(owners.map(owner => [owner.id, owner])), names = new Set(owners.map(owner => owner.name));
@@ -213,8 +214,11 @@ export function projectDocumentDocxPresentation(xml: string, owners: readonly Do
     const relationship = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
     const graphics = image.getElementsByTagNameNS(drawing,'graphicData'), pictures = image.getElementsByTagNameNS(picture,'pic');
     if (graphics.length !== 1 || graphics[0]!.getAttribute('uri') !== picture || pictures.length !== 1) return fail();
-    const blips = pictures[0]!.getElementsByTagNameNS(drawing,'blip');
-    if (blips.length !== 1 || !blips[0]!.getAttributeNS(relationship,'embed') || blips[0]!.hasAttributeNS(relationship,'link')) return fail();
+    const {blip,extent} = documentSimplePicture(image,graphics[0]!,pictures[0]!);
+    if (own.imageAssetSha256 !== undefined && (!/^[a-f0-9]{64}$/.test(own.imageAssetSha256)
+      || imageAssets?.get(blip.getAttributeNS(relationship,'embed')!) !== own.imageAssetSha256)) return fail();
+    if (Number(extent.getAttribute('cx')) !== Math.round(own.presentation.headingImageWidthPt!*12700)
+      || Number(extent.getAttribute('cy')) !== Math.round(own.presentation.headingImageHeightPt!*12700)) return fail();
     if (extents.length !== 1 || Number(extents[0]!.getAttribute('cx')) !== Math.round(own.presentation.headingImageWidthPt!*12700)
       || Number(extents[0]!.getAttribute('cy')) !== Math.round(own.presentation.headingImageHeightPt!*12700)) return fail();
     for (const side of ['T','B','L','R']) image.setAttribute(`dist${side}`,'0');
