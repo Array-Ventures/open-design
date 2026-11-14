@@ -149,3 +149,21 @@ it('accepts only complete inline font ownership and rejects the old parallel des
   result = [{id:'text',colors:{foreground:'FFFFFF',foregroundSource:'authored'}}];
   await expect(normalizeDocumentDocxColors(html,requests,attribute)).rejects.toThrow();
 });
+it.each([
+  {headingLevel:1,headingBeforePt:0},
+  {headingLevel:0,headingBeforePt:0,headingSource:'canonical-first-block'},
+  {headingLevel:7,headingBeforePt:0,headingSource:'canonical-first-block'},
+  {headingLevel:1,headingBeforePt:18,headingSource:'canonical-first-block'},
+  {headingLevel:1,headingBeforePt:0,headingSource:'claimed'},
+  {headingLevel:1,headingBeforePt:0,headingSource:'canonical-first-block',foreground:'FFFFFF',foregroundSource:'authored'},
+])('rejects malformed or mixed heading context: %j', async presentation => {
+  result = [{id:'text',presentation}];
+  await expect(normalizeDocumentDocxColors(html,[{id:'text',kind:'heading'}],attribute)).rejects.toThrow();
+});
+it('requires heading context on heading requests only, while keeping later heading descriptors empty', async () => {
+  result = [{id:'text',presentation:{headingLevel:1,headingBeforePt:0,headingSource:'canonical-first-block'}}];
+  await expect(normalizeDocumentDocxColors(html,requests,attribute)).rejects.toThrow();
+  expect(await normalizeDocumentDocxColors(html,[{id:'text',kind:'heading'}],attribute)).toEqual(new Map([['text',{headingLevel:1,headingBeforePt:0,headingSource:'canonical-first-block'}]]));
+  result = [{id:'text',presentation:{}}];
+  expect(await normalizeDocumentDocxColors(html,[{id:'text',kind:'heading'}],attribute)).toEqual(new Map([['text',{}]]));
+});

@@ -1,4 +1,4 @@
-import { validDocumentFontSize, validDocumentFontLineHeight } from '@open-design/document-style';
+import { validDocumentFontSize, validDocumentFontLineHeight, validDocumentHeadingLevel } from '@open-design/document-style';
 import { documentExportProfile, documentExportPrintCss } from './document-export-profile.js';
 import { readFile } from 'node:fs/promises';
 import { chromium, type Page } from 'playwright-core';
@@ -41,6 +41,9 @@ export async function normalizeDocumentDocxPresentation(html: string, requests: 
       for (const [key, value] of Object.entries(entry.presentation)) {
         if (key === 'foregroundSource') { if (typeof value !== 'string' || !['authored','inherited'].includes(value)) return fail(); }
         else if (key === 'fontSizeSource') { if (value !== 'authored') return fail(); }
+        else if (key === 'headingLevel') { if (!validDocumentHeadingLevel(value)) return fail(); }
+        else if (key === 'headingBeforePt') { if (value !== 0) return fail(); }
+        else if (key === 'headingSource') { if (value !== 'canonical-first-block') return fail(); }
         else if (key === 'fontSizePt') { if (!validDocumentFontSize(value)) return fail(); }
         else if (key === 'fontLineHeightPt') { if (!validDocumentFontLineHeight(value)) return fail(); }
         else if (!['foreground','background'].includes(key) || typeof value !== 'string' || !/^[A-F0-9]{6}$/.test(value)) return fail();
@@ -48,6 +51,10 @@ export async function normalizeDocumentDocxPresentation(html: string, requests: 
       if (Object.hasOwn(entry.presentation, 'foreground') !== Object.hasOwn(entry.presentation, 'foregroundSource') || (expected.get(entry.id) === 'cell' && (Object.hasOwn(entry.presentation, 'foreground') || Object.hasOwn(entry.presentation, 'foregroundSource')))) return fail();
       const fontFields = ['fontSizePt','fontLineHeightPt','fontSizeSource'].filter(key => Object.hasOwn(entry.presentation, key));
       if (fontFields.length && (fontFields.length !== 3 || expected.get(entry.id) !== 'inline')) return fail();
+      const headingKeys = ['headingLevel','headingBeforePt','headingSource'];
+      const headingFields = headingKeys.filter(key => Object.hasOwn(entry.presentation,key));
+      if (headingFields.length && (headingFields.length !== 3 || expected.get(entry.id) !== 'heading')) return fail();
+      if (expected.get(entry.id) === 'heading' && Object.keys(entry.presentation).some(key => !headingKeys.includes(key))) return fail();
       presentations.set(entry.id, entry.presentation);
     }
     if (unavailable) return fail(); return presentations;
