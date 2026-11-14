@@ -24,10 +24,10 @@ function command(action: string, overrides = {}) {
   const state = host.postMessage.mock.calls.filter(call => call[0].type === 'studio:feedback-state').at(-1)![0];
   act(() => window.dispatchEvent(new MessageEvent('message', { source: host as unknown as Window, origin: window.location.origin, data: { type: 'studio:feedback-control', projectId: 'project', controllerId: state.controllerId, action, ...overrides } })));
 }
-function Harness({ initial = [], documentObserved = observed }: { initial?: PreviewComment[]; documentObserved?: typeof observed }) {
+function Harness({ initial = [], documentObserved = observed, refreshedComments }: { initial?: PreviewComment[]; documentObserved?: typeof observed; refreshedComments?: PreviewComment[] }) {
   const [comments, update] = useState(initial);
   return <CommentReviewProvider projectId="project" changeStatus={async (id, status) => { api.status(id, status); update(current => current.map(comment => comment.id === id ? { ...comment, status } : comment)); return true; }}>
-    <DocumentEditor projectId="project" fileName="report.html" title="Report" observed={documentObserved} onSaved={() => {}} feedback={{ previewComments: comments, previewCommentsState: 'success', onSavePreviewComment: async (...args) => {
+    <DocumentEditor projectId="project" fileName="report.html" title="Report" observed={documentObserved} onSaved={() => {}} feedback={{ previewComments: refreshedComments ?? comments, previewCommentsState: 'success', onSavePreviewComment: async (...args) => {
       const saved = await api.save(...args); if (saved) update(current => [...current.filter(comment => comment.id !== saved.id), saved]); return saved;
     }, onRemovePreviewComment: async id => { api.remove(id); update(current => current.filter(comment => comment.id !== id)); return true; }, onSendBoardCommentAttachments: api.send }} />
   </CommentReviewProvider>;
@@ -275,6 +275,150 @@ it('returns from All comments to the same thread without discarding its unsent r
   expect(api.documentSave).not.toHaveBeenCalled();
 });
 
+
+it.each(['host', 'card'] as const)('keeps a removed thread reply recoverable after %s list navigation', async entry => {
+  const view = render(<Harness />); const input = await selectAndOpen();
+  fireEvent.change(input, { target: { value: 'Externally removed root' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+  const reply = await screen.findByRole('textbox', { name: 'Reply' });
+  fireEvent.change(reply, { target: { value: 'Recover this unsent reply' } });
+  view.rerender(<Harness refreshedComments={[]} />);
+  expect(await screen.findByText('This thread was deleted. Your unsaved reply is still here.')).toBeVisible();
+  if (entry === 'host') command('comments');
+  else fireEvent.click(screen.getByRole('button', { name: /^All comments$/ }));
+  // A retained draft may be hidden only while there is a visible path back.
+  expect(reply).not.toBeVisible();
+  const back = await screen.findByRole('button', { name: 'Return to deleted thread' });
+  fireEvent.click(back);
+  expect(await screen.findByRole('textbox', { name: 'Reply' })).toBe(reply);
+  expect(reply).toHaveValue('Recover this unsent reply'); expect(reply).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Add reply' })).toBeDisabled();
+  expect(api.confirm).not.toHaveBeenCalled(); expect(api.createReply).not.toHaveBeenCalled();
+  expect(api.save).toHaveBeenCalledTimes(1); expect(api.documentSave).not.toHaveBeenCalled();
+});
+
+it('recovers the same deleted thread draft while the document is in Viewing mode', async () => {
+  const view = render(<Harness />); const input = await selectAndOpen();
+  fireEvent.change(input, { target: { value: 'Read-only removed root' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+  const reply = await screen.findByRole('textbox', { name: 'Reply' });
+  fireEvent.change(reply, { target: { value: 'Keep this readable draft' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Editing, mode' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Viewing' }));
+  expect(editor().isEditable()).toBe(false);
+  view.rerender(<Harness refreshedComments={[]} />);
+  fireEvent.click(screen.getByRole('button', { name: /^All comments$/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Return to deleted thread' }));
+  expect(await screen.findByRole('textbox', { name: 'Reply' })).toBe(reply);
+  expect(reply).toBeVisible(); expect(reply).toHaveValue('Keep this readable draft');
+  expect(screen.getByRole('button', { name: 'Add reply' })).toBeDisabled();
+  expect(editor().isEditable()).toBe(false);
+  expect(api.createReply).not.toHaveBeenCalled(); expect(api.documentSave).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Close comments' }));
+  await waitFor(() => expect(api.confirm).toHaveBeenCalledWith('project', 'comment'));
+  expect(reply).toBeVisible(); expect(reply).toHaveValue('Keep this readable draft');
+});
+
+it('does not restore another member scope draft or enable reply writes after viewer withdrawal', async () => {
+  const view = render(<Harness />); const input = await selectAndOpen();
+  fireEvent.change(input, { target: { value: 'Removed permission root' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+  const reply = await screen.findByRole('textbox', { name: 'Reply' });
+  fireEvent.change(reply, { target: { value: 'Previous member draft' } });
+  view.rerender(<Harness refreshedComments={[]} />);
+  fireEvent.click(screen.getByRole('button', { name: /^All comments$/ }));
+  // Member identity is the existing reply scope boundary and resets its draft.
+  api.viewer = false; view.rerender(<Harness refreshedComments={[]} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Return to deleted thread' }));
+  expect(await screen.findByRole('textbox', { name: 'Reply' })).toBe(reply);
+  expect(reply).toBeVisible(); expect(reply).toBeDisabled(); expect(reply).toHaveValue('');
+  expect(screen.queryByRole('button', { name: 'Add reply' })).toBeNull();
+  expect(api.createReply).not.toHaveBeenCalled(); expect(api.documentSave).not.toHaveBeenCalled();
+});
+
+it('browses the retained thread from the host without confirming or discarding its reply', async () => {
+  render(<Harness />);
+  const input = await selectAndOpen(); fireEvent.change(input, { target: { value: 'Retained host thread' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+  const reply = await screen.findByRole('textbox', { name: 'Reply' });
+  fireEvent.change(reply, { target: { value: 'Keep this host reply' } });
+  const thread = screen.getByTestId('saved-comment-thread');
+  command('comments');
+  const row = await screen.findByRole('button', { name: /Retained host thread/ });
+  expect(reply).not.toBeVisible(); expect(api.confirm).not.toHaveBeenCalled();
+  fireEvent.click(row);
+  expect(await screen.findByRole('textbox', { name: 'Reply' })).toBe(reply);
+  expect(screen.getByTestId('saved-comment-thread')).toBe(thread);
+  expect(reply).toHaveValue('Keep this host reply');
+  expect(api.createReply).not.toHaveBeenCalled(); expect(api.documentSave).not.toHaveBeenCalled();
+  expect(api.save).toHaveBeenCalledTimes(1);
+});
+
+it('still confirms closing a retained thread with an unsent reply', async () => {
+  render(<Harness />); const input = await selectAndOpen();
+  fireEvent.change(input, { target: { value: 'Close protected thread' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+  const reply = await screen.findByRole('textbox', { name: 'Reply' });
+  fireEvent.change(reply, { target: { value: 'Keep this reply on denied close' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Close comments' }));
+  await waitFor(() => expect(api.confirm).toHaveBeenCalledWith('project', 'comment'));
+  expect(reply).toBeVisible(); expect(reply).toHaveValue('Keep this reply on denied close');
+});
+
+it.each(['new', 'edit'] as const)('still protects a dirty %s root when the host requests the list', async mode => {
+  render(<Harness />); let input = await selectAndOpen();
+  if (mode === 'edit') {
+    fireEvent.change(input, { target: { value: 'Existing root' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+    await screen.findByRole('textbox', { name: 'Reply' });
+    fireEvent.click(screen.getByRole('button', { name: 'Comment actions' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    input = await screen.findByRole('textbox', { name: 'Comment on selected text' });
+  }
+  fireEvent.change(input, { target: { value: 'Protected root draft' } }); command('comments');
+  await waitFor(() => expect(api.confirm).toHaveBeenCalledWith('project', 'comment'));
+  expect(input).toBeVisible(); expect(input).toHaveValue('Protected root draft');
+});
+
+it.each(['new', 'edit'] as const)('discards an accepted %s root draft before returning to the saved thread', async mode => {
+  render(<Harness />); let input = await selectAndOpen();
+  fireEvent.change(input, { target: { value: 'Persisted root note' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+  await screen.findByRole('textbox', { name: 'Reply' });
+  if (mode === 'edit') {
+    fireEvent.click(screen.getByRole('button', { name: 'Comment actions' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    input = await screen.findByRole('textbox', { name: 'Comment on selected text' });
+  } else {
+    fireEvent.click(screen.getByRole('button', { name: 'Close comments' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Document comments' })).toBeNull());
+    input = await selectAndOpen();
+  }
+  fireEvent.change(input, { target: { value: 'Discard this root draft' } });
+  api.confirm.mockResolvedValueOnce(true); command('comments');
+  fireEvent.click(await screen.findByRole('button', { name: /Persisted root note/ }));
+  await screen.findByRole('textbox', { name: 'Reply' });
+  expect(screen.getByText('Persisted root note')).toBeVisible();
+  expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
+  expect(screen.queryByDisplayValue('Discard this root draft')).toBeNull();
+  expect(api.confirm).toHaveBeenCalledWith('project', 'comment'); expect(api.save).toHaveBeenCalledTimes(1);
+});
+
+it('does not navigate the host list during a pending root handoff', async () => {
+  let finish!: (value: { status: string; commentIds: string[] }) => void;
+  api.send.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  render(<Harness />); const input = await selectAndOpen();
+  fireEvent.change(input, { target: { value: 'Pending handoff root' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+  const reply = await screen.findByRole('textbox', { name: 'Reply' });
+  fireEvent.click(screen.getByRole('button', { name: 'Add comment to chat' }));
+  await waitFor(() => expect(api.send).toHaveBeenCalledTimes(1));
+  command('comments'); await act(async () => {});
+  expect(reply).toBeVisible(); expect(screen.queryByRole('button', { name: /Pending handoff root/ })).toBeNull();
+  expect(api.confirm).not.toHaveBeenCalled();
+  await act(async () => finish({ status: 'queued', commentIds: ['root'] }));
+  command('comments'); expect(await screen.findByRole('button', { name: /Pending handoff root/ })).toBeVisible();
+});
 
 it('defaults a fresh mentioned comment to chat staging but preserves an explicit opt-out', async () => {
   render(<Harness />);

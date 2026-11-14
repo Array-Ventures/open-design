@@ -69,3 +69,145 @@ Packaged persistence/reopen and visual acceptance in light/dark mode, chat-open
 and full-screen layouts remain required; do not claim Claude visual parity
 from these component tests. The retained reference records a compact selected-
 content header, replies and Resolve. No fresh Claude session was available.
+
+## Retained reply list navigation source checkpoint
+
+Manual inspection of local companion 109 found inconsistent navigation: the
+in-card All comments control retained an unsent reply without prompting, while
+the native header's Show all comments asked to discard it. Accepting that
+confirmation still retained the exact reply. The fake source remained 281 bytes,
+SHA256 `3e7fb3c71f1d54177d778ff94a562504ae775c3732cd28176445556654b82cac`,
+with one existing comment and no replies. The unsent draft was cleared and the
+owned browser closed normally; no chat handoff was requested.
+
+The next source change treats host list navigation as retention when a saved
+thread is selected and its root is not being edited. It keeps that thread and
+reply mounted, matching the in-card navigation behavior. Pending root operations
+still block navigation. Leaving a new or edited root, closing a dirty reply, and
+changing targets retain their existing draft protections. This is an observed
+local consistency correction, not a claim about saved-reply behavior in the
+reference product.
+
+The actual component regression failed before the change because the denied
+confirmation prevented the list from opening (36 other cases passed). The fixed
+suite verifies the same reply and thread DOM identities, exact draft, no
+confirmation, and no extra reply or document writes, plus pending-handoff and
+dirty new/edit-root/close safeguards. Packaged browser acceptance of this source
+change remains pending; candidate 109 keeps its original frozen source.
+
+Review found a second inconsistency in the first source checkpoint: after
+accepting discard for an edited saved root, returning from the list still showed
+that root draft. A real component regression failed on this accepted edit path
+while the accepted new-root case and 38 other cases passed. The handler now
+resets any root composer after consent before listing comments; returning to a
+saved row shows its persisted note. Denied new/edit consent and retained reply
+navigation keep their separate protections.
+
+### Removed-thread recovery source follow-up
+
+A separate component refresh removed the selected root while its reply draft
+remained mounted. Both list entrypoints hid that draft, but the persisted row
+was gone, so there was no route back. Both recoverability regressions failed
+before this follow-up (40 other component cases passed).
+
+The list header now reuses a compact back icon labelled Return to deleted thread
+only when its retained selection is missing from the current comments. It opens
+the same retained thread and reply DOM with the exact draft. The existing deleted
+notice, disabled submission, readable draft and close-confirmation behavior stay
+in place. There is no fake persisted row, new storage, history or automatic write.
+The recovery control is disabled during a busy root operation.
+
+Viewing mode keeps the same member's retained reply available. A different
+existing boundary remains unchanged: withdrawing the member identity resets the
+reply scope and clears its draft before showing a disabled reply field. An
+initial combined test incorrectly expected draft retention across that identity
+boundary; separate final cases verify stable-member Viewing-mode retention and
+identity-withdrawal reset/disabled-write behavior. This source checkpoint does
+not claim cross-account draft retention. Packaged browser acceptance is pending.
+
+### Expected missing-thread reads
+
+The actual 112 deleted-thread walk-through retained the reply and disabled its
+writes, but the reply poll's 404 also displayed the generic red Comments could
+not be loaded message beside the accurate deletion notice. The next source
+checkpoint distinguishes read failure from write failure. Only a typed 404 read
+for a root already confirmed deleted uses the existing deletion notice alone.
+An unconfirmed 404, permission/server refusal or network failure remains a
+retryable load error; write failures remain visible even after deletion.
+
+Initial-load and polling/deletion-transition component cases failed before this
+change (two failures, 30 passing cases). Final cases retain the exact reply,
+disable submission, cover 403/500/network errors and preserve a failed write.
+Abort signals, request versions, thread/member reset, draft protection and the
+underlying requests are unchanged. At this source checkpoint, packaged browser acceptance was still pending;
+the candidate 113 record below qualifies this notice-only change.
+
+Review additionally found that the existing quiet refresh cleared the shared
+write-error state, even after a definite refused write. Two genuine regression
+cases showed successful polling erasing 403/404 write messages without a retry
+(two failures, 34 passing cases). Refresh now clears only its read-failure state.
+Both quiet polling and explicit Reload comments retain a definite write or
+attachment-validation message and the exact draft. A successful write retry or
+resolving attachment action still clears its own feedback; a successful read
+still clears its own load failure. This follow-up does not change request or
+write admission.
+
+
+### Local candidate 113 qualification
+
+The clean frozen source is `7453a47c450f43695044fc6329f28d1d5f0c47cf`, tree
+`5dade9b90a438f8e3108323ec4363c86b0512cb76fa610ad31eca9eaa8fb016b`.
+Companion 113 is build
+`de3ee6a98baf11be80a93bc9d62a6a976041b248b0c640b815d9eb3d13147b2a`;
+renderer 56 is local immutable image
+`sha256:7da7ad143191c2d13ea3a6fe36b1f0219d4f63af5f7b7312fa39bc2a6d5b2b56`.
+Both sequential builders and Docker completed with exit 0. Strict full inventory,
+clean source pairing, actual image worker/helper/provenance, architecture,
+entrypoint and non-root user checks passed. Worker and color-helper bytes match
+112/55; the image has this new source provenance. Later evidence commits do not
+relabel that frozen source.
+
+The owned 6261 preview used clean native
+`a8f18276cd614a108d3a492fd660e4d21d59824c`. Standard shutdown and startup both
+completed with exit 0, preserving data, proxy/model/browser configuration and
+changing only the three candidate keys. No published archive, registry, installer
+pin or production runtime changed.
+
+Actual manual qualification used one made-up document in light mode at 1440×1000.
+After saving its plain root with Add to chat unchecked, an external CDP listener
+attached only to that named CLI browser. It fulfilled POST requests only for that
+fixture's exact reply URL with 403. GET and unrelated requests continued normally;
+there was no React/DOM state setter, source overlay or artificial timer. This is
+HTTP refusal handling proof, not an authorization test.
+
+A real successful quiet read and a real explicit Reload comments read both kept
+the exact same textarea, complete unsent text and visible write-error message.
+The artifact screenshots before and after those reads are byte-identical. The
+listener then disabled Fetch interception, detached and disconnected with exit 0.
+A normal server-backed retry saved the one plain reply and cleared its error and
+draft. No comment or reply was staged or sent to chat.
+
+A separate natural phase typed a new unsent reply and deleted that own root
+through the owned stack’s normal API. The ordinary root/reply polling observed deletion
+and a real GET 404. The same textarea and complete unsent draft remained, with
+submission disabled and the accurate deletion notice, without a generic load
+error or alert. Close→Keep editing retained the draft; it was then explicitly
+cleared and comments closed. The source stayed 268 bytes with SHA256
+`e97c6898583f52e73a25ff1c362ef1da245b7965febefead9b133d35b1d17c25`.
+Final root count was zero after the own deletion, with no root composer, reply
+draft or comment dialog remaining. The named browser closed normally and both
+its process and the fault-listener process were absent.
+
+Local receipts: `/tmp/document-comment-status113-pair-receipt.json`,
+`/tmp/document-comment-status113-fault-events.json`,
+`/tmp/doc113-status-after-quiet-read.json`,
+`/tmp/doc113-status-after-explicit-read.json`,
+`/tmp/doc113-status-natural404-proof.json`, and
+`/tmp/doc113-status-final-proof.json`. Final source checks passed 83 focused cases
+across the reply API, saved thread and document comments, full workspace types
+and guard. This bounded run does not establish a new dark/phone/fullscreen
+matrix, all-error permutations or full comment/reference parity.
+
+![Write failure remains visible after successful reads](images/document-comment-status/write-error-after-reads.png)
+
+![Natural missing thread uses its deletion notice and retains the draft](images/document-comment-status/deleted-thread-notice.png)

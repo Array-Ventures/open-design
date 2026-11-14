@@ -80,10 +80,10 @@ it('proves collapsed indentation empty but retains visible highlighted whitespac
   expect(() => normalizeDocumentColorOwners(document,[{id:'padded',kind:'inline'}],attribute,[style],read)).toThrow();
 });
 
-it('admits ordinary GFM strike, footnote sections and only unstyled separators', () => {
+it('admits ordinary GFM strike, footnote sections and bounded separators', () => {
   source('<p><del>obsolete</del></p><hr><section class="footnotes footnotes-end-of-document" role="doc-endnotes"><ol><li id="fn1"><p>Note</p></li></ol></section>');
   expect(documentColorLayoutQualified(document,[style])).toBe(true);
-  for (const attrs of ['style="color:red"','style="background:blue"','class="painted"','width="100"']) {
+  for (const attrs of ['style="position:absolute"','style="background:blue"','class="painted"','width="100"']) {
     source(`<hr ${attrs}>`); expect(documentColorLayoutQualified(document,[style])).toBe(false);
   }
 });
@@ -148,4 +148,22 @@ it('qualifies the finite passive producer families while refusing nonproducer st
     '<mo minsize="999999%" maxsize="999999%" stretchy="true">(</mo>',
     '<mtd style="text-align:left; padding-left:1"/>', '<mtd style="text-align:left; color:red"/>',
   ]) { source(wrap(body)); expect(documentColorLayoutQualified(document,[style]),body).toBe(false); }
+});
+it('admits bounded divider identity and presentation without inventing text correction', () => {
+  const attribute = 'data-eve-docx-color-0123456789abcdef';
+  source(`<p>Before</p><hr data-od-id="rule-one" style="width:40%;color:rgb(255,0,0);background-color:rgb(0,255,0)" ${attribute}="rule"><p>After</p>`);
+  expect(documentColorLayoutQualified(document,[style])).toBe(true);
+  expect(normalizeDocumentColorOwners(document,[{id:'rule',kind:'divider'}],attribute,[style],read)).toEqual([{id:'rule',colors:{foreground:'FF0000',background:'00FF00',foregroundSource:'authored'}}]);
+  for (const presentation of ['position:absolute','height:10px','width:calc(100% - 1px)','background-image:url(data:image/png,a)','color:var(--author)']) {
+    document.querySelector('hr')!.setAttribute('style',presentation);
+    expect(() => normalizeDocumentColorOwners(document,[{id:'rule',kind:'divider'}],attribute,[style],read)).toThrow();
+  }
+  document.querySelector('hr')!.setAttribute('style','color:rgba(1,2,3,0.5)');
+  expect(normalizeDocumentColorOwners(document,[{id:'rule',kind:'divider'}],attribute,[style],read)).toEqual([{id:'rule',colors:{foreground:'808181',foregroundSource:'authored'}}]);
+});
+
+it('retains a plain divider computed ink without applying a text contrast heuristic', () => {
+  const attribute = 'data-eve-docx-color-0123456789abcdef';
+  source(`<hr ${attribute}="rule">`);
+  expect(normalizeDocumentColorOwners(document,[{id:'rule',kind:'divider'}],attribute,[style],read)).toEqual([{id:'rule',colors:{foreground:'808080',foregroundSource:'inherited'}}]);
 });

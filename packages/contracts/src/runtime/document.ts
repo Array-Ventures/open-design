@@ -4,7 +4,7 @@ const font = z.enum(['sans', 'serif']);
 const ids = z.array(z.string().regex(/^[A-Za-z0-9_-]{1,100}$/)).max(10000).optional();
 export const documentMetadataSchema = z.object({
   version: z.literal(1), fonts: z.object({ text: font, headings: font }).strict(),
-  ids: z.object({ paragraph: ids, heading: ids, quote: ids, listitem: ids, tablecell: ids, code: ids, list: ids, table: ids, image: ids }).strict(),
+  ids: z.object({ paragraph: ids, heading: ids, quote: ids, listitem: ids, tablecell: ids, code: ids, list: ids, table: ids, image: ids, 'document-divider': ids }).strict(),
   bodySha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
 }).strict();
 export type MarkdownDocumentMetadata = z.infer<typeof documentMetadataSchema>;

@@ -44,6 +44,10 @@ export function documentMarkdownInput(html: string): { html: string; rawSpans: M
     const wrapper = $(block ? '<div></div>' : '<span></span>').attr('id', id);
     protectedNodes.add(wrapper.get(0)!); return wrapper;
   };
+  $('hr[style]').each((_index, node) => {
+    const rule = $(node);
+    const wrapper = owner($.html(node), true); rule.replaceWith(wrapper); wrapper.append(node);
+  });
   $('pre').each((_index, node) => {
     const pre = $(node);
     if (nativeCode.has(node)) return;

@@ -15,7 +15,7 @@ const unsupported = (message: string): never => { throw new WorkbookFormatError(
  * No grid producer or preview capability enables these actions yet. */
 export function assertWorkbookSheetsSupported(source: ReadWorkbook): void {
   assertWorkbookStructureSupported(source);
-  workbookSourceSheetProjectionSchema.parse(source.model.sheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name, origin: 'source' })));
+  if (!workbookSourceSheetProjectionSchema.safeParse(source.model.sheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name, origin: 'source' }))).success) unsupported('Worksheet names or identities exceed the supported sheet-action domain.');
   for (const sheet of source.model.sheets) {
     if (!/^[1-9][0-9]*$/.test(sheet.id) || Number(sheet.id) > WORKBOOK_SHEET_ID_MAX) unsupported('Worksheet IDs exceed the bounded numeric importer.');
     if (sheet.visibility === 'veryHidden') unsupported('Very hidden sheets need their own sheet-action policy.');

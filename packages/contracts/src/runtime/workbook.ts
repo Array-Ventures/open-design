@@ -157,7 +157,7 @@ export const workbookTableSchema = z.object({ name: formulaName, sheetId: id, ra
 export type WorkbookDefinedName = z.infer<typeof workbookDefinedNameSchema>;
 export type WorkbookTable = z.infer<typeof workbookTableSchema>;
 export const workbookDocumentSchema = z.object({
-  version: z.literal(1), worksheetStructureEditable: z.boolean().optional(), worksheetVisibilityEditable: z.boolean().optional(), richTextMetadata: z.literal('verified').optional(), calculationMetadata: z.enum(['verified', 'unsupported']).optional(), sourceFormat: z.literal('csv').optional(), date1904: z.boolean(), activeSheetId: id,
+  version: z.literal(1), worksheetStructureEditable: z.boolean().optional(), worksheetMembershipEditable: z.boolean().optional(), worksheetVisibilityEditable: z.boolean().optional(), richTextMetadata: z.literal('verified').optional(), calculationMetadata: z.enum(['verified', 'unsupported']).optional(), sourceFormat: z.literal('csv').optional(), date1904: z.boolean(), activeSheetId: id,
   themeColors: z.array(z.string().regex(/^[A-Fa-f0-9]{8}$/)).length(12).optional(),
   styles: z.array(workbookStyleSchema).min(1).max(WORKBOOK_MODEL_LIMITS.styles),
   sheets: z.array(workbookSheetSchema).min(1).max(WORKBOOK_MODEL_LIMITS.sheets),

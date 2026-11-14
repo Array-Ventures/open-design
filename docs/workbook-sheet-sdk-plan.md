@@ -862,3 +862,11 @@ new-constant failure came from stale compiled contract exports; the local
 contracts package was rebuilt before the passing source runs. SDK/stand-in
 transport proof does not substitute for a contained renderer, live controller,
 keyboard/toolbar or pending-source recovery qualification.
+
+### Dedicated membership capability
+
+The [reader capability boundary](workbook-membership-capability.md) distinguishes
+sheet membership from ordinary row/column geometry using the real source
+writer's qualification. Its optional model field is descriptive and does not
+install controls or issue native commands; the future producer must require an
+explicit true while the worker continues to recheck actual source ownership.

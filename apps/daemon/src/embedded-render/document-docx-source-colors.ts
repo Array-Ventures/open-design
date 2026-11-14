@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { load } from 'cheerio';
 import { documentDocxColorOwners, type DocumentDocxColors } from './document-docx-colors.js';
+import type { DocumentColorRequest } from '@open-design/document-style/color';
 
-export interface DocumentDocxColorRequest { id: string; kind: 'cell' | 'inline' }
+export type DocumentDocxColorRequest = DocumentColorRequest;
 export interface DocumentDocxColorSource { html: string; attributeName: string; requests: DocumentDocxColorRequest[] }
 const fail = (): never => { throw new Error('The document converter could not preserve normalized color ownership.'); };
 
@@ -14,11 +15,12 @@ export function documentDocxSourceColors(html: string): DocumentDocxColorSource 
   let attributeName: string;
   do { attributeName = `data-eve-docx-color-${randomBytes(8).toString('hex')}`; }
   while ($(`[${attributeName}],[${attributeName.slice(5)}]`).length);
-  const add = (kind: 'cell' | 'inline') => { if (requests.length >= 20000) return fail(); const id = String(requests.length); requests.push({ id, kind }); return id; };
+  const add = (kind: 'cell' | 'inline' | 'divider') => { if (requests.length >= 20000) return fail(); const id = String(requests.length); requests.push({ id, kind }); return id; };
   const htmlNamespace = 'http://www.w3.org/1999/xhtml';
   // Foreign syntax (for example passive MathML) has a separate admission owner.
   // Never insert HTML spans/attributes into it or its embedded descendants.
   const foreign = (elements: ReturnType<typeof $>) => elements.toArray().some(parent => parent.type === 'tag' && Boolean(parent.namespace && parent.namespace !== htmlNamespace));
+  $('hr').each((_index, rule) => { if (!foreign($(rule).add($(rule).parents()))) $(rule).attr(attributeName, add('divider')); });
   $('td,th').each((_index, cell) => { if (!foreign($(cell).add($(cell).parents()))) $(cell).attr(attributeName, add('cell')); });
   // Snapshot direct TextNodes before adding wrappers; never walk newly wrapped
   // children a second time or reinterpret source IDs as generated ownership.

@@ -1,3 +1,4 @@
+import { assertWorkbookSheetsSupported } from './sheet-patch.js';
 import { assertWorkbookStructureSupported } from './structure-patch.js';
 import { WORKBOOK_STRUCTURE_AXIS_BUDGET } from '@open-design/contracts/runtime/workbook-structure';
 import { assertWorkbookImportLayout } from './import-layout.js';
@@ -223,6 +224,15 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
       if (area <= 100_000 && axisCount <= WORKBOOK_STRUCTURE_AXIS_BUDGET) { for (const value of geometry) { value.sheet.rowCount = value.rows; value.sheet.columnCount = value.columns; } model.worksheetStructureEditable = true; }
     }
     catch { /* This workbook stays editable through its already qualified owners. */ }
+  }
+  // Membership owns package metadata beyond row/column geometry. Reuse the
+  // real writer's source qualification; the preview flag never grants a write.
+  model.worksheetMembershipEditable = false;
+  if (model.worksheetStructureEditable) {
+    try { assertWorkbookSheetsSupported(result); model.worksheetMembershipEditable = true; }
+    catch (error) {
+      if (!(error instanceof WorkbookFormatError)) throw error;
+    }
   }
   return result;
 }
