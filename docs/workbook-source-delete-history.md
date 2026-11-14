@@ -116,3 +116,12 @@ contexts and Writer regressions. The source Delete suite contains28 cases. Full 
 guard and the final web typecheck passed. No package, stack, model call, production
 change or installer pin was made. Installation and actual packaged authorized
 Delete/save/pending/lost-ACK/Undo/Redo acceptance remain the next gates.
+
+The PR integration normally merged main7c7c8f7e into the reviewed source
+checkpointbf1f23d8. Its only conflict was the historical birth document's two
+qualification links; both scopes are retained. Workbook production code and the
+28-case fixture remain byte-identical to that source checkpoint. A frozen
+installation completed before integration full-workspace types and guard, which
+both passed. The125 focused cases were not repeated merely for this disjoint
+merge. Existing120/63 editor/manual-asset qualification predates this live Delete
+issuer and does not qualify it.
