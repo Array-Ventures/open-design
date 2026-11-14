@@ -15,7 +15,7 @@ it.each([
   ...['foreign-stack', 'different-fallback', 'escaped-stack'].map(invalid => ({ fill: undefined, invalid, defaultFont: true })),
   ...['background', 'extra-background', 'margin', 'drawing', 'structured-body'].map(invalid => ({ fill: undefined, invalid, defaultFont: false })),
 ])('admits only the owned blank editor background ($fill, $invalid)', async ({ fill, invalid, defaultFont }) => {
-  const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 's', richTextMetadata: 'verified', styles: [defaultFont ? { font: { name: 'Calibri', family: 2, size: 11 } } : {}],
+  const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: 's', richTextMetadata: 'verified', styles: [defaultFont ? { font: { name: 'Calibri', family: 2, size: 11, color: { kind: 'rgb', argb: 'FF000000' } } } : {}],
     features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
     sheets: [{ id: 's', name: 'Blank', visibility: 'visible', rowCount: 100, columnCount: 26, cells: [], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }] };
   const univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: English } });
@@ -64,12 +64,15 @@ it.each([
       expect(() => workbookGridEdits(model, 'a'.repeat(64), initial, core.getSnapshot())).toThrow(/document formatting|drawings|structured rich|font family/);
       return;
     }
+    if (defaultFont) {
+      expect(sheet.getCellRaw(0, 0)).toMatchObject({ v: 28, t: 2 });
+      expect(sheet.getCellRaw(0, 0)?.p ?? null).toBeNull();
+      return;
+    }
     expect(sheet.getCellRaw(0, 0)?.p?.documentStyle).toEqual({});
     const desired = structuredClone(core.getSnapshot());
     const cell = workbookGridEdits(model, 'a'.repeat(64), initial, desired).edits[0]!.cell;
-    if (defaultFont) {
-      expect(cell).toMatchObject({ value: '28', runs: [{ text: '2' }, { text: '8', font: { name: 'Calibri', family: 2, size: 11 } }] });
-    } else expect(cell).toMatchObject({ value: '28', runs: [{ text: '2', font: { bold: true } }, { text: '8', font: { italic: true } }] });
+    expect(cell).toMatchObject({ value: '28', runs: [{ text: '2', font: { bold: true } }, { text: '8', font: { italic: true } }] });
     expect(workbookGridEdits(model, 'a'.repeat(64), initial, JSON.parse(JSON.stringify(desired))).edits[0]!.cell).toEqual(cell);
   } finally { hook.dispose(); univer.dispose(); }
 });

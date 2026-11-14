@@ -1,5 +1,7 @@
+import { defaultWorkbookCellInput } from './default-cell-input';
 import {
   CellValueType,
+  UniverInstanceType,
   VerticalAlign,
   HorizontalAlign,
   DOCS_NORMAL_EDITOR_UNIT_ID_KEY,
@@ -117,6 +119,44 @@ export function attachWorkbookRichInput(univer: Univer, api: FUniver, kernel: Ke
   defaultDocument.dispose();
   const unitId = book.getId();
   let active = true;
+  const normalize = (snapshot: IDocumentData, style: IStyleData, edit: import('@univerjs/preset-sheets-core').IEditorBridgeServiceParam, editorId: string) => {
+      // The pinned resize service fits the editor's top/left padding to its
+      // rendered text. Validate those numbers against the same source layout
+      // and measured skeleton, rather than accepting arbitrary document margins.
+      let rendererMargins: { marginTop: number; marginLeft: number; marginBottom: number; marginRight: number } | undefined;
+      if (editorId === DOCS_NORMAL_EDITOR_UNIT_ID_KEY && edit.documentLayoutObject && injector.has(kernel.IRenderManagerService)) {
+        const render = injector.get(kernel.IRenderManagerService).getRenderUnitById(editorId);
+        const size = render?.with(kernel.DocSkeletonManagerService).getSkeleton()?.getActualSize();
+        const { paddingData: padding, verticalAlign, horizontalAlign } = edit.documentLayoutObject;
+        const scale = edit.scaleY, height = edit.position && (edit.position.endY - edit.position.startY);
+        const pageWidth = snapshot.documentStyle?.pageSize?.width;
+        if (size && Number.isFinite(size.actualHeight) && Number.isFinite(size.actualWidth) && Number.isFinite(scale) && scale > 0 && Number.isFinite(height)) {
+          const top = padding.t ?? 0, bottom = padding.b ?? 0, left = padding.l ?? 0, right = padding.r ?? 0;
+          const textHeight = size.actualHeight * scale + (top + bottom) * scale;
+          const spare = (Math.max(height, textHeight) - textHeight) / scale;
+          const fittedTop = verticalAlign === VerticalAlign.TOP ? top : verticalAlign === VerticalAlign.MIDDLE ? spare / 2 : spare;
+          const fittedLeft = horizontalAlign === HorizontalAlign.RIGHT && typeof pageWidth === 'number' && Number.isFinite(pageWidth) ? pageWidth - size.actualWidth - left - right : left;
+          rendererMargins = { marginTop: Math.max(top, fittedTop), marginLeft: Math.max(left, fittedLeft), marginBottom: bottom, marginRight: right };
+        }
+      }
+    return contentSnapshot(snapshot, style, editorId === DOCS_FORMULA_BAR_EDITOR_UNIT_ID_KEY, defaults, rendererMargins, edit.documentLayoutObject?.fill);
+  };
+  const removeInput = injector.get(kernel.SheetInterceptorService).writeCellInterceptor.intercept(kernel.BEFORE_CELL_INPUT_PARSE, {
+    priority: 900,
+    handler(snapshot, context, next) {
+      if (!active || !snapshot || context.unitId !== unitId || api.getActiveWorkbook()?.getId() !== unitId
+        || instances.getUnit(unitId, UniverInstanceType.UNIVER_SHEET) !== context.workbook
+        || context.worksheet.getSheetId() !== context.subUnitId || context.origin?.p) return next(snapshot);
+      const edit = bridge.getEditCellState(), editorId = bridge.getCurrentEditorId();
+      if (!edit || edit.unitId !== unitId || edit.sheetId !== context.subUnitId || edit.row !== context.row || edit.column !== context.col
+        || !editorId || ![DOCS_NORMAL_EDITOR_UNIT_ID_KEY, DOCS_FORMULA_BAR_EDITOR_UNIT_ID_KEY].includes(editorId)
+        || instances.getUnit<DocumentDataModel>(editorId)?.getSnapshot().id !== snapshot.id) return next(snapshot);
+      const style = context.worksheet.getComposedCellStyle(context.row, context.col);
+      const normalized = normalize(snapshot, style, edit, editorId);
+      const scalar = normalized && defaultWorkbookCellInput(normalized, style);
+      return next(scalar ?? snapshot);
+    },
+  });
   const remove = injector.get(kernel.SheetInterceptorService).writeCellInterceptor.intercept(kernel.AFTER_CELL_EDIT, {
     priority: 900,
     handler(cell, context, next) {
@@ -147,27 +187,8 @@ export function attachWorkbookRichInput(univer: Univer, api: FUniver, kernel: Ke
       // migrated into a supported one by discarding its authored properties.
       if (previous?.p && Object.keys(previous.p.documentStyle ?? {}).length)
         throw Error('Keep this rich draft open; its document formatting needs its own edit adapter.');
-      // The pinned resize service fits the editor's top/left padding to its
-      // rendered text. Validate those numbers against the same source layout
-      // and measured skeleton, rather than accepting arbitrary document margins.
-      let rendererMargins: { marginTop: number; marginLeft: number; marginBottom: number; marginRight: number } | undefined;
-      if (editorId === DOCS_NORMAL_EDITOR_UNIT_ID_KEY && edit.documentLayoutObject && injector.has(kernel.IRenderManagerService)) {
-        const render = injector.get(kernel.IRenderManagerService).getRenderUnitById(editorId);
-        const size = render?.with(kernel.DocSkeletonManagerService).getSkeleton()?.getActualSize();
-        const { paddingData: padding, verticalAlign, horizontalAlign } = edit.documentLayoutObject;
-        const scale = edit.scaleY, height = edit.position && (edit.position.endY - edit.position.startY);
-        const pageWidth = snapshot.documentStyle?.pageSize?.width;
-        if (size && Number.isFinite(size.actualHeight) && Number.isFinite(size.actualWidth) && Number.isFinite(scale) && scale > 0 && Number.isFinite(height)) {
-          const top = padding.t ?? 0, bottom = padding.b ?? 0, left = padding.l ?? 0, right = padding.r ?? 0;
-          const textHeight = size.actualHeight * scale + (top + bottom) * scale;
-          const spare = (Math.max(height, textHeight) - textHeight) / scale;
-          const fittedTop = verticalAlign === VerticalAlign.TOP ? top : verticalAlign === VerticalAlign.MIDDLE ? spare / 2 : spare;
-          const fittedLeft = horizontalAlign === HorizontalAlign.RIGHT && typeof pageWidth === 'number' && Number.isFinite(pageWidth) ? pageWidth - size.actualWidth - left - right : left;
-          rendererMargins = { marginTop: Math.max(top, fittedTop), marginLeft: Math.max(left, fittedLeft), marginBottom: bottom, marginRight: right };
-        }
-      }
       let doc =
-          contentSnapshot(snapshot, style, editorId === DOCS_FORMULA_BAR_EDITOR_UNIT_ID_KEY, defaults, rendererMargins, edit.documentLayoutObject?.fill) ??
+          normalize(snapshot, style, edit, editorId) ??
           structuredClone(snapshot),
         value = body.dataStream.slice(0, -2);
       if (cell?.t === CellValueType.FORCE_STRING && typeof cell.v === 'string' && value === `'${cell.v}` && !body.customRanges?.length && !body.customBlocks?.length && !body.customDecorations?.length && !body.tables?.length) {
@@ -197,7 +218,7 @@ export function attachWorkbookRichInput(univer: Univer, api: FUniver, kernel: Ke
     dispose() {
       if (!active) return;
       active = false;
-      remove();
+      removeInput(); remove();
     },
   };
 }
