@@ -49,8 +49,9 @@ the caret from 13 back to 7. Mention insertion now owns a receipt consumed only 
 the layout commit accepting that exact value on the original textarea; newer
 input, selection, pointer, keyboard or blur events invalidate it. No delayed
 focus/caret write remains. The scratch browser is a bounded component proof,
-not acceptance of the full candidate. Both fixes require the next paired native
-browser run, including unchanged rapid typing assertions.
+not acceptance of the full candidate. At that source checkpoint, both fixes were pending the next paired native
+browser run. Candidate 107 below qualifies them with unchanged rapid typing
+assertions.
 
 ### Frozen candidate 107 provenance and acceptance
 
@@ -79,15 +80,19 @@ The cases also assert passive ranges, accessible quotes, mention-only disabled
 submission, source bytes, reload anchors, no stale thread selection and draft
 retention. No delays, forced input or production DOM overrides were added.
 
-The coordinator manually checked both themes on desktop and 390-wide layouts:
-no-selection Comment opened the list with Editing/insertion still available;
-a real full-paragraph drag followed by inline Comment opened an autofocused
-composer, with an exact passive range and empty native selection. Keep editing
-retained the draft; explicit Discard removed composer/highlight. Fullscreen and
-restore kept the same iframe, document and input while preserving unsent comment
-and chat drafts. Mobile Show chat/Return to artifact retained the same document
-and reply node. List navigation hid that reply with zero rectangles and returned
-the same DOM node and unsent text.
+Manual captures cover dark/light desktop lists, a light desktop composer, and
+dark/light 390-wide saved threads. On light desktop, no-selection Comment opened
+the list with Editing/insertion still available; a real full-paragraph drag
+followed by inline Comment opened an autofocused composer, with an exact passive
+range and empty native selection. Keep editing retained the draft; explicit
+Discard removed composer/highlight. Fullscreen and restore kept the same iframe,
+document and input while preserving unsent comment and chat drafts.
+
+On the dark 390-wide mobile flow, Show chat/Return to artifact retained the same
+document and reply node with its unsent reply. List navigation hid that reply
+with zero rectangles and returned the same DOM node and unsent text. The light
+mobile thread was also personally viewed. These actions were not all repeated
+in every theme/viewport combination.
 
 The fake manual artifact remained 328 bytes with SHA256
 `66a16a21de900756016c1bfbb2db80fd143e488e4abefc0914fe4d131513a7b3`.
