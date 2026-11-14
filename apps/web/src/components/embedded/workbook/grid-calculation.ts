@@ -85,5 +85,5 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
     handler: (cell, location, next) => next(display.display(location.subUnitId, location.row, location.col, (cell ?? {}) as ICellData, location.rawData || undefined)),
   });
   publish();
-  return { status: (sheet: string, row: number, column: number) => display.status(sheet, row, column), dispose() { before.dispose(); after.dispose(); unsubscribe?.(); intercept.dispose(); } };
+  return { rebaseSource(nextModel: WorkbookDocument, nextOriginal: IWorkbookData, acknowledged: IWorkbookData) { display.rebaseSource(nextModel, nextOriginal, acknowledged); }, publish, status: (sheet: string, row: number, column: number) => display.status(sheet, row, column), dispose() { before.dispose(); after.dispose(); unsubscribe?.(); intercept.dispose(); } };
 }
