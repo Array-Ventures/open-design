@@ -1,6 +1,6 @@
 # Source-owned image sizing in heading exports
 
-This source checkpoint advances simple image-only headings. It does not establish full document-image fidelity or qualify an immutable companion/renderer pair.
+This records the bounded image-only heading slice, its initial source proofs and the later118/61 qualification below; full document-image fidelity remains incomplete.
 
 ## Existing failure and physical context
 
