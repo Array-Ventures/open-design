@@ -1,3 +1,4 @@
+import { documentCodeBlockGeometry } from './code-block.js';
 import { documentFontSizePattern, validDocumentFontSize, validDocumentFontLineHeight, normalizeDocumentFontPoints, validDocumentHeadingLevel } from './presentation.js';
 import { compositeDocumentColor, documentContrast, opaqueDocumentColorHex, type DocumentColor } from './color.js';
 export type { DocumentColor } from './color.js';
@@ -162,7 +163,7 @@ function explicitImageDimension(image: HTMLImageElement, name: 'width'|'height')
 }
 /** A one-line, baseline-aligned image fits the actual heading strut. Tall,
  * mixed, multi-image and repositioned content keep their existing behavior. */
-function headingImagePresentation(owner: HTMLElement, attributeName: string, id: string, contentWidthPx?: number, physicalImages = false): Partial<import('./presentation.js').NormalizedDocumentPresentation> {
+function headingImagePresentation(owner: HTMLElement, attributeName: string, id: string, contentWidthPx?: number, physicalImages = false, contentHeightPx?: number): Partial<import('./presentation.js').NormalizedDocumentPresentation> {
   if (!Number.isFinite(contentWidthPx) || contentWidthPx! <= 0) return {};
   const images = owner.querySelectorAll('img');
   if (images.length !== 1 || /[^\t\n\f\r ]/.test(owner.textContent ?? '')) return {};
@@ -223,10 +224,10 @@ function headingImagePresentation(owner: HTMLElement, attributeName: string, id:
     headingImageHeightPt: imageBox.height*.75, headingImageSource: 'single-baseline-image' as const };
   return Object.values(result).some(value => typeof value === 'number' && (!Number.isFinite(value) || value <= 0 || value > 3277)) ? {} : result;
 }
-export function normalizeDocumentPresentationOwners(document: Document, requests: readonly import('./presentation.js').DocumentPresentationRequest[], attributeName: string, ownedStyles: readonly string[], read: DocumentColorReader = documentColorReader(document), contentWidthPx?: number, physicalImages = false): Array<{ id: string; presentation: import('./presentation.js').NormalizedDocumentPresentation }> {
+export function normalizeDocumentPresentationOwners(document: Document, requests: readonly import('./presentation.js').DocumentPresentationRequest[], attributeName: string, ownedStyles: readonly string[], read: DocumentColorReader = documentColorReader(document), contentWidthPx?: number, physicalGeometry = false, contentHeightPx?: number): Array<{ id: string; presentation: import('./presentation.js').NormalizedDocumentPresentation }> {
   const fail = (): never => { throw new Error('The document color ownership or authored presentation is not representable.'); };
   if (!/^data-eve-docx-[a-z0-9-]{1,80}$/.test(attributeName) || requests.length > 20000 || !documentColorLayoutQualified(document, ownedStyles)) return fail();
-  if (requests.some(request => !/^[A-Za-z0-9_-]{1,100}$/.test(request.id) || !['cell','inline','divider','heading'].includes(request.kind))) return fail();
+  if (requests.some(request => !/^[A-Za-z0-9_-]{1,100}$/.test(request.id) || !['cell','inline','divider','heading','code-block'].includes(request.kind))) return fail();
   const expected = new Map(requests.map(request => [request.id, request.kind])); if (expected.size !== requests.length) return fail();
   const elements = new Map<string, HTMLElement>();
   for (const element of Array.from(document.body.querySelectorAll(`[${attributeName}]`))) {
@@ -238,7 +239,7 @@ export function normalizeDocumentPresentationOwners(document: Document, requests
   if (!canvas || canvas[3] !== 1) return fail();
   return requests.map(request => {
     const owner = elements.get(request.id)!;
-    if (request.kind === 'cell' ? !['TD','TH'].includes(owner.tagName) : request.kind === 'divider' ? owner.tagName !== 'HR' : request.kind === 'heading' ? !/^H[1-6]$/.test(owner.tagName) : !['SPAN','CODE','PRE'].includes(owner.tagName)) return fail();
+    if (request.kind === 'cell' ? !['TD','TH'].includes(owner.tagName) : request.kind === 'divider' ? owner.tagName !== 'HR' : request.kind === 'heading' ? !/^H[1-6]$/.test(owner.tagName) : request.kind === 'code-block' ? owner.tagName !== 'PRE' : !['SPAN','CODE','PRE'].includes(owner.tagName)) return fail();
     const presentation: import('./presentation.js').NormalizedDocumentPresentation = {};
     const textOwner = blockCodePresentationOwner(owner) ?? fail();
     if (request.kind === 'heading') {
@@ -250,12 +251,13 @@ export function normalizeDocumentPresentationOwners(document: Document, requests
         presentation.headingLevel = level; presentation.headingBeforePt = 0; presentation.headingSource = 'canonical-first-block';
       }
       if (canonicalFrame) {
-        const image = headingImagePresentation(owner, attributeName, request.id, contentWidthPx, physicalImages);
+        const image = headingImagePresentation(owner, attributeName, request.id, contentWidthPx, physicalGeometry);
         if (image.headingImageSource) { presentation.headingLevel = level as 1|2|3|4|5|6; Object.assign(presentation,image); }
       }
       return { id: request.id, presentation };
     }
-    if (request.kind === 'inline') {
+    if (request.kind === 'code-block' && physicalGeometry) Object.assign(presentation, documentCodeBlockGeometry(document, owner, contentWidthPx ?? NaN, contentHeightPx ?? NaN));
+    if (request.kind === 'inline' || request.kind === 'code-block') {
       let authoredSize = false;
       for (let ancestor: HTMLElement | null = owner; ancestor; ancestor = ancestor.parentElement) {
         if (ancestor.style.getPropertyValue('font-size')) { authoredSize = true; break; }

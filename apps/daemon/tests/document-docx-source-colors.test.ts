@@ -79,7 +79,7 @@ it('preserves the actual ordinary-GFM MathML corpus and TeX annotations exactly 
 });
 it.each(['<p><code>Code</code></p>','<pre>Code block</pre>','<p><span> </span></p>'])('retains font-only owners and refuses a lost native owner: %s', html => {
   const source = documentDocxSourceColors(html), id = source.requests[0]!.id;
-  const resolved = new Map([[id,{fontSizePt:30,fontLineHeightPt:45,fontSizeSource:'authored' as const}]]);
+  const resolved = new Map([[id,{fontSizePt:30,fontLineHeightPt:45,fontSizeSource:source.requests[0]!.kind === 'code-block' ? 'code-context' as const : 'authored' as const}]]);
   expect(normalizedDocumentDocxHtml(source,resolved)).toContain(source.attributeName);
   expect(() => resolvedDocumentDocxColorOwners({blocks:[]},source,resolved)).toThrow('ownership');
 });

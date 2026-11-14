@@ -2,7 +2,7 @@ import { documentSourceImageIdentity } from './document-image-assets.js';
 import { randomBytes } from 'node:crypto';
 import { load } from 'cheerio';
 import { documentDocxPresentationOwners } from './document-docx-colors.js';
-import { validDocumentFontSize, validDocumentFontLineHeight, validDocumentHeadingImage, validDocumentHeadingMetadata, type DocumentPresentationRequest, type NormalizedDocumentPresentation } from '@open-design/document-style';
+import { documentCodeBlockGeometryKeys, validDocumentCodeBlockGeometry, validDocumentFontSize, validDocumentFontLineHeight, validDocumentHeadingImage, validDocumentHeadingMetadata, type DocumentPresentationRequest, type NormalizedDocumentPresentation } from '@open-design/document-style';
 
 export type DocumentDocxColorRequest = DocumentPresentationRequest;
 export interface DocumentDocxPresentationSource { html: string; attributeName: string; requests: DocumentPresentationRequest[] }
@@ -29,7 +29,7 @@ export function documentDocxSourcePresentation(html: string): DocumentDocxPresen
     if (images.length === 1) images.attr(`${attributeName}-image`,id);
   });
   $('pre,code').each((_index, code) => {
-    if (!foreign($(code).add($(code).parents())) && !$(code).parents('pre').length) $(code).attr(attributeName, add('inline'));
+    if (!foreign($(code).add($(code).parents())) && !$(code).parents('pre').length) $(code).attr(attributeName, add($(code).is('pre') ? 'code-block' : 'inline'));
   });
   $('hr').each((_index, rule) => { if (!foreign($(rule).add($(rule).parents()))) $(rule).attr(attributeName, add('divider')); });
   $('td,th').each((_index, cell) => { if (!foreign($(cell).add($(cell).parents()))) $(cell).attr(attributeName, add('cell')); });
@@ -59,8 +59,9 @@ export function normalizedDocumentDocxHtml(source: DocumentDocxPresentationSourc
       if (code.length !== 1 || !code.is('code,pre')) return fail();
     }
     if (value.fontSizePt !== undefined || value.fontLineHeightPt !== undefined || value.fontSizeSource !== undefined) {
-      if (request.kind !== 'inline' || !['authored','code-context'].includes(value.fontSizeSource ?? '') || !validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt)) return fail();
+      if (!['inline','code-block'].includes(request.kind) || request.kind === 'code-block' && value.fontSizeSource !== 'code-context' || !['authored','code-context'].includes(value.fontSizeSource ?? '') || !validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt)) return fail();
     }
+    if (documentCodeBlockGeometryKeys.some(key => value[key] !== undefined) && (request.kind !== 'code-block' || !validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt) || value.fontSizeSource !== 'code-context' || !validDocumentCodeBlockGeometry(value))) return fail();
     if (Object.keys(value).some(key => key.startsWith('heading'))) {
       if (request.kind !== 'heading' || !validDocumentHeadingMetadata(value)) return fail();
     }
@@ -123,6 +124,12 @@ export function resolvedDocumentDocxPresentationOwners(ast: unknown, source: Doc
     if (Array.isArray(node)) { node.forEach(inspect); return; }
     const item = node as {t?:string;c?:unknown[]};
     if ((item.t === 'Code' || item.t === 'CodeBlock') && Array.isArray(item.c?.[0])) nativeCodeAttributes.set(item.c[0], item.t);
+    if (item.t === 'CodeBlock' && Array.isArray(item.c?.[0])) {
+      const attributes = item.c[0] as unknown[];
+      const own = Array.isArray(attributes[2]) ? attributes[2].find(pair=>Array.isArray(pair)&&pair[0]===key) as string[]|undefined : undefined;
+      const value = own && resolved.get(own[1]!);
+      if (value?.codeBlockSource && (typeof item.c[1] !== 'string' || !item.c[1].trim() || item.c[1].includes('\t') || item.c[1].split('\n').length !== value.codeBlockLineCount)) return fail();
+    }
     if (item.t === 'Header' && Array.isArray(item.c)) {
       const attributes = item.c[1] as unknown[];
       const own = Array.isArray(attributes?.[2]) ? (attributes[2] as unknown[]).find(pair => Array.isArray(pair) && pair[0] === key) as string[] | undefined : undefined;
@@ -175,13 +182,15 @@ export function resolvedDocumentDocxPresentationOwners(ast: unknown, source: Doc
       if (code.length !== 1 || !code.is('code,pre') || nativeCodeAttributes.get(raw) !== (code.is('pre') ? 'CodeBlock' : 'Code')) return fail();
     }
     if (value.fontSizePt !== undefined || value.fontLineHeightPt !== undefined || value.fontSizeSource !== undefined) {
-      if (kind !== 'inline' || !['authored','code-context'].includes(value.fontSizeSource ?? '') || !validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt)) return fail();
+      if (!['inline','code-block'].includes(kind) || kind === 'code-block' && value.fontSizeSource !== 'code-context' || !['authored','code-context'].includes(value.fontSizeSource ?? '') || !validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt)) return fail();
     }
+    if (documentCodeBlockGeometryKeys.some(key => value[key] !== undefined) && (kind !== 'code-block' || !validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt) || value.fontSizeSource !== 'code-context' || !validDocumentCodeBlockGeometry(value))) return fail();
     if (Object.keys(value).some(key => key.startsWith('heading'))) {
       if (kind !== 'heading' || !validDocumentHeadingMetadata(value)) return fail();
     }
     const { foreground, background, fontSizePt, fontLineHeightPt, headingLevel, headingBeforePt, headingImageLineHeightPt, headingImageWidthPt, headingImageHeightPt, headingImageSource } = value;
     const presentation = { ...(foreground ? {foreground} : {}), ...(background ? {background} : {}), ...(fontSizePt !== undefined ? { fontSizePt, fontLineHeightPt: fontLineHeightPt! } : {}), ...(headingLevel !== undefined ? { headingLevel, ...(headingBeforePt !== undefined ? {headingBeforePt} : {}) } : {}), ...(headingImageSource ? {headingImageLineHeightPt,headingImageWidthPt,headingImageHeightPt,headingImageSource} : {}) };
+    if (value.codeBlockSource) Object.assign(presentation,Object.fromEntries(documentCodeBlockGeometryKeys.map(key=>[key,value[key]])));
     if (headingImageSource) presentationHashes.set(presentation, imageHashes.get(id) ?? fail());
     return presentation;
   });
