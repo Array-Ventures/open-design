@@ -4,6 +4,17 @@ The later [candidate 128 qualification](workbook-live128-qualification.md) recor
 the first bounded packaged Add/Save/Undo/Redo/Rename/Delete/reload flow. Pending
 statements below describe their dated source checkpoints, not the current pair.
 
+PR #39 now prepares the reviewed candidate 132 source (`83316f1e`) through
+normal merges; this does not relabel candidate 131's actual results. At 131,
+numeric persistence, post-Save capability reconnection and a Worker-fault draft
+Restore/Save passed bounded checks, while rich append lost its styled prefix,
+unused-sheet Rename hit the calculation deadline, live formula repaint was
+incomplete and a raw Markdown code fixture failed structured admission. The
+source corrections are reviewed; new candidate 132 browser acceptance remains
+pending. The [native 131 record](https://github.com/Array-Ventures/evebot/blob/c5954f857b5819bc4e327d7a0d953c3e97abad9a/docs/workbook-live131-qualification.md)
+retains the independent XML checks, precise failures and cleanup limits. This PR
+remains draft; installer pins and production are unchanged.
+
 Root integration joins private consumer78b1724b with reviewed bridge2101576e
 at9e80ed84. The one controller merge conflict retained private pause/rebind
 methods; detached inspection remains present once and native registration count
