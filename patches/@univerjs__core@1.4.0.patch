@@ -1,5 +1,5 @@
 diff --git a/lib/cjs/index.js b/lib/cjs/index.js
-index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..5ae077ab02fcecba36c21d5acc13ce12e38ef420 100644
+index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..c218b1f6f46a909fe583305268eb8df937a668a9 100644
 --- a/lib/cjs/index.js
 +++ b/lib/cjs/index.js
 @@ -2065,7 +2065,7 @@ var CommandRegistry = class {
@@ -80,6 +80,22 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..5ae077ab02fcecba36c21d5acc13ce12
  			if (result instanceof Promise) throw new TypeError("[CommandService]: Command handler should not return a promise.");
  			this._commandExecutingLevel--;
  		} catch (e) {
+@@ -13520,12 +13550,12 @@ function normalizeTextRuns(textRuns, reserveEmptyTextRun = false) {
+ * @param currentIndex Determining the index where the content will be inserted into the current content.
+ */
+ function insertTextRuns(body, insertBody, textLength, currentIndex) {
+-	const { textRuns } = body;
+-	if (textRuns == null) return;
++	const insertTextRuns = insertBody.textRuns ?? [];
++	if (body.textRuns == null && insertTextRuns.length === 0) return;
++	const textRuns = body.textRuns ?? [];
+ 	const newTextRuns = [];
+ 	const len = textRuns.length;
+ 	let hasInserted = false;
+-	const insertTextRuns = insertBody.textRuns ?? [];
+ 	if (insertTextRuns.length) for (const insertTextRun of insertTextRuns) {
+ 		insertTextRun.st += currentIndex;
+ 		insertTextRun.ed += currentIndex;
 @@ -25578,6 +25608,91 @@ const RedoCommand = new class extends MultiImplementationCommand {
  		return false;
  	}
@@ -353,7 +369,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..5ae077ab02fcecba36c21d5acc13ce12
  			this._itemGroups.delete(item);
  			sequenceExecute(item.undoMutations, this._commandService);
 diff --git a/lib/es/index.js b/lib/es/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..d834f2b7f3aff1388a6c9c6b63a2e2398a6fd0fa 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..91332876118c51feed3327fb6153a2108afb8cd0 100644
 --- a/lib/es/index.js
 +++ b/lib/es/index.js
 @@ -2036,7 +2036,7 @@ var CommandRegistry = class {
@@ -434,6 +450,22 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..d834f2b7f3aff1388a6c9c6b63a2e239
  			if (result instanceof Promise) throw new TypeError("[CommandService]: Command handler should not return a promise.");
  			this._commandExecutingLevel--;
  		} catch (e) {
+@@ -13491,12 +13521,12 @@ function normalizeTextRuns(textRuns, reserveEmptyTextRun = false) {
+ * @param currentIndex Determining the index where the content will be inserted into the current content.
+ */
+ function insertTextRuns(body, insertBody, textLength, currentIndex) {
+-	const { textRuns } = body;
+-	if (textRuns == null) return;
++	const insertTextRuns = insertBody.textRuns ?? [];
++	if (body.textRuns == null && insertTextRuns.length === 0) return;
++	const textRuns = body.textRuns ?? [];
+ 	const newTextRuns = [];
+ 	const len = textRuns.length;
+ 	let hasInserted = false;
+-	const insertTextRuns = insertBody.textRuns ?? [];
+ 	if (insertTextRuns.length) for (const insertTextRun of insertTextRuns) {
+ 		insertTextRun.st += currentIndex;
+ 		insertTextRun.ed += currentIndex;
 @@ -25549,6 +25579,91 @@ const RedoCommand = new class extends MultiImplementationCommand {
  		return false;
  	}
@@ -707,7 +739,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..d834f2b7f3aff1388a6c9c6b63a2e239
  			this._itemGroups.delete(item);
  			sequenceExecute(item.undoMutations, this._commandService);
 diff --git a/lib/index.js b/lib/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..d834f2b7f3aff1388a6c9c6b63a2e2398a6fd0fa 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..91332876118c51feed3327fb6153a2108afb8cd0 100644
 --- a/lib/index.js
 +++ b/lib/index.js
 @@ -2036,7 +2036,7 @@ var CommandRegistry = class {
@@ -788,6 +820,22 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..d834f2b7f3aff1388a6c9c6b63a2e239
  			if (result instanceof Promise) throw new TypeError("[CommandService]: Command handler should not return a promise.");
  			this._commandExecutingLevel--;
  		} catch (e) {
+@@ -13491,12 +13521,12 @@ function normalizeTextRuns(textRuns, reserveEmptyTextRun = false) {
+ * @param currentIndex Determining the index where the content will be inserted into the current content.
+ */
+ function insertTextRuns(body, insertBody, textLength, currentIndex) {
+-	const { textRuns } = body;
+-	if (textRuns == null) return;
++	const insertTextRuns = insertBody.textRuns ?? [];
++	if (body.textRuns == null && insertTextRuns.length === 0) return;
++	const textRuns = body.textRuns ?? [];
+ 	const newTextRuns = [];
+ 	const len = textRuns.length;
+ 	let hasInserted = false;
+-	const insertTextRuns = insertBody.textRuns ?? [];
+ 	if (insertTextRuns.length) for (const insertTextRun of insertTextRuns) {
+ 		insertTextRun.st += currentIndex;
+ 		insertTextRun.ed += currentIndex;
 @@ -25549,6 +25579,91 @@ const RedoCommand = new class extends MultiImplementationCommand {
  		return false;
  	}
