@@ -22,7 +22,9 @@ it.each([
   '<html data-eve-document="1"><body><img src="picture.png" srcset="other.png 2x"></body></html>',
   '<html data-eve-document="1"><body><img src="../outside.png"></body></html>',
   '<html><body><p>Authored legacy content</p></body></html>',
-  '<html data-eve-document="1"><body><hr><p>Rule</p></body></html>',
+  // Plain HR is now a supported native divider; preserve the negative gate
+  // with genuinely unsupported authored positioning rather than a stale claim.
+  '<html data-eve-document="1"><body><hr style="position:absolute"><p>Rule</p></body></html>',
   '<html data-eve-document="1"><body><table><caption>Caption</caption><tr><td>1</td></tr></table></body></html>',
   '<html data-eve-document="1"><body><img src="https://outside.fixture.test/picture.png"><p>Illustrated document</p></body></html>',
 ])('retains the actual viewer for content that cannot yet round-trip through the editor', async html => {
@@ -136,4 +138,10 @@ it('offers confirmed reload for a save conflict even without a file-change notif
   read.mockResolvedValue(version('external')); fireEvent.click(screen.getByRole('button', { name: 'Load latest document' }));
   await waitFor(() => expect(state.editor?.observed.sha256).toBe('external'));
   expect(consent).toHaveBeenCalledWith('fixture', 'document');
+});
+
+it('opens the already-supported plain divider in the rich surface', async () => {
+  read.mockResolvedValue({ html:'<html data-eve-document="1"><body><hr><p>Rule</p></body></html>', sha256:'original' });
+  render(<DocumentSurface projectId="fixture" fileName="report.html" title="Report" fallback={<div>Original viewer</div>} onSaved={() => {}} />);
+  expect(await screen.findByText('Rich editor')).toBeInTheDocument(); expect(screen.queryByText('Original viewer')).toBeNull();
 });
