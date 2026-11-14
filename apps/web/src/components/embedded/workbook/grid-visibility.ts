@@ -61,7 +61,7 @@ export function workbookVisibilityBridge(univer: Univer, api: FUniver, model: ()
   const receive = (event: MessageEvent) => {
     if (event.source !== window.parent || event.origin !== window.location.origin) return;
     const current = scope(); if (!current) return;
-    if (management && (event.data?.type === 'studio:workbook-membership' || event.data?.type === 'studio:artifact-request' && event.data.workbookMembershipVersion === 1)) { management.receive(event); return; }
+    if (management && (event.data?.type === 'studio:workbook-membership' || event.data?.type === 'studio:workbook-membership-probe' || event.data?.type === 'studio:artifact-request' && event.data.workbookMembershipVersion === 1)) { management.receive(event); return; }
     if (event.data?.type === 'studio:artifact-request' && event.data.projectId === current.projectId) { publish(); return; }
     if (current.blocked) return;
     const parsed = actionSchema.safeParse(event.data);

@@ -1,7 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createSourceDeleteHistoryFixture, sourceDeleteScope } from '../helpers/workbook-source-delete-fixture';
 import { workbookVisibilityBridge } from '../../src/components/embedded/workbook/grid-visibility';
-import { workbookMembershipVisibilitySchema } from '@open-design/contracts/runtime/workbook';
+import { workbookMembershipVisibilitySchema, workbookMembershipReadySchema } from '@open-design/contracts/runtime/workbook';
+import { workbookMembershipBridge } from '../../src/components/embedded/workbook/grid-membership-bridge';
 
 afterEach(() => vi.unstubAllGlobals());
 it('makes a retired publisher inert when a late callback sees a replacement scope', async () => {
@@ -48,4 +49,37 @@ it('publishes the privately owned live unsaved list through Rename, Delete and U
     await f.controller!.remove('4'); bridge.publish(); expect(published().sheets).toHaveLength(3);
     await f.api.undo(); bridge.publish(); expect(published().sheets.at(-1)).toMatchObject({ id: '4', name: 'Research' });
   } finally { bridge.dispose(); await f.close(); }
+});
+
+it('routes a correlated late probe through the sole installed visibility listener without granting execution', async () => {
+  const f = createSourceDeleteHistoryFixture(true), postMessage = vi.fn(), listeners = new Set<(event: MessageEvent) => void>();
+  const parent = { postMessage }, origin = 'http://fixture.invalid';
+  vi.stubGlobal('window', { parent, location: { origin }, addEventListener: (_: string, handler: (event: MessageEvent) => void) => listeners.add(handler), removeEventListener: (_: string, handler: (event: MessageEvent) => void) => listeners.delete(handler) });
+  const scope = { projectId: sourceDeleteScope.projectId, controllerId: '22222222-2222-4222-8222-222222222222', sourceSha256: 'a'.repeat(64), blocked: true };
+  const execute = vi.fn(async () => {}), pending: Promise<void>[] = [];
+  const management = workbookMembershipBridge({ parentWindow: parent, origin, getScope: () => scope, getState: () => null, execute, publish() {} });
+  const publisher = workbookVisibilityBridge(f.univer, f.api, () => f.source.model, () => scope, {
+    snapshot: () => null, decorate: management.decorate, receive: event => { pending.push(management.receive(event)); },
+  });
+  const before = f.book.save();
+  const probe = { type: 'studio:workbook-membership-probe', version: 1, projectId: scope.projectId, controllerId: scope.controllerId, handshakeId: crypto.randomUUID() };
+  const dispatch = async (data: unknown, source: unknown = parent, from = origin) => {
+    for (const listener of listeners) listener({ data, source, origin: from } as MessageEvent);
+    await Promise.all(pending.splice(0));
+  };
+  const replies = () => postMessage.mock.calls.filter(call => call[0]?.type === 'studio:workbook-membership-ready');
+  try {
+    // There is no early Grid listener here: exercise the one installed handoff listener.
+    expect(listeners.size).toBe(1);
+    await dispatch(probe);
+    expect(replies()).toHaveLength(1);
+    const ready = workbookMembershipReadySchema.parse(replies()[0]![0]);
+    expect(ready).toMatchObject({ projectId: scope.projectId, controllerId: scope.controllerId, handshakeId: probe.handshakeId });
+    for (const invalid of [{ ...probe, controllerId: crypto.randomUUID() }, { ...probe, projectId: crypto.randomUUID() }, { ...probe, version: 2 }, { ...probe, extra: true }, { ...probe, handshakeId: 'invalid' }]) await dispatch(invalid);
+    await dispatch(probe, null); await dispatch(probe, parent, 'https://foreign.invalid');
+    expect(replies()).toHaveLength(1);
+    publisher.dispose(); await dispatch({ ...probe, handshakeId: crypto.randomUUID() });
+    expect(listeners.size).toBe(0); expect(replies()).toHaveLength(1);
+    expect(execute).not.toHaveBeenCalled(); expect(f.book.save()).toEqual(before);
+  } finally { publisher.dispose(); management.dispose(); await f.close(); }
 });
