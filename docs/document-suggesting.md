@@ -247,3 +247,9 @@ Full workspace types, guard, frozen install and diff check exited 0. The first
 typecheck found duplicate imports in the expanded test, corrected without
 changing production or assertions; its log is retained separately. No package,
 browser, runtime, source overlay or publication was used for this correction.
+
+The subsequent child [font-history correction](document-font-history.md) resolves
+that retained ordinary first-font regression through the public Font-owner
+transaction boundary. It preserves this intermediate checkpoint and its failing
+log, all first-review controls, and source/selection/lifetime safeguards. Its
+107-case source result does not relabel the 136 browser observations as fixed.
