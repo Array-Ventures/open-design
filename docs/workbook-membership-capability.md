@@ -30,8 +30,8 @@ Six new actual-ZIP cases first failed because the capability was absent. They
 now prove ordinary admission without package changes; independent rejection of
 extended title vectors, unknown document properties, very-hidden sheets and
 out-of-range numeric IDs while structural geometry remains usable; and refusal
-for unsupported frozen views. Each refused source also rejects a real writer
-request after its preview flag is deliberately forged to true. The final focused
+for unsupported frozen views. The four membership-specific refusals also reject a real writer request
+after their preview flag is deliberately forged to true. The final focused
 run passed62 cases across membership capability, reader and sheet writer tests.
 Full workspace types, guard and diff checking passed. Local logs are under
 `/tmp/workbook-membership-capability-{red,focused,types,guard}.log`.
