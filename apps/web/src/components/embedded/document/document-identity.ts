@@ -64,7 +64,8 @@ export function documentHtmlConfig(): HTMLConfig {
       for (const node of nodes.filter(node => !$isTextNode(node))) {
         if (!(element instanceof HTMLElement)) continue;
         if ($isElementNode(node) && (element.dir === 'ltr' || element.dir === 'rtl')) node.setDirection(element.dir);
-        $setState(node, documentBlockId, documentBlockId.parse(element.getAttribute('data-od-id')));
+        const identity = element.getAttribute('data-od-id') ?? (node instanceof DocumentImageNode && element.getAttribute('data-eve-document-image') === '1' ? element.firstElementChild?.getAttribute('data-od-id') : null);
+        $setState(node, documentBlockId, documentBlockId.parse(identity));
       }
       return output;
     } };

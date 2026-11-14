@@ -1,0 +1,23 @@
+# Persistent document image dimensions
+
+The packaged 118 export fixtures expose an editor availability gap: the export pipeline can measure image CSS, but the rich-document gate refused `height:24px` and `width:50%`. The image node also imported only numeric HTML attributes and always rendered `height:auto`. Allowing the source through that gate alone would silently lose its authored dimensions during editing/save. This checkpoint fixes source ownership; it does not copy the export renderer's physical measurement into the document.
+
+## Source model
+
+Numeric HTML width/height remain independent from optional authored CSS width/height. Intrinsic absence stays absent; explicit `auto` remains explicit. The existing image node's clone, JSON, DOM import/export and render paths retain these values. Source CSS units survive: positive px/pt dimensions within the existing 10,000px bound, positive width percentages through 100%, and auto. Height percentages, viewport units, expressions, CSS variables, important declarations and unknown styles remain on the original fallback path. The same small parser is used by admission, import and node validation; other element grammars are not widened.
+
+The image renders its authored height instead of forcing auto, retaining the canonical max-width constraint. A width percentage remains responsive to the current viewer's containing block; no computed pixel width, preview measurement or 672px print-context result is stored. HTML numeric attributes are not replaced by CSS values. The export-time physical sizing producer remains separate.
+
+A direct IMG's existing `data-od-id` now reaches the existing image NodeState identity. An owned wrapper with the same image ID denotes that one image, consistent with the existing wrapper import policy; canonical output has one wrapper ID. If only the inner IMG carries its ID, import retains it. Competing wrapper/IMG IDs refuse admission instead of silently dropping either identity. No URL, grant or new identity authority is introduced.
+
+## Author proof and pending runtime checks
+
+Six initial tests genuinely failed on unchanged main2948421b: three dimension-admission cases, two actual Lexical HTML→JSON→HTML unit-loss cases, and direct-IMG identity admission. The log is `/tmp/document-image-dimensions-red.log`. The correction passes those same assertions. Added cases cover legacy/intrinsic/auto controls, strict geometry rejection, unchanged non-image gates, image identity combinations, malformed serialized CSS values, and real Lexical history/clone preservation. The existing Markdown source-receipt/reopen path also retains percentage/point CSS units without inventing numeric HTML attributes.
+
+Mounted real DocumentEditor tests import CSS percentage/point/numeric-attribute controls, edit unrelated text, save, Undo/Redo, unmount and reopen through DocumentSurface. They check the rendered image CSS, serialized source attributes/relative path and stable identities. This is component/source proof, not actual browser layout or packaged save/readback proof.
+
+Before runtime qualification, independent review must approve a clean source checkpoint and current main must be integrated normally. A fresh matched companion/renderer pair then needs actual Light/Dark wide/phone editing and unrelated text save/reopen/Undo with source readback: retain authored units, HTML attributes, image identity and media bytes; resize the viewer to prove percentage responsiveness without source writes. Verify intrinsic and explicit auto controls, unknown-style fallback, and export on the saved document using the separate physical print path. No source overlay qualifies the new immutable pair.
+
+The matching DocumentSurface suite retained a stale plain-HR fallback expectation from before the existing divider feature. The untouched 2948421b worktree and unchanged 24-case suite reproduced that same failure with 23 passing (`/tmp/document-image-dimensions-baseline-surface.log`). The negative fixture now uses genuinely unsupported `position:absolute`, and an added positive asserts plain HR opens the rich surface. All 25 Surface cases pass. This corrects test accuracy; no HR production admission was changed, no assertion was deleted or weakened to hide an image regression.
+
+The preliminary matching suite had 175 passing cases plus the pre-existing Surface expectation failure. The final six-file suite passed 178 cases, including the 32-case image-dimension file and three mounted save/reopen/history cases. Full workspace types, final matching web types and repository guard passed. These source checks do not replace the pending immutable/browser acceptance.
