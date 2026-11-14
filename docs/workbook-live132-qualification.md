@@ -38,8 +38,8 @@ candidate 131 lost, not arbitrary rich-document editing.
 
 ## Unused-sheet Rename and live scalar display
 
-Actual Add of an unused **Roundtrip** worksheet followed by Save, Rename to
-**UnusedReady** and Save remained healthy. Native Ctrl+Z followed by Save
+Actual Add of an unused **Unused Roundtrip** worksheet followed by Save, Rename to
+**Unused Ready** and Save remained healthy. Native Ctrl+Z followed by Save
 restored the prior Add state; Ctrl+Y and Save restored the Rename state. Every
 OOXML part after Undo matched the prior Add, and every part after Redo matched
 the prior Rename. ZIP archive bytes differ, so no whole-archive equality is
