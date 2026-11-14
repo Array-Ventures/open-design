@@ -63,3 +63,12 @@ it('opens CSV as the existing Sheets artifact without pretending it is HTML or c
   expect(artifactEntry([file('index.html'), csv], null, 'workbook')).toMatchObject({ kind: 'workbook', file: { name: 'reports/literal.csv' } });
   expect(artifactEntry([csv], csv.name, 'document')).toMatchObject({ kind: 'workbook', file: { mime: 'text/csv' } });
 });
+
+it('classifies only a declared HyperFrame HTML source as a composition, without changing selected media or ordinary apps', () => {
+  const html = file('index.html');
+  expect(artifactEntry([html], null, 'hyperframes')?.kind).toBe('hyperframes');
+  for (const kind of [undefined, 'prototype', 'video']) expect(artifactEntry([html], null, kind)?.kind).toBe('app');
+  const video = { ...file('clip.mp4'), kind: 'video' as const };
+  expect(artifactEntry([html, video], 'clip.mp4', 'hyperframes')?.kind).toBe('video');
+  expect(artifactEntry([file('report.md')], null, 'hyperframes')?.kind).toBe('document');
+});
