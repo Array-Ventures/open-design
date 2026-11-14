@@ -10175,6 +10175,7 @@ function HtmlViewer({
       file.name,
       cacheBustKey,
       shouldDeferPassivePreviewSource ? 'routing-preview' : 'full',
+      embedded ? 'byte-proof' : 'text',
     ].join('\0');
     let sourceLoad = sourceLoadInFlightRef.current;
     if (sourceLoad?.key !== sourceLoadKey) {
@@ -10308,6 +10309,7 @@ function HtmlViewer({
     currentSourceIdentity,
     shouldDeferPassivePreviewSource,
     projectResourceReadBlocked,
+    embedded,
   ]);
 
   useEffect(() => {
