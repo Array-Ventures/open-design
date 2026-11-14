@@ -84,7 +84,10 @@ pass on the final source, all terminal zero. Receipts:
 - `/tmp/workbook-maintenance-owner-final-types.log` and `...-final-guard.log`.
 
 The installer must still start/stop this owner and mark the exact checked
-rebase/clean-resume boundary. Public SDK footer Add routing and real combined
-consumer validation are separate required work; these source tests invoke the
-owned producer, not a rendered footer. No stack, preview, image, publication,
-installer pin or real unit changed.
+rebase/clean-resume boundary. The actual Grid deliberately hides native Add
+(`addSheetButtonConfig.show: false`) and native context/header/toolbar controls;
+the planned clean host worksheet controls call the private producer. A generic
+raw Insert adapter is not required for that hidden UI configuration, and unissued
+Insert must remain refused. Real host-control and combined consumer validation
+are still required; these source tests invoke the owned producer, not rendered
+controls. No stack, preview, image, publication, installer pin or real unit changed.
