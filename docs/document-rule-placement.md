@@ -1,6 +1,6 @@
 # Editable divider block placement
 
-This source checkpoint corrects the native Word divider's vertical placement in a bounded, qualified document container. It is not an immutable companion/renderer qualification or a claim of complete document fidelity.
+This source checkpoint corrects the native Word divider's vertical placement in a bounded, qualified document container. The initial evidence below was source-only; the later immutable qualification is recorded at the end. Complete document fidelity is not established.
 
 ## Problem and representation
 
@@ -25,6 +25,12 @@ Focused source tests cover exact range refusal, native-container mismatch, sourc
 
 ## Remaining fidelity and release gates
 
-Actual matched immutable-pair conversion, packaged browser qualification and Microsoft Word behavior remain unverified for this checkpoint. Nested/oversized or otherwise unqualified source layouts remain on the old path. The reviewed image-owner slice is separate and must be integrated normally before any package is prepared.
+At the initial source-only checkpoint, matched immutable-pair conversion, packaged browser qualification and Microsoft Word behavior remained unverified. Nested/oversized or otherwise unqualified source layouts remain on the old path. The reviewed image-owner slice was subsequently integrated normally for candidate 117.
 
 The mixed pages still differ in glyph baselines, table borders/header weight, links, list details and page furniture. This correction preserves divider width, ink, editable percentage intent and qualified block placement; it does not establish complete typography or rich-block parity. Arbitrary stylesheet and hidden-container fidelity remain open rather than being silently relabeled supported.
+
+## Immutable pair 117 qualification
+
+Clean integrated source `4c6aad245519313ec305df574c840a1c16371183` produced companion 117 and renderer 60. Strict pair verification checked provenance and actual image contents. Twenty-eight actual Word/PDF conversions ran without source overlays, including twelve divider outputs. Six independent LibreOffice divider comparisons passed the original less-than-five-pixel bounds. Eight legacy-flow and percentage-margin controls retained surrounding text placement and editable width intent. Original source and consumer-input DOCX hashes remained unchanged; test containers and LibreOffice processes exited.
+
+Receipts are `/tmp/document-fidelity117-pair-receipt.json` and `/tmp/document-fidelity117-immutable/summary.json`. The mixed Word/PDF pages were personally inspected. This qualifies the bounded immutable conversion path, not packaged browser interactions, Microsoft Word, arbitrary containers or full rich-document parity. The pair has not been published or pinned for installation.
