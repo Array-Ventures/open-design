@@ -186,6 +186,13 @@ There was one comment, zero replies, no root composer or unsent reply at cleanup
 The named browser closed normally. No chat handoff, external message, production
 update, installer pin change or publication occurred.
 
+After this runtime qualification, the source branch normally merged workbook
+foundation main `496dff0e1c07001a8ccbfcf897bc9aab4c9d7e18` without comment-code
+conflicts. Patched dependencies were refreshed; the 81 focused comment/control
+checks, full workspace types, web types and guard passed on the integrated
+source. That integration check does not relabel or rebuild the frozen 109 pair,
+and does not claim its older worker now includes the newly merged foundation.
+
 ![Light desktop artifact pane with the 109 placeholder](images/document-comment-style/light-desktop-placeholder.png)
 
 ![Dark 390-wide artifact with the 109 placeholder](images/document-comment-style/dark-phone-placeholder.png)
