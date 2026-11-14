@@ -328,3 +328,65 @@ it.each([['en', 'ltr'], ['ar', 'rtl'], ['', 'ltr']])('preserves root lang %s and
   expect(reopened).toHaveAttribute('lang', lang); expect(reopened).toHaveAttribute('dir', dir);
   expect(screen.queryByText('Read-only fallback')).toBeNull();
 });
+
+it.each([
+  ['width:50%;height:24px', '50%', '24px'],
+  ['width:252pt;height:18pt', '252pt', '18pt'],
+  ['height:24px', '', '24px'],
+])('keeps authored image sizing through unrelated text save, Undo/Redo and actual editor reopen: %s', async (style, width, height) => {
+  const { documentIdentityGroups } = await import('../../../src/components/embedded/document/document-identity');
+  const { HISTORY_PUSH_TAG, UNDO_COMMAND, REDO_COMMAND } = await import('lexical');
+  const initial = { html:documentHtml('Report', `<h1 data-od-id="title"><img data-od-id="image" src="images/owned.png" alt="Owned dimensions" width="24" height="24" style="${style}"></h1><p data-od-id="body">Ready</p>`), sha256:'original' };
+  save.mockImplementation(async (_project, _file, html) => ({ html, sha256:'saved' }));
+  const view = render(<DocumentEditor projectId="fixture" fileName="report.html" title="Report" observed={initial} onSaved={() => {}} />);
+  const check = () => {
+    const image = screen.getByRole('img', { name:'Owned dimensions' });
+    expect(image.style.width).toBe(width); expect(image.style.height).toBe(height);
+    expect(image.getAttribute('width')).toBe('24'); expect(image.getAttribute('height')).toBe('24');
+  };
+  await screen.findByRole('textbox', { name:'Report' }); check();
+  const identities = editor().getEditorState().read(documentIdentityGroups);
+  const append = (text:string) => act(() => editor().update(() => {
+    $getRoot().getLastChild()!.selectEnd(); const selection = $getSelection();
+    if ($isRangeSelection(selection)) selection.insertText(text);
+  }, { discrete:true, tag:HISTORY_PUSH_TAG }));
+  append(' reviewed');
+  fireEvent.click(screen.getByRole('button', { name:'Save document' }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  const savedHtml = save.mock.calls[0]![2] as string;
+  const savedImage = new DOMParser().parseFromString(savedHtml,'text/html').querySelector('img')!;
+  expect(savedImage.style.width).toBe(width); expect(savedImage.style.height).toBe(height);
+  expect(savedImage.getAttribute('src')).toBe('images/owned.png');
+  append(' more');
+  await act(async () => { editor().dispatchCommand(UNDO_COMMAND, undefined); await Promise.resolve(); });
+  expect(screen.getByRole('textbox', { name:'Report' }).textContent).toContain('Ready reviewed');
+  expect(screen.getByRole('textbox', { name:'Report' }).textContent).not.toContain('more'); check();
+  await act(async () => { editor().dispatchCommand(REDO_COMMAND, undefined); await Promise.resolve(); });
+  expect(screen.getByRole('textbox', { name:'Report' }).textContent).toContain('Ready reviewed more'); check();
+  view.unmount();
+  read.mockResolvedValue({ html:savedHtml, sha256:'saved' });
+  render(<DocumentSurface projectId="fixture" fileName="report.html" title="Report" fallback={<div>Read-only fallback</div>} onSaved={() => {}} />);
+  await screen.findByRole('textbox', { name:'Report' });
+  expect(screen.queryByText('Read-only fallback')).toBeNull(); check();
+  expect(editor().getEditorState().read(documentIdentityGroups)).toEqual(identities);
+});
+
+for (const [bodyFont, headingFont] of [['sans', 'sans'], ['serif', 'sans'], ['sans', 'serif']] as const) it(`preserves authored ${bodyFont} body and ${headingFont} heading fonts on unrelated text save and reopen`, async () => {
+  const html = documentHtml('Report', '<h1 data-od-id="title">Report</h1><p data-od-id="body">Ready</p>', bodyFont, headingFont);
+  const original = { html, sha256: 'original' };
+  save.mockImplementation(async (_project, _file, content) => ({ html: content, sha256: 'saved' }));
+  const view = render(<DocumentEditor projectId="fixture" fileName="report.html" title="Report" observed={original} onSaved={() => {}} />);
+  act(() => editor().update(() => {
+    $getRoot().getLastChildOrThrow().selectEnd(); const selection = $getSelection(); if ($isRangeSelection(selection)) selection.insertText(' reviewed');
+  }, { discrete: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save document' }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  const result = save.mock.calls[0]![2] as string;
+  const dom = new DOMParser().parseFromString(result, 'text/html');
+  expect(dom.documentElement.getAttribute('data-eve-document-font')).toBe(bodyFont);
+  expect(dom.documentElement.getAttribute('data-eve-document-heading-font')).toBe(headingFont);
+  expect(dom.querySelector('style')!.textContent).toBe(new DOMParser().parseFromString(html, 'text/html').querySelector('style')!.textContent);
+  view.unmount();
+  render(<DocumentEditor projectId="fixture" fileName="report.html" title="Report" observed={{ html: result, sha256: 'saved' }} onSaved={() => {}} />);
+  expect(screen.getByRole('textbox').style.getPropertyValue('--document-heading-font')).toBe(headingFont === 'sans' ? 'system-ui, sans-serif' : 'Georgia, serif');
+});
