@@ -188,7 +188,7 @@ A normal server-backed retry saved the one plain reply and cleared its error and
 draft. No comment or reply was staged or sent to chat.
 
 A separate natural phase typed a new unsent reply and deleted that own root
-through the production API. The ordinary root/reply polling observed deletion
+through the owned stack’s normal API. The ordinary root/reply polling observed deletion
 and a real GET 404. The same textarea and complete unsent draft remained, with
 submission disabled and the accurate deletion notice, without a generic load
 error or alert. Close→Keep editing retained the draft; it was then explicitly
