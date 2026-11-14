@@ -32,7 +32,7 @@ The office script's inherited stdout says “GFMimages”; the actual fixtures a
 ![Source-owned Word image](images/document-image-sizing-word.png)
 ![Browser PDF image](images/document-image-sizing-pdf.png)
 
-These are owned fake fixtures with no account or sidebar data. Author checks:51 shared cases,110 affected daemon cases, full workspace types and guard passed; the four final test-only physical-context negatives also passed package typechecking. Matching immutable-pair conversion and real app/browser acceptance remain release gates.
+These are owned fake fixtures with no account or sidebar data. Author checks:51 shared cases,110 affected daemon cases, full workspace types and guard passed; the four final test-only physical-context negatives also passed package typechecking. At this source-only checkpoint, matching immutable-pair conversion and real app/browser acceptance remained pending; the later bounded qualification is recorded below.
 
 ## Picture ownership and URI compatibility correction
 
@@ -45,3 +45,20 @@ A separate actual comparison found a real3c compatibility regression: immutable1
 Correction checks:130 affected daemon cases, full workspace types and guard passed. Eight actual canonical DOCX conversions have every package-part byte equal to the existing consumer-proved3c outputs except creation/modification timestamps, so those consumer checks were not needlessly repeated. Six new URI Word/PDF conversions passed with original source/media hashes unchanged; three new LibreOffice comparisons passed the unchanged five-pixel image-bounds oracle, with DOCX inputs unchanged. This remains source-worker overlay qualification, not an immutable new pair or Microsoft Word acceptance.
 
 Exact receipts: `/tmp/document-picture-ownership-red.log`, `/tmp/document-image-uri-decoder-red.log`, `/tmp/document-image-uri-compat/{results.json,ast-targets.json}`, `/tmp/document-image-uri-fixed/results.json`, `/tmp/document-picture-uri-qualified/{canonical-parts-equivalence.json,uri-office/qualification.json}`. Original failures are retained alongside the qualified correction.
+
+## Immutable pair and actual UI qualification
+
+Clean integrated source `6426fe711640b33dc68e6e31549e640d6ca6d71e` produced companion118 / renderer61. Strict verification checked the complete companion inventory, matching source provenance and actual renderer image bytes. The immutable image is `sha256:03c45f2f83be30ab9eccdb97fc4521ef8520e02b8ed7ddffcdaf2ebca5639531`. No source overlays were used.
+
+Twenty-four actual Word/PDF conversions covered eight canonical image cases, three URI spellings and a mixed divider control. All twelve DOCX packages matched the previously consumer-proved package parts apart from core creation/modification timestamps; no dynamic fields painted those timestamps. Comparing the new immutable PDFs with those equivalent native consumer snapshots passed eleven qualified bounds checks. The visible-NBSP case remains unqualified. Sources and media were unchanged, and test containers exited. Evidence: `/tmp/document-image118-immutable/summary.json` and `/tmp/document-image118-pair-receipt.json`.
+
+Separate manual UI checks in the owned6261 preview created three local fixtures: numeric24px image dimensions,50% width with24px height, and valid unpadded base64 with those CSS dimensions. Each exported Word and PDF through the actual header dialog. All six jobs reached ready; downloaded sizes and SHA256 matched job output receipts. Independent DOCX inspection verified original media bytes, expected image extents and the editable divider anchor. Original source bytes stayed unchanged. The test browser closed normally.
+
+The actual downloaded numeric-image DOCX was independently rendered with LibreOffice and personally compared to its downloaded browser PDF. At100DPI image bounds were Word `[75,91,99,116]` versus PDF `[75,90,99,115]`; divider bounds were Word `[286,283,563,283]` versus PDF `[285,283,564,283]`. Both retain the unchanged less-than-five-pixel oracle. Text baselines and page furniture still differ.
+
+![Downloaded native Word rendered by LibreOffice](images/document-image-sizing-ui-word.png)
+![Downloaded browser PDF](images/document-image-sizing-ui-pdf.png)
+
+The first author fixture used unsupported paragraph-level font sizing and HR border declarations. Its genuine Word refusal is preserved separately; it was not a producer regression or a reason to loosen admission. The successful fixtures use supported inline text sizing and divider declarations.
+
+These checks qualify the export path, not rich-editor sizing support: the current editor cannot preserve these authored image CSS dimensions and therefore retains the original HTML viewer. That explicit gap has separate failing regression tests and follow-up work. Light desktop/phone and Dark desktop preview captures were personally inspected; they are not a complete editor interaction matrix. Microsoft Word, JPEG consumer rendering and broader rich-document fidelity remain unverified. Installer pins and production are unchanged. Local UI receipts and captures are under `/tmp/document-packaged-browser-qualification/`.
