@@ -1,4 +1,5 @@
-import type { WorkbookMembershipWriterLease } from './membership-writer-lease';
+import type { WorkbookCleanPauseIdentity, WorkbookCleanResumeEvidence } from './use-workbook-history';
+import { issueWorkbookMembershipWriterLease, type WorkbookMembershipWriterLease } from './membership-writer-lease';
 import { canonicalWorkbookJsonValue, canonicalWorkbookSourceModel } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import type { WorkbookKernelAcknowledgement } from './kernel-acknowledgement';
 import { checkedWorkbookSaveAcknowledgement, type WorkbookSaveAcknowledgement } from './save-provenance';
@@ -16,7 +17,7 @@ import { connectWorkbookDiscard, WorkbookDiscardNotCommittedError, type Prepared
 
 type Preview = { sourceSha256: string; model: WorkbookDocument };
 type WriterScope = { projectId: string; fileName: string; journal: WorkbookJournal | undefined };
-type WriterHandoff = { scope: WriterScope; checkpoint: WorkbookCheckpoint };
+type WriterHandoff = { scope: WriterScope; checkpoint: WorkbookCheckpoint; cleanResume?: true };
 // A recovery journal belongs to the current viewer's exclusive draft lease.
 // Without that identity there is no account/lease fence for an in-memory carry.
 const sameWriterScope = (a: WriterScope, b: WriterScope) => Boolean(a.journal && a.journal === b.journal && a.projectId === b.projectId && a.fileName === b.fileName);
@@ -32,6 +33,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
   const writerScope = useRef<WriterScope | null>(null);
   const handoff = useRef<Promise<WriterHandoff> | null>(null);
   const suspended = useRef<ReturnType<WorkbookWriter['checkpoint']> | null>(null);
+  const cleanResume = useRef<{ source: Preview; journal: WorkbookJournal; identity: WorkbookCleanPauseIdentity; checkpoint: WorkbookCheckpoint; resume(next: WorkbookMembershipWriterLease): Promise<void> } | null>(null);
   const paused = useRef(false), pausedSnapshot = useRef<IWorkbookData | null>(null);
   const discardTask = useRef<Promise<PreparedWorkbookDiscard> | null>(null);
   const membershipLease = useRef<WorkbookMembershipWriterLease | null>(null);
@@ -77,6 +79,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     const matching = (candidate: WriterHandoff | null | undefined) => {
       if (!candidate || !sameWriterScope(candidate.scope, scope) || candidate.checkpoint.source.sourceSha256 !== source.sourceSha256) return undefined;
       const checkpoint = candidate.checkpoint;
+      if (candidate.cleanResume === true) return checkpoint; // Private live handoff, never decoded metadata.
       // A quarantined command deliberately restores its pre-command snapshot,
       // which may have an empty ordinary plan. That is not reset authority.
       if (checkpoint.sheetActionConflict) return checkpoint;
@@ -98,6 +101,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     if (ownedJournal) restored.current.add(ownedJournal);
     writerScope.current = scope;
     let calculationWasBound = false;
+    let cleanResumeBinding: ((signal: AbortSignal) => Promise<((next: WorkbookMembershipWriterLease) => Promise<void>) | null>) | null = null;
     let calculationBinding: { wait(signal: AbortSignal): Promise<void> } | null = null;
     let ownedLease: WorkbookMembershipWriterLease | null = null;
     const sourceSupportsMembership = source.model.worksheetMembershipEditable === true && source.model.sourceFormat !== 'csv';
@@ -141,7 +145,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     }, (source, snapshot, acknowledgement) => { membershipQualified = source.model.worksheetMembershipEditable === true && source.model.sourceFormat !== 'csv' && acknowledgement.kind === 'history'; historyContinuity &&= acknowledgement.kind === 'history'; acknowledged = { source, snapshot, acknowledgement }; }, ownedJournal ? { save: ownedJournal.save, ...(ownedJournal.scope ? { scope: ownedJournal.scope } : {}), ...(ownedJournal.validate ? { validate: ownedJournal.validate } : {}), ...(ownedJournal.isCurrent ? { isCurrent: ownedJournal.isCurrent } : {}), restored: recovery } : undefined);
     const owned = writer.current;
     if (ownedJournal?.scope && ownedJournal.isCurrent && sourceSupportsMembership) {
-      const lease: WorkbookMembershipWriterLease = {
+      const lease: WorkbookMembershipWriterLease = issueWorkbookMembershipWriterLease({
         writer: owned, scope: ownedJournal.scope, generation: crypto.randomUUID(),
         isOwned: () => {
           const currentSource = current.current.source;
@@ -151,8 +155,19 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
             && (currentSource === publishedSource || currentSource === previousPublishedSource)
             && current.current.journal === ownedJournal && ownedJournal.isCurrent!();
         },
-        isCurrent: () => lease.isOwned() && membershipQualified && owned.allowsProtectedSheetActions()
-          && !paused.current && !discardTask.current && !current.current.discarding && !current.current.history?.blocked,
+        isQualified: () => lease.isOwned() && membershipQualified && owned.allowsProtectedSheetActions()
+          && !discardTask.current && !current.current.discarding,
+        isCurrent: () => lease.isQualified()
+          && !paused.current && !current.current.history?.blocked,
+        bindCleanResume: capture => {
+          if (!lease.isOwned() || cleanResumeBinding) throw Error('Worksheet resume binding is not current.');
+          cleanResumeBinding = capture;
+          return () => { if (cleanResumeBinding === capture) cleanResumeBinding = null; };
+        },
+        captureCleanResume: signal => {
+          if (!lease.isQualified() || !cleanResumeBinding || signal.aborted) return Promise.resolve(null);
+          return cleanResumeBinding(signal);
+        },
         bindCalculation: wait => {
           if (!lease.isOwned() || calculationBinding) throw Error('Worksheet calculation binding is not current.');
           const binding = { wait }; calculationBinding = binding; calculationWasBound = true;
@@ -171,7 +186,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
           const next = { dirty: true, saving: false, error: 'Worksheet calculation stopped. Keep a recovery copy before reopening this draft.' };
           stateRef.current = next; setState(next); current.current.onDirtyChange?.(true);
         },
-      };
+      });
       membershipLease.current = lease; ownedLease = lease;
     }
     const next = writer.current.state(); stateRef.current = next; setState(next); current.current.onDirtyChange?.(next.dirty);
@@ -266,15 +281,51 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     window.parent.postMessage({ type: 'studio:workbook-unavailable', projectId, controllerId }, window.location.origin);
   }, [projectId, controllerId, closeWriter]);
   const checkpoint = useCallback(() => writer.current?.checkpoint() ?? suspended.current, []);
-  const pause = useCallback(async () => {
-    if (paused.current) return true;
+  const pause = useCallback(async (identity?: WorkbookCleanPauseIdentity) => {
+    if (paused.current) {
+      const retained = cleanResume.current;
+      return !retained || Boolean(identity && identity.operationId === retained.identity.operationId
+        && identity.projectId === retained.identity.projectId && identity.fileName === retained.identity.fileName
+        && identity.sourceSha256 === retained.identity.sourceSha256);
+    }
     if (stateRef.current.dirty || stateRef.current.saving || discardTask.current || current.current.discarding || !writer.current && current.current.source !== null) return false;
-    paused.current = true; pausedSnapshot.current = writer.current?.checkpoint().desired ?? null;
+    const owned = writer.current, lease = membershipLease.current, opened = current.current;
+    let resumeOwner: ((next: WorkbookMembershipWriterLease) => Promise<void>) | null = null;
+    if (lease) {
+      if (!running.current || !lease.isQualified() || !identity || identity.projectId !== projectId
+        || identity.fileName !== fileName || identity.sourceSha256 !== opened.source?.sourceSha256) return false;
+      resumeOwner = await lease.captureCleanResume(running.current.signal);
+      if (!resumeOwner || writer.current !== owned || !lease.isQualified() || owned?.state().dirty || owned?.state().saving) return false;
+    }
+    if (owned && resumeOwner && opened.source && opened.journal) cleanResume.current = {
+      source: opened.source, journal: opened.journal, identity: Object.freeze({ ...identity! }), checkpoint: owned.checkpoint(), resume: resumeOwner,
+    };
+    paused.current = true; pausedSnapshot.current = owned?.checkpoint().desired ?? null;
     await closeWriter(); return true;
-  }, [closeWriter]);
-  const resumeClean = useCallback(async (accepted = false) => {
-    const previous = pausedSnapshot.current; pausedSnapshot.current = null; paused.current = false;
-    if (!accepted && previous) await ready(previous);
-  }, [ready]);
+  }, [closeWriter, projectId, fileName]);
+  const resumeClean = useCallback(async (accepted = false, noEffect?: WorkbookCleanResumeEvidence) => {
+    const previous = pausedSnapshot.current, retained = cleanResume.current;
+    // An uncertain operation keeps this exact closed source/ticket for receipt
+    // reconciliation. It cannot silently revive native issuance.
+    if (!accepted && retained) {
+      if (!noEffect) return;
+      if (noEffect.operationId !== retained.identity.operationId || noEffect.projectId !== retained.identity.projectId
+        || noEffect.fileName !== retained.identity.fileName || noEffect.sourceSha256 !== retained.identity.sourceSha256) throw Error('The worksheet resume operation changed.');
+    }
+    const same = retained && noEffect && noEffect.projectId === projectId && noEffect.fileName === fileName
+      && noEffect.sourceSha256 === retained.source.sourceSha256 && current.current.source === retained.source
+      && current.current.journal === retained.journal && retained.journal.isCurrent?.();
+    if (!accepted && retained && !same) throw Error('The worksheet resume owner changed.');
+    pausedSnapshot.current = null; cleanResume.current = null; paused.current = false;
+    if (!accepted && previous) {
+      if (same) resume.current = { scope: { projectId, fileName, journal: retained.journal }, checkpoint: retained.checkpoint, cleanResume: true };
+      await ready(previous);
+      if (same) {
+        const next = membershipLease.current;
+        if (!next?.isQualified()) throw Error('The worksheet resume owner is no longer current.');
+        await retained.resume(next);
+      }
+    }
+  }, [ready, projectId, fileName]);
   return { controllerId, state, stateRef, ready, snapshot, close, checkpoint, membershipLease: () => membershipLease.current, discarding, pause, resumeClean };
 }

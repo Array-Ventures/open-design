@@ -1,6 +1,7 @@
 'use client';
 
-import type { WorkbookMembershipWriterLease } from './membership-writer-lease';
+import { isIssuedWorkbookMembershipWriterLease, type WorkbookMembershipWriterLease } from './membership-writer-lease';
+import { bindWorkbookCleanResumeOwner } from './clean-resume-owner';
 import { WorkbookSheetHistoryController } from './sheet-history-controller';
 
 import { disposeWorkbookCalculationKernel } from './calculation-kernel-disposal';
@@ -63,6 +64,10 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
   const structureOwner = useRef<WorkbookStructureController | null>(null);
   const structureMenu = useRef(liveWorkbookStructureMenu(() => structureOwner.current));
   const container = useRef<HTMLDivElement>(null), callbacks = useRef({ id, model, sourceSha256, title, onSnapshot, onReady, membershipLease, onDisplayGaps, onKernelReset });
+  const membershipLeaseObserver = useRef<((lease: WorkbookMembershipWriterLease | null | undefined) => void) | null>(null);
+  // The hook publishes replacements through its current getter. Observe only
+  // identity here; view/status renders do not recreate a kernel.
+  useEffect(() => { membershipLeaseObserver.current?.(callbacks.current.membershipLease?.()); });
   const views = useRef<WorkbookViewLayers | null>(null);
   const viewScope = useRef(id);
   callbacks.current = { id, model, sourceSha256, title, onSnapshot, onReady, membershipLease, onDisplayGaps, onKernelReset };
@@ -243,14 +248,26 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
       await callbacks.current.onReady?.(workbook.save());
       if (!current()) return;
       const lease = callbacks.current.membershipLease?.();
-      if (lease?.isOwned() && model.worksheetMembershipEditable === true && scalarCalculation && calculationOwner?.ready && sourceSha256) {
+      if (lease?.isOwned() && isIssuedWorkbookMembershipWriterLease(lease) && model.worksheetMembershipEditable === true && scalarCalculation && calculationOwner?.ready && sourceSha256) {
         membershipWriter = lease;
-        await calculationOwner.configureMembership({ version: 1, unitId: id, kernelGeneration: lease.generation, sourceCapability: sourceSha256 });
+        await calculationOwner.configureMembership({ version: 1, unitId: id, kernelGeneration: crypto.randomUUID(), sourceCapability: sourceSha256 });
         if (!current() || !lease.isOwned()) return;
-        const releaseCalculation = lease.bindCalculation(signal => scalarCalculation.awaitQuiescent(signal));
-        layer.own(releaseCalculation);
         const controller = new WorkbookSheetHistoryController(univer, lease.writer, lease.scope, readSnapshot, membershipCurrent, scalarCalculation.runProtectedSequence);
         layer.own(() => controller.dispose());
+        const resumeOwnerCurrent = () => Boolean(current() && readyForInput && editable && calculationOwner?.ready
+          && membershipWriter?.isQualified() && model.worksheetMembershipEditable === true
+          && workbook.getWorkbookPermission().canEdit());
+        const qualifiedForResume = () => resumeOwnerCurrent() && !univer.__getInjector().get(kernel.IEditorBridgeService).isVisible().visible;
+        const resumeOwner = bindWorkbookCleanResumeOwner(lease, {
+          controller, calculation: scalarCalculation, snapshot: readSnapshot, ownerCurrent: resumeOwnerCurrent, qualified: qualifiedForResume,
+          currentLease: () => callbacks.current.membershipLease?.(), setLease: next => { membershipWriter = next; },
+          resetKernel: () => { if (current()) { if (callbacks.current.onKernelReset) callbacks.current.onKernelReset(); else setKernel(value => value + 1); } },
+        });
+        membershipLeaseObserver.current = resumeOwner.observeLease;
+        layer.own(() => {
+          if (membershipLeaseObserver.current === resumeOwner.observeLease) membershipLeaseObserver.current = null;
+          resumeOwner.dispose();
+        });
       }
       // This pinned version uses disableAutoFocus for all editor focus, not
       // just startup. Enable it only after a person enters this grid so opening

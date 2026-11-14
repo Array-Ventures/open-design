@@ -10,7 +10,18 @@ import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 
 type Preview = { sourceSha256: string; model: WorkbookDocument };
 function accessDenied(cause: unknown) { return cause instanceof WorkbookHostError && [401, 403, 404].includes(cause.status); }
-interface Options { scope: WorkbookRestoreScope; statusOnly?: boolean; source: Preview | null; ready: boolean; dirty(): boolean; pause(): Promise<boolean>; resume(accepted?: boolean): Promise<void>; accepted(source: Preview): void; unreadable?(message?: string, refresh?: boolean): void; focusOnClose?(): void; onAccessLost?(): void }
+export interface WorkbookCleanPauseIdentity {
+  readonly projectId: string;
+  readonly fileName: string;
+  readonly operationId: string;
+  readonly sourceSha256: string;
+}
+
+export interface WorkbookCleanResumeEvidence extends WorkbookCleanPauseIdentity {
+  readonly outcome: 'conflict' | 'cancelled' | 'unadmitted';
+}
+
+interface Options { scope: WorkbookRestoreScope; statusOnly?: boolean; source: Preview | null; ready: boolean; dirty(): boolean; pause(identity: WorkbookCleanPauseIdentity): Promise<boolean>; resume(accepted?: boolean, noEffect?: WorkbookCleanResumeEvidence): Promise<void>; accepted(source: Preview): void; unreadable?(message?: string, refresh?: boolean): void; focusOnClose?(): void; onAccessLost?(): void }
 export function useWorkbookHistory(options: Options) {
   const latest = useRef(options); latest.current = options;
   const [open, setOpen] = useState(false), [versions, setVersions] = useState<WorkbookHistoryVersion[]>([]);
@@ -104,6 +115,7 @@ export function useWorkbookHistory(options: Options) {
     }
     generation.current += 1; setNotice(null); busy.current = true; setWorking(true); setError(null);
     let accepted = false, paused = false;
+    let noEffect: WorkbookCleanResumeEvidence | undefined;
     const attempt: WorkbookRestoreIntent = intent ?? { version: 1, ...current.scope, operationId: crypto.randomUUID(), preparationId: crypto.randomUUID(), versionId: chosen!.id, versionNumber: chosen!.version, versionSha256: chosen!.contentDigest, sourceSha256: sha! };
     let lease: Awaited<ReturnType<typeof acquireWorkbookDraftLease>> = null;
     const observe = async (limit = 20) => listWorkbookHistory(current.scope.projectId, current.scope.fileName, signal, { limit });
@@ -113,7 +125,7 @@ export function useWorkbookHistory(options: Options) {
     const clean = () => !current.dirty() && (current.source === null || current.ready);
     const pauseClean = async () => {
       if (paused) return true;
-      if (!clean() || !await current.pause()) return false;
+      if (!clean() || !await current.pause({ projectId: current.scope.projectId, fileName: current.scope.fileName, operationId: attempt.operationId, sourceSha256: attempt.sourceSha256 })) return false;
       paused = true; return true;
     };
     const protect = async () => { await accessWorkbookRestore(current.scope, { expected: attempt.operationId, value: attempt }); };
@@ -193,14 +205,20 @@ export function useWorkbookHistory(options: Options) {
         try {
           const fresh = await observe(); if (signal.aborted) return;
           await accessWorkbookRestore(current.scope, { expected: attempt.operationId, value: null });
-          if (!signal.aborted) { setIntent(null); showCurrent(fresh); }
+          if (!signal.aborted) {
+            setIntent(null); showCurrent(fresh);
+            if (fresh.currentSha256 === attempt.sourceSha256 && current.source?.sourceSha256 === attempt.sourceSha256) {
+              noEffect = Object.freeze({ projectId: current.scope.projectId, fileName: current.scope.fileName,
+                operationId: attempt.operationId, sourceSha256: attempt.sourceSha256, outcome: cause.outcome });
+            }
+          }
         } catch (confirmationError) { failure = confirmationError; if (accessDenied(confirmationError)) revoke(); }
       }
       if (!signal.aborted) setError(failure instanceof Error ? failure.message : 'The restore could not be confirmed. Check its status again.');
     } finally {
       try { if (lease) await lease.release(async () => {}); }
-      catch { if (!signal.aborted) setError('The restore could not be released safely. Reopen this workbook to check its status.'); }
-      try { if (paused && !signal.aborted) await current.resume(accepted); }
+      catch { noEffect = undefined; if (!signal.aborted) setError('The restore could not be released safely. Reopen this workbook to check its status.'); }
+      try { if ((paused || noEffect || accepted) && !signal.aborted) await (noEffect ? current.resume(accepted, noEffect) : current.resume(accepted)); }
       catch { if (!signal.aborted) setError('Reopen this workbook to resume editing. Your restore identity is protected.'); }
       finally { if (!signal.aborted) { busy.current = false; setWorking(false); } }
     }

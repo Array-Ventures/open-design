@@ -142,5 +142,8 @@ the complete prospective result, and no invocation before denied storage.
 Actual native formula updates additionally emit derived `fromFormula` cache
 clearing events. The fixture records those separately and checks their null
 scalar caches rather than silently treating them as extra authored input.
-Affected author checks passed52 cases across four suites, web types and guard.
-Actual main/worker admission and RPC qualification remain a separate gate.
+Affected author checks passed 52 cases across four suites, web types and guard.
+At that adapter checkpoint, actual main/worker admission and RPC qualification
+remained a separate gate. The subsequent source consumer proof is recorded in
+[the live consumer checkpoint](workbook-live-membership-consumer.md); packaged
+acceptance remains separate.

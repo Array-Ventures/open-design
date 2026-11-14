@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { CommandType } from '@univerjs/core';
+import { CommandType, type IWorkbookData } from '@univerjs/core';
 import { WorkbookSheetHistoryController } from '../../src/components/embedded/workbook/sheet-history-controller';
 import { useWorkbookEditor } from '../../src/components/embedded/workbook/use-workbook-editor';
 import { createSourceDeleteHistoryFixture, sourceDeleteScope as scope } from '../helpers/workbook-source-delete-fixture';
 import { serializeWorkbookDraft } from '../../src/components/embedded/workbook/draft-store';
 import type { WorkbookCheckpoint } from '../../src/components/embedded/workbook/workbook-writer';
-import type { WorkbookMembershipWriterLease } from '../../src/components/embedded/workbook/membership-writer-lease';
+import { isIssuedWorkbookMembershipWriterLease, type WorkbookMembershipWriterLease } from '../../src/components/embedded/workbook/membership-writer-lease';
 import type { WorkbookSaveAttempt } from '../../src/components/embedded/workbook/save-transport';
 const host = vi.hoisted(() => ({ save: vi.fn(), load: vi.fn() }));
 vi.mock('../../src/components/embedded/workbook/save-transport', async original => ({ ...await original<object>(), saveWorkbook: host.save }));
@@ -25,6 +25,8 @@ it('binds the real controller to the exact live Writer lease and refuses after c
     await act(async () => { await hook.result.current.ready(f.book.save()); });
     const lease = hook.result.current.membershipLease();
     expect(lease?.isCurrent()).toBe(true);
+    expect(isIssuedWorkbookMembershipWriterLease(lease!)).toBe(true);
+    expect(isIssuedWorkbookMembershipWriterLease({ ...lease! })).toBe(false);
     controller = new WorkbookSheetHistoryController(f.univer, lease!.writer, lease!.scope, () => f.book.save(), () => lease!.isCurrent());
     await act(async () => { await controller!.remove('2'); });
     expect(f.book.save().sheets['2']).toBeUndefined();
@@ -242,3 +244,210 @@ it('keeps a quarantined recovery branch owned but never operationally current', 
     expect(host.save).not.toHaveBeenCalled();
   } finally { observer.dispose(); controller?.dispose(); hook.unmount(); await f.close(); }
 });
+
+it.each(['clean', 'uncertain', 'other-operation', 'revoked', 'external', 'replacement', 'ordinary-save'] as const)('hands a confirmed no-effect History pause back to the same actual RPC kernel and private native birth: %s', async mode => {
+  const { NodeWorkbookWorker } = await import('../helpers/workbook-node-worker');
+  const { createWorkbookMembershipRpcFixture } = await import('../helpers/workbook-membership-rpc-fixture');
+  const { bindWorkbookCleanResumeOwner } = await import('../../src/components/embedded/workbook/clean-resume-owner');
+  const { blankWorkbookSheet } = await import('../../src/components/embedded/workbook/sheet-birth-context');
+  const { gridWorkbook } = await import('../../src/components/embedded/workbook/grid-model');
+  vi.stubGlobal('Worker', NodeWorkbookWorker);
+  const f = await createWorkbookMembershipRpcFixture();
+  f.controller.dispose(); await f.writer.close();
+  const original = { model: f.model, sourceSha256: 'a'.repeat(64) };
+  const target = structuredClone(original); target.sourceSha256 = 'b'.repeat(64);
+  target.model.sheets.push(blankWorkbookSheet('4', 'Fourth'));
+  let loaded = target;
+  host.save.mockImplementation(async (attempt: WorkbookSaveAttempt, _signal: AbortSignal, prepared?: () => Promise<void>) => {
+    attempt.renderId ??= crypto.randomUUID(); await prepared?.();
+    loaded = attempt.plan.sourceSha256 === original.sourceSha256 ? target : original;
+    return { id: attempt.operationId, projectId: f.scope.projectId, fileName: f.scope.fileName, renderId: attempt.renderId,
+      state: 'applied', sourceSha256: attempt.plan.sourceSha256, targetSha256: loaded.sourceSha256, actualSha256: loaded.sourceSha256,
+      sourceVersionId: loaded === target ? 'before-birth' : 'after-birth', versionId: loaded === target ? 'after-birth' : 'after-undo' };
+  });
+  host.load.mockImplementation(async () => loaded);
+  const records: Array<WorkbookCheckpoint | null> = [];
+  let journalCurrent = true;
+  const journal = { scope: f.scope, isCurrent: () => journalCurrent, validate: (value: WorkbookCheckpoint) => { serializeWorkbookDraft(f.scope, value); },
+    save: async (value: WorkbookCheckpoint | null) => { records.push(structuredClone(value)); } };
+  let currentSource = original;
+  let hook!: ReturnType<typeof renderHook<ReturnType<typeof useWorkbookEditor>, { blocked: boolean }>>;
+  const accepted = (next: typeof original) => {
+    currentSource = next;
+    f.calculation.rebaseSource(next.model, gridWorkbook(next.model, f.book.getId(), 'Membership').data as IWorkbookData, f.book.save());
+    hook.rerender({ blocked: false });
+  };
+  hook = renderHook(({ blocked }) => useWorkbookEditor(f.scope.projectId, f.scope.fileName, currentSource, accepted, undefined, journal, undefined,
+    { open: blocked, blocked, show() {} }), { initialProps: { blocked: false as boolean } });
+  let live: WorkbookMembershipWriterLease | null = null;
+  let controller: WorkbookSheetHistoryController | undefined;
+  let release: (() => void) | undefined;
+  const observer = f.commands.onCommandExecuted(command => { if (command.type === CommandType.MUTATION) hook.result.current.snapshot(f.book.save()); });
+  try {
+    await act(async () => { await hook.result.current.ready(f.book.save()); });
+    live = hook.result.current.membershipLease()!;
+    controller = new WorkbookSheetHistoryController(f.univer, live.writer, live.scope, () => f.book.save(), () => live?.isCurrent() === true, f.calculation.runProtectedSequence);
+    const resetKernel = vi.fn();
+    const bound = bindWorkbookCleanResumeOwner(live, { controller, calculation: f.calculation, snapshot: () => f.book.save(),
+      ownerCurrent: () => live?.isQualified() === true && f.owner.ready, qualified: () => live?.isQualified() === true && f.owner.ready, currentLease: () => hook.result.current.membershipLease(), setLease: next => { live = next; }, resetKernel });
+    release = () => bound.dispose();
+    await act(async () => { await controller!.add('Fourth', 3); await live!.writer.flush(); });
+    expect(hook.result.current.state.dirty).toBe(false);
+    // Leave an ordinary cell Redo entry above the protected native birth.
+    await act(async () => {
+      f.book.getSheetBySheetId('1')!.getRange('A1').setValue(22);
+      await f.calculation.awaitQuiescent();
+      await f.api.undo(); await f.calculation.awaitQuiescent();
+    });
+    expect(hook.result.current.state.dirty).toBe(false);
+    const before = f.book.save(), native = f.univer.__getInjector().get((await import('@univerjs/core')).IUndoRedoService).getUndoRedoCheckpoint();
+    const worker = f.owner.worker, previousWriter = live.writer;
+    if (mode === 'ordinary-save') {
+      const { SetRangeValuesMutation } = await import('@univerjs/sheets');
+      const held: unknown[] = [];
+      let holding = true;
+      const contains = (value: unknown): boolean => value === SetRangeValuesMutation.id || Boolean(value && typeof value === 'object' && Object.values(value).some(contains));
+      f.worker.acceptIncoming = message => { if (holding && contains(message)) { if (!held.includes(message)) held.push(message); return false; } return true; };
+      await act(async () => { f.book.getSheetBySheetId('2')!.getRange('A1').setValue(19); });
+      await vi.waitFor(() => expect(held.length).toBeGreaterThan(0), { timeout: 5000 });
+      expect(f.book.save().sheets['3']!.cellData![1]![0]!.v).toBe(38);
+      expect(f.statuses.at(-1)?.phase).toBe('pending');
+      const ordinary = structuredClone(target); ordinary.sourceSha256 = 'c'.repeat(64);
+      ordinary.model.sheets[1]!.cells[0]!.value = 19; ordinary.model.sheets[2]!.cells[1]!.value = 40;
+      let atTransport: { value: unknown; phase: string | undefined } | undefined;
+      host.save.mockImplementationOnce(async (attempt: WorkbookSaveAttempt, _signal: AbortSignal, prepared?: () => Promise<void>) => {
+        atTransport = { value: f.book.save().sheets['3']!.cellData![1]![0]!.v, phase: f.statuses.at(-1)?.phase };
+        loaded = ordinary; attempt.renderId ??= crypto.randomUUID(); await prepared?.();
+        return { id: attempt.operationId, projectId: f.scope.projectId, fileName: f.scope.fileName, renderId: attempt.renderId,
+          state: 'applied', sourceSha256: attempt.plan.sourceSha256, targetSha256: ordinary.sourceSha256, actualSha256: ordinary.sourceSha256,
+          sourceVersionId: 'after-birth', versionId: 'after-ordinary' };
+      });
+      let saving!: Promise<void>;
+      await act(async () => { saving = live!.writer.flush(); void saving.catch(() => {}); });
+      expect(host.save).toHaveBeenCalledTimes(1); expect(hook.result.current.state.saving).toBe(true);
+      holding = false; for (const message of held) f.worker.thread.emit('message', message);
+      await act(async () => { await saving; });
+      expect(host.save).toHaveBeenCalledTimes(2); expect(atTransport).toEqual({ value: 40, phase: 'live' });
+      expect(hook.result.current.state.error).toBeNull(); expect(live.writer.checkpoint().source.sourceSha256).toBe(ordinary.sourceSha256);
+      expect(f.owner.ready).toBe(true); expect(resetKernel).not.toHaveBeenCalled(); return;
+    }
+    if (mode === 'replacement') {
+      await act(async () => { await hook.result.current.ready(f.book.save()); });
+      const replacement = hook.result.current.membershipLease()!;
+      bound.observeLease(replacement); bound.observeLease(replacement);
+      expect(resetKernel).toHaveBeenCalledOnce();
+      expect(replacement.writer).not.toBe(previousWriter); expect(live.writer).toBe(previousWriter);
+      await expect(f.api.undo()).rejects.toThrow();
+      expect(f.univer.__getInjector().get((await import('@univerjs/core')).IUndoRedoService).getUndoRedoCheckpoint()).toEqual(native);
+      expect(f.book.save()).toEqual(before); expect(host.save).toHaveBeenCalledTimes(1);
+      return;
+    }
+    const operationId = crypto.randomUUID();
+    hook.rerender({ blocked: true });
+    await act(async () => { expect(await hook.result.current.pause({ projectId: f.scope.projectId, fileName: f.scope.fileName, operationId, sourceSha256: target.sourceSha256 })).toBe(true); });
+    expect(live.isOwned()).toBe(false);
+    await expect(f.api.redo()).rejects.toThrow();
+    expect(f.univer.__getInjector().get((await import('@univerjs/core')).IUndoRedoService).getUndoRedoCheckpoint()).toEqual(native);
+    expect(() => f.book.getSheetBySheetId('1')!.getRange('A1').setValue(999)).toThrow('paused');
+    const evidence = { projectId: f.scope.projectId, fileName: f.scope.fileName, operationId, sourceSha256: target.sourceSha256, outcome: 'cancelled' as const };
+    if (mode === 'uncertain' || mode === 'other-operation') {
+      await act(async () => {
+        if (mode === 'uncertain') await hook.result.current.resumeClean(false);
+        else await expect(hook.result.current.resumeClean(false, { ...evidence, operationId: crypto.randomUUID() })).rejects.toThrow('operation changed');
+      });
+      expect(hook.result.current.membershipLease()).toBeNull();
+      const checkpoint = f.univer.__getInjector().get((await import('@univerjs/core')).IUndoRedoService).getUndoRedoCheckpoint();
+      await expect(f.api.undo()).rejects.toThrow();
+      expect(f.univer.__getInjector().get((await import('@univerjs/core')).IUndoRedoService).getUndoRedoCheckpoint()).toEqual(checkpoint);
+      expect(f.book.save()).toEqual(before); expect(host.save).toHaveBeenCalledTimes(1);
+    }
+    if (mode === 'revoked' || mode === 'external') {
+      if (mode === 'revoked') journalCurrent = false;
+      else { currentSource = structuredClone(target); currentSource.model.sheets[0]!.cells[0]!.value = 999; hook.rerender({ blocked: true }); }
+      await act(async () => { await expect(hook.result.current.resumeClean(false, evidence)).rejects.toThrow('owner changed'); });
+      await expect(f.api.undo()).rejects.toThrow();
+      expect(f.univer.__getInjector().get((await import('@univerjs/core')).IUndoRedoService).getUndoRedoCheckpoint()).toEqual(native);
+      expect(f.book.save()).toEqual(before); expect(host.save).toHaveBeenCalledTimes(1);
+      return;
+    }
+    await act(async () => { await hook.result.current.resumeClean(false, evidence); });
+    hook.rerender({ blocked: false });
+    expect(live.writer).not.toBe(previousWriter);
+    expect(live.isCurrent()).toBe(true); expect(f.owner.worker).toBe(worker);
+    bound.observeLease(live); expect(resetKernel).not.toHaveBeenCalled();
+    expect(f.book.save()).toEqual(before);
+    expect(f.univer.__getInjector().get((await import('@univerjs/core')).IUndoRedoService).getUndoRedoCheckpoint()).toEqual(native);
+    await act(async () => { await f.api.undo(); await f.calculation.awaitMembership(); });
+    expect(f.book.save().sheets['4']).toBeUndefined();
+    expect(live.writer.state().dirty).toBe(true);
+    await act(async () => { await live!.writer.flush(); });
+    expect(host.save).toHaveBeenCalledTimes(2);
+    expect(f.owner.ready).toBe(true); expect(records.some(value => value?.sheetBirths?.entries.length)).toBe(true);
+  } finally { observer.dispose(); release?.(); controller?.dispose(); hook.unmount(); await f.close(); vi.unstubAllGlobals(); }
+}, 20_000);
+
+it('keeps an existing native entry through a real late owned cache update without rebasing source or ACK data', async () => {
+  const { NodeWorkbookWorker } = await import('../helpers/workbook-node-worker');
+  const { createWorkbookMembershipRpcFixture } = await import('../helpers/workbook-membership-rpc-fixture');
+  const { bindWorkbookCleanResumeOwner } = await import('../../src/components/embedded/workbook/clean-resume-owner');
+  const { IUndoRedoService } = await import('@univerjs/core');
+  const { SetRangeValuesMutation } = await import('@univerjs/sheets');
+  const { SetFormulaCalculationStartMutation } = await import('@univerjs/engine-formula');
+  vi.stubGlobal('Worker', NodeWorkbookWorker);
+  const f = await createWorkbookMembershipRpcFixture(true, 100, 999);
+  f.controller.dispose(); await f.writer.close();
+  const source = { model: f.model, sourceSha256: 'a'.repeat(64) };
+  const journal = { scope: f.scope, isCurrent: () => true, validate: (value: WorkbookCheckpoint) => { serializeWorkbookDraft(f.scope, value); }, save: async () => {} };
+  const hook = renderHook(({ blocked }) => useWorkbookEditor(f.scope.projectId, f.scope.fileName, source, vi.fn(), undefined, journal, undefined,
+    { open: blocked, blocked, show() {} }), { initialProps: { blocked: false as boolean } });
+  let live: WorkbookMembershipWriterLease | null = null;
+  let controller: WorkbookSheetHistoryController | undefined;
+  let release: (() => void) | undefined;
+  const observer = f.commands.onCommandExecuted(command => { if (command.type === CommandType.MUTATION) hook.result.current.snapshot(f.book.save()); });
+  try {
+    await act(async () => { await hook.result.current.ready(f.book.save()); });
+    live = hook.result.current.membershipLease()!;
+    controller = new WorkbookSheetHistoryController(f.univer, live.writer, live.scope, () => f.book.save(), () => live?.isCurrent() === true, f.calculation.runProtectedSequence);
+    const bound = bindWorkbookCleanResumeOwner(live, { controller, calculation: f.calculation, snapshot: () => f.book.save(), ownerCurrent: () => live?.isQualified() === true && f.owner.ready, qualified: () => live?.isQualified() === true && f.owner.ready,
+      currentLease: () => hook.result.current.membershipLease(), setLease: value => { live = value; }, resetKernel: vi.fn() });
+    release = () => bound.dispose();
+    const history = f.univer.__getInjector().get(IUndoRedoService);
+    // Seed one ordinary SDK history entry to isolate late initial calculation;
+    // this is not membership issuance or a serialized/native-history restore.
+    const mutation = { id: SetRangeValuesMutation.id, params: { unitId: f.book.getId(), subUnitId: '1', cellValue: { 0: { 0: { v: 21, t: 2 } } } } };
+    history.pushUndoRedo({ unitID: f.book.getId(), undoMutations: [mutation], redoMutations: [structuredClone(mutation)] });
+    const native = history.getUndoRedoCheckpoint();
+    const protectedBefore = live.writer.checkpoint();
+    const operationId = crypto.randomUUID();
+    hook.rerender({ blocked: true });
+    await act(async () => { expect(await hook.result.current.pause({ projectId: f.scope.projectId, fileName: f.scope.fileName, operationId, sourceSha256: source.sourceSha256 })).toBe(true); });
+    expect(f.book.save().sheets['3']!.cellData![1]![0]!.v).toBe(999);
+    await act(async () => {
+      let started!: () => void;
+      const ready = new Promise<void>(resolve => { started = resolve; });
+      const listener = f.api.getFormula().calculationStart(() => started());
+      try {
+        // Use the real epoch-stamped host start path. The Node-only generic
+        // facade trigger also schedules an unstamped worker-local start.
+        await f.commands.executeCommand(SetFormulaCalculationStartMutation.id, { forceCalculation: true });
+        await ready; await f.calculation.awaitQuiescent();
+      }
+      finally { listener.dispose(); }
+    });
+    expect(f.book.save().sheets['3']!.cellData![1]![0]!.v).toBe(38);
+    expect(history.getUndoRedoCheckpoint()).toEqual(native);
+    await act(async () => { await hook.result.current.resumeClean(false, { projectId: f.scope.projectId, fileName: f.scope.fileName, operationId, sourceSha256: source.sourceSha256, outcome: 'unadmitted' }); });
+    hook.rerender({ blocked: false });
+    const resumed = live.writer.checkpoint();
+    expect(resumed.source).toEqual(protectedBefore.source);
+    expect(resumed.acknowledged).toEqual(protectedBefore.acknowledged);
+    expect(resumed.sourceAcknowledgement).toEqual(protectedBefore.sourceAcknowledgement);
+    expect(resumed.sourceSnapshotBinding).toEqual(protectedBefore.sourceSnapshotBinding);
+    expect(resumed.desired.sheets['3']!.cellData![1]![0]!.v).toBe(38);
+    expect(hook.result.current.state.dirty).toBe(false);
+    expect(history.getUndoRedoCheckpoint()).toEqual(native);
+    await act(async () => { await f.api.undo(); await f.calculation.awaitQuiescent(); });
+    expect(history.getUndoRedoCheckpoint().redoEntryId).toBe(native.undoEntryId);
+    expect(host.save).not.toHaveBeenCalled(); expect(f.owner.ready).toBe(true);
+  } finally { observer.dispose(); release?.(); controller?.dispose(); hook.unmount(); await f.close(); vi.unstubAllGlobals(); }
+}, 20_000);

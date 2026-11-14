@@ -275,3 +275,58 @@ it('withdraws discovered recovery metadata if a receipt404 is followed by denied
   expect(view.result.current.canOpen).toBe(false); expect(view.result.current.intent).toBeNull(); expect(record()).toEqual(pending);
   expect(mocks.restore).toHaveBeenCalledExactlyOnceWith(pending, expect.any(Function), expect.any(AbortSignal), { allowPrepare: false });
 });
+
+it.each(['cancelled', 'unadmitted', 'conflict'] as const)('identifies checked %s plus unchanged authorized source as a clean-resume candidate', async outcome => {
+  const { WorkbookRestoreFinishedError } = await import('../../../src/components/embedded/workbook/restore-transport');
+  const { options, record } = fixture();
+  mocks.restore.mockRejectedValue(new WorkbookRestoreFinishedError(outcome, 'No write remains.'));
+  const view = renderHook(() => useWorkbookHistory(options));
+  await waitFor(() => expect(view.result.current.checking).toBe(false));
+  act(() => view.result.current.show());
+  await waitFor(() => expect(view.result.current.versions).toHaveLength(1));
+  act(() => view.result.current.select(revision));
+  await act(async () => view.result.current.restore());
+  expect(record()).toBeNull();
+  expect(options.resume).toHaveBeenCalledWith(false, expect.objectContaining({
+    outcome, sourceSha256: sha, projectId: scope.projectId, fileName: scope.fileName,
+    operationId: expect.any(String),
+  }));
+  expect(options.accepted).not.toHaveBeenCalled();
+});
+
+it.each(['uncertain', 'changed', 'release-failed'] as const)('never supplies clean-resume evidence for %s restore ownership', async failure => {
+  const { WorkbookRestoreFinishedError } = await import('../../../src/components/embedded/workbook/restore-transport');
+  const { options } = fixture();
+  mocks.restore.mockImplementation(async () => {
+    if (failure === 'changed') mocks.list.mockResolvedValue({ versions: [revision], nextCursor: null, currentSha256: target });
+    throw failure === 'uncertain' ? Error('Receipt unavailable') : new WorkbookRestoreFinishedError('cancelled', 'Cancelled');
+  });
+  if (failure === 'release-failed') mocks.lease.mockResolvedValue({ release: vi.fn(async () => { throw Error('Lost lease'); }) });
+  const view = renderHook(() => useWorkbookHistory(options));
+  await waitFor(() => expect(view.result.current.checking).toBe(false));
+  act(() => view.result.current.show());
+  await waitFor(() => expect(view.result.current.versions).toHaveLength(1));
+  act(() => view.result.current.select(revision));
+  await act(async () => view.result.current.restore());
+  expect(options.resume).toHaveBeenCalledWith(false);
+});
+
+it('hands back a previously paused same operation when a later status-only retry confirms no effect', async () => {
+  const { WorkbookRestoreFinishedError } = await import('../../../src/components/embedded/workbook/restore-transport');
+  const { options, record } = fixture();
+  mocks.restore.mockRejectedValueOnce(Error('Receipt temporarily unavailable'))
+    .mockRejectedValueOnce(new WorkbookRestoreFinishedError('cancelled', 'Cancelled'));
+  const view = renderHook(() => useWorkbookHistory(options));
+  await waitFor(() => expect(view.result.current.checking).toBe(false));
+  act(() => view.result.current.show());
+  await waitFor(() => expect(view.result.current.versions).toHaveLength(1));
+  act(() => view.result.current.select(revision));
+  await act(async () => view.result.current.restore());
+  const pending = record() as { operationId: string };
+  expect(pending).toBeTruthy(); expect(options.resume).toHaveBeenCalledWith(false);
+  await act(async () => view.result.current.restore());
+  expect(record()).toBeNull();
+  expect(options.pause).toHaveBeenCalledOnce();
+  expect(options.resume).toHaveBeenLastCalledWith(false, expect.objectContaining({ operationId: pending.operationId, outcome: 'cancelled', sourceSha256: sha }));
+  expect(options.resume).toHaveBeenCalledTimes(2);
+});

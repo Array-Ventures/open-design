@@ -315,3 +315,42 @@ it('keeps ordinary calculation pending until its held reverse cache application 
     expect(f.statuses.at(-1)?.phase).toBe('live'); expect(f.owner.ready).toBe(true);
   } finally { await f.close(); }
 }, 15_000);
+
+it('freezes real cell/style/axis/membership inputs while admitting only its exact pending derived cache', async () => {
+  vi.stubGlobal('Worker', NodeWorkbookWorker);
+  const f = await createWorkbookMembershipRpcFixture();
+  const held: unknown[] = [];
+  let holding = true, refused = 0;
+  f.worker.acceptIncoming = message => { if (holding) { if (!held.includes(message)) held.push(message); return false; } return true; };
+  const listener = f.commands.beforeCommandExecuted(command => {
+    if (command.id !== 'formula.mutation.set-formula-calculation-result') return;
+    const result = command.params as { unitData: Record<string, Record<string, Record<string, Record<string, { v?: unknown; t?: number }>>>>; sourceFormulaData?: Record<string, Record<string, object>> };
+    const source = result.sourceFormulaData?.[f.book.getId()]?.['3'];
+    if (!source) return;
+    const values = structuredClone(result.unitData[f.book.getId()]!['3']!);
+    for (const cells of Object.values(values)) for (const cell of Object.values(cells)) { cell.v = 999; cell.t = 2; }
+    expect(() => f.commands.syncExecuteCommand(SetRangeValuesMutation.id, { unitId: f.book.getId(), subUnitId: '3', cellValue: values, sourceFormulaData: source }, { onlyLocal: true, fromFormula: true })).toThrow('paused');
+    refused++;
+  });
+  let release: (() => void) | undefined;
+  try {
+    await f.controller.remove('2');
+    release = f.calculation.freezeAuthoring();
+    const before = f.book.save();
+    const native = f.univer.__getInjector().get((await import('@univerjs/core')).IUndoRedoService).getUndoRedoCheckpoint();
+    expect(() => f.book.getSheetBySheetId('1')!.getRange('A1').setValue(999)).toThrow('paused');
+    expect(() => f.commands.syncExecuteCommand(SetRangeValuesMutation.id, { unitId: f.book.getId(), subUnitId: '1', cellValue: { 0: { 0: { s: 'changed' } } } })).toThrow('paused');
+    expect(() => f.commands.syncExecuteCommand('sheet.mutation.insert-row', { unitId: f.book.getId(), subUnitId: '1', range: { startRow: 1, endRow: 1, startColumn: 0, endColumn: 25 } })).toThrow('paused');
+    expect(() => f.commands.syncExecuteCommand(RemoveSheetMutation.id, { unitId: f.book.getId(), subUnitId: '3' })).toThrow('paused');
+    expect(f.book.save()).toEqual(before);
+    expect(f.univer.__getInjector().get((await import('@univerjs/core')).IUndoRedoService).getUndoRedoCheckpoint()).toEqual(native);
+    const idle = f.calculation.awaitQuiescent();
+    await vi.waitFor(() => expect(held.length).toBeGreaterThan(0), { timeout: 5000 });
+    holding = false; for (const message of held) f.worker.thread.emit('message', message);
+    await idle;
+    expect(refused).toBeGreaterThan(0);
+    expect(f.book.save().sheets['3']!.cellData![1]![0]!.v).toBe('#REF!');
+    expect(f.calculation.quiescent).toBe(true); expect(f.owner.ready).toBe(true);
+    release(); release = undefined;
+  } finally { release?.(); listener.dispose(); await f.close(); }
+}, 15_000);

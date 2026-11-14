@@ -26,6 +26,7 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
   let generation: number | null = null, scalarRequired = false, inputEpoch = 0;
   let pendingMembership: { sequence: number; inputEpoch: number; inputSha256: string; applied: boolean; scalar: boolean } | null = null;
   let settledInputEpoch = 0;
+  let authoredFreeze: object | null = null;
   const pendingApplications = new Set<string>();
   const completedApplications = new Set<string>();
   const applicationSources = new WeakMap<object, unknown>();
@@ -105,6 +106,13 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
     owner?.deadline.complete(generation); generation = null; completion = null; settledInputEpoch = inputEpoch; publish();
   };
   const before = commands.beforeCommandExecuted((command, options) => {
+    if (authoredFreeze && command.id.startsWith('sheet.mutation.')) {
+      const params = command.params as RangeResult;
+      const key = command.id === SetRangeValuesMutation.id && options?.fromFormula && params
+        ? applicationKey(params.unitId, params.subUnitId, params.cellValue, params.sourceFormulaData, params.workbookCalculation
+          ?? (params.sourceFormulaData && applicationSources.get(params.sourceFormulaData))) : undefined;
+      if (!key || !pendingApplications.has(key)) throw Error('The workbook is paused while History is checked.');
+    }
     const membershipMutation = membershipMutationIds.has(command.id);
     let permit: WorkbookMembershipPermit | undefined;
     if (owner && command.id.startsWith('sheet.mutation.') && !options?.fromFormula) {
@@ -231,5 +239,9 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
     handler: (cell, location, next) => next(display.display(location.subUnitId, location.row, location.col, (cell ?? {}) as ICellData, location.rawData || undefined)),
   });
   publish();
-  return { awaitMembership: (signal?: AbortSignal) => awaitCalculation(false, signal), awaitQuiescent: (signal?: AbortSignal) => awaitCalculation(true, signal), runProtectedSequence, rebaseSource(nextModel: WorkbookDocument, nextOriginal: IWorkbookData, acknowledged: IWorkbookData) { display.rebaseSource(nextModel, nextOriginal, acknowledged); }, publish, status: (sheet: string, row: number, column: number) => display.status(sheet, row, column), dispose() { rejectWaiters(); unavailable?.(); before.dispose(); after.dispose(); unsubscribe?.(); intercept.dispose(); } };
+  return { freezeAuthoring() {
+    if (!owner?.ready || authoredFreeze) throw Error('The workbook calculation cannot be paused.');
+    const ticket = {}; authoredFreeze = ticket;
+    return () => { if (authoredFreeze === ticket && owner.ready) authoredFreeze = null; };
+  }, get inputEpoch() { return inputEpoch; }, get quiescent() { return Boolean(owner?.ready && generation === null && pendingApplications.size === 0 && !pendingMembership && settledInputEpoch === inputEpoch && !display.summary().pending); }, awaitMembership: (signal?: AbortSignal) => awaitCalculation(false, signal), awaitQuiescent: (signal?: AbortSignal) => awaitCalculation(true, signal), runProtectedSequence, rebaseSource(nextModel: WorkbookDocument, nextOriginal: IWorkbookData, acknowledged: IWorkbookData) { display.rebaseSource(nextModel, nextOriginal, acknowledged); }, publish, status: (sheet: string, row: number, column: number) => display.status(sheet, row, column), dispose() { rejectWaiters(); unavailable?.(); before.dispose(); after.dispose(); unsubscribe?.(); intercept.dispose(); } };
 }

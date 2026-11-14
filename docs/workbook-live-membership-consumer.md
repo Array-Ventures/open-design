@@ -1,5 +1,10 @@
 # Live worksheet consumer development checkpoint
 
+This is the historical `ce9bfa58` source checkpoint. The later
+[clean History handoff](workbook-clean-history-resume.md) and
+[calculation application barrier](workbook-calculation-application-barrier.md)
+records describe subsequent source work without upgrading this qualification.
+
 This connects the existing protected controller to the real editor and calculation
 owners. Add/Delete/Rename controls remain hidden. It is a development checkpoint,
 not packaged UI, HTTP authorization, history-asset, crash/recovery or release

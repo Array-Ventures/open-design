@@ -45,8 +45,9 @@ it('preserves actual ordinary workbook async and synchronous history', async () 
     expect(h.writer.checkpoint().sheetActionConflict).toBeUndefined();
   } finally {await h.close();}
 });
-it('delegates actual unrelated Doc unit history without interpreting it as workbook membership', async () => {
+it('delegates actual unrelated Doc unit history while the owned workbook history is paused', async () => {
   const h = createWorkbookHistoryControllerFixture();
+  const resumeHistory = h.controller.pauseHistory();
   try {
     const doc = h.univer.createUnit<IDocumentData,DocumentDataModel>(UniverInstanceType.UNIVER_DOC, {id:'unrelated-doc-history',body:{dataStream:'After\r\n'}});
     h.univer.__getInjector().get(IUniverInstanceService).focusUnit(doc.getUnitId());
@@ -65,5 +66,8 @@ it('delegates actual unrelated Doc unit history without interpreting it as workb
     expect(doc.getBody()?.dataStream).toBe('Before\r\n');
     expect(h.book.getActiveSheet().getRange('A1').getValue()).toBe(12);
     expect(h.writer.checkpoint().sheetActionConflict).toBeUndefined();
-  } finally {await h.close();}
+    h.univer.__getInjector().get(IUniverInstanceService).focusUnit(h.book.getId());
+    expect(h.controller.isCurrent()).toBe(false);
+    resumeHistory(); expect(h.controller.isCurrent()).toBe(true);
+  } finally {resumeHistory(); await h.close();}
 });

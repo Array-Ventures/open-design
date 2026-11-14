@@ -39,8 +39,8 @@ function ScopedWorkbookSurface({ projectId, fileName, title, sourceStamp, onDirt
   const editorRef = useRef<ReturnType<typeof useWorkbookEditor> | null>(null);
   const history = useWorkbookHistory({ statusOnly, scope: { viewerId, projectId, fileName }, source: loaded, ready: Boolean(recovery.session),
     dirty: () => !editorRef.current || editorRef.current.stateRef.current.dirty || editorRef.current.discarding,
-    pause: async () => editorRef.current?.pause() ?? false,
-    resume: async accepted => { await editorRef.current?.resumeClean(accepted); },
+    pause: async identity => editorRef.current?.pause(identity) ?? false,
+    resume: async (accepted, noEffect) => { await editorRef.current?.resumeClean(accepted, noEffect); },
     accepted: source => { setLoaded(source); setError(null); onSaved?.(); },
     unreadable: (_message, refresh = true) => { setLoaded(null); setError(null); if (refresh) onSaved?.(); },
     onAccessLost: () => { void editorRef.current?.close(); setLoaded(null); setError('This workbook is unavailable. Reopen it after checking access.'); onAccessLost?.(); },
