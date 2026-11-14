@@ -135,6 +135,14 @@ export function documentCanvasColor(document: Document, read: DocumentColorReade
   try { return read(document.defaultView!.getComputedStyle(probe).backgroundColor); }
   finally { probe.remove(); }
 }
+/** Pandoc preserves concrete HTML image dimensions, but can ignore authored
+ * CSS sizing. Do not turn that older fidelity gap into a new export refusal. */
+function explicitImageDimension(image: HTMLImageElement, name: 'width'|'height'): number | undefined {
+  const raw = image.getAttribute(name);
+  if (!raw || !/^\d+$/.test(raw)) return undefined;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
 /** A one-line, baseline-aligned image fits the actual heading strut. Tall,
  * mixed, multi-image and repositioned content keep their existing behavior. */
 function headingImagePresentation(owner: HTMLElement, attributeName: string, id: string, contentWidthPx?: number): Partial<import('./presentation.js').NormalizedDocumentPresentation> {
@@ -143,6 +151,16 @@ function headingImagePresentation(owner: HTMLElement, attributeName: string, id:
   if (images.length !== 1 || /[^\t\n\f\r ]/.test(owner.textContent ?? '')) return {};
   const image = images[0]!;
   if (image.getAttribute(`${attributeName}-image`) !== id) return {};
+  const width = explicitImageDimension(image,'width'), height = explicitImageDimension(image,'height');
+  if (width === undefined || height === undefined || image.style.getPropertyValue('aspect-ratio')) return {};
+  for (const property of ['width','height']) {
+    const value = image.style.getPropertyValue(property);
+    if (value && !/^\d+(?:\.\d+)?(?:px|pt)$/.test(value)) return {};
+  }
+  for (let ancestor = image.parentElement; ancestor; ancestor = ancestor.parentElement) {
+    if (['width','height','aspect-ratio'].some(property => ancestor.style.getPropertyValue(property))) return {};
+    if (ancestor === owner.ownerDocument.body) break;
+  }
   if (Array.from(owner.querySelectorAll('*')).some(element => !['IMG','SPAN'].includes(element.tagName))) return {};
   const view = owner.ownerDocument.defaultView!;
   // Only DOM-proved collapsed HTML whitespace may disappear before Pandoc.
@@ -154,6 +172,7 @@ function headingImagePresentation(owner: HTMLElement, attributeName: string, id:
   }
   const block = view.getComputedStyle(owner), line = Number.parseFloat(block.lineHeight);
   const box = owner.getBoundingClientRect(), imageBox = image.getBoundingClientRect();
+  if (Math.abs(imageBox.width-width) > 1/64 || Math.abs(imageBox.height-height) > 1/64) return {};
   if (!/^\d+(?:\.\d+)?px$/.test(block.lineHeight) || !Number.isFinite(line) || line <= 0
     // Chromium rounds layout boxes to 1/64 CSS px; a second quantum is drift.
     || Math.abs(box.height-line) > 1/64 || imageBox.height <= 0 || imageBox.width <= 0
