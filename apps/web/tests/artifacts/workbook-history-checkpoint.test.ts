@@ -10,6 +10,8 @@ interface Checkpoint {
   readonly revision: number;
   readonly undoAvailable: boolean;
   readonly redoAvailable: boolean;
+  readonly undoEntryId: number | null;
+  readonly redoEntryId: number | null;
 }
 const closing: Array<() => void> = [];
 afterEach(() => { for (const close of closing.splice(0)) close(); });
@@ -72,7 +74,7 @@ it('reports the native focused unit, refuses after disposal and never exposes en
   const next = f.checkpoint();
   expect(next.unitId).toBe(other.getId());
   expect(next.unitId).not.toBe(before.unitId);
-  expect(Object.keys(next).sort()).toEqual(['redoAvailable','revision','undoAvailable','unitId']);
+  expect(Object.keys(next).sort()).toEqual(['redoAvailable','redoEntryId','revision','undoAvailable','undoEntryId','unitId']);
   f.univer.dispose();
   expect(() => f.checkpoint()).toThrow();
 });

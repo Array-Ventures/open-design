@@ -156,3 +156,20 @@ keyboard and toolbar gated async dispatch, formula-editor history and native Doc
 clipboard Paste options mode changes with a scoped prototype. That scratch probe
 is evidence for this SDK dispatch seam, not Evebot application or durable Writer
 integration qualification. See `docs/workbook-history-sync-dispatch.md`.
+
+The history checkpoint also exposes nullable `undoEntryId` / `redoEntryId`.
+These are SDK-owned service-local primitive identities for the actual native
+items, held in a WeakMap without exposing payloads. On each push, the actual final
+undo item receives the already-advanced service revision, including grouped or
+batched replacement. Moving an item between undo/redo stacks does not reissue it;
+new pushes, copied items and re-pushing the same object revoke the prior identity.
+The query does not allocate IDs or change history. Empty focus explicitly returns
+false availability/null identities even if a malformed empty-unit bucket exists.
+
+A live issuer can bind its own successful native Add to that exact item, then
+reject a different history item carrying copied real birth metadata before
+protection. IDs alone are not authority and are never persisted: kernel/source,
+registration, lease, generation, revision and issued descriptor guards still
+apply. Actual tests cover native movement, copied/same-object push, grouping,
+batching, unrelated-unit invalidation and all three consumed runtime variants.
+No worksheet controller is installed by this dependency checkpoint.
