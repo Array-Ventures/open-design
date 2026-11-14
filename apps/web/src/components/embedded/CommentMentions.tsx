@@ -42,7 +42,10 @@ export function CommentMentions({ value, onChange, children }: { value: string; 
   const updateCaret = (target: EventTarget | null) => {
     if (target instanceof HTMLTextAreaElement) setCaret(target.selectionStart);
   };
-  return <div ref={root} className="relative min-w-0" onCompositionStartCapture={() => { composing.current = true; }} onCompositionEndCapture={() => { composing.current = false; }} onInputCapture={event => { updateCaret(event.target); setDismissed(false); setIndex(0); }} onSelectCapture={event => updateCaret(event.target)} onKeyDownCapture={event => {
+  // Keep input bookkeeping in the bubble batch with the controlled textarea's
+  // onChange. A document-delegated capture update can commit an older value
+  // before the native input reaches its authoritative value handler.
+  return <div ref={root} className="relative min-w-0" onCompositionStartCapture={() => { composing.current = true; }} onCompositionEndCapture={() => { composing.current = false; }} onInput={event => { updateCaret(event.target); setDismissed(false); setIndex(0); }} onSelectCapture={event => updateCaret(event.target)} onKeyDownCapture={event => {
     if (composing.current || event.nativeEvent.isComposing || !options.length) return;
     if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(event.key)) {
       event.preventDefault(); event.stopPropagation();
