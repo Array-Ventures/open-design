@@ -64,7 +64,8 @@ separate work.
 Final checks passed 69 document-style cases across six files, full workspace
 `pnpm typecheck` and `pnpm guard`. The final raw-declaration guard also passed
 actual native conversions for background-color and equivalent color shorthand.
-Every native package part matched the personally viewed positive output exactly,
+Every part of the final single-line native package matched its personally viewed
+positive output exactly,
 so no second LibreOffice rendering was needed; `final-source-equivalence.json`
 retains that comparison. Final source/guard outputs are in `final2`, with helper
 SHA256 `497a4acbc82d711f77f9cdf829b6f4e9582d9966a47b216cdf790a58baedae68`.
