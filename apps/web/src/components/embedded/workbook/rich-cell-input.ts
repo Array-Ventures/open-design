@@ -20,6 +20,7 @@ function contentSnapshot(
   formulaBar: boolean,
   defaults: IDocumentData['documentStyle'],
   rendererMargins?: { marginTop: number; marginLeft: number; marginBottom: number; marginRight: number },
+  rendererBackground?: unknown,
 ): IDocumentData | undefined {
   const doc = structuredClone(snapshot),
     layout = doc.documentStyle ?? {},
@@ -75,7 +76,14 @@ function contentSnapshot(
         typeof value !== 'object' ||
         Object.entries(value).some(
           ([key, value]) =>
-            value != null && (key === 'zeroWidthParagraphBreak'
+            value != null && (key === 'background'
+              // The pinned blank-cell editor copies only its current cell fill
+              // into this renderer field. It is not rich document formatting.
+              ? (rendererBackground != null && typeof rendererBackground !== 'string')
+                || typeof value !== 'object' || Array.isArray(value)
+                || Object.keys(value).some(field => field !== 'rgb')
+                || (value as { rgb?: unknown }).rgb !== rendererBackground
+              : key === 'zeroWidthParagraphBreak'
               // Worksheet.getCellDocumentModel sets this exact renderer flag
               // for rich cells. It is not an authored paragraph property.
               ? value !== 1
@@ -159,7 +167,7 @@ export function attachWorkbookRichInput(univer: Univer, api: FUniver, kernel: Ke
         }
       }
       let doc =
-          contentSnapshot(snapshot, style, editorId === DOCS_FORMULA_BAR_EDITOR_UNIT_ID_KEY, defaults, rendererMargins) ??
+          contentSnapshot(snapshot, style, editorId === DOCS_FORMULA_BAR_EDITOR_UNIT_ID_KEY, defaults, rendererMargins, edit.documentLayoutObject?.fill) ??
           structuredClone(snapshot),
         value = body.dataStream.slice(0, -2);
       if (cell?.t === CellValueType.FORCE_STRING && typeof cell.v === 'string' && value === `'${cell.v}` && !body.customRanges?.length && !body.customBlocks?.length && !body.customDecorations?.length && !body.tables?.length) {
