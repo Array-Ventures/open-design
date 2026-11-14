@@ -764,3 +764,11 @@ is not such permission.
 Validation: both new regressions were RED before the handoff guard. All 29 focused
 handoff/discard/recovery lifecycle cases, web typecheck, full repository typecheck,
 guard and diff check passed after the fix. Controls and runtime remain unchanged.
+
+### Dedicated membership capability
+
+The [reader capability boundary](workbook-membership-capability.md) distinguishes
+sheet membership from ordinary row/column geometry using the real source
+writer's qualification. Its optional model field is descriptive and does not
+install controls or issue native commands; the future producer must require an
+explicit true while the worker continues to recheck actual source ownership.
