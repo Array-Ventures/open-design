@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
+import { load } from 'cheerio';
+import { findSpeakerNotesScriptBlock } from '@open-design/contracts/runtime/speaker-notes';
 import { prepareDeckSourceCapture, checkedDeckRuntimeIndex } from '../src/embedded-render/deck-source.js';
 import { RenderInput } from '../src/embedded-render/input.js';
 const html = '<deck-stage><section class="slide">One</section><section class="slide">Two</section></deck-stage>';
@@ -23,11 +25,27 @@ describe('source-owned deck image capture', () => {
       expect(() => prepareDeckSourceCapture(buffer, { ...selection, index: 0, deckSourcePath: 'path-0-0', deckSourceSha256: createHash('sha256').update(buffer).digest('hex') })).toThrow('source-owned');
     }
   });
-  it('maps notes-free preview paths to the same source slide while preserving original-byte digest', () => {
-    const source = '<script id="od-speaker-notes" type="application/json">["note"]</script>' + html;
-    const buffer = Buffer.from(source);
-    const capture = prepareDeckSourceCapture(buffer, { ...selection, deckSourceSha256: createHash('sha256').update(buffer).digest('hex') });
-    expect(capture.html).toContain('>Two</section>');
+  it('maps a real body speaker-notes removal to the same source slide, refusing the shifted raw path', () => {
+    const notes = '<script id="speaker-notes" type="application/json">["First note","Second note"]</script>';
+    const source = '<!doctype html><html><body>' + notes + html + '</body></html>';
+    const block = findSpeakerNotesScriptBlock(source);
+    expect(block).not.toBeNull();
+    expect(source.slice(block!.start, block!.end)).toBe(notes);
+    const raw = load(source), visual = load(source.slice(0, block!.start) + source.slice(block!.end));
+    const path = (document: ReturnType<typeof load>) => `path-${document('body').children().index(document('deck-stage'))}-${document('deck-stage').children().index(document('section').last())}`;
+    expect(raw('body').children().toArray().map(node => node.tagName)).toEqual(['script', 'deck-stage']);
+    const rawPath = path(raw), previewPath = path(visual);
+    expect(rawPath).toBe('path-1-1');
+    expect(previewPath).toBe('path-0-1');
+    expect(rawPath).not.toBe(previewPath);
+    const buffer = Buffer.from(source), sourceSha256 = createHash('sha256').update(buffer).digest('hex');
+    const capture = prepareDeckSourceCapture(buffer, { ...selection, deckSourcePath: previewPath, deckSourceSha256: sourceSha256 });
+    const converted = load(capture.html), target = converted(`[${capture.attribute}="${capture.nonce}"]`).filter('section');
+    expect(target).toHaveLength(1);
+    expect(target.contents().filter((_index, node) => node.type === 'text').text()).toBe('Two');
+    expect(converted('#speaker-notes').html()).toBe('["First note","Second note"]');
+    expect(() => prepareDeckSourceCapture(buffer, { ...selection, deckSourcePath: rawPath, deckSourceSha256: sourceSha256 })).toThrow('source-owned');
+    expect(buffer.toString()).toBe(source);
   });
   it('uses the same strict BOM/non-ASCII decode as preview but hashes the original bytes', () => {
     const raw = Buffer.from('\ufeff' + html.replace('Two', '二 café'));
