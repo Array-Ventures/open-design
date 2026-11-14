@@ -1,6 +1,6 @@
 import { assertNativeWorkbookBirthHistory } from './native-birth-history';
 import { ICommandService, IUndoRedoService, IUniverInstanceService, RedoCommand, UndoCommand, UniverInstanceType, type ICommand, type IWorkbookData, type Univer, type Workbook } from '@univerjs/core';
-import { InsertSheetCommand, InsertSheetMutation, RemoveSheetMutation } from '@univerjs/sheets';
+import { getSheetCommandTarget, InsertSheetCommand, InsertSheetMutation, RemoveSheetCommand, RemoveSheetMutation, RemoveSheetUndoMutationFactory, SheetInterceptorService } from '@univerjs/sheets';
 import { canonicalWorkbookJsonValue } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import type { WorkbookWriter } from './workbook-writer';
 import type { WorkbookDraftScope } from './workbook-draft-schema';
@@ -9,14 +9,18 @@ import { WORKBOOK_SHEET_BIRTH_MARKER, type WorkbookSheetBirthEntry } from './she
 import { captureWorkbookSourceDeletion, WORKBOOK_SHEET_DELETE_MARKER } from './sheet-delete-context';
 import { WorkbookSheetMutationOwner } from './sheet-mutation-owner';
 import { workbookSheetMutationSnapshot } from './sheet-removal-selection';
+import { nativeDeletePayloadIdentity, projectNativeSheetDelete, type NativeDeletePayload, type NativeSheetMutation } from './native-delete-history';
+import type { WorkbookSourceDeleteContext } from './sheet-delete-context';
 
 type Direction = 'undo' | 'redo';
 interface IssuedBirth { entry: WorkbookSheetBirthEntry; index: number; nativeEntryId: number }
 interface BirthAction { birth: IssuedBirth; direction: Direction; checkpoint: ReturnType<IUndoRedoService['getUndoRedoCheckpoint']> }
+interface IssuedDelete { context: WorkbookSourceDeleteContext; nativeEntryId: number; payload: NativeDeletePayload }
+interface DeleteAction { deletion: IssuedDelete; direction: Direction; checkpoint: ReturnType<IUndoRedoService['getUndoRedoCheckpoint']> }
 
 /** Uninstalled native-history producer. Imported/recovered descriptors are not
- * issuance. Historical Delete Undo and compound membership remain refused until
- * their independently authorized template/projection consumers are connected. */
+ * issuance. Source Delete uses only the exact privately issued native item and
+ * the existing independently authorized template/projection consumers. */
 export class WorkbookSheetHistoryController {
   private readonly commands;
   private readonly history;
@@ -26,12 +30,15 @@ export class WorkbookSheetHistoryController {
   private readonly handles: ReturnType<ICommandService['replaceCommand']>[] = [];
   private readonly issued = new Map<string, WorkbookSheetActionDescriptor>();
   private readonly births = new Map<string, IssuedBirth>();
+  private readonly deletions = new Map<string, IssuedDelete>();
+  private readonly injector;
   private busy = false;
   private disposed = false;
 
   constructor(univer: Univer, private readonly writer: WorkbookWriter, private readonly scope: WorkbookDraftScope,
     private readonly snapshot: () => IWorkbookData, private readonly current: () => boolean) {
     const injector = univer.__getInjector();
+    this.injector = injector;
     this.commands = injector.get(ICommandService);
     this.history = injector.get(IUndoRedoService);
     this.instances = injector.get(IUniverInstanceService);
@@ -47,12 +54,14 @@ export class WorkbookSheetHistoryController {
         this.handles.push(this.commands.replaceCommand(original, {
           id: original.id, type: original.type,
           handler: (accessor, params, options) => {
+            const deletion = this.deleteAction(direction);
+            if (deletion) return this.replayDelete(deletion, () => native.handler(accessor, params, options) === true);
             const action = this.action(direction);
             if (!action) return native.handler(accessor, params, options);
             return this.protect(action, () => native.handler(accessor, params, options) === true);
           },
           syncHandler: (accessor, params, options) => {
-            if (this.action(direction)) throw Error('Protected worksheet history requires asynchronous dispatch.');
+            if (this.deleteAction(direction) || this.action(direction)) throw Error('Protected worksheet history requires asynchronous dispatch.');
             return native.handler(accessor, params, options);
           },
         }));
@@ -62,11 +71,28 @@ export class WorkbookSheetHistoryController {
         id: add.id, type: add.type,
         handler: (accessor, params, options) => add.handler(accessor, params, options),
       }));
+      const remove: ICommand = RemoveSheetCommand;
+      this.handles.push(this.commands.replaceCommand(RemoveSheetCommand, {
+        id: RemoveSheetCommand.id, type: RemoveSheetCommand.type,
+        handler: (accessor, params, options) => {
+          const input = params as { unitId?: string; subUnitId?: string } | undefined;
+          const target = getSheetCommandTarget(this.instances, input);
+          if (target && target.workbook !== this.unit) return remove.handler(accessor, params, options);
+          if (!input || Object.keys(input).some(key => !['unitId', 'subUnitId'].includes(key))
+            || input.unitId !== this.unit.getUnitId() || typeof input.subUnitId !== 'string') throw Error('The source Delete target is invalid.');
+          return this.performRemove(input.subUnitId).then(() => true);
+        },
+        syncHandler: (accessor, params, options) => {
+          const target = getSheetCommandTarget(this.instances, params as { unitId?: string; subUnitId?: string } | undefined);
+          if (target && target.workbook !== this.unit) return remove.handler(accessor, params, options);
+          throw Error('Protected worksheet Delete requires asynchronous dispatch.');
+        },
+      }));
     } catch (error) { this.dispose(); throw error; }
   }
 
   isCurrent(): boolean {
-    return !this.disposed && this.current() && this.handles.length === 3 && this.handles.every(handle => handle.isCurrent())
+    return !this.disposed && this.current() && this.handles.length === 4 && this.handles.every(handle => handle.isCurrent())
       && this.instances.getFocusedUnit() === this.unit
       && this.instances.getUnit(this.unit.getUnitId(), UniverInstanceType.UNIVER_SHEET) === this.unit;
   }
@@ -81,6 +107,116 @@ export class WorkbookSheetHistoryController {
   }
   private issue(descriptor: WorkbookSheetActionDescriptor): void {
     this.issued.set(descriptor.token, structuredClone(descriptor));
+  }
+
+  async remove(sheetId: string): Promise<void> {
+    if (await this.commands.executeCommand(RemoveSheetCommand.id, { unitId: this.unit.getUnitId(), subUnitId: sheetId }) !== true) throw Error('The source Delete was refused.');
+  }
+
+  private async performRemove(sheetId: string): Promise<void> {
+    if (this.busy || !this.isCurrent()) throw Error('The worksheet action owner is not current.');
+    this.busy = true;
+    try {
+      const before = this.snapshot();
+      const writerState = this.writer.checkpoint();
+      if (canonicalWorkbookJsonValue(writerState.desired) !== canonicalWorkbookJsonValue(before)) throw Error('The worksheet writer snapshot is not current.');
+      if (!before.sheets[sheetId] || before.sheets[sheetId]!.hidden === 2
+        || before.sheetOrder.filter(id => !before.sheets[id]!.hidden).length <= 1 && !before.sheets[sheetId]!.hidden) throw Error('Keep at least one worksheet visible.');
+      const context = captureWorkbookSourceDeletion(this.scope, writerState, sheetId);
+      const insert = this.injector.invoke(accessor => RemoveSheetUndoMutationFactory(accessor, { unitId: before.id, subUnitId: sheetId, subUnitName: before.sheets[sheetId]!.name! }));
+      if (insert.index !== context.removedIndex || canonicalWorkbookJsonValue(insert.sheet) !== canonicalWorkbookJsonValue(context.removedSheet)) throw Error('The native Delete factory changed its removed configuration.');
+      const sheet = structuredClone(insert.sheet);
+      sheet.custom = { ...sheet.custom, [WORKBOOK_SHEET_DELETE_MARKER]: structuredClone(context.descriptor) };
+      const dependencies = this.injector.get(SheetInterceptorService).onCommandExecute({ id: RemoveSheetCommand.id, params: { unitId: before.id, subUnitId: sheetId } });
+      const payload: NativeDeletePayload = structuredClone({
+        undoMutations: [...(dependencies.preUndos ?? []), { id: InsertSheetMutation.id, params: { ...insert, sheet } }, ...dependencies.undos],
+        redoMutations: [...(dependencies.preRedos ?? []), { id: RemoveSheetMutation.id, params: { unitId: before.id, subUnitId: sheetId, subUnitName: sheet.name } }, ...dependencies.redos],
+      });
+      nativeDeletePayloadIdentity(payload);
+      const stamped = structuredClone(before);
+      stamped.sheets[sheetId] = sheet;
+      const projection = projectNativeSheetDelete(stamped, context.descriptor, payload.redoMutations);
+      // Validate the native inverse before storing or entering a callback.
+      projectNativeSheetDelete(projection.snapshot, context.descriptor, payload.undoMutations);
+      const checkpoint = this.history.getUndoRedoCheckpoint();
+      const verify = () => {
+        if (!this.isCurrent() || canonicalWorkbookJsonValue(this.snapshot()) !== canonicalWorkbookJsonValue(before)
+          || canonicalWorkbookJsonValue(this.history.getUndoRedoCheckpoint()) !== canonicalWorkbookJsonValue(checkpoint)) throw Error('The worksheet history changed while protecting its action.');
+        return undefined;
+      };
+      await this.writer.protectSheetDeletion(context, projection.snapshot, () => {
+        verify();
+        this.issue(context.descriptor);
+        this.unit.getSheetBySheetId(sheetId)!.setCustomMetadata(structuredClone(sheet.custom!));
+        const result = this.runDeleteSequence(context.descriptor, stamped, payload.redoMutations, () => {
+          for (const mutation of payload.redoMutations) if (this.commands.syncExecuteCommand(mutation.id, structuredClone(mutation.params)) !== true) return false;
+          if (!this.isCurrent() || canonicalWorkbookJsonValue(this.history.getUndoRedoCheckpoint()) !== canonicalWorkbookJsonValue(checkpoint)) throw Error('The native Delete changed history before its owned push.');
+          this.history.pushUndoRedo({ unitID: before.id, undoMutations: structuredClone(payload.undoMutations), redoMutations: structuredClone(payload.redoMutations) });
+          return true;
+        });
+        const native = this.history.getUndoRedoCheckpoint();
+        if (native.unitId !== before.id || native.undoEntryId === null || native.revision !== checkpoint.revision + 1) throw Error('The native Delete history entry is unavailable.');
+        const issued = { context: structuredClone(context), nativeEntryId: native.undoEntryId, payload: structuredClone(payload) };
+        this.assertDeletePayload(issued, this.history.getUndoRedoMutationData(before.id, 'undo', native.undoEntryId));
+        this.deletions.set(context.descriptor.token, issued);
+        return result;
+      }, verify);
+    } finally { this.busy = false; }
+  }
+
+  private assertDeletePayload(issued: IssuedDelete, data: Parameters<typeof nativeDeletePayloadIdentity>[0]): void {
+    if (nativeDeletePayloadIdentity(data) !== nativeDeletePayloadIdentity(issued.payload)) throw Error('The native Delete payload changed.');
+  }
+
+  private deleteAction(direction: Direction): DeleteAction | null {
+    const checkpoint = this.history.getUndoRedoCheckpoint();
+    const nativeEntryId = checkpoint[direction === 'undo' ? 'undoEntryId' : 'redoEntryId'];
+    if (checkpoint.unitId !== this.unit.getUnitId() || nativeEntryId === null) return null;
+    const data = this.history.getUndoRedoMutationData(checkpoint.unitId, direction, nativeEntryId);
+    const issued = [...this.deletions.values()].find(value => value.nativeEntryId === nativeEntryId);
+    if (!issued) return null;
+    if (!this.isCurrent() || this.busy || !this.owns(issued.context.descriptor)) throw Error('The native Delete issuer is not current.');
+    this.assertDeletePayload(issued, data);
+    if (Boolean(this.snapshot().sheets[issued.context.descriptor.sheetId]) !== (direction === 'redo')) throw Error('The native Delete direction changed.');
+    return { deletion: issued, direction, checkpoint };
+  }
+
+  private async replayDelete(action: DeleteAction, execute: () => boolean): Promise<boolean> {
+    this.busy = true;
+    try {
+      const descriptor = action.deletion.context.descriptor;
+      const mutations = action.direction === 'undo' ? action.deletion.payload.undoMutations : action.deletion.payload.redoMutations;
+      const before = this.snapshot();
+      if (canonicalWorkbookJsonValue(this.writer.checkpoint().desired) !== canonicalWorkbookJsonValue(before)) throw Error('The worksheet writer snapshot is not current.');
+      const projection = projectNativeSheetDelete(before, descriptor, mutations);
+      const verify = () => {
+        if (!this.isCurrent() || !this.owns(descriptor)
+          || canonicalWorkbookJsonValue(this.history.getUndoRedoCheckpoint()) !== canonicalWorkbookJsonValue(action.checkpoint)) throw Error('The worksheet history changed while protecting its action.');
+        this.assertDeletePayload(action.deletion, this.history.getUndoRedoMutationData(action.checkpoint.unitId, action.direction, action.deletion.nativeEntryId));
+        return undefined;
+      };
+      await this.writer.protectSheetDeletionReplay(descriptor, projection.snapshot,
+        () => {
+          verify();
+          return this.runDeleteSequence(descriptor, before, mutations, () => {
+            if (execute() !== true) return false;
+            const after = this.history.getUndoRedoCheckpoint();
+            const opposite = action.direction === 'undo' ? 'redo' : 'undo';
+            if (after.unitId !== action.checkpoint.unitId || after.revision !== action.checkpoint.revision + 1
+              || after[opposite === 'undo' ? 'undoEntryId' : 'redoEntryId'] !== action.deletion.nativeEntryId) throw Error('The protected native Delete history transfer changed.');
+            this.assertDeletePayload(action.deletion, this.history.getUndoRedoMutationData(after.unitId, opposite, action.deletion.nativeEntryId));
+            return true;
+          });
+        }, verify);
+      return true;
+    } finally { this.busy = false; }
+  }
+
+  private runDeleteSequence(descriptor: WorkbookSheetActionDescriptor, before: IWorkbookData,
+    mutations: readonly NativeSheetMutation[], execute: () => boolean): IWorkbookData {
+    const projection = projectNativeSheetDelete(before, descriptor, mutations);
+    const { kind, before: immediateBefore, after } = projection.transition;
+    return this.mutation.run(kind, descriptor, immediateBefore, after, execute, projection.snapshot);
   }
 
   async add(name: string, index: number): Promise<WorkbookSheetBirthEntry> {
