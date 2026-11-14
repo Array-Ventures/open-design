@@ -4,9 +4,11 @@ import { canonicalWorkbookJsonValue } from '@open-design/contracts/runtime/workb
 import { createWorkbookBirthFixture, birthScope as scope } from './workbook-birth-fixture';
 import { WorkbookWriter, type WorkbookCheckpoint, type WorkbookWriteIntent, type WorkbookWriteResult } from '../../src/components/embedded/workbook/workbook-writer';
 import { WorkbookSheetMutationOwner } from '../../src/components/embedded/workbook/sheet-mutation-owner';
-import { stampWorkbookSourceDeletion } from '../../src/components/embedded/workbook/sheet-delete-context';
+import { captureWorkbookSourceDeletion, stampWorkbookSourceDeletion } from '../../src/components/embedded/workbook/sheet-delete-context';
 import { serializeWorkbookDraft } from '../../src/components/embedded/workbook/draft-store';
 import type { WorkbookSheetBirthEntry } from '../../src/components/embedded/workbook/sheet-birth-context';
+import { workbookSheetMutationSnapshot } from '../../src/components/embedded/workbook/sheet-removal-selection';
+import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import type { WorkbookBirthRemoval } from '../../src/components/embedded/workbook/sheet-birth-removal-schema';
 
 export interface RemovedBirthFixture { removal: WorkbookBirthRemoval; nativeSheet: IWorkbookData['sheets'][string]; index: number }
@@ -15,8 +17,9 @@ export function createBirthRemovalHarness(options: {
   save?: (state: WorkbookCheckpoint | null) => Promise<void>;
   afterSave?: (state: WorkbookCheckpoint | null) => void;
   current?: () => boolean;
+  additionalSheets?: WorkbookDocument['sheets'];
 }) {
-  const f = createWorkbookBirthFixture();
+  const f = createWorkbookBirthFixture('1', 100, options.additionalSheets ?? []);
   const records: Array<WorkbookCheckpoint | null> = [];
   const durable: { value: WorkbookCheckpoint | null } = { value: null };
   const issued = new Map<string, string>();
@@ -66,6 +69,20 @@ export function createBirthRemovalHarness(options: {
       });
       if (!nativeSheet) throw Error('Native removal did not execute');
       return { removal, nativeSheet, index: removal.removedIndex };
+    },
+    async removeSource(id: string) {
+      const context = captureWorkbookSourceDeletion(scope, writer.checkpoint(), id);
+      const before = f.book.save(), after = structuredClone(before);
+      delete after.sheets[id]; after.sheetOrder = after.sheetOrder.filter(value => value !== id);
+      const prospective = workbookSheetMutationSnapshot(before, after, 'remove', context.descriptor);
+      await writer.protectSheetDeletion(context, prospective, () => {
+        issued.set(context.descriptor.token, canonicalWorkbookJsonValue(context.descriptor));
+        stampWorkbookSourceDeletion(unit.getSheetBySheetId(id)!, context.descriptor);
+        return owner.run('remove', context.descriptor, f.book.save(), prospective, () => f.commands.syncExecuteCommand(RemoveSheetCommand.id, {
+          unitId: f.book.getId(), subUnitId: id,
+        }));
+      });
+      return context;
     },
     /** Source protocol fixture only. A live controller must protect native
      * history BEFORE pop; this direct real SDK seam does not qualify that UI. */

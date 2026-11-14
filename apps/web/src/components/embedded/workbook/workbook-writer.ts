@@ -119,12 +119,12 @@ export class WorkbookWriter {
       const candidate = this.prospectiveDeletionContexts(raw), source = this.source, revision = this.revision, pending = this.pending;
       const snapshot = structuredClone(prospective);
       if (snapshot.sheets[raw.descriptor.sheetId] || snapshot.sheetOrder.includes(raw.descriptor.sheetId)) throw Error('The prospective worksheet deletion changed.');
-      const plan = workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { scope: this.journal?.scope, pending: this.pending, deletions: candidate, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() });
+      workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { scope: this.journal?.scope, pending: this.pending, deletions: candidate, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() });
       const checkpoint = { ...this.checkpoint(), sheetDeletions: candidate };
       this.journal.validate({ ...checkpoint, desired: snapshot });
-      // Same decoder and exact byte limit as real pending storage. These local
-      // identities validate the prospective shape, not a future save reservation.
-      this.journal.validate({ ...checkpoint, desired: snapshot, pending: { snapshot, intent: { id: crypto.randomUUID(), preparationId: crypto.randomUUID(), previewId: crypto.randomUUID(), renderId: crypto.randomUUID(), plan } } });
+      // Validate the actual prospective state with its ORIGINAL pending root.
+      // A hypothetical replacement can invalidate retained creation ownership;
+      // actual future-save storage remains checked before transport.
       const durable = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
       this.persistence = durable;
       await durable;
@@ -152,8 +152,9 @@ export class WorkbookWriter {
       const checkpoint = { ...this.checkpoint(), sheetBirths: prepared.state };
       this.journal.validate(checkpoint);
       this.journal.validate({ ...checkpoint, desired: prepared.snapshot });
-      const plan = workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, prepared.snapshot, { scope: this.journal?.scope, pending: this.pending, deletions: this.sheetDeletions, births: prepared.state, sourceOwner: this.sheetProjectionOwner() });
-      this.journal.validate({ ...checkpoint, desired: prepared.snapshot, pending: { snapshot: prepared.snapshot, intent: { id: crypto.randomUUID(), preparationId: crypto.randomUUID(), previewId: crypto.randomUUID(), plan } } });
+      workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, prepared.snapshot, { scope: this.journal?.scope, pending: this.pending, deletions: this.sheetDeletions, births: prepared.state, sourceOwner: this.sheetProjectionOwner() });
+      // Keep any original pending creation and all retained roots unchanged.
+      // Future intent storage is admitted separately before its real transport.
       const durable = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
       this.persistence = durable;
       await durable;

@@ -100,3 +100,26 @@ DocumentDataModel unit with a fixture body mutation also keeps native Undo/Redo
 delegation without touching workbook cells. This is a source dispatch case, not
 a browser Docs-editor or paste-mode qualification.
 Full fork typecheck and guard also passed for this detection follow-up.
+
+## Preserve the actual pending creation during prospective admission
+
+Two real SDK/Writer regressions reproduced an admission error: after creation A
+was frozen and Undo retained a pending-target removal, an unrelated Add or source
+Delete was refused by a hypothetical replacement pending snapshot. That
+replacement was never the request being saved and lost the original creation
+association.
+
+Prospective admission now validates the complete real checkpoint with only its
+desired snapshot changed. The original pending intent, snapshot and retained
+contexts remain exact. Prospective source-plan qualification still runs, and the
+actual next request is independently encoded before transport; this is no future
+quota reservation. No source, lease, revision or private history guard changed.
+
+The three new cases cover both refused actions and an eventual checked stand-in
+ACK sequence that converts the retained removal before saving the next target.
+They use actual SDK commands and the existing Writer/journal, with stand-in
+transport receipts. The source Delete fixture is a protocol seam, not live
+pre-pop Delete Undo or historical asset authorization. The original two cases
+failed before the correction. Final affected checks passed 123 cases in 15 files,
+full fork typecheck and guard. Controls remain uninstalled; contained worker,
+historical assets, recovery and packaged membership acceptance remain required.
