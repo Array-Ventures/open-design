@@ -152,14 +152,17 @@ export class WorkbookSheetHistoryController {
   private protectedNativeRoots(history: ReturnType<IUndoRedoService['getUndoRedoEntryIds']>): WorkbookNativeRoot[] {
     const reachable = new Set([...history.undos, ...history.redos]);
     const roots: WorkbookNativeRoot[] = [];
+    // Payload inspection is deliberately top-only. Retain buried issued IDs
+    // using their immutable private payload; native Undo/Redo will validate
+    // the actual payload again once that same item becomes the stack top.
     for (const birth of this.births.values()) {
-      for (const direction of ['undo', 'redo'] as const) if (history[direction === 'undo' ? 'undos' : 'redos'].includes(birth.nativeEntryId)) {
+      for (const direction of ['undo', 'redo'] as const) if (history[direction === 'undo' ? 'undos' : 'redos'].at(-1) === birth.nativeEntryId) {
         assertNativeWorkbookBirthHistory(this.history.getUndoRedoMutationData(history.unitId, direction, birth.nativeEntryId), history.unitId, birth.entry, birth.index);
       }
       roots.push({ descriptor: birth.entry.descriptor, reachable: reachable.has(birth.nativeEntryId), sheets: [birth.entry.initialSheet] });
     }
     for (const issued of [...this.deletions.values(), ...this.renames.values()]) {
-      for (const direction of ['undo', 'redo'] as const) if (history[direction === 'undo' ? 'undos' : 'redos'].includes(issued.nativeEntryId)) {
+      for (const direction of ['undo', 'redo'] as const) if (history[direction === 'undo' ? 'undos' : 'redos'].at(-1) === issued.nativeEntryId) {
         this.assertNativePayload(issued, this.history.getUndoRedoMutationData(history.unitId, direction, issued.nativeEntryId));
       }
       const sheets = [...issued.payload.undoMutations, ...issued.payload.redoMutations]

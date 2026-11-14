@@ -12,8 +12,10 @@ live/Writer metadata cleanup before full worksheet controls can ship.
 `WorkbookSheetHistoryController.retireProtectedRoots()` requires the current
 private controller, focused exact native unit, unchanged live snapshot and
 Writer, and the bounded native Undo **and** Redo ID query. Every reachable private
-Add/Delete/Rename item is checked against its original native payload, including
-buried entries. IDs copied into a new public history item do not acquire issuance.
+Add/Delete/Rename item is retained using its existing immutable private payload.
+The SDK payload inspection API is deliberately top-only: current top entries
+are checked now, while buried items are checked when native Undo/Redo reaches
+that exact entry. IDs copied into a new public history item do not acquire issuance.
 
 The pure closure preserves:
 
@@ -99,3 +101,27 @@ configuration input shape were corrected; no native ownership assertion was
 removed or relaxed.
 
 No stack, preview, package, worker, release, installer pin or production changed.
+
+
+## Same-stack buried-entry correction
+
+Root source review identified that the first checkpoint mistakenly called the
+SDK's top-only payload reader on every reachable ID. Its original test placed
+only one entry in each stack, despite describing buried coverage. Four new
+actual-SDK cases genuinely failed on `5feba661`: three Rename items in the same
+Undo stack, three in the same Redo stack, and birth/Delete items buried below
+ordinary scalar history. The correction uses the complete bounded native-ID
+union plus existing private immutable payloads for retention, inspecting only
+current top native payloads. All new cases also execute the preserved history
+through its actual top and verify the expected workbook result. The SDK API
+and future Undo/Redo payload guards are unchanged.
+
+Original failed evidence remains `/tmp/workbook-retirement-buried-red.log`.
+This corrects source maintenance behavior, not the still-open obsolete-selector
+cleanup or packaged qualification gate.
+
+Correction author checks pass **79 cases in five affected suites**, full workspace
+`pnpm typecheck` and `pnpm guard` (all exit zero). Receipts:
+`/tmp/workbook-retirement-buried-green.log`,
+`/tmp/workbook-retirement-buried-types.log`, and
+`/tmp/workbook-retirement-buried-guard.log`. No stack or packaged browser was run.

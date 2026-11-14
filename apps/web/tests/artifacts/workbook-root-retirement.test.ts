@@ -303,3 +303,36 @@ it('removes an unused prepared birth record while preserving numeric high-water 
     expect(state.sheetBirths).toEqual(prepared.state);
   } finally { await f.close(); }
 });
+
+it.each(['undo', 'redo'] as const)('retains several Rename issuers genuinely buried in the same native %s stack', async direction => {
+  const f = fixture(true);
+  try {
+    for (const name of ['First rename', 'Second rename', 'Third rename']) await f.controller!.rename('2', name);
+    if (direction === 'redo') for (let index = 0; index < 3; index++) await f.api.undo();
+    const ids = f.history.getUndoRedoEntryIds(f.book.getId());
+    expect(ids[direction === 'undo' ? 'undos' : 'redos']).toHaveLength(3);
+    const before = f.writer.checkpoint();
+    expect(await f.controller!.retireProtectedRoots()).toEqual({ retiredContexts: 0, retiredIssuers: 0 });
+    expect(f.writer.checkpoint()).toEqual(before);
+    for (let index = 0; index < 3; index++) await (direction === 'undo' ? f.api.undo() : f.api.redo());
+    expect(f.book.save().sheets['2']!.name).toBe(direction === 'undo' ? 'Sheet 2' : 'Third rename');
+  } finally { await f.close(); }
+});
+
+it.each(['birth', 'delete'] as const)('retains a %s issuer buried under ordinary native scalar history without reading its unavailable payload', async kind => {
+  const f = fixture(true);
+  try {
+    if (kind === 'birth') await f.controller!.add('Buried birth', 3);
+    else await f.controller!.remove('2');
+    f.book.getSheetBySheetId('1')!.getRange('A1').setValue(22);
+    expect(f.history.getUndoRedoEntryIds(f.book.getId()).undos).toHaveLength(2);
+    const before = f.writer.checkpoint();
+    expect(await f.controller!.retireProtectedRoots()).toEqual({ retiredContexts: 0, retiredIssuers: 0 });
+    expect(f.writer.checkpoint()).toEqual(before);
+    await f.api.undo();
+    expect(f.book.save().sheets['1']!.cellData![0]![0]!.v).toBe(21);
+    await f.api.undo();
+    if (kind === 'birth') expect(f.book.save().sheets['4']).toBeUndefined();
+    else expect(f.book.save().sheets['2']!.cellData![0]![0]!.v).toBe(17);
+  } finally { await f.close(); }
+});
