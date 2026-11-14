@@ -10,8 +10,9 @@ numeric persistence, post-Save capability reconnection and a Worker-fault draft
 Restore/Save passed bounded checks, while rich append lost its styled prefix,
 unused-sheet Rename hit the calculation deadline, live formula repaint was
 incomplete and a raw Markdown code fixture failed structured admission. The
-source corrections are reviewed; new candidate 132 browser acceptance remains
-pending. The [native 131 record](https://github.com/Array-Ventures/evebot/blob/c5954f857b5819bc4e327d7a0d953c3e97abad9a/docs/workbook-live131-qualification.md)
+source corrections are reviewed; bounded candidate 132 browser results are recorded in the
+[132 qualification](workbook-live132-qualification.md), with final review and
+remaining gates still open. The [native 131 record](https://github.com/Array-Ventures/evebot/blob/c5954f857b5819bc4e327d7a0d953c3e97abad9a/docs/workbook-live131-qualification.md)
 retains the independent XML checks, precise failures and cleanup limits. This PR
 remains draft; installer pins and production are unchanged.
 
