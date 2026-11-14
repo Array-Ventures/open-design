@@ -1,3 +1,4 @@
+import { workbookBirthRemovalSchema } from './sheet-birth-removal-schema';
 import { z } from 'zod';
 import { mergeWorksheetSnapshotWithDefault, type IWorkbookData, type IWorksheetData } from '@univerjs/core';
 import { canonicalWorkbookJsonValue } from '@open-design/contracts/runtime/workbook-sheet-baseline';
@@ -6,8 +7,8 @@ import { workbookDraftScopeSchema, workbookGridSnapshotSchema, type WorkbookDraf
 import { workbookSheetActionDescriptorSchema, type WorkbookSheetActionDescriptor } from './sheet-action-descriptor';
 import { assertWorkbookStructureIdentity, seedWorkbookNewSheetIdentity } from './grid-structure-identity';
 import type { WorkbookCheckpoint } from './workbook-writer';
-import { captureWorkbookDeletionBaseline, associateWorkbookSourceDeletion } from './sheet-delete-context';
-import { workbookSaveAcknowledgementSchema, type WorkbookSaveAcknowledgement } from './save-provenance';
+import { captureWorkbookDeletionBaselines, associateWorkbookSourceDeletion } from './sheet-delete-context';
+import { assertWorkbookPendingAcknowledgement, workbookSaveAcknowledgementSchema, type WorkbookSaveAcknowledgement } from './save-provenance';
 import { gridWorkbook } from './grid-model';
 import { assertWorkbookSourceSnapshotInputs } from './source-snapshot-inputs';
 
@@ -21,7 +22,7 @@ const birthState = z.object({
   version: z.literal(1), scope: workbookDraftScopeSchema.omit({ draftId: true }).extend({ fileName: workbookCommitRequestSchema.shape.fileName }),
   axisOwner: z.object({ generation: z.string().uuid(), sourceSha256: digest }).strict(),
   highWaterId: z.number().int().min(1).max(WORKBOOK_SHEET_ID_MAX),
-  entries: z.array(entry).max(4096),
+  entries: z.array(entry).max(4096), removals: z.array(workbookBirthRemovalSchema).max(4096).optional(),
 }).strict().superRefine((state, check) => {
   const ids = new Set<string>(), tokens = new Set<string>();
   for (const item of state.entries) {
@@ -30,6 +31,13 @@ const birthState = z.object({
       check.addIssue({ code: 'custom', message: 'The worksheet birth state identity changed.' });
     }
     ids.add(item.descriptor.sheetId); tokens.add(item.descriptor.token);
+  }
+  for (const removal of state.removals ?? []) {
+    const birth = state.entries.find(item => item.descriptor.token === removal.birthToken);
+    if (!birth || birth.descriptor.sheetId !== removal.descriptor.sheetId || removal.descriptor.generation !== state.axisOwner.generation || tokens.has(removal.descriptor.token)) {
+      check.addIssue({ code: 'custom', message: 'The protected birth removal identity changed.' });
+    }
+    tokens.add(removal.descriptor.token);
   }
 });
 export const workbookSheetBirthStateSchema = z.preprocess(raw => { canonicalWorkbookJsonValue(raw); return raw; }, birthState);
@@ -79,7 +87,8 @@ export function checkedWorkbookSheetBirths(raw: WorkbookSheetBirthState, book: I
 /** Prepare a bounded numeric origin before a command captures redo. The caller
  * must durably protect this state and verify live issuer/lease ownership before
  * running the real SDK command. This function does not grant that authority. */
-export function prepareWorkbookSheetBirth(scope: WorkbookDraftScope, checkpoint: WorkbookCheckpoint, name: string, index: number, previous?: WorkbookSheetBirthState) {
+/** Current source/ACK/kernel qualification, not a reusable authority token. */
+export function assertWorkbookBirthSource(scope: WorkbookDraftScope, checkpoint: WorkbookCheckpoint): void {
   const checkedScope = workbookDraftScopeSchema.parse(scope), before = checkpoint.desired;
   assertWorkbookStructureIdentity(before);
   workbookCommitRequestSchema.shape.fileName.parse(checkedScope.fileName);
@@ -91,6 +100,11 @@ export function prepareWorkbookSheetBirth(scope: WorkbookDraftScope, checkpoint:
   assertWorkbookStructureIdentity(checkpoint.acknowledged);
   assertWorkbookSourceSnapshotInputs(gridWorkbook(model, unitId, 'Workbook').data as IWorkbookData, checkpoint.acknowledged, unitId);
   if (canonicalWorkbookJsonValue(before.custom?.evebotStructureOwner) !== canonicalWorkbookJsonValue(checkpoint.acknowledged.custom?.evebotStructureOwner)) throw Error('The worksheet birth kernel changed.');
+}
+
+export function prepareWorkbookSheetBirth(scope: WorkbookDraftScope, checkpoint: WorkbookCheckpoint, name: string, index: number, previous?: WorkbookSheetBirthState) {
+  assertWorkbookBirthSource(scope, checkpoint);
+  const checkedScope = workbookDraftScopeSchema.parse(scope), before = checkpoint.desired, model = checkpoint.source.model;
   if (!Number.isSafeInteger(index) || index < 0 || index > before.sheetOrder.length) throw Error('The worksheet insertion position changed.');
   const owned = previous ? checkedWorkbookSheetBirths(previous, checkpoint.acknowledged) : undefined;
   if (owned && canonicalWorkbookJsonValue(owned.scope) !== canonicalWorkbookJsonValue({ viewerId: checkedScope.viewerId, projectId: checkedScope.projectId, fileName: checkedScope.fileName })) throw Error('The worksheet birth scope changed.');
@@ -110,6 +124,7 @@ export function prepareWorkbookSheetBirth(scope: WorkbookDraftScope, checkpoint:
     scope: { viewerId: checkedScope.viewerId, projectId: checkedScope.projectId, fileName: checkedScope.fileName },
     axisOwner: before.custom!.evebotStructureOwner, highWaterId: highWaterId + 1,
     entries: [...(owned?.entries ?? []), { descriptor: value, initialSheet }],
+    ...(owned?.removals?.length ? { removals: owned.removals } : {}),
   });
   return { state, entry: { descriptor: value, initialSheet } satisfies WorkbookSheetBirthEntry, snapshot };
 }
@@ -119,28 +134,35 @@ export function prepareWorkbookSheetBirth(scope: WorkbookDraftScope, checkpoint:
  * current desired snapshot can already omit this birth; it never supplies the
  * target baseline. This derives protected data, not live issuer authority. */
 export function captureWorkbookSavedBirthDeletion(scope: WorkbookDraftScope, before: WorkbookCheckpoint,
+  target: WorkbookCheckpoint['source'], acknowledgement: WorkbookSaveAcknowledgement, removal: WorkbookSheetActionDescriptor) {
+  return captureWorkbookSavedBirthDeletions(scope, before, target, acknowledgement, [removal])[0]!;
+}
+
+/** Validate one actual checked creation target against the original frozen
+ * snapshot, then capture only the requested selected baselines synchronously. */
+export function captureWorkbookSavedBirthDeletions(scope: WorkbookDraftScope, before: WorkbookCheckpoint,
   target: WorkbookCheckpoint['source'], rawAcknowledgement: WorkbookSaveAcknowledgement,
-  rawRemoval: WorkbookSheetActionDescriptor) {
+  rawRemovals: readonly WorkbookSheetActionDescriptor[]) {
+  if (!rawRemovals.length || rawRemovals.length > 4096) throw Error('The saved birth baseline batch exceeds its limit.');
   const checkedScope = workbookDraftScopeSchema.parse(scope);
   const checked = workbookSaveAcknowledgementSchema.parse(rawAcknowledgement);
   const pending = before.pending;
   if (!pending || checked.kind !== 'history') throw Error('A pending birth requires its checked target receipt.');
-  if (pending.acknowledgement && canonicalWorkbookJsonValue(pending.acknowledgement) !== canonicalWorkbookJsonValue(checked)) throw Error('The checked birth receipt changed while protected.');
-  const removal = descriptor.parse(rawRemoval);
+  assertWorkbookPendingAcknowledgement(checkedScope, before, target, checked);
+  const removals = rawRemovals.map(removal => descriptor.parse(removal));
+  if (new Set(removals.map(removal => removal.token)).size !== removals.length) throw Error('The saved birth removal identities are duplicated.');
   if (!before.sheetBirths) throw Error('The pending creation has no protected birth state.');
   const births = checkedWorkbookSheetBirths(before.sheetBirths, before.acknowledged);
   if (births.scope.viewerId !== checkedScope.viewerId || births.scope.projectId !== checkedScope.projectId || births.scope.fileName !== checkedScope.fileName) throw Error('The pending birth scope changed.');
-  const birth = births.entries.find(item => item.descriptor.sheetId === removal.sheetId);
-  if (!birth) throw Error('The pending creation has no protected birth origin.');
-  const proof = checked.provenance, id = birth.descriptor.sheetId;
-  const selected = pending.snapshot.sheets[id];
-  if (proof.operationId !== pending.intent.id || proof.renderId !== pending.intent.renderId
-    || proof.sourceSha256 !== before.source.sourceSha256 || proof.sourceSha256 !== pending.intent.plan.sourceSha256
-    || proof.targetSha256 !== target.sourceSha256 || proof.projectId !== checkedScope.projectId || proof.fileName !== checkedScope.fileName) throw Error('The saved birth receipt changed source, target or operation.');
-  if (before.source.model.sheets.some(sheet => sheet.id === id) || before.acknowledged.sheets[id]
-    || !selected || !pending.intent.plan.sheets?.some(sheet => sheet.sheetId === id && sheet.origin === 'new')
-    || canonicalWorkbookJsonValue(selected.custom?.[WORKBOOK_SHEET_BIRTH_MARKER]) !== canonicalWorkbookJsonValue(birth.descriptor)) throw Error('The pending creation has no exact protected birth origin.');
-  if (removal.sheetId !== id || removal.generation !== birth.descriptor.generation || removal.token === birth.descriptor.token) throw Error('The pending birth removal descriptor changed.');
-  const captured = captureWorkbookDeletionBaseline(checkedScope, target, pending.snapshot, id, removal);
-  return associateWorkbookSourceDeletion(captured, checked, 'saved-target');
+  for (const removal of removals) {
+    const birth = births.entries.find(item => item.descriptor.sheetId === removal.sheetId);
+    if (!birth) throw Error('The pending creation has no protected birth origin.');
+    const id = birth.descriptor.sheetId, selected = pending.snapshot.sheets[id];
+    if (before.source.model.sheets.some(sheet => sheet.id === id) || before.acknowledged.sheets[id]
+      || !selected || !pending.intent.plan.sheets?.some(sheet => sheet.sheetId === id && sheet.origin === 'new')
+      || canonicalWorkbookJsonValue(selected.custom?.[WORKBOOK_SHEET_BIRTH_MARKER]) !== canonicalWorkbookJsonValue(birth.descriptor)) throw Error('The pending creation has no exact protected birth origin.');
+    if (removal.generation !== birth.descriptor.generation || removal.token === birth.descriptor.token) throw Error('The pending birth removal descriptor changed.');
+  }
+  return captureWorkbookDeletionBaselines(checkedScope, target, pending.snapshot, removals.map(removal => ({ sheetId: removal.sheetId, descriptor: removal })))
+    .map(captured => associateWorkbookSourceDeletion(captured, checked, 'saved-target'));
 }

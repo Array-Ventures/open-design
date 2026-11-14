@@ -47,12 +47,18 @@ export function decodeWorkbookDraft(value: unknown, scope: WorkbookDraftScope): 
     if (births.scope.viewerId !== scope.viewerId || births.scope.projectId !== scope.projectId || births.scope.fileName !== scope.fileName) throw Error('The protected birth state scope changed.');
   }
   const tokens = new Set<string>();
+  if ((state.sheetDeletions?.length ?? 0) + (state.sheetBirths?.removals?.length ?? 0) > 4096) throw Error('The worksheet removal recovery pool exceeds its limit.');
+  for (const removal of state.sheetBirths?.removals ?? []) tokens.add(removal.descriptor.token);
   for (const context of state.sheetDeletions ?? []) {
     if (tokens.has(context.descriptor.token) || context.scope.viewerId !== scope.viewerId || context.scope.projectId !== scope.projectId || context.scope.fileName !== scope.fileName) throw Error('The protected deletion context scope or identity changed.');
     tokens.add(context.descriptor.token);
+    if (context.birthOrigin) {
+      const birth = state.sheetBirths?.entries.find(item => item.descriptor.token === context.birthOrigin!.birthToken);
+      if (!birth || birth.descriptor.sheetId !== context.descriptor.sheetId || birth.descriptor.generation !== context.descriptor.generation) throw Error('The saved birth context lost its protected origin.');
+    }
   }
   for (const snapshot of [state.acknowledged, state.desired, ...(state.pending ? [state.pending.snapshot] : [])]) {
-    checkedWorkbookRemovalContexts(snapshot, state.acknowledged, { scope, deletions: state.sheetDeletions });
+    checkedWorkbookRemovalContexts(snapshot, state.acknowledged, { scope, pending: state.pending, deletions: state.sheetDeletions, births: state.sheetBirths, sourceOwner: state.sourceAcknowledgement && state.sourceSnapshotBinding ? { scope, acknowledgement: state.sourceAcknowledgement, binding: state.sourceSnapshotBinding } : undefined }, state.source);
   }
   const sheetIds = state.source.model.sheets.map(sheet => sheet.id);
   if (JSON.stringify(state.acknowledged.sheetOrder) !== JSON.stringify(sheetIds)) throw new Error('The workbook draft baseline is inconsistent.');
@@ -64,7 +70,7 @@ export function decodeWorkbookDraft(value: unknown, scope: WorkbookDraftScope): 
       : proof.targetSha256 !== state.source.sourceSha256)) throw Error('The protected workbook acknowledgement identity is inconsistent.');
   }
   if (state.pending) {
-    const derived = workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.pending.snapshot, { scope, deletions: state.sheetDeletions, births: state.sheetBirths, sourceOwner: state.sourceAcknowledgement && state.sourceSnapshotBinding ? { scope, acknowledgement: state.sourceAcknowledgement, binding: state.sourceSnapshotBinding } : undefined });
+    const derived = workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.pending.snapshot, { scope, pending: state.pending, deletions: state.sheetDeletions, births: state.sheetBirths, sourceOwner: state.sourceAcknowledgement && state.sourceSnapshotBinding ? { scope, acknowledgement: state.sourceAcknowledgement, binding: state.sourceSnapshotBinding } : undefined });
     if (JSON.stringify(derived) !== JSON.stringify(state.pending.intent.plan)) throw new Error('The pending workbook save does not match its protected snapshot.');
   }
   if (state.sourceSnapshotBinding && !matchesWorkbookSourceSnapshot(state, scope, state.source)) throw Error('The protected source snapshot binding is inconsistent.');
@@ -79,6 +85,6 @@ export function encodeWorkbookDraft(scope: WorkbookDraftScope, checkpoint: Workb
  * Unsupported desired state stays recoverable rather than being discarded. */
 export function workbookCheckpointNeedsRecovery(state: WorkbookCheckpoint, scope: WorkbookDraftScope, fresh: WorkbookCheckpoint['source'] | null | undefined): boolean {
   if (state.pending || state.sheetActionConflict) return true;
-  try { return workbookPlanHasChanges(workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.desired, { scope, deletions: state.sheetDeletions, births: state.sheetBirths, sourceOwner: state.sourceAcknowledgement && state.sourceSnapshotBinding ? { scope, acknowledgement: state.sourceAcknowledgement, binding: state.sourceSnapshotBinding } : undefined })) || !matchesWorkbookSourceSnapshot(state, scope, fresh); }
+  try { return workbookPlanHasChanges(workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.desired, { scope, pending: state.pending, deletions: state.sheetDeletions, births: state.sheetBirths, sourceOwner: state.sourceAcknowledgement && state.sourceSnapshotBinding ? { scope, acknowledgement: state.sourceAcknowledgement, binding: state.sourceSnapshotBinding } : undefined })) || !matchesWorkbookSourceSnapshot(state, scope, fresh); }
   catch { return true; }
 }

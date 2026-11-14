@@ -16,7 +16,8 @@ export const WORKBOOK_SHEET_DELETE_MARKER = 'evebotSheetDeletion';
 const sheetId = workbookActionSheetIdSchema;
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const templateSideSchema = z.enum(['pre-save', 'saved-target']);
-const removedSheetSchema = z.preprocess(raw => { canonicalWorkbookJsonValue(raw); return raw; }, workbookGridSnapshotSchema.shape.sheets.valueSchema);
+export const workbookRemovedSheetSchema = z.preprocess(raw => { canonicalWorkbookJsonValue(raw); return raw; }, workbookGridSnapshotSchema.shape.sheets.valueSchema);
+export const workbookRemovedIndexSchema = z.number().int().min(0).max(WORKBOOK_MODEL_LIMITS.sheets - 1);
 export { workbookSheetActionDescriptorSchema as workbookSheetDeleteDescriptorSchema } from './sheet-action-descriptor';
 export type WorkbookSheetDeleteDescriptor = z.infer<typeof workbookSheetDeleteDescriptorSchema>;
 /** Serialized context is data, never proof of a Delete or a historical grant.
@@ -28,23 +29,37 @@ export const workbookSourceDeleteContextSchema = z.object({
   axisOwner: z.object({ generation: z.string().uuid(), sourceSha256: digest }).strict(),
   receiptAssociation: workbookSaveProvenanceSchema.optional(),
   templateSide: templateSideSchema.optional(),
-  removedSheet: removedSheetSchema.optional(),
-  removedIndex: z.number().int().min(0).max(63).optional(),
+  removedSheet: workbookRemovedSheetSchema.optional(),
+  removedIndex: workbookRemovedIndexSchema.optional(),
+  birthOrigin: z.object({ birthToken: z.string().uuid(), captureSourceSha256: digest,
+    creation: z.object({ operationId: z.string().uuid(), sourceSha256: digest }).strict(),
+  }).strict().optional(),
 }).strict().superRefine((context, check) => {
   const { descriptor, receiptAssociation: receipt, removedSheet, removedIndex } = context;
   if ((removedSheet === undefined) !== (removedIndex === undefined)) check.addIssue({ code: 'custom', message: 'The removed worksheet configuration and position must be paired.' });
   if (removedSheet) {
-    if (removedSheet.id !== descriptor.sheetId || removedSheet.rowCount * removedSheet.columnCount > WORKBOOK_MODEL_LIMITS.cells) check.addIssue({ code: 'custom', message: 'The removed worksheet geometry or identity changed.' });
-    for (const [row, cells] of Object.entries(removedSheet.cellData ?? {})) {
-      if (Number(row) >= removedSheet.rowCount || Object.keys(cells).some(column => Number(column) >= removedSheet.columnCount)) check.addIssue({ code: 'custom', message: 'The removed worksheet contains out-of-bounds cells.' });
-    }
+    const issue = workbookRemovedSheetIssue(removedSheet, descriptor.sheetId);
+    if (issue) check.addIssue({ code: 'custom', message: issue });
   }
   if (descriptor.sheetId !== context.baseline.sheet.id || descriptor.sheetId !== context.acknowledgedSheet.id || descriptor.generation !== context.axisOwner.generation) check.addIssue({ code: 'custom', message: 'The deletion context identity changed.' });
   if (context.templateSide && !receipt) check.addIssue({ code: 'custom', message: 'The template side requires its receipt association.' });
+  if (context.birthOrigin && (!receipt || context.templateSide !== 'saved-target'
+    || context.birthOrigin.birthToken === descriptor.token
+    || context.birthOrigin.creation.operationId !== receipt.operationId
+    || context.birthOrigin.creation.sourceSha256 !== receipt.sourceSha256)) check.addIssue({ code: 'custom', message: 'The saved birth origin changed its checked creation.' });
   const templateSha256 = context.templateSide === 'saved-target' ? receipt?.targetSha256 : receipt?.sourceSha256;
   if (receipt && (templateSha256 !== context.sourceSha256 || receipt.projectId !== context.scope.projectId || receipt.fileName !== context.scope.fileName)) check.addIssue({ code: 'custom', message: 'The deletion receipt association changed source or scope.' });
 });
 export type WorkbookSourceDeleteContext = z.infer<typeof workbookSourceDeleteContextSchema>;
+
+export function workbookRemovedSheetIssue(sheet: z.infer<typeof workbookRemovedSheetSchema>, selectedId: string): string | undefined {
+  if (sheet.id !== selectedId || sheet.rowCount * sheet.columnCount > WORKBOOK_MODEL_LIMITS.cells) return 'The removed worksheet geometry or identity changed.';
+  for (const [row, cells] of Object.entries(sheet.cellData ?? {})) {
+    if (Number(row) >= sheet.rowCount || Object.keys(cells).some(column => Number(column) >= sheet.columnCount)) return 'The removed worksheet contains out-of-bounds cells.';
+  }
+  return undefined;
+}
+
 
 /** Capture the exact selected source and ACK axis baseline before SDK removal.
  * Does not admit a command, allocate a blank birth or authorize template use. */

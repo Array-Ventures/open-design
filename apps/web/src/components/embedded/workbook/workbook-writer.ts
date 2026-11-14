@@ -1,3 +1,6 @@
+import { prepareWorkbookBirthRemoval, bindWorkbookBirthRemovalsToCreation, convertWorkbookBirthRemovals } from './sheet-birth-removal';
+import type { WorkbookBirthRemoval } from './sheet-birth-removal-schema';
+import type { WorkbookSheetActionDescriptor } from './sheet-action-descriptor';
 import { prepareWorkbookSheetBirth, type WorkbookSheetBirthState, type WorkbookSheetBirthEntry } from './sheet-birth-context';
 import { bindWorkbookSourceSnapshot, type WorkbookSourceSnapshotBinding } from './source-snapshot-binding';
 import type { WorkbookDraftScope } from './workbook-draft-schema';
@@ -66,7 +69,7 @@ export class WorkbookWriter {
     return this.journal?.scope && this.sourceAcknowledgement && this.sourceSnapshotBinding
       ? { scope: this.journal.scope, acknowledgement: this.sourceAcknowledgement, binding: this.sourceSnapshotBinding } : undefined;
   }
-  private plan() { return workbookGridPlan(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired, { scope: this.journal?.scope, deletions: this.sheetDeletions, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() }); }
+  private plan() { return workbookGridPlan(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired, { scope: this.journal?.scope, pending: this.pending, deletions: this.sheetDeletions, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() }); }
   state(): WorkbookWriteState {
     let dirty = Boolean(this.pending || this.running || this.protection || this.sheetActionConflict);
     try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
@@ -83,7 +86,8 @@ export class WorkbookWriter {
     this.publish();
     void this.persist().catch(error => { if (this.active) { this.error = this.persistenceError(error); this.publish(); } });
   }
-  checkpoint(): WorkbookCheckpoint { return structuredClone({ version: 1, source: this.source, acknowledged: this.acknowledged, desired: this.desired, pending: this.pending, ...(this.sourceAcknowledgement ? { sourceAcknowledgement: this.sourceAcknowledgement } : {}), ...(this.sheetDeletions.length ? { sheetDeletions: this.sheetDeletions } : {}), ...(this.sheetBirths ? { sheetBirths: this.sheetBirths } : {}), ...(this.sheetActionConflict ? { sheetActionConflict: true as const } : {}), ...(this.sourceSnapshotBinding ? { sourceSnapshotBinding: this.sourceSnapshotBinding } : {}) }); }
+  private currentCheckpoint(): WorkbookCheckpoint { return { version: 1, source: this.source, acknowledged: this.acknowledged, desired: this.desired, pending: this.pending, ...(this.sourceAcknowledgement ? { sourceAcknowledgement: this.sourceAcknowledgement } : {}), ...(this.sheetDeletions.length ? { sheetDeletions: this.sheetDeletions } : {}), ...(this.sheetBirths ? { sheetBirths: this.sheetBirths } : {}), ...(this.sheetActionConflict ? { sheetActionConflict: true as const } : {}), ...(this.sourceSnapshotBinding ? { sourceSnapshotBinding: this.sourceSnapshotBinding } : {}) }; }
+  checkpoint(): WorkbookCheckpoint { return structuredClone(this.currentCheckpoint()); }
   /** Synchronous context-pool admission through the real draft encoder.
    * A command owner must separately validate its post-command snapshot before
    * executing. This retains data, not Delete/Undo or historical authority. */
@@ -114,7 +118,7 @@ export class WorkbookWriter {
       const candidate = this.prospectiveDeletionContexts(raw), source = this.source, revision = this.revision, pending = this.pending;
       const snapshot = structuredClone(prospective);
       if (snapshot.sheets[raw.descriptor.sheetId] || snapshot.sheetOrder.includes(raw.descriptor.sheetId)) throw Error('The prospective worksheet deletion changed.');
-      const plan = workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { scope: this.journal?.scope, deletions: candidate, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() });
+      const plan = workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { scope: this.journal?.scope, pending: this.pending, deletions: candidate, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() });
       const checkpoint = { ...this.checkpoint(), sheetDeletions: candidate };
       this.journal.validate({ ...checkpoint, desired: snapshot });
       // Same decoder and exact byte limit as real pending storage. These local
@@ -145,7 +149,7 @@ export class WorkbookWriter {
       const checkpoint = { ...this.checkpoint(), sheetBirths: prepared.state };
       this.journal.validate(checkpoint);
       this.journal.validate({ ...checkpoint, desired: prepared.snapshot });
-      const plan = workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, prepared.snapshot, { scope: this.journal?.scope, deletions: this.sheetDeletions, births: prepared.state, sourceOwner: this.sheetProjectionOwner() });
+      const plan = workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, prepared.snapshot, { scope: this.journal?.scope, pending: this.pending, deletions: this.sheetDeletions, births: prepared.state, sourceOwner: this.sheetProjectionOwner() });
       this.journal.validate({ ...checkpoint, desired: prepared.snapshot, pending: { snapshot: prepared.snapshot, intent: { id: crypto.randomUUID(), preparationId: crypto.randomUUID(), previewId: crypto.randomUUID(), plan } } });
       const durable = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
       this.persistence = durable;
@@ -161,6 +165,36 @@ export class WorkbookWriter {
     this.publish();
     void promise.finally(() => { if (this.protection === barrier) this.protection = null; this.publish(); }).catch(() => {});
     void barrier.catch(() => {});
+    return promise;
+  }
+
+  /** Data producer only: the installed controller must separately prove the
+   * live birth/history issuer before asking for this durable native callback. */
+  protectSheetBirthRemoval(origin: WorkbookSheetActionDescriptor, execute: (removal: WorkbookBirthRemoval) => IWorkbookData): Promise<WorkbookBirthRemoval> {
+    if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
+    const run = async () => {
+      if (!this.active || this.sheetActionConflict || this.recoveryConflict) throw Error('Protected worksheet birth removal is not ready.');
+      if (!this.journal?.scope || !this.journal.validate || !this.journal.isCurrent?.()) throw Error('The workbook recovery lease is no longer current.');
+      const source = this.source, revision = this.revision, pending = this.pending;
+      const prepared = prepareWorkbookBirthRemoval(this.journal.scope, this.currentCheckpoint(), origin);
+      const checkpoint = { ...this.currentCheckpoint(), sheetBirths: prepared.state };
+      this.journal.validate(checkpoint);
+      // Preserve the ORIGINAL pending root. A provisional target record depends
+      // on that exact creation, never on an invented future operation.
+      this.journal.validate({ ...checkpoint, desired: prepared.snapshot });
+      const durable = this.persistence.catch(() => {}).then(() => this.journal!.save(structuredClone(checkpoint)));
+      this.persistence = durable;
+      await durable;
+      if (!this.active || this.source !== source || this.revision !== revision || this.pending !== pending || !this.journal.isCurrent()) throw Error('The workbook changed while protecting its worksheet action.');
+      this.sheetBirths = prepared.state;
+      await this.completeProtectedSheetCommand(checkpoint, prepared.snapshot, () => execute(structuredClone(prepared.removal)));
+      return structuredClone(prepared.removal);
+    };
+    const promise = run();
+    this.protection = promise.then(() => {});
+    const barrier = this.protection;
+    this.publish();
+    void promise.finally(() => { if (this.protection === barrier) this.protection = null; this.publish(); }).catch(() => {});
     return promise;
   }
 
@@ -212,7 +246,9 @@ export class WorkbookWriter {
         if (!this.pending) {
           if (this.recoveryConflict) throw new Error('This recovered draft is based on an older workbook. Keep a copy before reloading the current file.');
           const plan = this.plan(); if (!workbookPlanHasChanges(plan)) { this.error = null; return; }
-          this.pending = { intent: { id: crypto.randomUUID(), preparationId: crypto.randomUUID(), previewId: crypto.randomUUID(), plan }, snapshot: structuredClone(this.desired) };
+          const pending = { intent: { id: crypto.randomUUID(), preparationId: crypto.randomUUID(), previewId: crypto.randomUUID(), plan }, snapshot: structuredClone(this.desired) };
+          if (this.journal?.scope) this.sheetBirths = bindWorkbookBirthRemovalsToCreation(this.journal.scope, this.currentCheckpoint(), pending);
+          this.pending = pending;
         }
         // Persist identity before any side effect. A crash after admission can
         // then recover the same receipt instead of inventing another write.
@@ -233,11 +269,19 @@ export class WorkbookWriter {
           if (!this.active) return;
           if (this.pending !== pending) throw Error('The pending workbook save changed while protecting its receipt.');
           if (pending.acknowledgement && JSON.stringify(pending.acknowledgement) !== JSON.stringify(acknowledgement)) throw Error('The workbook acknowledgement changed while protecting its save.');
-          const births = this.sheetBirths;
+          const converted = this.journal?.scope ? convertWorkbookBirthRemovals(this.journal.scope, this.currentCheckpoint(), source, acknowledgement)
+            : { births: this.sheetBirths, contexts: [] as WorkbookSourceDeleteContext[] };
+          const births = converted.births;
           const bound = this.sheetDeletions.map(context => context.sourceSha256 === this.source.sourceSha256 && !context.receiptAssociation
             ? associateWorkbookSourceDeletion(context, acknowledgement) : context);
+          for (const context of converted.contexts) {
+            const previous = bound.find(value => value.descriptor.token === context.descriptor.token);
+            if (previous && canonicalCommentJson(previous) !== canonicalCommentJson(context)) throw Error('The converted birth context changed.');
+            if (!previous) bound.push(context);
+          }
           pending.acknowledgement = structuredClone(acknowledgement);
           this.sheetDeletions = bound;
+          this.sheetBirths = births;
           await this.persist();
           if (!this.active) return;
           if (this.sheetActionConflict) throw Error(this.sheetActionConflictMessage);

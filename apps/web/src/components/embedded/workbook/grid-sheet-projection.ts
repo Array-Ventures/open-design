@@ -1,3 +1,5 @@
+import { checkedWorkbookBirthRemovals } from './sheet-birth-removal';
+import type { WorkbookCheckpoint } from './workbook-writer';
 import { workbookSheetRemovalSelection } from './sheet-removal-selection';
 import { checkedWorkbookSheetBirths, blankWorkbookSheet, WORKBOOK_SHEET_BIRTH_MARKER, type WorkbookSheetBirthState } from './sheet-birth-context';
 import { matchesWorkbookSourceSnapshot, type WorkbookSourceSnapshotBinding } from './source-snapshot-binding';
@@ -21,6 +23,7 @@ export interface WorkbookSheetProjectionOwner {
 
 export interface WorkbookPlanContext {
   scope?: WorkbookDraftScope | undefined;
+  pending?: WorkbookCheckpoint['pending'] | undefined;
   deletions?: readonly WorkbookSourceDeleteContext[] | undefined;
   births?: WorkbookSheetBirthState | undefined;
   sourceOwner?: WorkbookSheetProjectionOwner | undefined;
@@ -30,27 +33,37 @@ export interface WorkbookPlanContext {
  * Scope is supplied by the current caller, never inferred from stored contexts.
  * This is data consistency only; source eligibility and template authorization
  * remain independent checks at their existing owners. */
-export function checkedWorkbookRemovalContexts(snapshot: IWorkbookData, initial: IWorkbookData, context?: WorkbookPlanContext) {
+export function checkedWorkbookRemovalContexts(snapshot: IWorkbookData, initial: IWorkbookData, context?: WorkbookPlanContext, source?: WorkbookCheckpoint['source']) {
   const generation = initial.custom?.evebotStructureOwner?.generation;
   const selection = workbookSheetRemovalSelection(snapshot, typeof generation === 'string' ? generation : '');
   const checked = (context?.deletions ?? []).map(value => workbookSourceDeleteContextSchema.parse(value));
   const scope = context?.scope ?? context?.sourceOwner?.scope;
+  const births = context?.births ? checkedWorkbookSheetBirths(context.births, initial) : undefined;
+  if (births?.removals?.length) {
+    if (!scope || !source) throw Error('The birth removals have no current source or scope.');
+    checkedWorkbookBirthRemovals(scope, { version: 1, source, acknowledged: initial, desired: snapshot,
+      pending: context?.pending ?? null, sheetBirths: context!.births,
+      ...(context?.sourceOwner ? { sourceAcknowledgement: context.sourceOwner.acknowledgement, sourceSnapshotBinding: context.sourceOwner.binding } : {}),
+    });
+  }
   for (const [id, token] of Object.entries(selection)) {
     if (!scope || snapshot.id !== initial.id || `${scope.projectId}:${scope.fileName}` !== initial.id) throw Error('The worksheet removal selection has no current scope.');
     const matches = checked.filter(value => value.descriptor.sheetId === id && value.descriptor.token === token);
-    if (matches.length !== 1) throw Error('The worksheet removal selection has no unique retained context.');
+    const provisional = births?.removals?.filter(value => value.descriptor.sheetId === id && value.descriptor.token === token) ?? [];
+    if (matches.length + provisional.length !== 1) throw Error('The worksheet removal selection has no unique retained context.');
+    if (provisional.length) continue;
     const value = matches[0]!;
     if (value.scope.viewerId !== scope.viewerId || value.scope.projectId !== scope.projectId || value.scope.fileName !== scope.fileName
       || canonicalCommentJson(value.axisOwner) !== canonicalCommentJson(initial.custom?.evebotStructureOwner)) throw Error('The worksheet removal selection changed scope or generation.');
   }
-  return { selection, checked };
+  return { selection, checked, births };
 }
 
 /** Derive source survivors and explicitly protected blank origins. A marker is
  * never a birth/restore grant; unknown and historical restoration still refuse. */
 export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256: string, initial: IWorkbookData, current: IWorkbookData, context?: WorkbookPlanContext) {
   if (initial.id !== current.id) throw Error('Workbook identity changed.');
-  const { selection, checked } = checkedWorkbookRemovalContexts(current, initial, context);
+  const { selection, checked, births } = checkedWorkbookRemovalContexts(current, initial, context, { model, sourceSha256 });
   const sourceIds = model.sheets.map(sheet => sheet.id), afterIds = current.sheetOrder;
   const changed = canonicalCommentJson(sourceIds) !== canonicalCommentJson(afterIds) || model.sheets.some(sheet => current.sheets[sheet.id] && current.sheets[sheet.id]!.name !== sheet.name);
   if (!changed) return null;
@@ -61,11 +74,13 @@ export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256:
   if (canonicalCommentJson(Object.keys(initial.sheets).sort()) !== canonicalCommentJson([...sourceIds].sort()) || sourceIds.some(id => initial.sheets[id]?.id !== id) || afterIds.some(id => current.sheets[id]?.id !== id)) throw Error('Worksheet identity changed.');
   if (canonicalCommentJson(initial.sheetOrder) !== canonicalCommentJson(sourceIds)) throw Error('The source worksheet baseline changed.');
   if (new Set(afterIds).size !== afterIds.length || canonicalCommentJson([...afterIds].sort()) !== canonicalCommentJson(Object.keys(current.sheets).sort())) throw Error('Worksheet membership is inconsistent.');
-  const births = context?.births ? checkedWorkbookSheetBirths(context.births, initial) : undefined;
   const entries = new Map(births?.entries.map(item => [item.descriptor.sheetId, item]));
   for (const id of afterIds.filter(id => !sourceIds.includes(id))) {
     const item = entries.get(id);
-    if (current.sheets[id]!.custom?.[WORKBOOK_SHEET_DELETE_MARKER] !== undefined) throw Error('A restored worksheet requires its checked historical template owner.');
+    const removal = current.sheets[id]!.custom?.[WORKBOOK_SHEET_DELETE_MARKER];
+    if (removal !== undefined && !births?.removals?.some(value => value.descriptor.sheetId === id
+      && canonicalCommentJson(value.descriptor) === canonicalCommentJson(removal)
+      && value.birthToken === item?.descriptor.token)) throw Error('A restored worksheet requires its checked historical template owner.');
     if (!item || canonicalCommentJson(current.sheets[id]!.custom?.[WORKBOOK_SHEET_BIRTH_MARKER]) !== canonicalCommentJson(item.descriptor)) throw Error('A new or restored worksheet requires its own protected owner.');
   }
   if (canonicalCommentJson(sourceIds.filter(id => afterIds.includes(id))) !== canonicalCommentJson(afterIds.filter(id => sourceIds.includes(id)))) throw Error('Reordering source worksheets is unsupported.');
