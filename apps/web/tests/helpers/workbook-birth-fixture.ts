@@ -15,7 +15,7 @@ export function createWorkbookBirthFixture(id = '1', rows = 100) {
   const api = FUniver.newAPI(univer);
   const model: WorkbookDocument = {
     version: 1, date1904: false, activeSheetId: id, styles: [{}],
-    worksheetStructureEditable: true, calculationMetadata: 'verified',
+    worksheetStructureEditable: true, worksheetMembershipEditable: true, calculationMetadata: 'verified',
     features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
     sheets: [{ id, name: 'Existing', visibility: 'visible', rowCount: rows, columnCount: 26,
       cells: [{ row: 0, column: 0, kind: 'number', value: 12 }], merges: [],

@@ -232,3 +232,13 @@ it('refuses exact prospective birth quota without poisoning later ordinary edits
     expect(writer.checkpoint().sheetActionConflict).toBeUndefined();
   } finally { await writer.close(); }
 });
+
+
+it.each([false, undefined])('refuses birth with missing or false dedicated membership capability (%s)', capability => {
+  const f = fixture();
+  f.source.model.worksheetMembershipEditable = capability;
+  const before = f.book.save(), history = f.history.getUndoRedoStatus(f.book.getId());
+  expect(() => prepareWorkbookSheetBirth(scope, f.checkpoint, 'No membership authority', 1)).toThrow(/qualified/);
+  expect(f.book.save()).toEqual(before);
+  expect(f.history.getUndoRedoStatus(f.book.getId())).toEqual(history);
+});

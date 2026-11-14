@@ -86,7 +86,7 @@ export function prepareWorkbookSheetBirth(scope: WorkbookDraftScope, checkpoint:
   const unitId = `${checkedScope.projectId}:${checkedScope.fileName}`;
   if (before.id !== unitId || checkpoint.acknowledged.id !== unitId) throw Error('The worksheet birth belongs to another workbook.');
   const model = checkpoint.source.model;
-  if (model.sourceFormat === 'csv' || !model.worksheetStructureEditable || model.calculationMetadata !== 'verified'
+  if (model.sourceFormat === 'csv' || model.worksheetMembershipEditable !== true || !model.worksheetStructureEditable || model.calculationMetadata !== 'verified'
     || model.sheets.some(sheet => !sheet.arrayFormulas || sheet.arrayFormulas.length) || model.definedNames?.length || model.tables?.length) throw Error('Worksheet birth requires a qualified scalar source.');
   assertWorkbookStructureIdentity(checkpoint.acknowledged);
   assertWorkbookSourceSnapshotInputs(gridWorkbook(model, unitId, 'Workbook').data as IWorkbookData, checkpoint.acknowledged, unitId);

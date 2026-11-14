@@ -15,3 +15,22 @@ The pinned InsertSheetCommand does not call SheetInterceptorService, whereas Rem
 Before production integration, the owner must validate scope, live pool/token issuance, exact before-model/map, focus/lease/source and revision, then verify the actual after-model/map. A consumed ticket cannot be reentered. False/throw/partial mutation or metadata setter failure must preserve protected roots and enter the existing sticky quarantine; no rollback is implied. Native history protection must precede stack pop, using the separately maintained async-only registration gate.
 
 Pinned RPC forwards registered mutation commandInfo/options from onCommandExecuted; these wrappers do not alter those inputs. Workbook custom metadata is not a separate RPC mutation. The calculation worker therefore needs its existing input authority to remain independent of this main-thread selection map. Actual worker/controller qualification, repeated same-ID/ABA and multiple retained removal contexts, permission withdrawal, restored pending history and recovery remain required before enabling anything. A serialized map or token never authorizes a native action or historical asset.
+
+After merging the dedicated reader boundary, birth admission, source deletion
+capture and changed-membership projection now require
+`worksheetMembershipEditable === true`; missing legacy capability is refused.
+Three pre-fix cases demonstrated the prior admission of missing/false capability.
+The final 52 focused producer cases, full repository typecheck and guard passed.
+The first post-merge typecheck encountered stale generated document-style
+exports (the source supported divider but the old local declaration did not);
+building that local package before the final typecheck resolved that build-state
+mismatch without source changes.
+
+The mutation seam only guarantees final map visibility to command-completion
+observers/RPC. Pinned Workbook._removeSheet emits sheetDisposed$ inside the
+original handler before it returns. Owning controller/Writer publication must
+remain suppressed throughout the complete protected callback; SDK internal
+model events are not globally atomic. The owned grid currently publishes dirty
+snapshots on command completion, calculation uses before/after command hooks,
+and the selection observer only republishes formatting state. Full membership
+worker/controller qualification still must verify these paths together.

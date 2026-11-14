@@ -20,7 +20,7 @@ const scope = { viewerId: 'owned-person', projectId: '11111111-1111-4111-8111-11
 const sourceSha256 = 'a'.repeat(64), targetSha256 = 'b'.repeat(64);
 const closers: (() => void)[] = []; afterEach(() => closers.splice(0).reverse().forEach(close => close()));
 function fixture(withFormulas = false) {
-  const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: '1', worksheetStructureEditable: true, calculationMetadata: 'verified', styles: [{}, { font: { bold: true, size: 11 } }], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
+  const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: '1', worksheetStructureEditable: true, worksheetMembershipEditable: true, calculationMetadata: 'verified', styles: [{}, { font: { bold: true, size: 11 } }], features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
     sheets: ['1','2','3'].map(id => ({ id, name: `Sheet ${id}`, visibility: 'visible', rowCount: 100, columnCount: 26, cells: [{ row: 0, column: 0, kind: 'number', value: 12, style: id === '2' ? 1 : 0 }], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0, arrayFormulas: [] })) };
   if (withFormulas) model.sheets[2]!.cells.push({ row: 1, column: 0, kind: 'number', value: 24, formula: "='Sheet 2'!A1+'Sheet 1'!A1" });
   const initial = seedWorkbookStructureIdentity(gridWorkbook(model, `${scope.projectId}:${scope.fileName}`, 'Workbook').data as IWorkbookData, sourceSha256);
@@ -71,6 +71,8 @@ it('refuses unsupported families, source-absent IDs, unqualified ACK geometry an
     (c: WorkbookCheckpoint) => { c.source.model.sourceFormat = 'csv'; },
     (c: WorkbookCheckpoint) => { c.source.model.sheets[0]!.arrayFormulas = undefined; },
     (c: WorkbookCheckpoint) => { c.source.model.worksheetStructureEditable = false; },
+    (c: WorkbookCheckpoint) => { c.source.model.worksheetMembershipEditable = false; },
+    (c: WorkbookCheckpoint) => { delete c.source.model.worksheetMembershipEditable; },
     (c: WorkbookCheckpoint) => { c.acknowledged.sheets['2']!.cellData![0]![0]!.v = 999; },
     (c: WorkbookCheckpoint) => { delete c.acknowledged.sheets['2']!.rowData![0]!.custom; },
     (c: WorkbookCheckpoint) => { c.source.model.sheets = c.source.model.sheets.filter(sheet => sheet.id !== '2'); },

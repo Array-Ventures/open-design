@@ -31,7 +31,7 @@ export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256:
   const sourceIds = model.sheets.map(sheet => sheet.id), afterIds = current.sheetOrder;
   const changed = canonicalCommentJson(sourceIds) !== canonicalCommentJson(afterIds) || model.sheets.some(sheet => current.sheets[sheet.id] && current.sheets[sheet.id]!.name !== sheet.name);
   if (!changed) return null;
-  if (model.sourceFormat === 'csv' || !model.worksheetStructureEditable || model.calculationMetadata !== 'verified' || model.sheets.some(sheet => !sheet.arrayFormulas || sheet.arrayFormulas.length)) throw Error('Worksheet membership requires a qualified scalar source.');
+  if (model.sourceFormat === 'csv' || model.worksheetMembershipEditable !== true || !model.worksheetStructureEditable || model.calculationMetadata !== 'verified' || model.sheets.some(sheet => !sheet.arrayFormulas || sheet.arrayFormulas.length)) throw Error('Worksheet membership requires a qualified scalar source.');
   // These metadata owners need a separately qualified producer. Never filter
   // names/tables away to make a synthetic reduced workbook parse successfully.
   if (model.definedNames?.length || model.tables?.length) throw Error('Worksheet membership with defined names or tables is not ready.');
