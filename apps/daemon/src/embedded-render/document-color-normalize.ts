@@ -21,7 +21,7 @@ function validatedPresentations(result: unknown, requests: readonly DocumentPres
     if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string' || !expected.has(entry.id) || presentations.has(entry.id) || !entry.presentation || typeof entry.presentation !== 'object' || Array.isArray(entry.presentation)) return fail();
     for (const [key, value] of Object.entries(entry.presentation)) {
       if (key === 'foregroundSource') { if (typeof value !== 'string' || !['authored','inherited'].includes(value)) return fail(); }
-      else if (key === 'fontSizeSource') { if (value !== 'authored') return fail(); }
+      else if (key === 'fontSizeSource') { if (typeof value !== 'string' || !['authored','code-context'].includes(value)) return fail(); }
       else if (key === 'headingLevel') { if (!validDocumentHeadingLevel(value)) return fail(); }
       else if (key === 'headingBeforePt') { if (value !== 0) return fail(); }
       else if (key === 'headingSource') { if (value !== 'canonical-first-block') return fail(); }

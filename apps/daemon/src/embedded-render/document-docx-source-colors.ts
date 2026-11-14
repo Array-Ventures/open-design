@@ -28,6 +28,9 @@ export function documentDocxSourcePresentation(html: string): DocumentDocxPresen
     const images = $(heading).find('img');
     if (images.length === 1) images.attr(`${attributeName}-image`,id);
   });
+  $('pre,code').each((_index, code) => {
+    if (!foreign($(code).add($(code).parents())) && !$(code).parents('pre').length) $(code).attr(attributeName, add('inline'));
+  });
   $('hr').each((_index, rule) => { if (!foreign($(rule).add($(rule).parents()))) $(rule).attr(attributeName, add('divider')); });
   $('td,th').each((_index, cell) => { if (!foreign($(cell).add($(cell).parents()))) $(cell).attr(attributeName, add('cell')); });
   // Snapshot direct TextNodes before adding wrappers; never walk newly wrapped
@@ -35,6 +38,7 @@ export function documentDocxSourcePresentation(html: string): DocumentDocxPresen
   const structural = new Set(['body','main','div','table','thead','tbody','tfoot','tr','colgroup','ul','ol']);
   const text = $('body,body *').contents().toArray().filter(node => node.type === 'text' && (Boolean(node.data.trim()) || !structural.has(node.parent?.type === 'tag' ? node.parent.name : '')));
   for (const node of text) {
+    if (node.parent?.type === 'tag' && ['code','pre'].includes(node.parent.name)) continue;
     if ($(node).parents('script,style').length || foreign($(node).parents())) continue;
     $(node).wrap(`<span ${attributeName}="${add('inline')}"></span>`);
   }
@@ -50,8 +54,12 @@ export function normalizedDocumentDocxHtml(source: DocumentDocxPresentationSourc
   if (resolved.size !== expected.size || [...resolved.keys()].some(id => !expected.has(id))) return fail();
   for (const request of source.requests) {
     const value = resolved.get(request.id) ?? fail();
+    if (value.fontSizeSource === 'code-context') {
+      const code = $(`[${source.attributeName}="${request.id}"]`);
+      if (code.length !== 1 || !code.is('code,pre')) return fail();
+    }
     if (value.fontSizePt !== undefined || value.fontLineHeightPt !== undefined || value.fontSizeSource !== undefined) {
-      if (request.kind !== 'inline' || value.fontSizeSource !== 'authored' || !validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt)) return fail();
+      if (request.kind !== 'inline' || !['authored','code-context'].includes(value.fontSizeSource ?? '') || !validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt)) return fail();
     }
     if (Object.keys(value).some(key => key.startsWith('heading'))) {
       if (request.kind !== 'heading' || !validDocumentHeadingMetadata(value)) return fail();
@@ -61,6 +69,7 @@ export function normalizedDocumentDocxHtml(source: DocumentDocxPresentationSourc
     for (const color of [value.foreground, value.background]) if (color !== undefined && !/^[A-Fa-f0-9]{6}$/.test(color)) return fail();
     if (request.kind !== 'inline' || value.foreground || value.background || value.fontSizePt !== undefined) continue;
     const wrapper = $(`[${source.attributeName}="${request.id}"]`);
+    if (wrapper.length === 1 && wrapper.is('code,pre')) continue;
     if (wrapper.length !== 1 || wrapper[0]?.type !== 'tag' || wrapper[0].name !== 'span' || wrapper.contents().toArray().some(node => node.type !== 'text')) return fail();
     wrapper.replaceWith(wrapper.contents());
   }
@@ -77,6 +86,25 @@ export function normalizedDocumentDocxHtml(source: DocumentDocxPresentationSourc
       $(node).remove();
     });
   }
+  // Pandoc recognizes PRE/CODE as native CodeBlock. Plain PRE and regenerated
+  // neutral Lexical spans otherwise become ordinary paragraphs. Normalize only
+  // text/BR/default pre-wrap wrappers, never authored rich code formatting.
+  $('pre').each((_index, pre) => {
+    if ($(pre).children('code').length) return;
+    const plain = (element: ReturnType<typeof $>): string | null => {
+      let text = '';
+      for (const node of element.contents().toArray()) {
+        if (node.type === 'text') { text += node.data; continue; }
+        if (node.type !== 'tag') return null;
+        if (node.name === 'br' && !Object.keys(node.attribs).length) { text += '\n'; continue; }
+        if (node.name !== 'span' || Object.keys(node.attribs).length !== 1 || !/^\s*white-space\s*:\s*pre-wrap\s*;?\s*$/i.test(node.attribs.style ?? '')) return null;
+        const nested = plain($(node)); if (nested === null) return null; text += nested;
+      }
+      return text;
+    };
+    const text = plain($(pre));
+    if (text !== null) $(pre).empty().append($('<code></code>').text(text));
+  });
   return $.html();
 }
 
@@ -89,10 +117,12 @@ export function resolvedDocumentDocxPresentationOwners(ast: unknown, source: Doc
   const imageKey = `${key}-image`;
   const html = load(source.html), imageHashes = new Map<string,string>();
   const presentationHashes = new Map<object,string>();
+  const nativeCodeAttributes = new WeakMap<object, 'Code' | 'CodeBlock'>();
   const inspect = (node: unknown): void => {
     if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) { node.forEach(inspect); return; }
     const item = node as {t?:string;c?:unknown[]};
+    if ((item.t === 'Code' || item.t === 'CodeBlock') && Array.isArray(item.c?.[0])) nativeCodeAttributes.set(item.c[0], item.t);
     if (item.t === 'Header' && Array.isArray(item.c)) {
       const attributes = item.c[1] as unknown[];
       const own = Array.isArray(attributes?.[2]) ? (attributes[2] as unknown[]).find(pair => Array.isArray(pair) && pair[0] === key) as string[] | undefined : undefined;
@@ -140,8 +170,12 @@ export function resolvedDocumentDocxPresentationOwners(ast: unknown, source: Doc
     const id = own[0][1]; if (expected.get(id) !== kind || seen.has(id)) return fail();
     seen.add(id); raw[2] = attributes.filter(pair => pair !== own[0]);
     const value = resolved.get(id) ?? fail();
+    if (value.fontSizeSource === 'code-context') {
+      const code = html(`[${source.attributeName}="${id}"]`);
+      if (code.length !== 1 || !code.is('code,pre') || nativeCodeAttributes.get(raw) !== (code.is('pre') ? 'CodeBlock' : 'Code')) return fail();
+    }
     if (value.fontSizePt !== undefined || value.fontLineHeightPt !== undefined || value.fontSizeSource !== undefined) {
-      if (kind !== 'inline' || value.fontSizeSource !== 'authored' || !validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt)) return fail();
+      if (kind !== 'inline' || !['authored','code-context'].includes(value.fontSizeSource ?? '') || !validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt)) return fail();
     }
     if (Object.keys(value).some(key => key.startsWith('heading'))) {
       if (kind !== 'heading' || !validDocumentHeadingMetadata(value)) return fail();
