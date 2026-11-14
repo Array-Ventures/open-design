@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { load } from 'cheerio';
 import { documentDocxPresentationOwners } from './document-docx-colors.js';
-import { validDocumentFontSize, validDocumentFontLineHeight, type DocumentPresentationRequest, type NormalizedDocumentPresentation } from '@open-design/document-style';
+import { validDocumentFontSize, validDocumentFontLineHeight, validDocumentHeadingLevel, type DocumentPresentationRequest, type NormalizedDocumentPresentation } from '@open-design/document-style';
 
 export type DocumentDocxColorRequest = DocumentPresentationRequest;
 export interface DocumentDocxPresentationSource { html: string; attributeName: string; requests: DocumentPresentationRequest[] }
@@ -20,6 +20,7 @@ export function documentDocxSourcePresentation(html: string): DocumentDocxPresen
   // Foreign syntax (for example passive MathML) has a separate admission owner.
   // Never insert HTML spans/attributes into it or its embedded descendants.
   const foreign = (elements: ReturnType<typeof $>) => elements.toArray().some(parent => parent.type === 'tag' && Boolean(parent.namespace && parent.namespace !== htmlNamespace));
+  $('h1,h2,h3,h4,h5,h6').each((_index, heading) => { if (!foreign($(heading).add($(heading).parents()))) $(heading).attr(attributeName, add('heading')); });
   $('hr').each((_index, rule) => { if (!foreign($(rule).add($(rule).parents()))) $(rule).attr(attributeName, add('divider')); });
   $('td,th').each((_index, cell) => { if (!foreign($(cell).add($(cell).parents()))) $(cell).attr(attributeName, add('cell')); });
   // Snapshot direct TextNodes before adding wrappers; never walk newly wrapped
@@ -44,6 +45,9 @@ export function normalizedDocumentDocxHtml(source: DocumentDocxPresentationSourc
     const value = resolved.get(request.id) ?? fail();
     if (value.fontSizePt !== undefined || value.fontLineHeightPt !== undefined || value.fontSizeSource !== undefined) {
       if (request.kind !== 'inline' || value.fontSizeSource !== 'authored' || !validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt)) return fail();
+    }
+    if (value.headingLevel !== undefined || value.headingBeforePt !== undefined || value.headingSource !== undefined) {
+      if (request.kind !== 'heading' || !validDocumentHeadingLevel(value.headingLevel) || value.headingBeforePt !== 0 || value.headingSource !== 'canonical-first-block') return fail();
     }
     for (const color of [value.foreground, value.background]) if (color !== undefined && !/^[A-Fa-f0-9]{6}$/.test(color)) return fail();
     if (request.kind !== 'inline' || value.foreground || value.background || value.fontSizePt !== undefined) continue;
@@ -71,8 +75,11 @@ export function resolvedDocumentDocxPresentationOwners(ast: unknown, source: Doc
     if (value.fontSizePt !== undefined || value.fontLineHeightPt !== undefined || value.fontSizeSource !== undefined) {
       if (kind !== 'inline' || value.fontSizeSource !== 'authored' || !validDocumentFontSize(value.fontSizePt) || !validDocumentFontLineHeight(value.fontLineHeightPt)) return fail();
     }
-    const { foreground, background, fontSizePt, fontLineHeightPt } = value;
-    return { ...(foreground ? {foreground} : {}), ...(background ? {background} : {}), ...(fontSizePt !== undefined ? { fontSizePt, fontLineHeightPt: fontLineHeightPt! } : {}) };
+    if (value.headingLevel !== undefined || value.headingBeforePt !== undefined || value.headingSource !== undefined) {
+      if (kind !== 'heading' || !validDocumentHeadingLevel(value.headingLevel) || value.headingBeforePt !== 0 || value.headingSource !== 'canonical-first-block') return fail();
+    }
+    const { foreground, background, fontSizePt, fontLineHeightPt, headingLevel, headingBeforePt } = value;
+    return { ...(foreground ? {foreground} : {}), ...(background ? {background} : {}), ...(fontSizePt !== undefined ? { fontSizePt, fontLineHeightPt: fontLineHeightPt! } : {}), ...(headingLevel !== undefined ? { headingLevel, headingBeforePt: headingBeforePt! } : {}) };
   });
   for (const [id, value] of resolved) if (Object.keys(value).length && !seen.has(id)) return fail();
   return owners;

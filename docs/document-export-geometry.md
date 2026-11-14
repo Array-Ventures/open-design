@@ -115,3 +115,10 @@ default/size proofs. Content preservation is distinct from complete rich-block
 layout parity. All proof containers and isolated office processes exited normally.
 No image build, application runtime, production, publication or installer pin was
 changed by this source qualification.
+
+
+The later [source-owned first-heading correction](document-first-heading.md)
+addresses an additional 18pt first-heading context margin that the ordinary-body
+baseline measurement did not cover. It records the corrected text lanes and an
+open image-only paint-position failure; neither checkpoint claims complete
+heading/image/rich-block parity.

@@ -1,4 +1,4 @@
-import { documentFontSizePattern, validDocumentFontSize, validDocumentFontLineHeight, normalizeDocumentFontPoints } from './presentation.js';
+import { documentFontSizePattern, validDocumentFontSize, validDocumentFontLineHeight, normalizeDocumentFontPoints, validDocumentHeadingLevel } from './presentation.js';
 import { compositeDocumentColor, documentContrast, opaqueDocumentColorHex, type DocumentColor } from './color.js';
 export type { DocumentColor } from './color.js';
 export { documentContrast } from './color.js';
@@ -138,7 +138,7 @@ export function documentCanvasColor(document: Document, read: DocumentColorReade
 export function normalizeDocumentPresentationOwners(document: Document, requests: readonly import('./presentation.js').DocumentPresentationRequest[], attributeName: string, ownedStyles: readonly string[], read: DocumentColorReader = documentColorReader(document)): Array<{ id: string; presentation: import('./presentation.js').NormalizedDocumentPresentation }> {
   const fail = (): never => { throw new Error('The document color ownership or authored presentation is not representable.'); };
   if (!/^data-eve-docx-[a-z0-9-]{1,80}$/.test(attributeName) || requests.length > 20000 || !documentColorLayoutQualified(document, ownedStyles)) return fail();
-  if (requests.some(request => !/^[A-Za-z0-9_-]{1,100}$/.test(request.id) || !['cell','inline','divider'].includes(request.kind))) return fail();
+  if (requests.some(request => !/^[A-Za-z0-9_-]{1,100}$/.test(request.id) || !['cell','inline','divider','heading'].includes(request.kind))) return fail();
   const expected = new Map(requests.map(request => [request.id, request.kind])); if (expected.size !== requests.length) return fail();
   const elements = new Map<string, HTMLElement>();
   for (const element of Array.from(document.body.querySelectorAll(`[${attributeName}]`))) {
@@ -150,8 +150,18 @@ export function normalizeDocumentPresentationOwners(document: Document, requests
   if (!canvas || canvas[3] !== 1) return fail();
   return requests.map(request => {
     const owner = elements.get(request.id)!;
-    if (request.kind === 'cell' ? !['TD','TH'].includes(owner.tagName) : request.kind === 'divider' ? owner.tagName !== 'HR' : owner.tagName !== 'SPAN') return fail();
+    if (request.kind === 'cell' ? !['TD','TH'].includes(owner.tagName) : request.kind === 'divider' ? owner.tagName !== 'HR' : request.kind === 'heading' ? !/^H[1-6]$/.test(owner.tagName) : owner.tagName !== 'SPAN') return fail();
     const presentation: import('./presentation.js').NormalizedDocumentPresentation = {};
+    if (request.kind === 'heading') {
+      const main = owner.parentElement, level = Number(owner.tagName.slice(1));
+      const canonicalFrame = document.body.children.length === 1 && main?.tagName === 'MAIN'
+        && main.parentElement === document.body && document.querySelectorAll('main').length === 1;
+      if (canonicalFrame && main.firstElementChild === owner && document.defaultView!.getComputedStyle(owner).marginTop === '0px') {
+        if (!validDocumentHeadingLevel(level)) return fail();
+        presentation.headingLevel = level; presentation.headingBeforePt = 0; presentation.headingSource = 'canonical-first-block';
+      }
+      return { id: request.id, presentation };
+    }
     if (request.kind === 'inline') {
       let authoredSize = false;
       for (let ancestor: HTMLElement | null = owner; ancestor; ancestor = ancestor.parentElement) {
