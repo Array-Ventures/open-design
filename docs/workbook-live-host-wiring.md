@@ -26,3 +26,43 @@ wiring, startup negotiation, guarded persistence and maintenance integration,
 normalized paused results, discarded-capture races, actual worker/HTTP/browser,
 package and crash qualification remain pending. No renderer, preview, installer
 pin or production change is implied by this source test.
+
+## Joined live wiring checkpoint
+
+The grid now attaches trusted version negotiation before its SDK readiness and
+membership-configuration awaits, then synchronously hands dispatch to the one
+visibility listener. A private executor obtains fresh controller, history,
+lease, source, scope, permission and worker readiness before invoking the actual
+Add/Rename/Delete methods. Grid lifetime owns adapter/controller/maintenance
+and settled-history publication disposal. A malformed live worksheet name
+refuses publication and removes the initial listener on construction failure.
+
+Native history publication uses the pinned command service's settled boundary:
+an ordinary scalar command pushes history after its mutation event, so mutation
+publication alone advertises a stale action revision. The O(1) history-revision
+check publishes on that change and again after Undo/Redo settles. Tests drive
+scalar edit -> host Add -> Rename -> Delete -> SDK Undo without manually
+publishing between scalar edit or Undo and the next host assertion. Admission
+tests independently refuse stale history/source/scope/private identity,
+revoked lease, blocked/saving state and permission/readiness withdrawal.
+
+On this joined product source, 45 focused cases in five files pass serially;
+full workspace typecheck and guard pass. Logs are
+/tmp/workbook-live-host-boundaries.log,
+/tmp/workbook-live-host-full-types-final.log and
+/tmp/workbook-live-host-guard-final.log. The first extraction run sent an
+invalid Delete packet with an extra confirmation property; the test now parses
+its wire packet and requires a result for that exact request ID, rather than
+accepting an earlier result. This was a fixture correction, not a product
+Delete failure. Earlier typecheck caught an optional live name, now refused.
+
+Still open: a request can precede even the grid's lazy import/mount; the native
+host needs its separately tested bounded first-publication retry. Membership
+capabilities currently require the visibility-editable capability, as does the
+version-one schema. The current reader's membership qualification implies that
+visibility qualification, but independently supplied future capability
+combinations remain unsupported; enabling Eye/Show implicitly is not a fix.
+This source checkpoint does not prove actual browser/worker HTTP persistence,
+package acquisition, source-history cancel/recovery, or crash acceptance. The
+owned preview remains pair126/69 without these live controls; installer pins
+and production remain unchanged.

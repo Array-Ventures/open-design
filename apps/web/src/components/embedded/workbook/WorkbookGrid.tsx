@@ -3,6 +3,8 @@
 import { isIssuedWorkbookMembershipWriterLease, type WorkbookMembershipWriterLease } from './membership-writer-lease';
 import { bindWorkbookCleanResumeOwner } from './clean-resume-owner';
 import { WorkbookSheetHistoryController } from './sheet-history-controller';
+import { workbookMembershipBridge } from './grid-membership-bridge';
+import { workbookMembershipExecutor, publishWorkbookMembershipHistory } from './grid-membership-executor';
 
 import { disposeWorkbookCalculationKernel } from './calculation-kernel-disposal';
 import { workbookSaveAcknowledgementSchema } from './save-provenance';
@@ -151,6 +153,34 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
       let calculationOwner: ReturnType<typeof ownWorkbookCalculationWorker> | null = null;
       let readyForInput = false;
       let membershipWriter: WorkbookMembershipWriterLease | null = null;
+      let membershipController: WorkbookSheetHistoryController | null = null;
+      let visibilityPublisher: ReturnType<typeof workbookVisibilityBridge> | null = null;
+      const managementId = crypto.randomUUID();
+      const managementScope = () => {
+        const scope = format.current;
+        return current() && scope ? { projectId: scope.projectId, controllerId: scope.controllerId } : null;
+      };
+      const executor = workbookMembershipExecutor(managementId, () => {
+        if (!membershipController) return null;
+        const scope = format.current, visibility = visibilityPublisher?.state();
+        return scope && visibility ? { controller: membershipController, visibility, scope, sourceSha256,
+          current: current(), writerCurrent: Boolean(membershipWriter?.isCurrent()), calculationReady: Boolean(calculationOwner?.ready),
+          ready: readyForInput, editable, canEdit: workbook.getWorkbookPermission().canEdit() } : null;
+      });
+      const management = workbookMembershipBridge({
+        parentWindow: window.parent, origin: window.location.origin, getScope: managementScope,
+        publish: () => visibilityPublisher?.publish(), ...executor,
+      });
+      const receiveManagement = (event: MessageEvent) => {
+        void management.receive(event).catch(() => {
+          management.dispose();
+          if (current()) { setError('Worksheet controls are unavailable. Reopen this workbook to continue.'); visibilityPublisher?.publish(); }
+        });
+      };
+      // Catch version negotiation before onReady/configuration awaits. It can
+      // cache only this frame's trusted context, never an executable owner.
+      window.addEventListener('message', receiveManagement);
+      layer.own(() => { window.removeEventListener('message', receiveManagement); management.dispose(); });
       let disableMembershipGrid = () => {};
       let arrayOwner: ReturnType<typeof ownArrayProjectionWorker> | null = null;
       let arrayInput: ReturnType<typeof ownArrayInputNormalization> | null = null;
@@ -254,7 +284,9 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
         await calculationOwner.configureMembership({ version: 1, unitId: id, kernelGeneration: crypto.randomUUID(), sourceCapability: sourceSha256 });
         if (!current() || !lease.isOwned()) return;
         const controller = new WorkbookSheetHistoryController(univer, lease.writer, lease.scope, readSnapshot, membershipCurrent, scalarCalculation.runProtectedSequence);
-        layer.own(() => controller.dispose());
+        membershipController = controller;
+        const maintenance = controller.startMaintenance();
+        layer.own(() => { maintenance.dispose(); controller.dispose(); membershipController = null; });
         const resumeOwnerCurrent = () => Boolean(current() && readyForInput && editable && calculationOwner?.ready
           && membershipWriter?.isQualified() && model.worksheetMembershipEditable === true
           && workbook.getWorkbookPermission().canEdit());
@@ -264,9 +296,16 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
           currentLease: () => callbacks.current.membershipLease?.(), setLease: next => { membershipWriter = next; },
           resetKernel: () => { if (current()) { if (callbacks.current.onKernelReset) callbacks.current.onKernelReset(); else setKernel(value => value + 1); } },
         });
-        membershipLeaseObserver.current = resumeOwner.observeLease;
+        let observedLease = lease;
+        const observeLease = (next: WorkbookMembershipWriterLease | null | undefined) => {
+          resumeOwner.observeLease(next);
+          if (next && next !== observedLease && next === membershipWriter && controller.isCurrent()) {
+            observedLease = next; controller.requestMaintenance(); visibilityPublisher?.publish();
+          }
+        };
+        membershipLeaseObserver.current = observeLease;
         layer.own(() => {
-          if (membershipLeaseObserver.current === resumeOwner.observeLease) membershipLeaseObserver.current = null;
+          if (membershipLeaseObserver.current === observeLease) membershipLeaseObserver.current = null;
           resumeOwner.dispose();
         });
       }
@@ -289,7 +328,13 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
       const visibility = workbookVisibilityBridge(univer, univerAPI, () => model, () => {
         const scope = format.current;
         return scope && sourceSha256 && model.sourceFormat !== 'csv' ? { ...scope, sourceSha256, blocked: scope.blocked || Boolean(scope.saving) || !editable || !readyForInput } : undefined;
-      }); visibilityRef.current = visibility;
+      }, { snapshot: () => membershipController?.inspectManagement()?.snapshot ?? null,
+        decorate: state => management.decorate(state), receive: receiveManagement });
+      visibilityPublisher = visibility; visibilityRef.current = visibility;
+      const historyPublication = publishWorkbookMembershipHistory(univer, current, () => visibility.publish());
+      layer.own(() => historyPublication.dispose());
+      // The existing visibility listener now owns management dispatch too.
+      window.removeEventListener('message', receiveManagement);
       const exporter = workbookExportBridge(univerAPI, () => {
         const scope = exportCurrent.current;
         return scope ? { ...scope, blocked: scope.blocked || !readyForInput } : undefined;
@@ -311,6 +356,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
         const fresh = gridWorkbook(ticket.target.model, id, callbacks.current.title, workbookGridTheme(root).gray[900]);
         scalarCalculation.rebaseSource(ticket.target.model, fresh.data as IWorkbookData, ticket.snapshot);
         model = ticket.target.model; sourceSha256 = ticket.target.sourceSha256;
+        membershipController?.requestMaintenance();
         scalarCalculation.publish(); formatting.publish(); exporter.publish(); visibility.publish(); callbacks.current.onDisplayGaps?.(fresh.gaps);
       } };
       ownedStructure = structureActions; structureOwner.current = structureActions;
@@ -344,7 +390,8 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
       await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
       if (!current()) return;
       layer.show();
-      readyForInput = true; workbook.setEditable(editable);
+      readyForInput = true;
+      membershipController?.requestMaintenance(); workbook.setEditable(editable);
       formatting.publish(); exporter.publish(); visibility.publish();
       callbacks.current.onDisplayGaps?.(prepared.gaps); setError(null);
     } catch { close(); if (current()) setError('The workbook grid could not be opened.'); }

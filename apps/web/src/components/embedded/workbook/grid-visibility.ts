@@ -40,7 +40,7 @@ export function workbookVisibilityBridge(univer: Univer, api: FUniver, model: ()
     const editable = Boolean(book && model().worksheetVisibilityEditable && !current.blocked && api.getActiveWorkbook()?.getWorkbookPermission().canEdit());
     const listed = live ? live.sheetOrder.map(id => {
       const sheet = live.sheets[id];
-      if (!sheet || sheet.id !== id) throw Error('The live worksheet list is inconsistent.');
+      if (!sheet || sheet.id !== id || typeof sheet.name !== 'string' || !sheet.name.trim()) throw Error('The live worksheet list is inconsistent.');
       return { id, name: sheet.name, visibility: sheet.hidden === 2 ? 'veryHidden' : sheet.hidden === 1 ? 'hidden' : 'visible' };
     }) : model().sheets;
     const sheets = listed.filter(sheet => sheet.visibility !== 'veryHidden').map(sheet => ({
@@ -75,6 +75,7 @@ export function workbookVisibilityBridge(univer: Univer, api: FUniver, model: ()
     } catch (failure) { error = failure instanceof Error ? failure.message.slice(0, 300) : 'The worksheet visibility could not be changed.'; }
     publish();
   };
-  window.addEventListener('message', receive); publish();
+  window.addEventListener('message', receive);
+  try { publish(); } catch (failure) { window.removeEventListener('message', receive); throw failure; }
   return { state, publish, dispose: () => window.removeEventListener('message', receive) };
 }

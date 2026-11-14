@@ -4,6 +4,19 @@ import { workbookVisibilityBridge } from '../../src/components/embedded/workbook
 import { workbookMembershipVisibilitySchema } from '@open-design/contracts/runtime/workbook';
 
 afterEach(() => vi.unstubAllGlobals());
+it('refuses an incoherent live name instead of posting an invalid host worksheet list', async () => {
+  const f = createSourceDeleteHistoryFixture(true), postMessage = vi.fn(), addEventListener = vi.fn(), removeEventListener = vi.fn();
+  vi.stubGlobal('window', { parent: { postMessage }, location: { origin: 'http://fixture.invalid' }, addEventListener, removeEventListener });
+  const malformed = f.book.save();
+  delete malformed.sheets['1']!.name;
+  try {
+    expect(() => workbookVisibilityBridge(f.univer, f.api, () => f.source.model, () => ({
+      projectId: sourceDeleteScope.projectId, controllerId: '22222222-2222-4222-8222-222222222222', sourceSha256: 'a'.repeat(64), blocked: false,
+    }), { snapshot: () => malformed, decorate: value => value, receive() {} })).toThrow('The live worksheet list is inconsistent.');
+    expect(postMessage).not.toHaveBeenCalled();
+    expect(removeEventListener).toHaveBeenCalledWith('message', addEventListener.mock.calls[0]![1]);
+  } finally { await f.close(); }
+});
 it('publishes the privately owned live unsaved list through Rename, Delete and Undo rather than the stale source model', async () => {
   const f = createSourceDeleteHistoryFixture(true), postMessage = vi.fn();
   vi.stubGlobal('window', { parent: { postMessage }, location: { origin: 'http://fixture.invalid' }, addEventListener() {}, removeEventListener() {} });
