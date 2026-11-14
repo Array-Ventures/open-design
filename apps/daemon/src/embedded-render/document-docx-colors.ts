@@ -118,10 +118,18 @@ export function projectDocumentDocxPresentation(xml: string, owners: readonly Do
   const parentParagraph = (node: Node): Element | undefined => { for (let parent = node.parentNode; parent; parent = parent.parentNode) if (parent.nodeType === 1 && (parent as Element).namespaceURI === w && (parent as Element).localName === 'p') return parent as Element; return undefined; };
   const headingParagraphs = new Map<string,Element>(), headingTargets = new Set<Element>();
   const paragraphLines = new Map<Element, number>();
+  const headingImages = new Map<string, Set<Element>>();
   const visit = (node: Node): void => {
     if (node.nodeType !== 1) return;
     const element = node as Element, name = element.namespaceURI === w ? element.localName : '';
     if (name === 'p' && stack.some(owner => owner.kind === 'heading' && headingParagraphs.get(owner.id) !== element)) return fail();
+    if (element.namespaceURI === 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing' && element.localName === 'inline') {
+      for (const own of stack.filter(owner => owner.kind === 'heading')) {
+        if (parentParagraph(element) !== headingParagraphs.get(own.id)) return fail();
+        const images = headingImages.get(own.id) ?? new Set<Element>();
+        images.add(element); headingImages.set(own.id,images);
+      }
+    }
     if (name === 'bookmarkStart' || name === 'bookmarkEnd') {
       const id = element.getAttributeNS(w, 'id')!, own = byId.get(id);
       if (!own && names.has(element.getAttributeNS(w, 'name') ?? '')) return fail();
@@ -196,7 +204,10 @@ export function projectDocumentDocxPresentation(xml: string, owners: readonly Do
     const elements = Array.from(paragraph.getElementsByTagName('*'));
     const inlines = elements.filter(element => element.namespaceURI === 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing' && element.localName === 'inline');
     if (inlines.length !== 1 || elements.filter(element => element.namespaceURI === w && element.localName === 'drawing').length !== 1 || elements.some(element => element.localName === 'anchor') || elements.some(element => element.namespaceURI === w && ['t','br','tab','pict'].includes(element.localName ?? '')) || paragraphLines.has(paragraph)) return fail();
-    const image = inlines[0]!, extents = Array.from(image.getElementsByTagNameNS(image.namespaceURI!,'extent'));
+    const image = inlines[0]!;
+    const ownedImages = headingImages.get(own.id);
+    if (ownedImages?.size !== 1 || !ownedImages.has(image)) return fail();
+    const extents = Array.from(image.getElementsByTagNameNS(image.namespaceURI!,'extent'));
     const drawing = 'http://schemas.openxmlformats.org/drawingml/2006/main';
     const picture = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
     const relationship = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';

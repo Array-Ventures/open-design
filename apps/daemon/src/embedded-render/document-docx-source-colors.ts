@@ -63,6 +63,19 @@ export function normalizedDocumentDocxHtml(source: DocumentDocxPresentationSourc
     if (wrapper.length !== 1 || wrapper[0]?.type !== 'tag' || wrapper[0].name !== 'span' || wrapper.contents().toArray().some(node => node.type !== 'text')) return fail();
     wrapper.replaceWith(wrapper.contents());
   }
+  for (const request of source.requests.filter(request => request.kind === 'heading')) {
+    if (!resolved.get(request.id)?.headingImageSource) continue;
+    const heading = $(`[${source.attributeName}="${request.id}"]`);
+    if (heading.length !== 1) return fail();
+    // The contained DOM receipt proved these specific source whitespace nodes
+    // have no glyph/paint. A neutral nested SPAN otherwise makes Pandoc emit
+    // visible native spaces that the browser collapsed at the heading edges.
+    heading.find('*').addBack().contents().each((_index,node) => {
+      if (node.type !== 'text') return;
+      if (/[^\t\n\f\r ]/.test(node.data)) return fail();
+      $(node).remove();
+    });
+  }
   return $.html();
 }
 

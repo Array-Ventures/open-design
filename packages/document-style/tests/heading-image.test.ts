@@ -2,11 +2,22 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { normalizeDocumentPresentationOwners } from '../src/browser.js';
 const attribute = 'data-eve-docx-color-image-fixture';
-const css = 'body{color:black;background:white}h1{font:40px/50px serif;margin-top:0}img,span{font:inherit;display:inline;vertical-align:baseline;position:static;float:none;transform:none;margin:0}';
+const css = 'body{color:black;background:white}h1{font:40px/50px serif;margin-top:0}img,span{font:inherit;display:inline;vertical-align:baseline;position:static;float:none;transform:none;margin:0;border:0;padding:0;box-shadow:none}';
 function fixture(content = `<img ${attribute}-image="heading" src="pixel.png" width="24" height="24">`, blockHeight = 50, imageHeight = 24) {
   document.documentElement.setAttribute('data-eve-document','1');
   document.head.innerHTML = `<style>${css}</style>`;
   document.body.innerHTML = `<main><h1 ${attribute}="heading">${content}</h1></main>`;
+  // Pinned jsdom reports an unset text-shadow as a bare transparent color.
+  // The real contained Chromium proof reports `none`; model that serialization
+  // only for fixture nodes without an authored shadow, keeping paint guards real.
+  const computed = window.getComputedStyle.bind(window);
+  vi.spyOn(window,'getComputedStyle').mockImplementation((element,pseudo) => {
+    const style = computed(element,pseudo);
+    if (['IMG','SPAN'].includes(element.tagName) && !(element as HTMLElement).style.getPropertyValue('text-shadow') && style.textShadow === 'rgba(0, 0, 0, 0)') {
+      Object.defineProperty(style,'textShadow',{value:'none'});
+    }
+    return style;
+  });
   const heading = document.querySelector('h1')!, image = document.querySelector('img')!;
   vi.spyOn(heading,'getBoundingClientRect').mockReturnValue(new DOMRect(0,0,720,blockHeight));
   vi.spyOn(image,'getBoundingClientRect').mockReturnValue(new DOMRect(0,15,24,imageHeight));
@@ -53,5 +64,22 @@ it('allows one Chromium layout quantum, but not a second line or larger height d
 it('does not assume a responsive image wider than the physical print content fits', () => {
   fixture();
   vi.mocked(document.querySelector('img')!.getBoundingClientRect).mockReturnValue(new DOMRect(0,15,700,24));
+  expect(normalize()).not.toHaveProperty('headingImageSource');
+});
+it('keeps non-breaking and other visible Unicode spaces in their existing text flow', () => {
+  fixture(`&nbsp;<img ${attribute}-image="heading" src="pixel.png">`);
+  expect(normalize()).not.toHaveProperty('headingImageSource');
+});
+it('requires measured collapse before normalizing outside-image whitespace', () => {
+  fixture(`\n <span>\n <img ${attribute}-image="heading" src="pixel.png">\n </span>\n`);
+  const range = {selectNodeContents:vi.fn(),getClientRects:()=>[new DOMRect(0,0,0,50)]};
+  vi.spyOn(document,'createRange').mockReturnValue(range as unknown as Range);
+  expect(normalize()).toHaveProperty('headingImageSource');
+  range.getClientRects = () => [new DOMRect(0,0,4,50)];
+  expect(normalize()).not.toHaveProperty('headingImageSource');
+});
+it.each(['background-color:red','border-bottom:1px solid red'])('does not normalize whitespace inside an authored painted span: %s', style => {
+  fixture(`\n <span style="${style}">\n <img ${attribute}-image="heading" src="pixel.png">\n </span>\n`);
+  vi.spyOn(document,'createRange').mockReturnValue({selectNodeContents:vi.fn(),getClientRects:()=>[new DOMRect(0,0,0,50)]} as unknown as Range);
   expect(normalize()).not.toHaveProperty('headingImageSource');
 });

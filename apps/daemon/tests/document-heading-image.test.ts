@@ -43,3 +43,26 @@ it('binds the actual source image through its Header and Image AST attributes', 
   expect(JSON.stringify(input)).not.toContain(source.attributeName.slice(5));
   expect(()=>resolvedDocumentDocxPresentationOwners(ast('different-image'),source,resolved)).toThrow('ownership');
 });
+it.each(['before','after'])('refuses an image outside its exact heading bookmark range: %s', position => {
+  const {owners,image,wrap} = fixture();
+  const emptyRange = wrap('');
+  const xml = position === 'before'
+    ? emptyRange.replace(/(<w:bookmarkStart\b[^>]*\/>)/, image+'$1')
+    : emptyRange.replace(/(<w:bookmarkEnd\b[^>]*\/>)/, '$1'+image);
+  expect(()=>projectDocumentDocxPresentation(xml,owners)).toThrow('ownership');
+});
+it('normalizes only verified collapsed heading whitespace before parsing, preserving source attributes and visible NBSP', () => {
+  const html = '<html><body><main><h1 id="title">\n <span id="wrapper">\n <img src="pixel.png" alt="Owned">\n </span>\n</h1></main></body></html>';
+  const source = documentDocxSourcePresentation(html), original = source.html;
+  const resolved = new Map(source.requests.map(request => [request.id,request.kind === 'heading' ? descriptor : {}]));
+  const normalized = normalizedDocumentDocxHtml(source,resolved);
+  expect(normalized).toContain('id="title"');
+  expect(normalized).toContain('id="wrapper"><img');
+  expect(normalized).toContain('src="pixel.png" alt="Owned"');
+  expect(source.html).toBe(original);
+  const visible = documentDocxSourcePresentation(html.replace('\n <img','&nbsp;<img'));
+  const forged = new Map(visible.requests.map(request => [request.id,request.kind === 'heading' ? descriptor : {}]));
+  expect(()=>normalizedDocumentDocxHtml(visible,forged)).toThrow('ownership');
+  const unchanged = new Map(visible.requests.map(request => [request.id,{}]));
+  expect(normalizedDocumentDocxHtml(visible,unchanged)).toContain('&nbsp;');
+});

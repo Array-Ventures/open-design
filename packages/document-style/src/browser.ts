@@ -140,11 +140,18 @@ export function documentCanvasColor(document: Document, read: DocumentColorReade
 function headingImagePresentation(owner: HTMLElement, attributeName: string, id: string, contentWidthPx?: number): Partial<import('./presentation.js').NormalizedDocumentPresentation> {
   if (!Number.isFinite(contentWidthPx) || contentWidthPx! <= 0) return {};
   const images = owner.querySelectorAll('img');
-  if (images.length !== 1 || owner.textContent?.trim()) return {};
+  if (images.length !== 1 || /[^\t\n\f\r ]/.test(owner.textContent ?? '')) return {};
   const image = images[0]!;
   if (image.getAttribute(`${attributeName}-image`) !== id) return {};
   if (Array.from(owner.querySelectorAll('*')).some(element => !['IMG','SPAN'].includes(element.tagName))) return {};
   const view = owner.ownerDocument.defaultView!;
+  // Only DOM-proved collapsed HTML whitespace may disappear before Pandoc.
+  // NBSP and positive-width spaces remain authored content, not line metadata.
+  const walker = owner.ownerDocument.createTreeWalker(owner,4);
+  for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+    const range = owner.ownerDocument.createRange(); range.selectNodeContents(text);
+    if (Array.from(range.getClientRects()).some(rect => rect.width > 0 && rect.height > 0)) return {};
+  }
   const block = view.getComputedStyle(owner), line = Number.parseFloat(block.lineHeight);
   const box = owner.getBoundingClientRect(), imageBox = image.getBoundingClientRect();
   if (!/^\d+(?:\.\d+)?px$/.test(block.lineHeight) || !Number.isFinite(line) || line <= 0
@@ -153,6 +160,10 @@ function headingImagePresentation(owner: HTMLElement, attributeName: string, id:
     || imageBox.height > line || imageBox.width > Math.min(box.width,contentWidthPx!) || Math.abs(imageBox.x-box.x) > .01) return {};
   for (const element of Array.from(owner.querySelectorAll('*'))) {
     const style = view.getComputedStyle(element);
+    if ((element as HTMLElement).style.getPropertyValue('background') || (element as HTMLElement).style.getPropertyValue('background-color')) return {};
+    if (['borderTopWidth','borderBottomWidth','borderLeftWidth','borderRightWidth','paddingTop','paddingBottom','paddingLeft','paddingRight'].some(key => !['','0px'].includes(style[key as keyof CSSStyleDeclaration] as string))
+      || ['boxShadow','textShadow'].some(key => !['','none'].includes(style[key as keyof CSSStyleDeclaration] as string))
+      || (element.tagName === 'SPAN' && (element as HTMLElement).style.getPropertyValue('text-decoration'))) return {};
     if (style.display !== 'inline' || style.verticalAlign !== 'baseline' || !['','static'].includes(style.position)
       || !['','none'].includes(style.cssFloat) || !['','none'].includes(style.transform)
       || ['marginTop','marginBottom','marginLeft','marginRight'].some(key => !['','0px'].includes(style[key as keyof CSSStyleDeclaration] as string))) return {};
