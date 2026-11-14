@@ -87,8 +87,9 @@ export class WorkbookSheetHistoryController {
           const input = params as { unitId?: string; subUnitId?: string } | undefined;
           const target = getSheetCommandTarget(this.instances, input);
           if (target && target.workbook !== this.unit) return remove.handler(accessor, params, options);
-          if (!input || Object.keys(input).some(key => !['unitId', 'subUnitId'].includes(key))
-            || input.unitId !== this.unit.getUnitId() || typeof input.subUnitId !== 'string') throw Error('The source Delete target is invalid.');
+          if (!input || target?.workbook !== this.unit || Object.keys(input).some(key => !['unitId', 'subUnitId'].includes(key))
+            || (input.unitId !== undefined && input.unitId !== this.unit.getUnitId())
+            || typeof input.subUnitId !== 'string') throw Error('The source Delete target is invalid.');
           return this.performRemove(input.subUnitId).then(() => true);
         },
         syncHandler: (accessor, params, options) => {
@@ -104,8 +105,9 @@ export class WorkbookSheetHistoryController {
           const input = params as { unitId?: string; subUnitId?: string; name?: string } | undefined;
           const target = getSheetCommandTarget(this.instances, input);
           if (target && target.workbook !== this.unit) return rename.handler(accessor, params, options);
-          if (!input || Object.keys(input).some(key => !['unitId', 'subUnitId', 'name'].includes(key))
-            || input.unitId !== this.unit.getUnitId() || typeof input.subUnitId !== 'string' || typeof input.name !== 'string') throw Error('The Rename target is invalid.');
+          if (!input || target?.workbook !== this.unit || Object.keys(input).some(key => !['unitId', 'subUnitId', 'name'].includes(key))
+            || (input.unitId !== undefined && input.unitId !== this.unit.getUnitId())
+            || typeof input.subUnitId !== 'string' || typeof input.name !== 'string') throw Error('The Rename target is invalid.');
           return this.performRename(input.subUnitId, input.name).then(() => true);
         },
         syncHandler: (accessor, params, options) => {
