@@ -1,4 +1,4 @@
-import { validDocumentFontSize, validDocumentFontLineHeight, validDocumentHeadingLevel } from '@open-design/document-style';
+import { validDocumentFontSize, validDocumentFontLineHeight, validDocumentHeadingLevel, validDocumentHeadingMetadata } from '@open-design/document-style';
 import { documentExportProfile, documentExportPrintCss } from './document-export-profile.js';
 import { readFile } from 'node:fs/promises';
 import { chromium, type Page } from 'playwright-core';
@@ -33,7 +33,7 @@ export async function normalizeDocumentDocxPresentation(html: string, requests: 
     await page.evaluate('Promise.all([document.fonts.ready,...Array.from(document.images).map(image=>image.decode().catch(()=>{}))])');
     if (unavailable) return fail();
     await page.addScriptTag({ content: await readFile(browserScript, 'utf8') });
-    const result: unknown = await page.evaluate(`globalThis.odDocumentColor.normalizeDocumentPresentationOwners(document,${JSON.stringify(requests)},${JSON.stringify(attributeName)},${JSON.stringify([...ownedStyles(html), documentExportPrintCss])})`);
+    const result: unknown = await page.evaluate(`globalThis.odDocumentColor.normalizeDocumentPresentationOwners(document,${JSON.stringify(requests)},${JSON.stringify(attributeName)},${JSON.stringify([...ownedStyles(html), documentExportPrintCss])},undefined,${(documentExportProfile.page.widthPt-2*documentExportProfile.page.marginPt)/.75})`);
     if (!Array.isArray(result) || result.length !== requests.length) return fail();
     const expected = new Map(requests.map(request => [request.id, request.kind])), presentations = new Map<string, NormalizedDocumentPresentation>();
     for (const entry of result) {
@@ -44,6 +44,8 @@ export async function normalizeDocumentDocxPresentation(html: string, requests: 
         else if (key === 'headingLevel') { if (!validDocumentHeadingLevel(value)) return fail(); }
         else if (key === 'headingBeforePt') { if (value !== 0) return fail(); }
         else if (key === 'headingSource') { if (value !== 'canonical-first-block') return fail(); }
+        else if (['headingImageLineHeightPt','headingImageWidthPt','headingImageHeightPt'].includes(key)) { if (!validDocumentFontLineHeight(value)) return fail(); }
+        else if (key === 'headingImageSource') { if (value !== 'single-baseline-image') return fail(); }
         else if (key === 'fontSizePt') { if (!validDocumentFontSize(value)) return fail(); }
         else if (key === 'fontLineHeightPt') { if (!validDocumentFontLineHeight(value)) return fail(); }
         else if (!['foreground','background'].includes(key) || typeof value !== 'string' || !/^[A-F0-9]{6}$/.test(value)) return fail();
@@ -53,8 +55,10 @@ export async function normalizeDocumentDocxPresentation(html: string, requests: 
       if (fontFields.length && (fontFields.length !== 3 || expected.get(entry.id) !== 'inline')) return fail();
       const headingKeys = ['headingLevel','headingBeforePt','headingSource'];
       const headingFields = headingKeys.filter(key => Object.hasOwn(entry.presentation,key));
-      if (headingFields.length && (headingFields.length !== 3 || expected.get(entry.id) !== 'heading')) return fail();
-      if (expected.get(entry.id) === 'heading' && Object.keys(entry.presentation).some(key => !headingKeys.includes(key))) return fail();
+      if (headingFields.length && (expected.get(entry.id) !== 'heading' || !validDocumentHeadingMetadata(entry.presentation))) return fail();
+      const imageKeys = ['headingImageLineHeightPt','headingImageWidthPt','headingImageHeightPt','headingImageSource'];
+      if (imageKeys.some(key => Object.hasOwn(entry.presentation,key)) && (expected.get(entry.id) !== 'heading' || !validDocumentHeadingMetadata(entry.presentation))) return fail();
+      if (expected.get(entry.id) === 'heading' && Object.keys(entry.presentation).some(key => ![...headingKeys,...imageKeys].includes(key))) return fail();
       presentations.set(entry.id, entry.presentation);
     }
     if (unavailable) return fail(); return presentations;

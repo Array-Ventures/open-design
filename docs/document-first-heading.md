@@ -71,3 +71,5 @@ Receipts: `/tmp/document-first-heading-source-proof/qualification.json`,
 processes exited normally. No application runtime, image build, production,
 publication or pins changed. Table/header paints, link decoration and broader
 rich-block fidelity remain explicitly outside this margin correction.
+
+The later [image-only heading checkpoint](document-heading-images.md) isolates and corrects a bounded subset of the retained image paint gap. The original failed oracle above remains evidence for this checkpoint; the later source/LibreOffice proof is separate and does not claim general image fidelity or a new packaged pair.
