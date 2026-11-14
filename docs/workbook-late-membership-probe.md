@@ -11,3 +11,12 @@ The new test installs the actual visibility listener with the actual membership 
 This is installed-listener and SDK source evidence, not an immutable-browser startup qualification. Candidate 132 and its existing browser evidence remain unchanged. The fix does not claim to resolve the separate occasional worksheet-controls-change notice or stored-result/repaint observations.
 
 Author checks: 44 affected cases across live visibility, live management, membership bridge and legacy visibility passed. Full workspace `pnpm typecheck` and `pnpm guard` exited 0; logs are `/tmp/workbook-late-probe-types.log` and `/tmp/workbook-late-probe-guard.log`. Frozen install and diff checks also passed. No Worker, browser, package build, runtime switch, pin or publication was used for this checkpoint.
+
+## Later immutable-browser qualification
+
+The separate [133/76 record](workbook-live133-qualification.md) now qualifies two
+actual late correlated probes after normal private worksheet controls were
+already enabled. Both replies match the current document/epoch and distinct
+probe nonces; saved source bytes remain exact. That bounded actual result does
+not relabel the source-only checkpoint above or candidate 132, and does not
+qualify the complete startup, controls-change notice or stored-cache matrix.

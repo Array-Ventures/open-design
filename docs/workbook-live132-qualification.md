@@ -111,3 +111,8 @@ cancel-to-rehydrate path. Raw Markdown evidence is in
 properties and scope limits. Its two captured test sessions were independently
 queried by exact ID and captured user in the asserted owned preview database;
 both were absent. No session was deleted or global auth cleanup inferred.
+
+The subsequent [133/76 late-probe check](workbook-live133-qualification.md)
+qualifies the separate routing correction after the listener handoff. It retains
+this checkpoint's identities and results rather than relabelling them as 133
+reruns.
