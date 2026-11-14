@@ -44,6 +44,25 @@ export function documentDocxPresentationOwners(ast: unknown, resolve: (attribute
       if (entry) { if (!Array.isArray(node.c[2])) return fail(); node.c[2] = [marker(entry,true), ...node.c[2], marker(entry,false)]; }
       return;
     }
+    if (node.t === 'Code' && Array.isArray(node.c)) {
+      const entry = owner(node.c[0], 'inline');
+      if (entry) {
+        const code = { ...node, c: structuredClone(node.c) };
+        node.t = 'Span'; node.c = [['',[],[]], [marker(entry,true), code, marker(entry,false)]];
+      }
+      return;
+    }
+    if (node.t === 'CodeBlock' && Array.isArray(node.c)) {
+      const entry = owner(node.c[0], 'inline');
+      if (entry) {
+        const code = { ...node, c: structuredClone(node.c) };
+        const blockMarker = (start: boolean) => ({t:'RawBlock', c: marker(entry,start).c});
+        // Pandoc itself emits block-code bookmarks around the SourceCode
+        // paragraph. Keep that native paragraph and all code text unchanged.
+        node.t = 'Div'; node.c = [['',[],[]], [blockMarker(true), code, blockMarker(false)]];
+      }
+      return;
+    }
     if (node.t === 'Span' && Array.isArray(node.c)) {
       const entry = owner(node.c[0], 'inline'); visit(node.c[1]);
       if (entry) { if (!Array.isArray(node.c[1])) return fail(); node.c[1] = [marker(entry, true), ...node.c[1], marker(entry, false)]; }

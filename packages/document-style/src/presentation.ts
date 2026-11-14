@@ -9,7 +9,7 @@ export interface NormalizedDocumentPresentation {
   foregroundSource?: 'authored' | 'inherited';
   fontSizePt?: number;
   fontLineHeightPt?: number;
-  fontSizeSource?: 'authored';
+  fontSizeSource?: 'authored' | 'code-context';
   headingLevel?: 1 | 2 | 3 | 4 | 5 | 6;
   headingBeforePt?: 0;
   headingSource?: 'canonical-first-block';
