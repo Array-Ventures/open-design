@@ -1,3 +1,4 @@
+import { restoreHistoricalCellGuards } from './grid-restored-sheet';
 import { gridSourceSheetProjection, type WorkbookPlanContext } from './grid-sheet-projection';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import type { IWorkbookData } from '@univerjs/presets';
@@ -7,7 +8,7 @@ import { workbookGridEdits } from './grid-edits';
  * CSV dimensions are view state; XLSX dimensions remain persisted edits. */
 export function workbookGridPlan(model: WorkbookDocument, sha256: string, initial: IWorkbookData, current: IWorkbookData, context?: WorkbookPlanContext) {
   const projection = gridSourceSheetProjection(model, sha256, initial, current, context);
-  if (projection) return { ...workbookGridEdits(projection.model, sha256, projection.before, projection.after), sheets: projection.sheets };
+  if (projection) return { ...restoreHistoricalCellGuards(workbookGridEdits(projection.model, sha256, projection.before, projection.after), projection.model, projection.restored), sheets: projection.sheets };
   return (model.sourceFormat === 'csv' ? csvGridEdits : workbookGridEdits)(model, sha256, initial, current);
 }
 

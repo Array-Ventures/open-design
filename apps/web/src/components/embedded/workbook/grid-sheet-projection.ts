@@ -1,3 +1,4 @@
+import { appendRestoredSheetModel } from './grid-restored-sheet';
 import { checkedWorkbookBirthRemovals } from './sheet-birth-removal';
 import type { WorkbookCheckpoint } from './workbook-writer';
 import { workbookSheetRemovalSelection } from './sheet-removal-selection';
@@ -8,9 +9,9 @@ import type { WorkbookDraftScope } from './workbook-draft-schema';
 import { assertWorkbookStructureIdentity } from './grid-structure-identity';
 import { assertWorkbookScalarSnapshot } from './grid-scalar-admission';
 import type { IWorkbookData } from '@univerjs/core';
-import { workbookSourceSheetProjectionSchema, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import { workbookSheetProjectionSchema, workbookDocumentSchema, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { canonicalCommentJson, canonicalWorkbookSheetBaseline, workbookSheetBaseline } from '@open-design/contracts/runtime/workbook-sheet-baseline';
-import { workbookSourceDeleteContextSchema, WORKBOOK_SHEET_DELETE_MARKER, type WorkbookSourceDeleteContext } from './sheet-delete-context';
+import { workbookSourceDeleteContextSchema, workbookSourceDeletionTemplate, workbookSourceDeletionBaselineIdentity, WORKBOOK_SHEET_DELETE_MARKER, type WorkbookSourceDeleteContext } from './sheet-delete-context';
 
 /** Current continuity is an explicit checked-ACK owner input, not metadata on
  * an imported sheet. It is recomputed from the actual model and ACK snapshot;
@@ -59,8 +60,8 @@ export function checkedWorkbookRemovalContexts(snapshot: IWorkbookData, initial:
   return { selection, checked, births };
 }
 
-/** Derive source survivors and explicitly protected blank origins. A marker is
- * never a birth/restore grant; unknown and historical restoration still refuse. */
+/** Derive source survivors, protected blank origins and explicit retained
+ * template data. Markers never grant birth, native history or asset authority. */
 export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256: string, initial: IWorkbookData, current: IWorkbookData, context?: WorkbookPlanContext) {
   if (initial.id !== current.id) throw Error('Workbook identity changed.');
   const { selection, checked, births } = checkedWorkbookRemovalContexts(current, initial, context, { model, sourceSha256 });
@@ -75,6 +76,7 @@ export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256:
   if (canonicalCommentJson(initial.sheetOrder) !== canonicalCommentJson(sourceIds)) throw Error('The source worksheet baseline changed.');
   if (new Set(afterIds).size !== afterIds.length || canonicalCommentJson([...afterIds].sort()) !== canonicalCommentJson(Object.keys(current.sheets).sort())) throw Error('Worksheet membership is inconsistent.');
   const entries = new Map(births?.entries.map(item => [item.descriptor.sheetId, item]));
+  const restored = new Map<string, WorkbookSourceDeleteContext>();
   for (const id of afterIds.filter(id => !sourceIds.includes(id))) {
     const item = entries.get(id);
     const removal = current.sheets[id]!.custom?.[WORKBOOK_SHEET_DELETE_MARKER];
@@ -97,7 +99,17 @@ export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256:
         && pending.intent.plan.sheets?.some(sheet => sheet.sheetId === id && sheet.origin === 'new')
         && canonicalCommentJson(pending.snapshot.sheets[id]?.custom?.[WORKBOOK_SHEET_BIRTH_MARKER]) === canonicalCommentJson(item?.descriptor);
     });
-    if (removal !== undefined && !provisional && !converted) throw Error('A restored worksheet requires its checked historical template owner.');
+    if (removal !== undefined && !provisional && !converted) {
+      const matches = checked.filter(value => value.descriptor.sheetId === id && canonicalCommentJson(value.descriptor) === canonicalCommentJson(removal));
+      const value = matches[0];
+      if (!scope || matches.length !== 1 || !value || value.scope.viewerId !== scope.viewerId
+        || value.scope.projectId !== scope.projectId || value.scope.fileName !== scope.fileName
+        || canonicalCommentJson(value.axisOwner) !== canonicalCommentJson(initial.custom?.evebotStructureOwner)) throw Error('The restored worksheet has no unique scoped historical context.');
+      // This selects data for the existing authorized frozen-history API; the
+      // context/receipt alone never grants a native Undo or historical access.
+      workbookSourceDeletionTemplate(value); workbookSourceDeletionBaselineIdentity(value);
+      restored.set(id, value); continue;
+    }
     if (!item || canonicalCommentJson(current.sheets[id]!.custom?.[WORKBOOK_SHEET_BIRTH_MARKER]) !== canonicalCommentJson(item.descriptor)) throw Error('A new or restored worksheet requires its own protected owner.');
   }
   if (canonicalCommentJson(sourceIds.filter(id => afterIds.includes(id))) !== canonicalCommentJson(afterIds.filter(id => sourceIds.includes(id)))) throw Error('Reordering source worksheets is unsupported.');
@@ -127,10 +139,21 @@ export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256:
     )) throw Error('The deleted worksheet source or ACK context changed.');
   }
   assertWorkbookScalarSnapshot(current);
-  const sheets = workbookSourceSheetProjectionSchema.parse(afterIds.map(id => ({ sheetId: id, name: current.sheets[id]!.name, origin: sourceIds.includes(id) ? 'source' : 'new' })));
+  const sheets = workbookSheetProjectionSchema.parse(afterIds.map(id => {
+    const context = restored.get(id);
+    return context ? { sheetId: id, name: current.sheets[id]!.name, origin: 'restore', template: workbookSourceDeletionTemplate(context), baselineIdentity: workbookSourceDeletionBaselineIdentity(context) }
+      : { sheetId: id, name: current.sheets[id]!.name, origin: sourceIds.includes(id) ? 'source' : 'new' };
+  }));
   const before = structuredClone(initial), after = structuredClone(current), projected = structuredClone(model);
   before.sheetOrder = [...afterIds];
-  before.sheets = Object.fromEntries(afterIds.map(id => [id, before.sheets[id] ?? structuredClone(entries.get(id)!.initialSheet)]));
+  before.sheets = Object.fromEntries(afterIds.map(id => {
+    // The protected JSON snapshot also permits null sparse cells. Existing
+    // grid readers treat these as blank; this does not convert model styles or
+    // reinterpret the historical source. The context schema was checked above.
+    const historical = restored.get(id)?.acknowledgedSheet as IWorkbookData['sheets'][string] | undefined;
+    return [id, before.sheets[id] ?? structuredClone(historical ?? entries.get(id)!.initialSheet)];
+  }));
+  for (const context of restored.values()) appendRestoredSheetModel(projected, context);
   projected.sheets = afterIds.map(id => {
     const sheet = projected.sheets.find(sheet => sheet.id === id) ?? blankWorkbookSheet(id, current.sheets[id]!.name!);
     sheet.name = current.sheets[id]!.name!;
@@ -141,5 +164,5 @@ export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256:
     ?? projected.sheets.find(sheet => current.sheets[sheet.id]?.hidden !== 1 && current.sheets[sheet.id]?.hidden !== 2);
   if (!active) throw Error('Keep at least one worksheet visible.');
   projected.activeSheetId = active.id;
-  return { model: projected, before, after, sheets };
+  return { model: workbookDocumentSchema.parse(projected), before, after, sheets, restored };
 }
