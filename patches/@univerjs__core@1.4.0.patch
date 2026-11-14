@@ -1,5 +1,5 @@
 diff --git a/lib/cjs/index.js b/lib/cjs/index.js
-index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..56d86d08427a336ad4ae768299eaab1999f4dc71 100644
+index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..5ae077ab02fcecba36c21d5acc13ce12e38ef420 100644
 --- a/lib/cjs/index.js
 +++ b/lib/cjs/index.js
 @@ -2065,7 +2065,7 @@ var CommandRegistry = class {
@@ -180,7 +180,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..56d86d08427a336ad4ae768299eaab19
  		_defineProperty(this, "_historyLimit", void 0);
  		this._historyLimit = configService.getConfig("undoRedo.historyLimit") ?? 50;
  		this.undoRedoStatus$ = this._undoRedoStatus$.asObservable();
-@@ -25602,6 +25718,88 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25602,6 +25718,116 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
@@ -204,6 +204,34 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..56d86d08427a336ad4ae768299eaab19
 +		const revision = this._historyCheckpointRevision ?? 0;
 +		if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER - 1) throw new Error("History checkpoint revision is exhausted.");
 +		this._historyCheckpointRevision = revision + 1;
++	}
++	getUndoRedoEntryIds(unitId) {
++		this.ensureNotDisposed();
++		if (typeof unitId !== "string" || !unitId.length || unitId.length > 600) throw new Error("History entry inspection query is invalid.");
++		if (this._getFocusedUnitId() !== unitId) throw new Error("History entry inspection owner changed.");
++		const revision = this._historyCheckpointRevision ?? 0;
++		if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER) throw new Error("History checkpoint revision is exhausted.");
++		const seen = new Set();
++		let visited = 0;
++		const inspect = (stack) => {
++			const ids = [];
++			if (stack === void 0) return Object.freeze(ids);
++			if (!Array.isArray(stack)) throw new Error("History entry inspection stack is invalid.");
++			const length = historyOwnDataDescriptor(stack, "length")?.value;
++			if (!Number.isSafeInteger(length) || length < 0 || length > 4096 - visited) throw new Error("History entry inspection limit exceeded.");
++			visited += length;
++			for (let index = 0; index < length; index++) {
++				const item = historyOwnDataDescriptor(stack, String(index))?.value;
++				if (historyOwnDataDescriptor(item, "unitID")?.value !== unitId) throw new Error("History entry inspection owner changed.");
++				const id = this._historyEntryIds.get(item);
++				if (!Number.isSafeInteger(id) || id <= 0 || id > revision || seen.has(id)) throw new Error("History entry identity is unavailable.");
++				seen.add(id); ids.push(id);
++			}
++			return Object.freeze(ids);
++		};
++		const undos = inspect(this._undoStacks.get(unitId)), redos = inspect(this._redoStacks.get(unitId));
++		if (this._getFocusedUnitId() !== unitId || (this._historyCheckpointRevision ?? 0) !== revision) throw new Error("History entry inspection owner changed.");
++		return Object.freeze({ unitId, revision, undos, redos });
 +	}
 +	getUndoRedoMutationData(unitId, direction, entryId) {
 +		if (typeof unitId !== "string" || !unitId.length || unitId.length > 600 || direction !== "undo" && direction !== "redo" || !Number.isSafeInteger(entryId) || entryId <= 0) throw new Error("History mutation data query is invalid.");
@@ -269,7 +297,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..56d86d08427a336ad4ae768299eaab19
  	getUndoRedoStatus(unitId) {
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
-@@ -25610,6 +25808,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25610,6 +25836,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		};
  	}
  	pushUndoRedo(item) {
@@ -277,7 +305,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..56d86d08427a336ad4ae768299eaab19
  		const { unitID } = item;
  		const redoStack = this._getRedoStack(unitID, true);
  		const undoStack = this._getUndoStack(unitID, true);
-@@ -25638,6 +25837,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25638,6 +25865,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  			undoStack.push(item);
  			if (undoStack.length > historyLimit) undoStack.splice(0, 1);
  		}
@@ -286,7 +314,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..56d86d08427a336ad4ae768299eaab19
  		this._updateStatus();
  	}
  	beginUndoRedoGroup(unitId, groupId, mode = "replace") {
-@@ -25652,6 +25853,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25652,6 +25881,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		});
  	}
  	clearUndoRedo(unitID) {
@@ -294,7 +322,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..56d86d08427a336ad4ae768299eaab19
  		const redoStack = this._getRedoStack(unitID);
  		if (redoStack) redoStack.length = 0;
  		const undoStack = this._getUndoStack(unitID);
-@@ -25675,7 +25877,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25675,7 +25905,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		return (stack === null || stack === void 0 ? void 0 : stack.length) ? stack[stack.length - 1] : null;
  	}
  	popUndoToRedo() {
@@ -305,7 +333,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..56d86d08427a336ad4ae768299eaab19
  		if (element) {
  			this._itemGroups.delete(element);
  			if (element.redoMutations.length > 0) this._getRedoStackForFocused().push(element);
-@@ -25683,7 +25887,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25683,7 +25915,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		}
  	}
  	popRedoToUndo() {
@@ -316,7 +344,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..56d86d08427a336ad4ae768299eaab19
  		if (element) {
  			this._itemGroups.delete(element);
  			this._getUndoStackForFocused().push(element);
-@@ -25695,6 +25901,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25695,6 +25929,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		const stack = this._getUndoStack(unitId);
  		const item = stack === null || stack === void 0 ? void 0 : stack[(stack === null || stack === void 0 ? void 0 : stack.length) - 1];
  		if (item && item.id === id) {
@@ -325,7 +353,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..56d86d08427a336ad4ae768299eaab19
  			this._itemGroups.delete(item);
  			sequenceExecute(item.undoMutations, this._commandService);
 diff --git a/lib/es/index.js b/lib/es/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b45de7bac 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..d834f2b7f3aff1388a6c9c6b63a2e2398a6fd0fa 100644
 --- a/lib/es/index.js
 +++ b/lib/es/index.js
 @@ -2036,7 +2036,7 @@ var CommandRegistry = class {
@@ -506,7 +534,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
  		_defineProperty(this, "_historyLimit", void 0);
  		this._historyLimit = configService.getConfig("undoRedo.historyLimit") ?? 50;
  		this.undoRedoStatus$ = this._undoRedoStatus$.asObservable();
-@@ -25573,6 +25689,88 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25573,6 +25689,116 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
@@ -530,6 +558,34 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
 +		const revision = this._historyCheckpointRevision ?? 0;
 +		if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER - 1) throw new Error("History checkpoint revision is exhausted.");
 +		this._historyCheckpointRevision = revision + 1;
++	}
++	getUndoRedoEntryIds(unitId) {
++		this.ensureNotDisposed();
++		if (typeof unitId !== "string" || !unitId.length || unitId.length > 600) throw new Error("History entry inspection query is invalid.");
++		if (this._getFocusedUnitId() !== unitId) throw new Error("History entry inspection owner changed.");
++		const revision = this._historyCheckpointRevision ?? 0;
++		if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER) throw new Error("History checkpoint revision is exhausted.");
++		const seen = new Set();
++		let visited = 0;
++		const inspect = (stack) => {
++			const ids = [];
++			if (stack === void 0) return Object.freeze(ids);
++			if (!Array.isArray(stack)) throw new Error("History entry inspection stack is invalid.");
++			const length = historyOwnDataDescriptor(stack, "length")?.value;
++			if (!Number.isSafeInteger(length) || length < 0 || length > 4096 - visited) throw new Error("History entry inspection limit exceeded.");
++			visited += length;
++			for (let index = 0; index < length; index++) {
++				const item = historyOwnDataDescriptor(stack, String(index))?.value;
++				if (historyOwnDataDescriptor(item, "unitID")?.value !== unitId) throw new Error("History entry inspection owner changed.");
++				const id = this._historyEntryIds.get(item);
++				if (!Number.isSafeInteger(id) || id <= 0 || id > revision || seen.has(id)) throw new Error("History entry identity is unavailable.");
++				seen.add(id); ids.push(id);
++			}
++			return Object.freeze(ids);
++		};
++		const undos = inspect(this._undoStacks.get(unitId)), redos = inspect(this._redoStacks.get(unitId));
++		if (this._getFocusedUnitId() !== unitId || (this._historyCheckpointRevision ?? 0) !== revision) throw new Error("History entry inspection owner changed.");
++		return Object.freeze({ unitId, revision, undos, redos });
 +	}
 +	getUndoRedoMutationData(unitId, direction, entryId) {
 +		if (typeof unitId !== "string" || !unitId.length || unitId.length > 600 || direction !== "undo" && direction !== "redo" || !Number.isSafeInteger(entryId) || entryId <= 0) throw new Error("History mutation data query is invalid.");
@@ -595,7 +651,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
  	getUndoRedoStatus(unitId) {
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
-@@ -25581,6 +25779,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25581,6 +25807,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		};
  	}
  	pushUndoRedo(item) {
@@ -603,7 +659,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
  		const { unitID } = item;
  		const redoStack = this._getRedoStack(unitID, true);
  		const undoStack = this._getUndoStack(unitID, true);
-@@ -25609,6 +25808,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25609,6 +25836,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  			undoStack.push(item);
  			if (undoStack.length > historyLimit) undoStack.splice(0, 1);
  		}
@@ -612,7 +668,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
  		this._updateStatus();
  	}
  	beginUndoRedoGroup(unitId, groupId, mode = "replace") {
-@@ -25623,6 +25824,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25623,6 +25852,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		});
  	}
  	clearUndoRedo(unitID) {
@@ -620,7 +676,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
  		const redoStack = this._getRedoStack(unitID);
  		if (redoStack) redoStack.length = 0;
  		const undoStack = this._getUndoStack(unitID);
-@@ -25646,7 +25848,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25646,7 +25876,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		return (stack === null || stack === void 0 ? void 0 : stack.length) ? stack[stack.length - 1] : null;
  	}
  	popUndoToRedo() {
@@ -631,7 +687,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
  		if (element) {
  			this._itemGroups.delete(element);
  			if (element.redoMutations.length > 0) this._getRedoStackForFocused().push(element);
-@@ -25654,7 +25858,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25654,7 +25886,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		}
  	}
  	popRedoToUndo() {
@@ -642,7 +698,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
  		if (element) {
  			this._itemGroups.delete(element);
  			this._getUndoStackForFocused().push(element);
-@@ -25666,6 +25872,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25666,6 +25900,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		const stack = this._getUndoStack(unitId);
  		const item = stack === null || stack === void 0 ? void 0 : stack[(stack === null || stack === void 0 ? void 0 : stack.length) - 1];
  		if (item && item.id === id) {
@@ -651,7 +707,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
  			this._itemGroups.delete(item);
  			sequenceExecute(item.undoMutations, this._commandService);
 diff --git a/lib/index.js b/lib/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b45de7bac 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..d834f2b7f3aff1388a6c9c6b63a2e2398a6fd0fa 100644
 --- a/lib/index.js
 +++ b/lib/index.js
 @@ -2036,7 +2036,7 @@ var CommandRegistry = class {
@@ -832,7 +888,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
  		_defineProperty(this, "_historyLimit", void 0);
  		this._historyLimit = configService.getConfig("undoRedo.historyLimit") ?? 50;
  		this.undoRedoStatus$ = this._undoRedoStatus$.asObservable();
-@@ -25573,6 +25689,88 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25573,6 +25689,116 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
@@ -856,6 +912,34 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
 +		const revision = this._historyCheckpointRevision ?? 0;
 +		if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER - 1) throw new Error("History checkpoint revision is exhausted.");
 +		this._historyCheckpointRevision = revision + 1;
++	}
++	getUndoRedoEntryIds(unitId) {
++		this.ensureNotDisposed();
++		if (typeof unitId !== "string" || !unitId.length || unitId.length > 600) throw new Error("History entry inspection query is invalid.");
++		if (this._getFocusedUnitId() !== unitId) throw new Error("History entry inspection owner changed.");
++		const revision = this._historyCheckpointRevision ?? 0;
++		if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER) throw new Error("History checkpoint revision is exhausted.");
++		const seen = new Set();
++		let visited = 0;
++		const inspect = (stack) => {
++			const ids = [];
++			if (stack === void 0) return Object.freeze(ids);
++			if (!Array.isArray(stack)) throw new Error("History entry inspection stack is invalid.");
++			const length = historyOwnDataDescriptor(stack, "length")?.value;
++			if (!Number.isSafeInteger(length) || length < 0 || length > 4096 - visited) throw new Error("History entry inspection limit exceeded.");
++			visited += length;
++			for (let index = 0; index < length; index++) {
++				const item = historyOwnDataDescriptor(stack, String(index))?.value;
++				if (historyOwnDataDescriptor(item, "unitID")?.value !== unitId) throw new Error("History entry inspection owner changed.");
++				const id = this._historyEntryIds.get(item);
++				if (!Number.isSafeInteger(id) || id <= 0 || id > revision || seen.has(id)) throw new Error("History entry identity is unavailable.");
++				seen.add(id); ids.push(id);
++			}
++			return Object.freeze(ids);
++		};
++		const undos = inspect(this._undoStacks.get(unitId)), redos = inspect(this._redoStacks.get(unitId));
++		if (this._getFocusedUnitId() !== unitId || (this._historyCheckpointRevision ?? 0) !== revision) throw new Error("History entry inspection owner changed.");
++		return Object.freeze({ unitId, revision, undos, redos });
 +	}
 +	getUndoRedoMutationData(unitId, direction, entryId) {
 +		if (typeof unitId !== "string" || !unitId.length || unitId.length > 600 || direction !== "undo" && direction !== "redo" || !Number.isSafeInteger(entryId) || entryId <= 0) throw new Error("History mutation data query is invalid.");
@@ -921,7 +1005,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
  	getUndoRedoStatus(unitId) {
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
-@@ -25581,6 +25779,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25581,6 +25807,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		};
  	}
  	pushUndoRedo(item) {
@@ -929,7 +1013,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
  		const { unitID } = item;
  		const redoStack = this._getRedoStack(unitID, true);
  		const undoStack = this._getUndoStack(unitID, true);
-@@ -25609,6 +25808,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25609,6 +25836,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  			undoStack.push(item);
  			if (undoStack.length > historyLimit) undoStack.splice(0, 1);
  		}
@@ -938,7 +1022,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
  		this._updateStatus();
  	}
  	beginUndoRedoGroup(unitId, groupId, mode = "replace") {
-@@ -25623,6 +25824,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25623,6 +25852,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		});
  	}
  	clearUndoRedo(unitID) {
@@ -946,7 +1030,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
  		const redoStack = this._getRedoStack(unitID);
  		if (redoStack) redoStack.length = 0;
  		const undoStack = this._getUndoStack(unitID);
-@@ -25646,7 +25848,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25646,7 +25876,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		return (stack === null || stack === void 0 ? void 0 : stack.length) ? stack[stack.length - 1] : null;
  	}
  	popUndoToRedo() {
@@ -957,7 +1041,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
  		if (element) {
  			this._itemGroups.delete(element);
  			if (element.redoMutations.length > 0) this._getRedoStackForFocused().push(element);
-@@ -25654,7 +25858,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25654,7 +25886,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		}
  	}
  	popRedoToUndo() {
@@ -968,7 +1052,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b
  		if (element) {
  			this._itemGroups.delete(element);
  			this._getUndoStackForFocused().push(element);
-@@ -25666,6 +25872,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25666,6 +25900,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		const stack = this._getUndoStack(unitId);
  		const item = stack === null || stack === void 0 ? void 0 : stack[(stack === null || stack === void 0 ? void 0 : stack.length) - 1];
  		if (item && item.id === id) {
@@ -1046,10 +1130,10 @@ index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..bda168408f522f0aec434a6cb780216a
      registerMultipleCommand(command: ICommand): IDisposable;
      beforeCommandExecuted(listener: CommandListener): IDisposable;
 diff --git a/lib/types/services/undoredo/undoredo.service.d.ts b/lib/types/services/undoredo/undoredo.service.d.ts
-index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..d82f799b990a9965ae06bb4b91366415be8f8b58 100644
+index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..0692e0179d645f1df47c782f6d1174fcc08b6671 100644
 --- a/lib/types/services/undoredo/undoredo.service.d.ts
 +++ b/lib/types/services/undoredo/undoredo.service.d.ts
-@@ -37,6 +37,32 @@ export interface IUndoRedoService {
+@@ -37,6 +37,39 @@ export interface IUndoRedoService {
      undoRedoStatus$: Observable<IUndoRedoStatus>;
      /** Read a unit's history counts without changing the focused unit. */
      getUndoRedoStatus(unitId: string): IUndoRedoStatus;
@@ -1061,6 +1145,13 @@ index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..d82f799b990a9965ae06bb4b91366415
 +     * Empty focus returns unitId "", false availability and null IDs.
 +     */
 +    getUndoRedoCheckpoint(): { readonly unitId: string; readonly revision: number; readonly undoAvailable: boolean; readonly redoAvailable: boolean; readonly undoEntryId: number | null; readonly redoEntryId: number | null };
++
++    /** Frozen existing native entry IDs from both complete stacks of the
++     * requested focused unit. Stack order is bottom to top; max 4096 total.
++     * No payloads, ID allocation, command execution or history mutation.
++     * Refuses unknown/duplicate IDs, foreign units, holes/accessors and overflow;
++     * IDs/revision are service-local consistency data, never authority. */
++    getUndoRedoEntryIds(unitId: string): { readonly unitId: string; readonly revision: number; readonly undos: readonly number[]; readonly redos: readonly number[] };
 +
 +    /** Detached deeply frozen JSON-domain top mutation data, bound to focused
 +     * unit and exact native entry. Preserves all mutation fields, including trigger.
@@ -1082,7 +1173,7 @@ index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..d82f799b990a9965ae06bb4b91366415
      pushUndoRedo(item: IUndoRedoItem): void;
      /**
       * Group undo redo items pushed while the returned scope is active.
-@@ -117,8 +143,37 @@ export declare class LocalUndoRedoService extends Disposable implements IUndoRed
+@@ -117,8 +150,44 @@ export declare class LocalUndoRedoService extends Disposable implements IUndoRed
      private readonly _activeGroups;
      private readonly _itemGroups;
      private readonly _historyLimit;
@@ -1099,6 +1190,13 @@ index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..d82f799b990a9965ae06bb4b91366415
 +     * Empty focus returns unitId "", false availability and null IDs.
 +     */
 +    getUndoRedoCheckpoint(): { readonly unitId: string; readonly revision: number; readonly undoAvailable: boolean; readonly redoAvailable: boolean; readonly undoEntryId: number | null; readonly redoEntryId: number | null };
++
++    /** Frozen existing native entry IDs from both complete stacks of the
++     * requested focused unit. Stack order is bottom to top; max 4096 total.
++     * No payloads, ID allocation, command execution or history mutation.
++     * Refuses unknown/duplicate IDs, foreign units, holes/accessors and overflow;
++     * IDs/revision are service-local consistency data, never authority. */
++    getUndoRedoEntryIds(unitId: string): { readonly unitId: string; readonly revision: number; readonly undos: readonly number[]; readonly redos: readonly number[] };
 +
 +    /** Detached deeply frozen JSON-domain top mutation data, bound to focused
 +     * unit and exact native entry. Preserves all mutation fields, including trigger.
