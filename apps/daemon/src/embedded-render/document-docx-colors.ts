@@ -4,7 +4,7 @@ import { DOMParser, XMLSerializer, type Element, type Node } from '@xmldom/xmldo
 
 export interface DocumentDocxPresentation { foreground?: string; background?: string; fontSizePt?: number; fontLineHeightPt?: number; headingLevel?: number; headingBeforePt?: 0; headingImageLineHeightPt?: number; headingImageWidthPt?: number; headingImageHeightPt?: number; headingImageSource?: 'single-baseline-image' }
 export type DocumentDocxColors = DocumentDocxPresentation;
-export interface DocumentDocxStyleOwner { id: string; name: string; kind: 'cell' | 'inline' | 'heading'; rowSpan?: number; columnSpan?: number; temporaryStart?: boolean; temporaryEnd?: boolean; presentation: DocumentDocxPresentation }
+export interface DocumentDocxStyleOwner { imageAssetSha256?: string; id: string; name: string; kind: 'cell' | 'inline' | 'heading'; rowSpan?: number; columnSpan?: number; temporaryStart?: boolean; temporaryEnd?: boolean; presentation: DocumentDocxPresentation }
 type Ast = { t?: string; c?: unknown };
 const fail = (): never => { throw new Error('The document converter could not preserve authored presentation ownership.'); };
 const w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -85,7 +85,7 @@ export function documentDocxPresentationOwners(ast: unknown, resolve: (attribute
 
 /** Verify generated bookmarks before projecting into editable native OOXML.
  * Never identify cells/runs by text or positional guesses. */
-export function projectDocumentDocxPresentation(xml: string, owners: readonly DocumentDocxStyleOwner[]): string {
+export function projectDocumentDocxPresentation(xml: string, owners: readonly DocumentDocxStyleOwner[], imageAssets?: ReadonlyMap<string,string>): string {
   if (!owners.length) return xml;
   const doc = new DOMParser({ onError: fail }).parseFromString(xml, 'application/xml');
   const byId = new Map(owners.map(owner => [owner.id, owner])), names = new Set(owners.map(owner => owner.name));
@@ -215,6 +215,18 @@ export function projectDocumentDocxPresentation(xml: string, owners: readonly Do
     if (graphics.length !== 1 || graphics[0]!.getAttribute('uri') !== picture || pictures.length !== 1) return fail();
     const blips = pictures[0]!.getElementsByTagNameNS(drawing,'blip');
     if (blips.length !== 1 || !blips[0]!.getAttributeNS(relationship,'embed') || blips[0]!.hasAttributeNS(relationship,'link')) return fail();
+    if (own.imageAssetSha256 !== undefined && (!/^[a-f0-9]{64}$/.test(own.imageAssetSha256)
+      || imageAssets?.get(blips[0]!.getAttributeNS(relationship,'embed')!) !== own.imageAssetSha256)) return fail();
+    if (pictures[0]!.parentNode !== graphics[0] || blips[0]!.parentNode?.namespaceURI !== picture || blips[0]!.parentNode?.localName !== 'blipFill') return fail();
+    const transforms = pictures[0]!.getElementsByTagNameNS(drawing,'xfrm');
+    if (transforms.length !== 1 || transforms[0]!.parentNode?.namespaceURI !== picture || transforms[0]!.parentNode?.localName !== 'spPr'
+      || transforms[0]!.parentNode?.parentNode !== pictures[0]) return fail();
+    const transformExtents = transforms.length === 1 ? Array.from(transforms[0]!.childNodes).filter(node => node.nodeType === 1 && (node as Element).namespaceURI === drawing && (node as Element).localName === 'ext') as Element[] : [];
+    const offsets = transforms.length === 1 ? Array.from(transforms[0]!.childNodes).filter(node => node.nodeType === 1 && (node as Element).namespaceURI === drawing && (node as Element).localName === 'off') as Element[] : [];
+    if (offsets.length !== 1 || offsets[0]!.getAttribute('x') !== '0' || offsets[0]!.getAttribute('y') !== '0'
+      || ['rot','flipH','flipV'].some(attribute => transforms[0]!.hasAttribute(attribute))) return fail();
+    if (transformExtents.length !== 1 || Number(transformExtents[0]!.getAttribute('cx')) !== Math.round(own.presentation.headingImageWidthPt!*12700)
+      || Number(transformExtents[0]!.getAttribute('cy')) !== Math.round(own.presentation.headingImageHeightPt!*12700)) return fail();
     if (extents.length !== 1 || Number(extents[0]!.getAttribute('cx')) !== Math.round(own.presentation.headingImageWidthPt!*12700)
       || Number(extents[0]!.getAttribute('cy')) !== Math.round(own.presentation.headingImageHeightPt!*12700)) return fail();
     for (const side of ['T','B','L','R']) image.setAttribute(`dist${side}`,'0');

@@ -8,7 +8,7 @@ const descriptor = {headingLevel:1 as const,headingImageLineHeightPt:37.5,headin
 function fixture() {
   const ast = {blocks:[{t:'Header',c:[1,['',[],[]],[{t:'Image',c:[['',[],[]],[],['pixel.png','']]}]]}]};
   const owners = documentDocxPresentationOwners(ast,(_attrs,kind)=>kind==='heading'?descriptor:{}), owner = owners[0]!;
-  const image = '<w:r><w:drawing><wp:inline distL="114300"><wp:extent cx="228600" cy="228600"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rIdImage"/></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+  const image = '<w:r><w:drawing><wp:inline distL="114300"><wp:extent cx="228600" cy="228600"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="228600" cy="228600"/></a:xfrm></pic:spPr><pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rIdImage"/></pic:blipFill></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
   const start = `<w:bookmarkStart w:id="${owner.id}" w:name="${owner.name}"/>`, end = `<w:bookmarkEnd w:id="${owner.id}"/>`;
   const wrap = (content:string) => `<w:document xmlns:w="${ns}" xmlns:wp="${wp}"><w:body><w:p><w:pPr><w:pStyle w:val="Heading1"/><w:spacing w:before="360" w:after="240" w:line="750" w:lineRule="atLeast"/></w:pPr>${start}${content}${end}</w:p></w:body></w:document>`;
   return {owners,image,wrap};
@@ -33,13 +33,18 @@ it('refuses changed dimensions, text, duplicate drawings or floating image geome
   }
 });
 it('binds the actual source image through its Header and Image AST attributes', () => {
-  const source = documentDocxSourcePresentation('<html><body><main><h1><img src="pixel.png"></h1></main></body></html>');
+  const image = 'data:image/png;base64,AA==';
+  const source = documentDocxSourcePresentation(`<html><body><main><h1><img src="${image}"></h1></main></body></html>`);
   const heading = source.requests.find(request=>request.kind==='heading')!;
   const resolved = new Map([[heading.id,descriptor]]);
   expect(normalizedDocumentDocxHtml(source,resolved)).toContain(`${source.attributeName}-image="${heading.id}"`);
-  const ast = (id:string) => ({blocks:[{t:'Header',c:[1,['',[],[[source.attributeName.slice(5),heading.id]]],[{t:'Image',c:[['',[],[[`${source.attributeName.slice(5)}-image`,id]]],[],['pixel.png','']]}]]}]});
+  const ast = (id:string) => ({blocks:[{t:'Header',c:[1,['',[],[[source.attributeName.slice(5),heading.id]]],[{t:'Image',c:[['',[],[[`${source.attributeName.slice(5)}-image`,id]]],[],[image,'']]}]]}]});
   const input = ast(heading.id);
-  expect(resolvedDocumentDocxPresentationOwners(input,source,resolved)).toHaveLength(1);
+  const owners = resolvedDocumentDocxPresentationOwners(input,source,resolved);
+  expect(owners).toHaveLength(1);
+  expect(owners[0]!.imageAssetSha256).toMatch(/^[a-f0-9]{64}$/);
+  expect(JSON.stringify(input)).toContain('18pt');
+  expect(()=>resolvedDocumentDocxPresentationOwners(ast(heading.id),{...source,html:source.html.replace(image,'data:image/png;base64,AQ==')},resolved)).toThrow('ownership');
   expect(JSON.stringify(input)).not.toContain(source.attributeName.slice(5));
   expect(()=>resolvedDocumentDocxPresentationOwners(ast('different-image'),source,resolved)).toThrow('ownership');
 });
@@ -65,4 +70,16 @@ it('normalizes only verified collapsed heading whitespace before parsing, preser
   expect(()=>normalizedDocumentDocxHtml(visible,forged)).toThrow('ownership');
   const unchanged = new Map(visible.requests.map(request => [request.id,{}]));
   expect(normalizedDocumentDocxHtml(visible,unchanged)).toContain('&nbsp;');
+});
+
+it('requires the exact selected source asset through the native embed relationship', () => {
+  const {owners, image, wrap} = fixture();
+  const digest = 'a'.repeat(64);
+  owners[0]!.imageAssetSha256 = digest;
+  expect(() => projectDocumentDocxPresentation(wrap(image),owners)).toThrow('ownership');
+  expect(() => projectDocumentDocxPresentation(wrap(image),owners,new Map([['different',digest]]))).toThrow('ownership');
+  expect(() => projectDocumentDocxPresentation(wrap(image),owners,new Map([['rIdImage','b'.repeat(64)]]))).toThrow('ownership');
+  expect(projectDocumentDocxPresentation(wrap(image),owners,new Map([['rIdImage',digest]]))).toContain('lineRule="exact"');
+  const changedTransform = image.replace('<a:ext cx="228600"','<a:ext cx="228601"');
+  expect(() => projectDocumentDocxPresentation(wrap(changedTransform),owners,new Map([['rIdImage',digest]]))).toThrow('ownership');
 });

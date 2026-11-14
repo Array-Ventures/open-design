@@ -1,3 +1,4 @@
+import { documentDocxImageAssets } from './document-image-assets.js';
 import { projectDocumentDocxPage } from './document-docx-page.js';
 import { documentExportProfile, cssPxToTwips, wordFontSize } from './document-export-profile.js';
 import { documentDocxDividers, projectDocumentDocxDividers } from './document-docx-dividers.js';
@@ -148,7 +149,8 @@ export async function exportDocument(html: string, original: string, fileName: s
     const zip = await JSZip.loadAsync(converted);
     const document = zip.file('word/document.xml');
     if (!document) throw new Error('The document converter did not produce editable Word content.');
-    zip.file('word/document.xml', projectDocumentDocxPage(projectDocumentDocxDividers(projectDocumentDocxPresentation(await document.async('string'), owners), dividers.owners)));
+    const imageAssets = owners.some(owner => owner.imageAssetSha256) ? await documentDocxImageAssets(zip) : undefined;
+    zip.file('word/document.xml', projectDocumentDocxPage(projectDocumentDocxDividers(projectDocumentDocxPresentation(await document.async('string'), owners, imageAssets), dividers.owners)));
     const core = zip.file('docProps/core.xml');
     if (core) { const properties = load(await core.async('string'), { xml: true }); properties('dc\\:title').text(title); zip.file('docProps/core.xml', properties.xml()); }
     const body = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
