@@ -24,12 +24,14 @@ mutation params.trigger when dispatching Undo/Redo; only the app may explicitly
 normalize that routing field, not fields inside a sheet or arbitrary unknown keys.
 
 The projection reuses the existing own-data-descriptor refusal and validates the
-complete selected data before structuredClone. Native cloning additionally refuses
-proxies; the copied JSON-domain tree omits optional undefined object fields and
+complete selected data before structuredClone. Own accessors on inspected plain
+data are rejected without invocation. Native cloning also refuses Proxy objects;
+descriptor/prototype reflection is not a security boundary against arbitrary Proxy
+traps. The copied JSON-domain tree omits optional undefined object fields and
 normalizes -0 to 0, then freezes every container. Dense arrays, plain acyclic data
-and finite numbers are required. Accessors are never invoked. Non-enumerable and
-symbol properties refuse instead of silently disappearing. Exact focused unit,
-item identity and service revision are rechecked after copying.
+and finite numbers are required. Non-enumerable and symbol properties refuse
+instead of silently disappearing. Exact focused unit, item identity and service
+revision are rechecked after copying.
 
 Bounds are 100,000 mutations across both directions, depth 64, 4,000,000 nodes,
 64 × 1024 × 1024 UTF-16 text units and 128 MiB UTF-8 JSON output. Byte accounting includes
@@ -48,6 +50,13 @@ app-owned pre-entry comparison before the controller is qualified. Standalone UM
 is unconsumed/unqualified. No app controller, asset/history permission, durable
 Undo/Redo readiness or browser/release qualification is claimed here.
 
-Qualification: 51 focused cases across seven files, full fork typecheck and guard
+Qualification: 52 focused cases across seven files, full fork typecheck and guard
 passed. This remains a source dependency checkpoint, with no browser or packaged
 application qualification for the new projection itself.
+
+A review follow-up found that structuredClone preserves acyclic shared references.
+The original freezer could revisit an already frozen params object shared by Undo
+and Redo and throw. An actual SDK shared-params/diamond test reproduced that failure.
+The clone freezer now tracks visited containers; budget validation still charges
+every serialized path, so aliasing does not bypass limits. The three consumed
+runtime-entry tests also exercise shared params. No native references are returned.

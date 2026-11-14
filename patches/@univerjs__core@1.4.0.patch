@@ -1,5 +1,5 @@
 diff --git a/lib/cjs/index.js b/lib/cjs/index.js
-index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..bcda66c8e541c3971e5fc5934b8b72a561fba748 100644
+index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..56d86d08427a336ad4ae768299eaab1999f4dc71 100644
 --- a/lib/cjs/index.js
 +++ b/lib/cjs/index.js
 @@ -2065,7 +2065,7 @@ var CommandRegistry = class {
@@ -80,7 +80,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..bcda66c8e541c3971e5fc5934b8b72a5
  			if (result instanceof Promise) throw new TypeError("[CommandService]: Command handler should not return a promise.");
  			this._commandExecutingLevel--;
  		} catch (e) {
-@@ -25578,6 +25608,90 @@ const RedoCommand = new class extends MultiImplementationCommand {
+@@ -25578,6 +25608,91 @@ const RedoCommand = new class extends MultiImplementationCommand {
  		return false;
  	}
  }();
@@ -159,19 +159,20 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..bcda66c8e541c3971e5fc5934b8b72a5
 +	};
 +	visit(value, 0);
 +}
-+function freezeHistoryJson(value) {
++function freezeHistoryJson(value, visited = new WeakSet()) {
 +	if (typeof value === "number" && value === 0) return 0;
-+	if (value === null || typeof value !== "object") return value;
++	if (value === null || typeof value !== "object" || visited.has(value)) return value;
++	visited.add(value);
 +	for (const key of Object.keys(value)) {
 +		if (value[key] === undefined) delete value[key];
-+		else value[key] = freezeHistoryJson(value[key]);
++		else value[key] = freezeHistoryJson(value[key], visited);
 +	}
 +	return Object.freeze(value);
 +}
  let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  	constructor(_univerInstanceService, _commandService, _contextService, configService) {
  		super();
-@@ -25594,6 +25708,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25594,6 +25709,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		_defineProperty(this, "_batchingStatus", /* @__PURE__ */ new Map());
  		_defineProperty(this, "_activeGroups", /* @__PURE__ */ new Map());
  		_defineProperty(this, "_itemGroups", /* @__PURE__ */ new WeakMap());
@@ -179,7 +180,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..bcda66c8e541c3971e5fc5934b8b72a5
  		_defineProperty(this, "_historyLimit", void 0);
  		this._historyLimit = configService.getConfig("undoRedo.historyLimit") ?? 50;
  		this.undoRedoStatus$ = this._undoRedoStatus$.asObservable();
-@@ -25602,6 +25717,88 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25602,6 +25718,88 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
@@ -268,7 +269,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..bcda66c8e541c3971e5fc5934b8b72a5
  	getUndoRedoStatus(unitId) {
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
-@@ -25610,6 +25807,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25610,6 +25808,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		};
  	}
  	pushUndoRedo(item) {
@@ -276,7 +277,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..bcda66c8e541c3971e5fc5934b8b72a5
  		const { unitID } = item;
  		const redoStack = this._getRedoStack(unitID, true);
  		const undoStack = this._getUndoStack(unitID, true);
-@@ -25638,6 +25836,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25638,6 +25837,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  			undoStack.push(item);
  			if (undoStack.length > historyLimit) undoStack.splice(0, 1);
  		}
@@ -285,7 +286,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..bcda66c8e541c3971e5fc5934b8b72a5
  		this._updateStatus();
  	}
  	beginUndoRedoGroup(unitId, groupId, mode = "replace") {
-@@ -25652,6 +25852,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25652,6 +25853,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		});
  	}
  	clearUndoRedo(unitID) {
@@ -293,7 +294,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..bcda66c8e541c3971e5fc5934b8b72a5
  		const redoStack = this._getRedoStack(unitID);
  		if (redoStack) redoStack.length = 0;
  		const undoStack = this._getUndoStack(unitID);
-@@ -25675,7 +25876,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25675,7 +25877,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		return (stack === null || stack === void 0 ? void 0 : stack.length) ? stack[stack.length - 1] : null;
  	}
  	popUndoToRedo() {
@@ -304,7 +305,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..bcda66c8e541c3971e5fc5934b8b72a5
  		if (element) {
  			this._itemGroups.delete(element);
  			if (element.redoMutations.length > 0) this._getRedoStackForFocused().push(element);
-@@ -25683,7 +25886,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25683,7 +25887,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		}
  	}
  	popRedoToUndo() {
@@ -315,7 +316,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..bcda66c8e541c3971e5fc5934b8b72a5
  		if (element) {
  			this._itemGroups.delete(element);
  			this._getUndoStackForFocused().push(element);
-@@ -25695,6 +25900,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25695,6 +25901,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		const stack = this._getUndoStack(unitId);
  		const item = stack === null || stack === void 0 ? void 0 : stack[(stack === null || stack === void 0 ? void 0 : stack.length) - 1];
  		if (item && item.id === id) {
@@ -324,7 +325,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..bcda66c8e541c3971e5fc5934b8b72a5
  			this._itemGroups.delete(item);
  			sequenceExecute(item.undoMutations, this._commandService);
 diff --git a/lib/es/index.js b/lib/es/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c3194e9e7 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b45de7bac 100644
 --- a/lib/es/index.js
 +++ b/lib/es/index.js
 @@ -2036,7 +2036,7 @@ var CommandRegistry = class {
@@ -405,7 +406,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  			if (result instanceof Promise) throw new TypeError("[CommandService]: Command handler should not return a promise.");
  			this._commandExecutingLevel--;
  		} catch (e) {
-@@ -25549,6 +25579,90 @@ const RedoCommand = new class extends MultiImplementationCommand {
+@@ -25549,6 +25579,91 @@ const RedoCommand = new class extends MultiImplementationCommand {
  		return false;
  	}
  }();
@@ -484,19 +485,20 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
 +	};
 +	visit(value, 0);
 +}
-+function freezeHistoryJson(value) {
++function freezeHistoryJson(value, visited = new WeakSet()) {
 +	if (typeof value === "number" && value === 0) return 0;
-+	if (value === null || typeof value !== "object") return value;
++	if (value === null || typeof value !== "object" || visited.has(value)) return value;
++	visited.add(value);
 +	for (const key of Object.keys(value)) {
 +		if (value[key] === undefined) delete value[key];
-+		else value[key] = freezeHistoryJson(value[key]);
++		else value[key] = freezeHistoryJson(value[key], visited);
 +	}
 +	return Object.freeze(value);
 +}
  let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  	constructor(_univerInstanceService, _commandService, _contextService, configService) {
  		super();
-@@ -25565,6 +25679,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25565,6 +25680,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		_defineProperty(this, "_batchingStatus", /* @__PURE__ */ new Map());
  		_defineProperty(this, "_activeGroups", /* @__PURE__ */ new Map());
  		_defineProperty(this, "_itemGroups", /* @__PURE__ */ new WeakMap());
@@ -504,7 +506,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  		_defineProperty(this, "_historyLimit", void 0);
  		this._historyLimit = configService.getConfig("undoRedo.historyLimit") ?? 50;
  		this.undoRedoStatus$ = this._undoRedoStatus$.asObservable();
-@@ -25573,6 +25688,88 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25573,6 +25689,88 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
@@ -593,7 +595,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  	getUndoRedoStatus(unitId) {
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
-@@ -25581,6 +25778,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25581,6 +25779,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		};
  	}
  	pushUndoRedo(item) {
@@ -601,7 +603,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  		const { unitID } = item;
  		const redoStack = this._getRedoStack(unitID, true);
  		const undoStack = this._getUndoStack(unitID, true);
-@@ -25609,6 +25807,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25609,6 +25808,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  			undoStack.push(item);
  			if (undoStack.length > historyLimit) undoStack.splice(0, 1);
  		}
@@ -610,7 +612,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  		this._updateStatus();
  	}
  	beginUndoRedoGroup(unitId, groupId, mode = "replace") {
-@@ -25623,6 +25823,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25623,6 +25824,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		});
  	}
  	clearUndoRedo(unitID) {
@@ -618,7 +620,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  		const redoStack = this._getRedoStack(unitID);
  		if (redoStack) redoStack.length = 0;
  		const undoStack = this._getUndoStack(unitID);
-@@ -25646,7 +25847,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25646,7 +25848,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		return (stack === null || stack === void 0 ? void 0 : stack.length) ? stack[stack.length - 1] : null;
  	}
  	popUndoToRedo() {
@@ -629,7 +631,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  		if (element) {
  			this._itemGroups.delete(element);
  			if (element.redoMutations.length > 0) this._getRedoStackForFocused().push(element);
-@@ -25654,7 +25857,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25654,7 +25858,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		}
  	}
  	popRedoToUndo() {
@@ -640,7 +642,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  		if (element) {
  			this._itemGroups.delete(element);
  			this._getUndoStackForFocused().push(element);
-@@ -25666,6 +25871,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25666,6 +25872,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		const stack = this._getUndoStack(unitId);
  		const item = stack === null || stack === void 0 ? void 0 : stack[(stack === null || stack === void 0 ? void 0 : stack.length) - 1];
  		if (item && item.id === id) {
@@ -649,7 +651,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  			this._itemGroups.delete(item);
  			sequenceExecute(item.undoMutations, this._commandService);
 diff --git a/lib/index.js b/lib/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c3194e9e7 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..a3c6bd2a6c1d1b620cf877972a7a5f7b45de7bac 100644
 --- a/lib/index.js
 +++ b/lib/index.js
 @@ -2036,7 +2036,7 @@ var CommandRegistry = class {
@@ -730,7 +732,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  			if (result instanceof Promise) throw new TypeError("[CommandService]: Command handler should not return a promise.");
  			this._commandExecutingLevel--;
  		} catch (e) {
-@@ -25549,6 +25579,90 @@ const RedoCommand = new class extends MultiImplementationCommand {
+@@ -25549,6 +25579,91 @@ const RedoCommand = new class extends MultiImplementationCommand {
  		return false;
  	}
  }();
@@ -809,19 +811,20 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
 +	};
 +	visit(value, 0);
 +}
-+function freezeHistoryJson(value) {
++function freezeHistoryJson(value, visited = new WeakSet()) {
 +	if (typeof value === "number" && value === 0) return 0;
-+	if (value === null || typeof value !== "object") return value;
++	if (value === null || typeof value !== "object" || visited.has(value)) return value;
++	visited.add(value);
 +	for (const key of Object.keys(value)) {
 +		if (value[key] === undefined) delete value[key];
-+		else value[key] = freezeHistoryJson(value[key]);
++		else value[key] = freezeHistoryJson(value[key], visited);
 +	}
 +	return Object.freeze(value);
 +}
  let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  	constructor(_univerInstanceService, _commandService, _contextService, configService) {
  		super();
-@@ -25565,6 +25679,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25565,6 +25680,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		_defineProperty(this, "_batchingStatus", /* @__PURE__ */ new Map());
  		_defineProperty(this, "_activeGroups", /* @__PURE__ */ new Map());
  		_defineProperty(this, "_itemGroups", /* @__PURE__ */ new WeakMap());
@@ -829,7 +832,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  		_defineProperty(this, "_historyLimit", void 0);
  		this._historyLimit = configService.getConfig("undoRedo.historyLimit") ?? 50;
  		this.undoRedoStatus$ = this._undoRedoStatus$.asObservable();
-@@ -25573,6 +25688,88 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25573,6 +25689,88 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
@@ -918,7 +921,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  	getUndoRedoStatus(unitId) {
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
-@@ -25581,6 +25778,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25581,6 +25779,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		};
  	}
  	pushUndoRedo(item) {
@@ -926,7 +929,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  		const { unitID } = item;
  		const redoStack = this._getRedoStack(unitID, true);
  		const undoStack = this._getUndoStack(unitID, true);
-@@ -25609,6 +25807,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25609,6 +25808,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  			undoStack.push(item);
  			if (undoStack.length > historyLimit) undoStack.splice(0, 1);
  		}
@@ -935,7 +938,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  		this._updateStatus();
  	}
  	beginUndoRedoGroup(unitId, groupId, mode = "replace") {
-@@ -25623,6 +25823,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25623,6 +25824,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		});
  	}
  	clearUndoRedo(unitID) {
@@ -943,7 +946,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  		const redoStack = this._getRedoStack(unitID);
  		if (redoStack) redoStack.length = 0;
  		const undoStack = this._getUndoStack(unitID);
-@@ -25646,7 +25847,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25646,7 +25848,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		return (stack === null || stack === void 0 ? void 0 : stack.length) ? stack[stack.length - 1] : null;
  	}
  	popUndoToRedo() {
@@ -954,7 +957,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  		if (element) {
  			this._itemGroups.delete(element);
  			if (element.redoMutations.length > 0) this._getRedoStackForFocused().push(element);
-@@ -25654,7 +25857,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25654,7 +25858,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		}
  	}
  	popRedoToUndo() {
@@ -965,7 +968,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c
  		if (element) {
  			this._itemGroups.delete(element);
  			this._getUndoStackForFocused().push(element);
-@@ -25666,6 +25871,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25666,6 +25872,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		const stack = this._getUndoStack(unitId);
  		const item = stack === null || stack === void 0 ? void 0 : stack[(stack === null || stack === void 0 ? void 0 : stack.length) - 1];
  		if (item && item.id === id) {

@@ -97,13 +97,32 @@ it.each(['lib/es/index.js','lib/cjs/index.js','lib/index.js'])('reads frozen gen
 import {createRequire} from 'node:module';import {pathToFileURL} from 'node:url';
 const entry=process.argv[1],core=entry.includes('/cjs/')?createRequire(import.meta.url)(entry):await import(pathToFileURL(entry).href);
 const service=new core.LocalUndoRedoService({focused$:{subscribe(){return{closed:false,unsubscribe(){}}}},getFocusedUnit(){return{getUnitId(){return 'owned'}}}}, {registerCommand(){return{dispose(){}}}}, {getContextValue(){return false}}, {getConfig(){return 50}});
-const params={nested:{value:17},trigger:'native.routing'};service.pushUndoRedo({unitID:'owned',undoMutations:[{id:'generic.undo',params}],redoMutations:[]});
+const params={nested:{value:17},trigger:'native.routing'};service.pushUndoRedo({unitID:'owned',undoMutations:[{id:'generic.undo',params}],redoMutations:[{id:'generic.redo',params}]});
 const id=service.getUndoRedoCheckpoint().undoEntryId,result=service.getUndoRedoMutationData('owned','undo',id);
 if(!Object.isFrozen(result)||!Object.isFrozen(result.undoMutations)||!Object.isFrozen(result.undoMutations[0].params.nested))throw Error('Mutable projection');
+if(result.undoMutations[0].params!==result.redoMutations[0].params)throw Error('Lost detached alias');
 params.nested.value=999;if(result.undoMutations[0].params.nested.value!==17||result.undoMutations[0].params.trigger!=='native.routing')throw Error('Aliased or filtered data');
 let getterCalls=0;Object.defineProperty(params,'accessor',{enumerable:true,get(){getterCalls++;return 1}});let refused=false;try{service.getUndoRedoMutationData('owned','undo',id)}catch{refused=true}
 if(!refused||getterCalls)throw Error('Unsafe getter inspection');service.dispose();let closed=false;try{service.getUndoRedoMutationData('owned','undo',id)}catch{closed=true}if(!closed)throw Error('Disposed data accepted');
 process.stdout.write(JSON.stringify({frozen:true,detached:true,getterRefused:true,closed}));
 `,resolve(root,entry)],{encoding:'utf8'});
   expect(JSON.parse(output)).toEqual({frozen:true,detached:true,getterRefused:true,closed:true});
+});
+
+it('freezes actual shared native params and diamond data without rewriting an already frozen clone', () => {
+  const f = fixture();
+  const child = {value:17};
+  const params = {left:child,right:child};
+  f.history.pushUndoRedo({unitID:f.book.getId(),undoMutations:[{id:'generic.undo',params}],redoMutations:[{id:'generic.redo',params}]});
+  const result = f.read();
+  const undo = result.undoMutations[0]!.params as typeof params;
+  const redo = result.redoMutations[0]!.params as typeof params;
+  expect(undo).toBe(redo);
+  expect(undo.left).toBe(undo.right);
+  expect(undo).not.toBe(params);
+  expect(undo.left).not.toBe(child);
+  expect(Object.isFrozen(undo)).toBe(true);
+  expect(Object.isFrozen(undo.left)).toBe(true);
+  child.value = 999;
+  expect(undo.right.value).toBe(17);
 });
