@@ -1,4 +1,8 @@
-# Live worksheet host wiring — in progress
+# Live worksheet host wiring — historical source checkpoints
+
+The later [candidate 128 qualification](workbook-live128-qualification.md) records
+the first bounded packaged Add/Save/Undo/Redo/Rename/Delete/reload flow. Pending
+statements below describe their dated source checkpoints, not the current pair.
 
 Root integration joins private consumer78b1724b with reviewed bridge2101576e
 at9e80ed84. The one controller merge conflict retained private pause/rebind
