@@ -95,7 +95,7 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
     if (!pendingMembership && generation === null && pendingApplications.size === 0 && settledInputEpoch === inputEpoch && !summary.pending) {
       for (const waiter of waiters) { waiters.delete(waiter); waiter.resolve(); }
     }
-    changed(workbookCalculationState({ ...summary, pending: summary.pending || Boolean(pendingMembership) }));
+    changed(workbookCalculationState({ ...summary, pending: Boolean(owner?.ready && (summary.pending || pendingMembership || generation !== null || pendingApplications.size)) }));
   };
   // SDK graph publication is asynchronous, so a genuine terminal can arrive
   // first. Retain only one candidate for this input epoch, bounded by its
@@ -139,6 +139,7 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
       // Keep requiring a verified scalar pass through coalesced/restarted
       // calculations until this structural input epoch has really completed.
       if (scalarRequired) Object.assign(command.params ?? {}, { forceCalculation: true });
+      publish();
     }
 
     if (command.id === SetRangeValuesMutation.id) {
@@ -224,7 +225,7 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
     else if (result.kind === 'arrays') display.arrayResult(result);
     else if (generation !== null && !scalarRequired && display.isCurrentCompletion(result) && (!completion || result.workbookCalculation.generation >= completion.workbookCalculation.generation)) { completion = result; finishWithoutResult(); }
   });
-  const unavailable = owner?.onUnavailable(rejectWaiters);
+  const unavailable = owner?.onUnavailable(() => { rejectWaiters(); display.pause('Worksheet calculation unavailable.'); publish(); });
   const intercept = injector.get(SheetInterceptorService).intercept(INTERCEPTOR_POINT.CELL_CONTENT, {
     priority: 90, effect: InterceptorEffectEnum.Value,
     handler: (cell, location, next) => next(display.display(location.subUnitId, location.row, location.col, (cell ?? {}) as ICellData, location.rawData || undefined)),

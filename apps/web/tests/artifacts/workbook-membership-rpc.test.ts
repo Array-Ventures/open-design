@@ -293,3 +293,25 @@ it('tracks an explicit epoch-stamped host calculation until its actual initial c
     expect(f.owner.ready).toBe(true);
   } finally { await f.close(); }
 }, 15_000);
+
+it('keeps ordinary calculation pending until its held reverse cache application reaches the real workbook', async () => {
+  vi.stubGlobal('Worker', NodeWorkbookWorker);
+  const f = await createWorkbookMembershipRpcFixture();
+  const held: unknown[] = [];
+  let holding = true;
+  const contains = (value: unknown): boolean => value === SetRangeValuesMutation.id || Boolean(value && typeof value === 'object' && Object.values(value).some(contains));
+  f.worker.acceptIncoming = message => { if (holding && contains(message)) { if (!held.includes(message)) held.push(message); return false; } return true; };
+  try {
+    f.book.getSheetBySheetId('2')!.getRange('A1').setValue(19);
+    await vi.waitFor(() => expect(held.length).toBeGreaterThan(0), { timeout: 5000 });
+    expect(f.book.save().sheets['3']!.cellData![1]![0]!.v).toBe(38);
+    expect(f.statuses.at(-1)?.phase).toBe('pending');
+    let complete = false;
+    const ready = f.calculation.awaitQuiescent().then(() => { complete = true; }); void ready.catch(() => {});
+    await Promise.resolve(); expect(complete).toBe(false);
+    holding = false; for (const message of held) f.worker.thread.emit('message', message);
+    await ready;
+    expect(f.book.save().sheets['3']!.cellData![1]![0]!.v).toBe(40);
+    expect(f.statuses.at(-1)?.phase).toBe('live'); expect(f.owner.ready).toBe(true);
+  } finally { await f.close(); }
+}, 15_000);

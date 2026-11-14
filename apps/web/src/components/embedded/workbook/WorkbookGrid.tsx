@@ -247,7 +247,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
         membershipWriter = lease;
         await calculationOwner.configureMembership({ version: 1, unitId: id, kernelGeneration: lease.generation, sourceCapability: sourceSha256 });
         if (!current() || !lease.isOwned()) return;
-        const releaseCalculation = lease.bindCalculation(signal => scalarCalculation.awaitMembership(signal));
+        const releaseCalculation = lease.bindCalculation(signal => scalarCalculation.awaitQuiescent(signal));
         layer.own(releaseCalculation);
         const controller = new WorkbookSheetHistoryController(univer, lease.writer, lease.scope, readSnapshot, membershipCurrent, scalarCalculation.runProtectedSequence);
         layer.own(() => controller.dispose());
