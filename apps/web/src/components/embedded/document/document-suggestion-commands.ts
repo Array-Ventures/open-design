@@ -104,6 +104,9 @@ export function $resolveDocumentSuggestion(id: string, accept: boolean): void {
     : nodes.length !== 1)) throw Error('This suggestion could not be preserved.');
   $addUpdateTag(DOCUMENT_SUGGESTION_UPDATE_TAG);
   for (const node of nodes) {
+    // Native history must observe the changed proposal subtree, not only an
+    // unchanged adjacent text leaf dirtied by detachment. No text is rewritten.
+    node.getAllTextNodes().forEach(text => text.markDirty());
     if ((node.suggestion().kind === 'insert') === accept) node.getChildren().forEach(child => node.insertBefore(child));
     node.remove();
   }

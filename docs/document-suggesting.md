@@ -202,3 +202,48 @@ using the existing `readFileSync` fixture pattern corrected it without changing
 production or admission policy. Private logs use
 `/tmp/document-suggestion-reopen-*`; the exact source fixture SHA-256 remains
 `25a04473b1a6a8921af377d2300c665af7b17eb09662a037f629a9a9bc4230a0`.
+
+
+## First-review native history: intermediate correction
+
+Actual immutable 136 reopened the exact saved 135 proposal as a structured
+document, and the neutral controls and resolve-first export message were
+personally inspected. However, rejecting that loaded insertion as the first
+content action saved the rejection, then native Undo left the rejected source
+unchanged. These are separate outcomes; the reopen correction did not qualify
+complete review/history behavior. Private source readbacks and screenshots are
+under `/tmp/artifact136-document-ui/`.
+
+The real mounted DocumentEditor with its unmocked HistoryPlugin reproduces the
+first-Reject failure. The pinned history implementation may merge an update
+when its only dirty leaf is unchanged, even with the existing HISTORY_PUSH_TAG.
+Detaching a proposal can dirty just its unchanged neighboring text leaf. The
+correction marks the actual proposal text leaves dirty through the public SDK
+before their validated move/removal. It does not change their text or formats,
+manually push a history item, copy a stack, patch the SDK or trust HISTORIC tags.
+All validation still precedes the owned update tag and subtree mutation.
+
+An investigated external-history baseline wrapper was unnecessary and is not
+included: the three-line changed-subtree notification alone fixes all six
+first Accept/Reject insertion/deletion/replacement controls. Mounted controls
+also exercise original null selection, native Undo/Redo, exact proposal markup
+and later conditional Save, disposed/new editor ownership, StrictMode, ordinary
+Editing typing and an invalid review identity. This is source/component proof,
+not another packaged browser result.
+
+**This checkpoint deliberately retains a failing additional regression.**
+A first ordinary whole-document font choice (Text → Serif), without content
+focus in StrictMode, does not return to Sans on native Undo. The font path is
+unchanged by the proposal-subtree correction; a separate fix is still required.
+The exact regression remains in DocumentSuggestions.test.tsx, named
+`keeps first ordinary font editing undoable without content focus in StrictMode`.
+It is neither skipped nor converted into an expected failure. Logs use
+`/tmp/document-first-review-*`; this intermediate source is not fully green,
+ready for a package, or a complete document-history qualification.
+
+Intermediate author results: 80 passing cases and the one retained font failure
+across four files (`/tmp/document-first-review-intermediate-tests.log`, exit 1).
+Full workspace types, guard, frozen install and diff check exited 0. The first
+typecheck found duplicate imports in the expanded test, corrected without
+changing production or assertions; its log is retained separately. No package,
+browser, runtime, source overlay or publication was used for this correction.

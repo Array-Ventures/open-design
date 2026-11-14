@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { $getRoot, CONTROLLED_TEXT_INSERTION_COMMAND, type LexicalEditor } from 'lexical';
+import { $getRoot, $getSelection, $hasUpdateTag, CONTROLLED_TEXT_INSERTION_COMMAND, type LexicalEditor } from 'lexical';
 import { DocumentEditor } from '../../../src/components/embedded/document/DocumentEditor';
+import { $resolveDocumentSuggestion } from '../../../src/components/embedded/document/document-suggestion-commands';
+import { DOCUMENT_SUGGESTION_UPDATE_TAG } from '../../../src/components/embedded/document/document-suggestion-policy';
 import { documentHtml } from '../../../src/components/embedded/document/document-html';
 const save = vi.hoisted(() => vi.fn());
 vi.mock('../../../src/components/embedded/document/document-file', () => ({ saveDocumentFile: save }));
@@ -122,8 +125,8 @@ it('protects the presentation owner of pending source branches from an untracked
   expect(screen.getByRole('textbox', { name: 'Review' }).querySelector('ins')?.textContent).toBe(' proposal');
 });
 
-import { $hasUpdateTag, $getSelection, $isRangeSelection, type RangeSelection } from 'lexical';
-import { DOCUMENT_SUGGESTION_UPDATE_TAG } from '../../../src/components/embedded/document/document-suggestion-policy';
+import { $isRangeSelection, type RangeSelection } from 'lexical';
+
 import { $suggestDocumentText } from '../../../src/components/embedded/document/document-suggestion-commands';
 it('does not leave an owned tag after a failed proposal constructor in the same update', async () => {
   render(<DocumentEditor projectId="fixture" fileName="review.html" title="Review" observed={original} onSaved={() => {}} />);
@@ -191,5 +194,94 @@ it('shows only the current anchored card, navigates proposals without source edi
   fireEvent.click(screen.getByRole('button', { name: 'Previous suggestion' }));
   expect(screen.getByText('Suggestion 1 of 2')).toBeInTheDocument();
   expect(editor().getEditorState().toJSON()).toEqual(before); expect(save).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: 'Save document' })).toBeNull();
+});
+
+it.each([['Reject', 'insert'], ['Accept', 'insert'], ['Reject', 'delete'], ['Accept', 'delete'], ['Reject', 'replace'], ['Accept', 'replace']] as const)('keeps loaded %s/%s as native Undo baseline before content focus', async (action, operation) => {
+  const { readFileSync } = await import('node:fs');
+  const raw = readFileSync(`${process.cwd()}/tests/components/embedded/fixtures/suggestion135-saved.html`, 'utf8');
+  const html = operation === 'insert' ? raw : raw.replace(/<ins([^>]*)>([\s\S]*?)<\/ins>/, (_match, attributes: string, content: string) => {
+    if (operation === 'delete') return `<del${attributes.replace('operation="insert"', 'operation="delete"')}>${content}</del>`;
+    const paired = attributes.replace('operation="insert"', 'operation="replace"');
+    return `<del${paired}><strong> old</strong></del><ins${paired}>${content}</ins>`;
+  });
+  save.mockImplementation(async (_project, _file, content) => ({ html: content, sha256: 'reviewed' }));
+  render(<DocumentEditor projectId="fixture" fileName="review.html" title="Review" observed={{ html, sha256: 'pending-source' }} onSaved={() => {}} />);
+  const active = editor();
+  const originalProposals = () => [...screen.getByRole('textbox', { name: 'Review' }).querySelectorAll('ins,del')].map(node => node.outerHTML);
+  const pending = originalProposals();
+  expect(pending).toHaveLength(operation === 'replace' ? 2 : 1);
+  expect(active.getEditorState().read($getSelection)).toBeNull();
+  fireEvent.click(await screen.findByRole('button', { name: action }));
+  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Review' }).querySelector('ins,del')).toBeNull());
+  await act(async () => { active.dispatchCommand(UNDO_COMMAND, undefined); });
+  expect(originalProposals()).toEqual(pending);
+  await act(async () => { active.dispatchCommand(REDO_COMMAND, undefined); });
+  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Review' }).querySelector('ins,del')).toBeNull());
+  fireEvent.click(screen.getByRole('button', { name: 'Save document' }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  const saved = new DOMParser().parseFromString(save.mock.calls[0]![2] as string, 'text/html');
+  expect(saved.querySelector('ins,del')).toBeNull();
+  const suffix = operation === 'replace' ? action === 'Accept' ? ' draft' : ' old' : (operation === 'insert') === (action === 'Accept') ? ' draft' : '';
+  expect(saved.querySelector('h1')?.textContent).toBe(`Suggestion acceptance${suffix}`);
+});
+
+it('keeps first ordinary font editing undoable without content focus in StrictMode', async () => {
+  render(<StrictMode><DocumentEditor projectId="fixture" fileName="review.html" title="Review" observed={original} onSaved={() => {}} /></StrictMode>);
+  const active = editor();
+  expect(active.getEditorState().read($getSelection)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Font' }));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Text' })).getByRole('button', { name: 'Serif' }));
+  await waitFor(() => expect(screen.getByRole('textbox').style.fontFamily).toContain('Georgia'));
+  await act(async () => { active.dispatchCommand(UNDO_COMMAND, undefined); });
+  expect(screen.getByRole('textbox').style.fontFamily).toContain('system-ui');
+  expect(active.getEditorState().read($getSelection)).toBeNull();
+  await act(async () => { active.dispatchCommand(REDO_COMMAND, undefined); });
+  expect(screen.getByRole('textbox').style.fontFamily).toContain('Georgia');
+});
+it('does not carry review history into a new mounted document owner', async () => {
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(`${process.cwd()}/tests/components/embedded/fixtures/suggestion135-saved.html`, 'utf8');
+  const first = render(<DocumentEditor projectId="first" fileName="review.html" title="Review" observed={{ html, sha256: 'first' }} onSaved={() => {}} />);
+  const retired = editor();
+  fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+  await waitFor(() => expect(screen.getByRole('textbox').querySelector('ins')).toBeNull());
+  first.unmount();
+  const next = html.replace(' draft', ' second');
+  render(<StrictMode><DocumentEditor projectId="second" fileName="review.html" title="Review" observed={{ html: next, sha256: 'second' }} onSaved={() => {}} /></StrictMode>);
+  const current = editor();
+  await act(async () => { current.dispatchCommand(UNDO_COMMAND, undefined); retired.dispatchCommand(UNDO_COMMAND, undefined); });
+  expect(screen.getByRole('textbox').querySelector('ins')?.textContent).toBe(' second');
+  fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+  await waitFor(() => expect(screen.getByRole('textbox').querySelector('ins')).toBeNull());
+  await act(async () => { current.dispatchCommand(UNDO_COMMAND, undefined); });
+  expect(screen.getByRole('textbox').querySelector('ins')?.textContent).toBe(' second');
+});
+
+it('keeps ordinary Editing typing and native history intact in StrictMode', async () => {
+  render(<StrictMode><DocumentEditor projectId="fixture" fileName="review.html" title="Review" observed={original} onSaved={() => {}} /></StrictMode>);
+  const active = editor();
+  expect(active.getEditorState().read($getSelection)).toBeNull();
+  act(() => active.update(() => { $getRoot().getFirstChildOrThrow().selectEnd(); }, { discrete: true }));
+  await act(async () => { active.dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, ' typed'); });
+  expect(screen.getByRole('textbox').textContent).toBe('Original typed');
+  await act(async () => { active.dispatchCommand(UNDO_COMMAND, undefined); });
+  expect(screen.getByRole('textbox').textContent).toBe('Original');
+  await act(async () => { active.dispatchCommand(REDO_COMMAND, undefined); });
+  expect(screen.getByRole('textbox').textContent).toBe('Original typed');
+});
+
+it('does not dirty a proposal or authorize an update for a missing review identity', async () => {
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(`${process.cwd()}/tests/components/embedded/fixtures/suggestion135-saved.html`, 'utf8');
+  render(<DocumentEditor projectId="fixture" fileName="review.html" title="Review" observed={{ html, sha256: 'pending-source' }} onSaved={() => {}} />);
+  const active = editor();
+  const before = active.getEditorState().toJSON();
+  act(() => active.update(() => {
+    expect(() => $resolveDocumentSuggestion('11111111-1111-4111-8111-111111111111', false)).toThrow('no longer available');
+    expect($hasUpdateTag(DOCUMENT_SUGGESTION_UPDATE_TAG)).toBe(false);
+  }, { discrete: true }));
+  expect(active.getEditorState().toJSON()).toEqual(before);
+  expect(active.getEditorState().read($getSelection)).toBeNull();
   expect(screen.queryByRole('button', { name: 'Save document' })).toBeNull();
 });
