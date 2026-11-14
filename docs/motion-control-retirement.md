@@ -44,9 +44,9 @@ The initial draft's first-load hazard was found during source analysis and fixed
 before qualification. Source tests cover pre-load state, nonce replacement,
 capability downgrade, parking, cleanup and legacy basic playback.
 
-No immutable image, packaged app, chat/fullscreen visual or audible playback
-qualification has run for this slice. This repairs one control-lifetime gap;
-it does not qualify every media format, annotation or export path.
+At this source checkpoint packaged qualification had not run. The subsequent
+local candidate110/53 checks below repair one control-lifetime gap; they do not
+qualify every media format, annotation or export path.
 
 Independent review found an inactive-load liveness gap in the first checkpoint:
 its active-only lookup discarded the current nonce reply while hidden, but the
@@ -57,3 +57,37 @@ a fresh handshake in their helper. Nonce replies now accept the exact contained,
 connected frame while inactive; state publication and controls remain active-only.
 The corrected focused activity/player/bridge suite passes 31 cases, with web
 types and repository guard. No frozen package was built from the failing source.
+
+
+## Local candidate 110/53 checkpoint
+
+Clean source `5b6b39dfc487dd63962236416d6fc1e4a0b43e85` produced companion
+build `bd0a08bfa356fd6bc70ee8b7666aaa078d0dadf096b500b891a5e9705d9dae28`
+and actual renderer image
+`sha256:0a7bced276c8e1b435481e778b8e1ea202badb65855e290eb99ba82173fdc6fb`.
+No source overlays were used. A separate production-mode native test stack on
+7361 required the unpublished-candidate override; no publication or installer
+qualification is implied.
+
+Actual owned GSAP/audio playback covered replay, held pause, exact pointer seek,
+mute/unmute and user-enabled decoded audio. Artifact-link navigation to static
+content withdrew controls; Back restored a replacement owner. Delayed old-owner
+messages could not control or clear that replacement. Actual file revision and
+removal/restoration flows withdrew/restored controls. The native audio fallback
+played its full eight-second local WAV. Chat/fullscreen transitions retained the
+outer Studio iframe and clock. Wide/narrow light/dark artifact views were inspected.
+The paired native checkpoint records cropped images and detailed limitations.
+
+OS audibility and retained inactive motion-document reactivation remain unverified.
+Public chat/fullscreen transitions do not deactivate the inner player. A scratch
+same-srcdoc reassignment instead reloaded the lazy transport shell; its timeout
+is invalid harness evidence, not a product handshake failure. No source change
+was made from it. The initial removal oracle counted an inactive auxiliary frame
+outside ArtifactSurface; the corrected scoped check retained that observation
+and proved withdrawal without requiring global iframe absence. A rapid keyboard
+seek sequence did not reach its assumed position; exact pointer seek is the
+qualified positional check. All owned stack, model, browser, companion and
+Postgres resources were stopped. Production and shared previews were untouched.
+
+The later normal main merge is source integration only; it does not relabel the
+immutable 110/53 pair as containing later worksheet or comment changes.
