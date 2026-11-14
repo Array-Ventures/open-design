@@ -200,3 +200,27 @@ it('normalizes authored inline font size and actual block-strut line height thro
     expect(() => normalizeDocumentColorOwners(document,[{id:'owner',kind:'inline'}],attribute,[style],read)).toThrow();
   } finally { spy.mockRestore(); }
 });
+
+it.each(['code','pre'])('measures the actual %s context rather than guessing a shared Word code size', tag => {
+  source(`<p><${tag} ${attribute}="code">Code</${tag}></p>`);
+  const original = window.getComputedStyle.bind(window);
+  const spy = vi.spyOn(window,'getComputedStyle').mockImplementation(element => {
+    const computed = original(element);
+    return new Proxy(computed,{get(target,key) {
+      if (key === 'fontSize') return element.tagName === 'PRE' ? '14px' : '20px';
+      if (key === 'lineHeight') return element.tagName === 'PRE' ? '21px' : '30px';
+      const value = Reflect.get(target,key,target); return typeof value === 'function' ? value.bind(target) : value;
+    }});
+  });
+  const value = normalizeDocumentColorOwners(document,[{id:'code',kind:'inline'}],attribute,[style],read)[0]!.presentation;
+  expect(value).toEqual({fontSizePt:tag === 'pre' ? 10.5 : 15,fontLineHeightPt:tag === 'pre' ? 15.75 : 22.5,fontSizeSource:'code-context'});
+  spy.mockRestore();
+});
+
+it('does not create a nonempty size owner for glyph-free empty code that the native reader omits', () => {
+  source(`<p>A<code ${attribute}="empty" style="font-size:16pt"></code>B</p>`);
+  const range = vi.spyOn(document,'createRange').mockReturnValue({selectNodeContents() {},getClientRects:()=>[]} as unknown as Range);
+  try {
+    expect(normalizeDocumentColorOwners(document,[{id:'empty',kind:'inline'}],attribute,[style],read)).toEqual([{id:'empty',presentation:{}}]);
+  } finally { range.mockRestore(); }
+});

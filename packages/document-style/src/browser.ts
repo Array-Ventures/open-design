@@ -221,7 +221,7 @@ export function normalizeDocumentPresentationOwners(document: Document, requests
   if (!canvas || canvas[3] !== 1) return fail();
   return requests.map(request => {
     const owner = elements.get(request.id)!;
-    if (request.kind === 'cell' ? !['TD','TH'].includes(owner.tagName) : request.kind === 'divider' ? owner.tagName !== 'HR' : request.kind === 'heading' ? !/^H[1-6]$/.test(owner.tagName) : owner.tagName !== 'SPAN') return fail();
+    if (request.kind === 'cell' ? !['TD','TH'].includes(owner.tagName) : request.kind === 'divider' ? owner.tagName !== 'HR' : request.kind === 'heading' ? !/^H[1-6]$/.test(owner.tagName) : !['SPAN','CODE','PRE'].includes(owner.tagName)) return fail();
     const presentation: import('./presentation.js').NormalizedDocumentPresentation = {};
     if (request.kind === 'heading') {
       const main = owner.parentElement, level = Number(owner.tagName.slice(1));
@@ -242,16 +242,19 @@ export function normalizeDocumentPresentationOwners(document: Document, requests
       for (let ancestor: HTMLElement | null = owner; ancestor; ancestor = ancestor.parentElement) {
         if (ancestor.style.getPropertyValue('font-size')) { authoredSize = true; break; }
       }
-      if (authoredSize) {
-        const view = document.defaultView!, computed = view.getComputedStyle(owner);
+      const codeContext = ['CODE','PRE'].includes(owner.tagName);
+      if ((authoredSize || codeContext) && (!codeContext || Boolean(owner.textContent))) {
+        const view = document.defaultView!;
+        const measured = owner.tagName === 'PRE' && owner.children.length === 1 && owner.firstElementChild?.tagName === 'CODE' ? owner.firstElementChild : owner;
+        const computed = view.getComputedStyle(measured);
         const px = (value: string): number => /^\d+(?:\.\d+)?px$/.test(value) ? Number.parseFloat(value) : NaN;
-        let block: HTMLElement | null = owner.parentElement;
+        let block: HTMLElement | null = owner.tagName === 'PRE' ? owner : owner.parentElement;
         while (block && !['P','H1','H2','H3','H4','H5','H6','LI','PRE','TD','TH','BLOCKQUOTE','MAIN','BODY'].includes(block.tagName)) block = block.parentElement;
         if (!block) return fail();
         const size = normalizeDocumentFontPoints(px(computed.fontSize) * .75);
         const line = Math.max(px(computed.lineHeight), px(view.getComputedStyle(block).lineHeight)) * .75;
         if (!validDocumentFontSize(size) || !validDocumentFontLineHeight(line)) return fail();
-        presentation.fontSizePt = size; presentation.fontLineHeightPt = line; presentation.fontSizeSource = 'authored';
+        presentation.fontSizePt = size; presentation.fontLineHeightPt = line; presentation.fontSizeSource = codeContext ? 'code-context' : 'authored';
       }
     }
     if (request.kind === 'divider') {
