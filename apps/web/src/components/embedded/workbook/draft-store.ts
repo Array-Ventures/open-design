@@ -58,7 +58,7 @@ export async function listWorkbookDrafts(scope: Omit<WorkbookDraftScope, 'draftI
 export function serializeWorkbookDraft(scope: WorkbookDraftScope, state: WorkbookCheckpoint): string {
   return bounded(JSON.stringify(encodeWorkbookDraft(scope, state)));
 }
-export async function saveWorkbookDraft(scope: WorkbookDraftScope, state: WorkbookCheckpoint | null, guard?: () => void): Promise<void> {
+export async function saveWorkbookDraft(scope: WorkbookDraftScope, state: WorkbookCheckpoint | null, guard?: () => void, beforeCommit?: () => void): Promise<void> {
   const key = workbookDraftKey(scope);
   const serialized = state ? serializeWorkbookDraft(scope, state) : null;
   const needsRecovery = state ? workbookCheckpointNeedsRecovery(state, scope, state.source) : false;
@@ -76,7 +76,7 @@ export async function saveWorkbookDraft(scope: WorkbookDraftScope, state: Workbo
       // The last queued write has succeeded but is still abortable. Admission
       // and explicit commit occur in one synchronous event turn. Promise
       // completion may come later; it is not a second ownership grant.
-      try { guard(); tx.commit(); }
+      try { guard(); beforeCommit?.(); tx.commit(); }
       catch { tx.abort(); }
     };
     return request;

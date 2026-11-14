@@ -1,3 +1,4 @@
+import { prepareWorkbookSelectorRetirement, copyWorkbookRemovalMap } from './sheet-selector-retirement';
 import { workbookProtectedRootRetirement, type WorkbookNativeRoot } from './sheet-root-retirement';
 import { MAX_WORKBOOK_SHEET_CONTEXTS } from './workbook-draft-limits';
 import { prepareWorkbookBirthReplay } from './sheet-birth-replay';
@@ -31,12 +32,16 @@ export interface WorkbookCheckpoint {
   sheetActionConflict?: true;
   sourceSnapshotBinding?: WorkbookSourceSnapshotBinding;
 }
+export interface WorkbookGuardedCheckpoint {
+  guard(): void;
+  beforeCommit?(): void;
+}
 export interface WorkbookJournal {
   scope?: WorkbookDraftScope;
   save(checkpoint: WorkbookCheckpoint | null): Promise<void>;
   /** Same owned draft transaction, with synchronous guards before writes and
    * at its last successful request before explicit commit. */
-  saveGuarded?(checkpoint: WorkbookCheckpoint, guard: () => void): Promise<void>;
+  saveGuarded?(checkpoint: WorkbookCheckpoint, protection: WorkbookGuardedCheckpoint): Promise<void>;
   validate?(checkpoint: WorkbookCheckpoint): void;
   isCurrent?(): boolean;
   restored?: WorkbookCheckpoint;
@@ -87,6 +92,11 @@ export class WorkbookWriter {
     let dirty = Boolean(this.pending || this.running || this.protection || this.sheetActionConflict);
     try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
     return { dirty, saving: this.running !== null || this.protection !== null, error: this.error };
+  }
+  /** Cheap maintenance gates; neither clones state nor grants a sheet action. */
+  protectedSheetWorkPending(): boolean { return this.protection !== null || this.executingProtectedCommand; }
+  hasProtectedSheetRecords(): boolean {
+    return this.sheetDeletions.length > 0 || Boolean(this.sheetBirths?.entries.length || this.sheetBirths?.removals?.length);
   }
   update(snapshot: IWorkbookData) {
     if (!this.active || this.executingProtectedCommand) return;
@@ -320,7 +330,7 @@ export class WorkbookWriter {
       };
       const durable = this.persistence.catch(() => {}).then(async () => {
         check();
-        await this.journal!.saveGuarded!(structuredClone(candidate), check);
+        await this.journal!.saveGuarded!(structuredClone(candidate), { guard: check });
         // The guarded storage commit is the linearization point. No protected
         // issuer can be created while this barrier is held; scalar edits and
         // public copied history cannot grant a newly retained origin. Even if
@@ -337,6 +347,87 @@ export class WorkbookWriter {
       return { retiredContexts: (before.sheetDeletions?.length ?? 0) + (before.sheetBirths?.entries.length ?? 0)
         + (before.sheetBirths?.removals?.length ?? 0) - reduced.deletions.length - (reduced.births?.entries.length ?? 0)
         - (reduced.births?.removals?.length ?? 0) };
+    };
+    const promise = run();
+    const barrier = promise.then(() => {}, () => {});
+    this.protection = barrier;
+    this.publish();
+    void barrier.finally(() => { if (this.protection === barrier) this.protection = null; this.publish(); });
+    return promise;
+  }
+
+  /** Metadata-only cleanup under the same durable protection barrier. Native
+   * lifetime rollback is supplied by the private controller, never a marker. */
+  protectObsoleteSheetSelectors(live: IWorkbookData, native: readonly WorkbookNativeRoot[],
+    owns: (descriptor: WorkbookSheetActionDescriptor) => boolean, verify: () => void,
+    metadata: { apply(next: IWorkbookData): void; rollback(): IWorkbookData | null; needsPrivatePrune(retained: ReadonlySet<string>): boolean },
+    commit: (retained: ReadonlySet<string>) => void): Promise<{ retiredSelectors: number }> {
+    if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
+    const run = async () => {
+      if (!this.active || this.sheetActionConflict || this.recoveryConflict || !this.journal?.scope
+        || !this.journal.validate || !this.journal.saveGuarded || !this.journal.isCurrent?.()) throw Error('Protected worksheet retirement is not ready.');
+      const before = this.checkpoint(), identity = canonicalCommentJson(before), revision = this.revision;
+      const source = this.source, pending = this.pending;
+      this.journal.validate(before);
+      if (canonicalCommentJson(live) !== canonicalCommentJson(before.desired)) throw Error('The live worksheet snapshot is not current.');
+      const prepared = prepareWorkbookSelectorRetirement(this.journal.scope, before, live, native, owns);
+      this.journal.validate(prepared.checkpoint);
+      if (canonicalCommentJson(prepared.checkpoint) === identity && !metadata.needsPrivatePrune(prepared.retained)) {
+        verify();
+        return { retiredSelectors: 0 };
+      }
+      const check = () => {
+        if (!this.active || !this.journal!.isCurrent?.() || this.revision !== revision
+          || canonicalCommentJson(this.currentCheckpoint()) !== identity) throw Error('The workbook changed while retiring worksheet selectors.');
+        verify();
+      };
+      let applied = false;
+      let committed = false;
+      const durable = this.persistence.catch(() => {}).then(async () => {
+        check();
+        await this.journal!.saveGuarded!(structuredClone(prepared.checkpoint), { guard: check, beforeCommit: () => {
+          // This callback and explicit IDB commit share one event turn. Keep
+          // complete old pools until the transaction actually completes.
+          if (applied) throw Error('The selector metadata callback was reused.');
+          applied = true;
+          metadata.apply(prepared.live);
+          this.acknowledged = prepared.checkpoint.acknowledged;
+          this.desired = prepared.checkpoint.desired;
+          this.sourceSnapshotBinding = prepared.checkpoint.sourceSnapshotBinding;
+        } });
+        if (!applied) throw Error('The guarded selector metadata callback did not run.');
+        committed = true;
+        this.sheetBirths = prepared.checkpoint.sheetBirths;
+        this.sheetDeletions = prepared.checkpoint.sheetDeletions ?? [];
+        verify();
+        commit(prepared.retained);
+      });
+      this.persistence = durable;
+      try { await durable; }
+      catch (error) {
+        if (applied && !committed) {
+          let restored: IWorkbookData | null = null;
+          try { if (this.source === source && this.pending === pending) restored = metadata.rollback(); }
+          catch { /* An uncertain native lifetime must enter the old recovery branch. */ }
+          if (restored) {
+            // Preserve any later ordinary cell or other custom-field edits.
+            this.acknowledged = copyWorkbookRemovalMap(this.acknowledged, before.acknowledged);
+            this.desired = restored;
+            this.sourceSnapshotBinding = before.sourceSnapshotBinding;
+          } else {
+            // Never touch a replaced/disposed kernel. The original full branch
+            // remains the recovery authority after the aborted transaction.
+            this.source = source; this.pending = pending;
+            this.acknowledged = before.acknowledged; this.desired = before.desired;
+            this.sheetBirths = before.sheetBirths; this.sheetDeletions = before.sheetDeletions ?? [];
+            this.sourceAcknowledgement = before.sourceAcknowledgement; this.sourceSnapshotBinding = before.sourceSnapshotBinding;
+            this.sheetActionConflict = true; this.error = this.sheetActionConflictMessage;
+          }
+          try { await this.persist(); } catch { /* Old transaction branch remains intact; keep the fence in memory. */ }
+        }
+        throw error;
+      }
+      return { retiredSelectors: prepared.descriptors.length };
     };
     const promise = run();
     const barrier = promise.then(() => {}, () => {});
