@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { workbookSheetBaselineIdentitySchema } from './workbook-sheet-baseline-identity.js';
 
+export const WORKBOOK_MINIMUM_SHEET_WINDOW = { rows: 100, columns: 26 } as const;
+
 export const WORKBOOK_MODEL_LIMITS = { sheets: 64, cells: 100_000, styles: 20_000, text: 8 * 1024 * 1024, rows: 1_048_576, columns: 16_384 } as const;
 const row = z.number().int().min(0).max(WORKBOOK_MODEL_LIMITS.rows - 1);
 const column = z.number().int().min(0).max(WORKBOOK_MODEL_LIMITS.columns - 1);

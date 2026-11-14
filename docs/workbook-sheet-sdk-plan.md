@@ -806,3 +806,59 @@ saved value instead of a target-only receipt/unchanged old model; they assert th
 explicit absent kernel ticket. No receipt/source guard or timeout was loosened.
 The author preserved the failed runs separately; they are not new product
 regressions and are not described as flaky.
+
+### Development checkpoint: protected blank birth origins
+
+The source producer now has a bounded birth state in the existing protected
+checkpoint: shared viewer/artifact scope and axis owner, a monotone numeric
+high-water ID, and selected-sheet-sized original blank SDK configurations. The
+source reader and virtual blank model share the same 100×26 minimum window.
+Only the new sheet receives axes under the current kernel generation; existing
+source axes are never reseeded. Native Insert captures its exact blank redo
+configuration before later cell edits. An undone live birth does not recycle its
+ID; the next prepared birth advances the high-water mark.
+
+Writer, decoder and projector use one internal `WorkbookPlanContext` for deletion
+records, birth records and the existing current-source consistency proof. Only
+an exact validated blank baseline and matching current marker produce
+`origin: new`; a historical Delete marker still refuses until its restore owner
+is connected. The real pending encoder and derived plan are checked before
+storage/SDK mutation. Storage must finish before Insert. Post-command mismatch
+uses the same sticky quarantine as Delete, while a prospective quota refusal
+leaves ordinary edits usable. These APIs are not installed as controls or tools.
+
+Clean unacknowledged Add→Undo can clear durable draft storage only with no
+pending or checked historical roots. The live state/high-water/config remains in
+memory; same-generation `ready` handoff retains that data so native Redo remains
+saveable. A fresh generation starts new native history and drops only that clean
+carry. Data retention is not command issuance: the future kernel/controller must
+independently own live tokens and recheck permissions, focus, source, lease and
+actual top history after durable waiting.
+
+A local deletion context can now explicitly choose `templateSide: saved-target`;
+legacy omission continues to mean the pre-save source version. Its immutable
+receipt is not rewritten. The selected side must match the context's exact byte
+digest. A checked creation-target capture derives B's complete selected baseline
+and exact frozen SDK acknowledgement before retiring A, even if current desired
+already omits the birth; it declares B's `versionId`/SHA, never missing A bytes.
+The capture refuses changed operation/render/scope/digests, changed stored
+receipt, mutated frozen inputs and missing protected birth data. Server history
+access and the contained worker's actual baseline comparison remain independent.
+
+Pending birth insertion/removal and actual sheet Undo/Redo admission remain
+explicitly unconnected in this checkpoint. Their temporary refusal is not the
+final feature scope: pending-save Undo/Redo, lost-ACK materialization, restored
+geometry/style ownership, worker mutation admission, dedicated reader membership
+capability and real keyboard/toolbar/browser qualification are still required.
+The existing structure capability alone must not advertise membership support.
+No new runtime, companion, renderer, publication or UI capability was activated.
+
+Author checks for this development boundary: 152 affected web cases across 14
+files and 56 actual ZIP reader/sheet-writer cases across two files passed, as did
+full workspace `pnpm typecheck`, `pnpm guard` and `git diff --check`. Genuine
+pre-fix failures covered missing native birth axes, wrong pre-save versus saved
+target association, and clean live ledger loss during hook handoff. An initial
+new-constant failure came from stale compiled contract exports; the local
+contracts package was rebuilt before the passing source runs. SDK/stand-in
+transport proof does not substitute for a contained renderer, live controller,
+keyboard/toolbar or pending-source recovery qualification.
