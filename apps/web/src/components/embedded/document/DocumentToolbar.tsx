@@ -7,7 +7,8 @@ import { $createHeadingNode, $createQuoteNode } from '@lexical/rich-text';
 import { $setBlocksType } from '@lexical/selection';
 import { INSERT_CHECK_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from '@lexical/list';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
-import { RiChatNewLine, RiBold, RiItalic, RiUnderline, RiStrikethrough, RiCodeLine, RiListOrdered, RiListUnordered, RiTableLine, RiArrowGoBackLine, RiArrowGoForwardLine, RiFontSize, RiMoreLine, RiCheckLine, RiCheckboxLine, RiDoubleQuotesL, RiArrowDownSLine } from '@remixicon/react';
+import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
+import { RiChatNewLine, RiBold, RiItalic, RiUnderline, RiStrikethrough, RiCodeLine, RiListOrdered, RiListUnordered, RiTableLine, RiArrowGoBackLine, RiArrowGoForwardLine, RiFontSize, RiMoreLine, RiCheckLine, RiCheckboxLine, RiDoubleQuotesL, RiArrowDownSLine, RiSeparator } from '@remixicon/react';
 import { Button } from '../boardui/button';
 import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem, DropdownGroup, DropdownDivider } from '../boardui/dropdown';
 import { cx } from '../boardui/cx';
@@ -73,6 +74,7 @@ export function DocumentToolbar({ font, headingFont, onImageStatus, hidden = fal
             <DropdownDivider />
             <DropdownItem onSelect={() => editor.update(() => { const selection = $getSelection(); if ($isRangeSelection(selection)) $setBlocksType(selection, () => $createQuoteNode()); })}><RiDoubleQuotesL className="size-4 shrink-0" aria-hidden />Quote</DropdownItem>
             <DropdownItem onSelect={() => editor.update(() => { const selection = $getSelection(); if ($isRangeSelection(selection)) $insertNodes([$createCodeNode()]); })}><RiCodeLine className="size-4 shrink-0" aria-hidden />Code block</DropdownItem>
+            <DropdownItem onSelect={() => editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined)}><RiSeparator className="size-4 shrink-0" aria-hidden />Divider</DropdownItem>
             <DropdownDivider />
             <DropdownItem onSelect={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}><RiArrowGoBackLine className="size-4 shrink-0" aria-hidden />Undo</DropdownItem>
             <DropdownItem onSelect={() => editor.dispatchCommand(REDO_COMMAND, undefined)}><RiArrowGoForwardLine className="size-4 shrink-0" aria-hidden />Redo</DropdownItem>

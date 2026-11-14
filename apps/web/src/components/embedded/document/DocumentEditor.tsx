@@ -10,6 +10,8 @@ import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
+import { DocumentDividerNode, documentDividerReplacement } from './DocumentDividerNode';
+import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin';
 import { ListPlugin } from '@lexical/react/LexicalListPlugin';
 import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
 import { CheckListPlugin } from '@lexical/react/LexicalCheckListPlugin';
@@ -38,7 +40,7 @@ import { RiSaveLine, RiPencilLine, RiArrowDownSLine } from '@remixicon/react';
 import { ScrollFade, useScrollFade } from '../boardui/scroll-fade';
 import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem } from '../boardui/dropdown';
 
-export const documentNodes = [HeadingNode, QuoteNode, ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, LinkNode, CodeNode, CodeHighlightNode, DocumentImageNode];
+export const documentNodes = [HeadingNode, QuoteNode, ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, LinkNode, CodeNode, CodeHighlightNode, DocumentImageNode, DocumentDividerNode, documentDividerReplacement];
 
 export function DocumentEditor({ feedback, onCommentDirtyChange, projectId, fileName, title, observed, onSaved, onDirtyChange, onWriteError }: {
   onCommentDirtyChange?(dirty: boolean): void; feedback?: ArtifactFeedbackProps; projectId: string; fileName: string; title: string; observed: DocumentFile; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void; onWriteError?(error: string | null): void;
@@ -47,7 +49,7 @@ export function DocumentEditor({ feedback, onCommentDirtyChange, projectId, file
   const owners = useMemo(() => new Map<string, string>(), []);
   const [failure, setFailure] = useState<string | null>(null);
   const initialConfig = useMemo(() => ({
-    namespace: `document:${projectId}:${fileName}`, theme: { tableScrollableWrapper: styles.tableScroll, code: styles.code, text: { code: styles.inlineCode, underline: styles.underline, strikethrough: styles.strikethrough, underlineStrikethrough: styles.underlineStrikethrough }, list: { checklist: styles.checklist, listitemChecked: styles.checked, listitemUnchecked: styles.unchecked } }, nodes: documentNodes, html: documentHtmlConfig(),
+    namespace: `document:${projectId}:${fileName}`, theme: { hrSelected: styles.dividerSelected, tableScrollableWrapper: styles.tableScroll, code: styles.code, text: { code: styles.inlineCode, underline: styles.underline, strikethrough: styles.strikethrough, underlineStrikethrough: styles.underlineStrikethrough }, list: { checklist: styles.checklist, listitemChecked: styles.checked, listitemUnchecked: styles.unchecked } }, nodes: documentNodes, html: documentHtmlConfig(),
     onError: (error: Error) => { setFailure(error.message); },
     editorState: (editor: import('lexical').LexicalEditor) => {
       const root = $getRoot(); root.select(); $insertNodes($generateNodesFromDOM(editor, documentImport(observed.html))); $setSelection(null);
@@ -65,7 +67,7 @@ export function DocumentEditor({ feedback, onCommentDirtyChange, projectId, file
     <DocumentImageScope.Provider value={imageScope}><LexicalComposer initialConfig={initialConfig}>
       <DocumentTextContrast />
       <DocumentBody onCommentDirtyChange={onCommentDirtyChange} feedback={feedback} projectId={projectId} fileName={fileName} title={title} observed={observed} owners={owners} onSaved={onSaved} onDirtyChange={onDirtyChange} onWriteError={onWriteError} />
-      <HistoryPlugin /><ListPlugin /><CheckListPlugin /><TablePlugin hasHorizontalScroll /><LinkPlugin />
+      <HistoryPlugin /><ListPlugin /><CheckListPlugin /><TablePlugin hasHorizontalScroll /><LinkPlugin /><HorizontalRulePlugin />
     </LexicalComposer></DocumentImageScope.Provider>
   </div>;
 }

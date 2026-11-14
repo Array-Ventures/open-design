@@ -69,3 +69,58 @@ Packaged persistence/reopen and visual acceptance in light/dark mode, chat-open
 and full-screen layouts remain required; do not claim Claude visual parity
 from these component tests. The retained reference records a compact selected-
 content header, replies and Resolve. No fresh Claude session was available.
+
+## Retained reply list navigation source checkpoint
+
+Manual inspection of local companion 109 found inconsistent navigation: the
+in-card All comments control retained an unsent reply without prompting, while
+the native header's Show all comments asked to discard it. Accepting that
+confirmation still retained the exact reply. The fake source remained 281 bytes,
+SHA256 `3e7fb3c71f1d54177d778ff94a562504ae775c3732cd28176445556654b82cac`,
+with one existing comment and no replies. The unsent draft was cleared and the
+owned browser closed normally; no chat handoff was requested.
+
+The next source change treats host list navigation as retention when a saved
+thread is selected and its root is not being edited. It keeps that thread and
+reply mounted, matching the in-card navigation behavior. Pending root operations
+still block navigation. Leaving a new or edited root, closing a dirty reply, and
+changing targets retain their existing draft protections. This is an observed
+local consistency correction, not a claim about saved-reply behavior in the
+reference product.
+
+The actual component regression failed before the change because the denied
+confirmation prevented the list from opening (36 other cases passed). The fixed
+suite verifies the same reply and thread DOM identities, exact draft, no
+confirmation, and no extra reply or document writes, plus pending-handoff and
+dirty new/edit-root/close safeguards. Packaged browser acceptance of this source
+change remains pending; candidate 109 keeps its original frozen source.
+
+Review found a second inconsistency in the first source checkpoint: after
+accepting discard for an edited saved root, returning from the list still showed
+that root draft. A real component regression failed on this accepted edit path
+while the accepted new-root case and 38 other cases passed. The handler now
+resets any root composer after consent before listing comments; returning to a
+saved row shows its persisted note. Denied new/edit consent and retained reply
+navigation keep their separate protections.
+
+### Removed-thread recovery source follow-up
+
+A separate component refresh removed the selected root while its reply draft
+remained mounted. Both list entrypoints hid that draft, but the persisted row
+was gone, so there was no route back. Both recoverability regressions failed
+before this follow-up (40 other component cases passed).
+
+The list header now reuses a compact back icon labelled Return to deleted thread
+only when its retained selection is missing from the current comments. It opens
+the same retained thread and reply DOM with the exact draft. The existing deleted
+notice, disabled submission, readable draft and close-confirmation behavior stay
+in place. There is no fake persisted row, new storage, history or automatic write.
+The recovery control is disabled during a busy root operation.
+
+Viewing mode keeps the same member's retained reply available. A different
+existing boundary remains unchanged: withdrawing the member identity resets the
+reply scope and clears its draft before showing a disabled reply field. An
+initial combined test incorrectly expected draft retention across that identity
+boundary; separate final cases verify stable-member Viewing-mode retention and
+identity-withdrawal reset/disabled-write behavior. This source checkpoint does
+not claim cross-account draft retention. Packaged browser acceptance is pending.

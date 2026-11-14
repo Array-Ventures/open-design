@@ -6,6 +6,8 @@ import { $isCodeNode } from '@lexical/code';
 import { $isTableCellNode, $isTableNode, TableNode } from '@lexical/table';
 import { documentBlockId, documentFont, documentHeadingFont, documentIdentityGroups } from './document-identity';
 import { $isDocumentImageNode, DocumentImageNode } from './DocumentImageNode';
+import { $isHorizontalRuleNode } from '@lexical/react/LexicalHorizontalRuleNode';
+import { DocumentDividerNode, documentDividerStyle } from './DocumentDividerNode';
 import { encodeMarkdownDocument } from './markdown-document';
 
 /** Preserve formatting that standard Markdown cannot express as valid inline/block HTML. */
@@ -79,6 +81,13 @@ export function serializeMarkdownDocument(editor: LexicalEditor): string {
     type: 'element', dependencies: [], regExp: /a^/, replace: () => false,
     export: node => $isElementNode(node) && !['', 'left', 'start'].includes(node.getFormatType()) ? htmlFor(node) : null,
   };
-  const body = $convertToMarkdownString([image, code, table, alignedBlock, nestedImage, styledText, literalText, link, ...TRANSFORMERS]);
+  const divider: ElementTransformer = {
+    type: 'element', dependencies: [DocumentDividerNode], regExp: /a^/, replace: () => false,
+    export: node => {
+      if (!$isHorizontalRuleNode(node)) return null;
+      return $getState(node, documentDividerStyle) ? htmlFor(node) : '---';
+    },
+  };
+  const body = $convertToMarkdownString([divider, image, code, table, alignedBlock, nestedImage, styledText, literalText, link, ...TRANSFORMERS]);
   return encodeMarkdownDocument(body, { version: 1, fonts: { text: $getState($getRoot(), documentFont), headings: $getState($getRoot(), documentHeadingFont) }, ids: documentIdentityGroups() });
 }
