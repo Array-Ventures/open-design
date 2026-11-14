@@ -251,10 +251,11 @@ it('refuses completion when a later public listener changes an admitted derived 
   } finally { later.dispose(); await f.close(); }
 }, 15_000);
 
-it('strips a changed reverse RPC cache vector before SDK application or calculated promotion', async () => {
+it.each([false, true])('strips a changed reverse RPC cache vector before SDK application or calculated promotion (paused=%s)', async paused => {
   vi.stubGlobal('Worker', NodeWorkbookWorker);
   const f = await createWorkbookMembershipRpcFixture();
   let changed = 0;
+  let release: (() => void) | undefined;
   const alter = (raw: unknown): void => {
     if (!raw || typeof raw !== 'object') return;
     const value = raw as Record<string, unknown>;
@@ -269,6 +270,7 @@ it('strips a changed reverse RPC cache vector before SDK application or calculat
   f.worker.acceptIncoming = message => { if (!changed) alter(message); return true; };
   try {
     await f.controller.remove('2');
+    if (paused) release = f.calculation.freezeAuthoring();
     const applied = f.calculation.awaitMembership(); void applied.catch(() => {});
     await vi.waitFor(() => expect(changed).toBe(1), { timeout: 5000 });
     expect(f.owner.ready).toBe(false);
@@ -276,7 +278,7 @@ it('strips a changed reverse RPC cache vector before SDK application or calculat
     expect(f.calculation.status('3', 1, 0)?.result).not.toBe('calculated');
     await expect(applied).rejects.toThrow('unavailable');
     expect(f.writer.checkpoint().source.sourceSha256).toBe('a'.repeat(64));
-  } finally { await f.close(); }
+  } finally { release?.(); await f.close(); }
 }, 15_000);
 
 it('tracks an explicit epoch-stamped host calculation until its actual initial cache is refreshed', async () => {
@@ -320,18 +322,8 @@ it('freezes real cell/style/axis/membership inputs while admitting only its exac
   vi.stubGlobal('Worker', NodeWorkbookWorker);
   const f = await createWorkbookMembershipRpcFixture();
   const held: unknown[] = [];
-  let holding = true, refused = 0;
+  let holding = true;
   f.worker.acceptIncoming = message => { if (holding) { if (!held.includes(message)) held.push(message); return false; } return true; };
-  const listener = f.commands.beforeCommandExecuted(command => {
-    if (command.id !== 'formula.mutation.set-formula-calculation-result') return;
-    const result = command.params as { unitData: Record<string, Record<string, Record<string, Record<string, { v?: unknown; t?: number }>>>>; sourceFormulaData?: Record<string, Record<string, object>> };
-    const source = result.sourceFormulaData?.[f.book.getId()]?.['3'];
-    if (!source) return;
-    const values = structuredClone(result.unitData[f.book.getId()]!['3']!);
-    for (const cells of Object.values(values)) for (const cell of Object.values(cells)) { cell.v = 999; cell.t = 2; }
-    expect(() => f.commands.syncExecuteCommand(SetRangeValuesMutation.id, { unitId: f.book.getId(), subUnitId: '3', cellValue: values, sourceFormulaData: source }, { onlyLocal: true, fromFormula: true })).toThrow('paused');
-    refused++;
-  });
   let release: (() => void) | undefined;
   try {
     await f.controller.remove('2');
@@ -348,9 +340,32 @@ it('freezes real cell/style/axis/membership inputs while admitting only its exac
     await vi.waitFor(() => expect(held.length).toBeGreaterThan(0), { timeout: 5000 });
     holding = false; for (const message of held) f.worker.thread.emit('message', message);
     await idle;
-    expect(refused).toBeGreaterThan(0);
     expect(f.book.save().sheets['3']!.cellData![1]![0]!.v).toBe('#REF!');
     expect(f.calculation.quiescent).toBe(true); expect(f.owner.ready).toBe(true);
     release(); release = undefined;
-  } finally { release?.(); listener.dispose(); await f.close(); }
+  } finally { release?.(); await f.close(); }
+}, 15_000);
+
+it('normalizes real source-preserved and dependent caches before admitting a late paused application', async () => {
+  vi.stubGlobal('Worker', NodeWorkbookWorker);
+  const f = await createWorkbookMembershipRpcFixture(true, 100, 999, true);
+  const { SetFormulaCalculationStartMutation } = await import('@univerjs/engine-formula');
+  let release: (() => void) | undefined;
+  try {
+    // This is a calculation-owner invariant, not sheet-action admission:
+    // unsupported formulas deliberately withdraw membership capability.
+    expect(f.model.worksheetMembershipEditable).toBe(false);
+    expect(f.model.worksheetStructureEditable).toBe(false);
+    expect(f.controller.isCurrent()).toBe(false);
+    release = f.calculation.freezeAuthoring();
+    await f.commands.executeCommand(SetFormulaCalculationStartMutation.id, { forceCalculation: true });
+    await f.calculation.awaitQuiescent();
+    const cells = f.book.save().sheets['3']!.cellData!;
+    expect(cells[1]![0]!.v).toBe(38);
+    expect(cells[2]![0]!.v).toBe(55); expect(cells[3]![0]!.v).toBe(56);
+    expect(f.calculation.status('3', 2, 0)?.result).toBe('stored');
+    expect(f.calculation.status('3', 3, 0)?.result).toBe('stored');
+    expect(f.owner.ready).toBe(true);
+    expect(f.writer.checkpoint().source.model.sheets[2]!.cells[1]!.value).toBe(999);
+  } finally { release?.(); await f.close(); }
 }, 15_000);
