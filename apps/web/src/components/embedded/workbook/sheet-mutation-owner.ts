@@ -43,11 +43,14 @@ export class WorkbookSheetMutationOwner {
       for (const [kind, original] of [['insert', InsertSheetMutation], ['remove', RemoveSheetMutation]] as const) {
         const originalCommand: ICommand = original;
         const command: ICommand = { ...original, handler: (accessor, params, options) => {
+          const input = params as { unitId?: string; subUnitId?: string; sheet?: { id?: string } } | undefined;
+          // The replacement belongs to one kernel. Other explicit units retain
+          // the unchanged native mutation when no owned callback is in flight.
+          if (!this.ticket && !this.executing && typeof input?.unitId === 'string' && input.unitId !== unitId) return originalCommand.handler(accessor, params, options);
           const ticket = this.ticket;
           this.ticket = undefined;
           if (this.executing) throw this.conflict('A nested worksheet mutation was refused.');
           if (!ticket || ticket.kind !== kind || !this.isCurrent() || !this.authority.owns(ticket.descriptor)) throw Error('The worksheet mutation is not protected.');
-          const input = params as { unitId?: string; subUnitId?: string; sheet?: { id?: string } } | undefined;
           if (input?.unitId !== unitId || (kind === 'insert' ? input.sheet?.id : input.subUnitId) !== ticket.descriptor.sheetId
             || canonicalWorkbookJsonValue(this.authority.snapshot()) !== canonicalWorkbookJsonValue(ticket.before)) throw Error('The protected worksheet target changed.');
           this.executing = true;
@@ -78,9 +81,10 @@ export class WorkbookSheetMutationOwner {
   }
 
   run(kind: WorkbookSheetMutationKind, descriptor: WorkbookSheetActionDescriptor, before: IWorkbookData,
-    after: IWorkbookData, execute: () => boolean): IWorkbookData {
+    after: IWorkbookData, execute: () => boolean, completed?: IWorkbookData): IWorkbookData {
     if (this.ticket || this.executing || !this.isCurrent() || !this.authority.owns(descriptor)) throw Error('The worksheet action owner is not current.');
     const expected = workbookSheetMutationSnapshot(before, after, kind, descriptor);
+    const final = completed ?? expected;
     for (const [sheetId, token] of Object.entries(workbookSheetRemovalSelection(before, descriptor.generation))) {
       if (!this.authority.owns({ version: 1, generation: descriptor.generation, sheetId, token })) throw Error('A removal selection has no live protected owner.');
     }
@@ -90,10 +94,10 @@ export class WorkbookSheetMutationOwner {
       const result = execute();
       if (this.fault) throw this.fault;
       if (this.ticket) throw Error('The protected worksheet mutation was not invoked.');
-      if (result !== true || !this.isCurrent() || canonicalWorkbookJsonValue(this.authority.snapshot()) !== canonicalWorkbookJsonValue(expected)) {
+      if (result !== true || !this.isCurrent() || canonicalWorkbookJsonValue(this.authority.snapshot()) !== canonicalWorkbookJsonValue(final)) {
         throw this.conflict('The worksheet command did not match its protected result.');
       }
-      return structuredClone(expected);
+      return structuredClone(final);
     } catch (error) {
       if (ticket.invoked || this.fault || canonicalWorkbookJsonValue(this.authority.snapshot()) !== canonicalWorkbookJsonValue(before)) {
         throw this.conflict(error instanceof Error ? error.message : 'The worksheet action changed its protected result.');

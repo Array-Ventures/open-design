@@ -10,7 +10,10 @@ type WorkbookEditPlan = z.infer<typeof workbookEditPlanSchema>;
  * independently by the contained writer. */
 export function appendRestoredSheetModel(model: WorkbookDocument, context: WorkbookSourceDeleteContext) {
   const baseline = context.baseline;
-  if (model.date1904 !== baseline.date1904 || canonicalCommentJson(model.themeColors) !== canonicalCommentJson(baseline.themeColors)
+  const sameTheme = model.themeColors === undefined || baseline.themeColors === undefined
+    ? model.themeColors === baseline.themeColors
+    : canonicalCommentJson(model.themeColors) === canonicalCommentJson(baseline.themeColors);
+  if (model.date1904 !== baseline.date1904 || !sameTheme
     || canonicalCommentJson(model.styles[0]) !== canonicalCommentJson(baseline.styleDefinitions[0]!.style)) throw Error('The restored worksheet interpretation changed.');
   const indices = new Map(model.styles.map((style, index) => [canonicalCommentJson(style), index]));
   const remap = new Map<number, number>();

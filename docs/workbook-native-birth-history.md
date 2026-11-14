@@ -1,5 +1,10 @@
 # Native birth history controller development checkpoint
 
+This records the original birth checkpoint. The later uninstalled source Delete
+issuer and protected restoration path are described in
+[Source Delete native history](workbook-source-delete-history.md); its source
+qualification does not replace the application/worker/recovery gates below.
+
 Controls remain off. The controller is not imported or installed by WorkbookGrid.
 This connects the real SDK Add/Undo/Redo path to the real Writer's pre-command
 storage barrier; it is not full worksheet membership or application qualification.

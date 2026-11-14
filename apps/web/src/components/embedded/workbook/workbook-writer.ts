@@ -201,6 +201,37 @@ export class WorkbookWriter {
     return promise;
   }
 
+  /** Replay an already issued native source Delete in either direction. The
+   * current pool supplies data only; the live controller must prove its native
+   * issuer/payload again immediately before invoking the protected callback. */
+  protectSheetDeletionReplay(origin: WorkbookSheetActionDescriptor, prospective: IWorkbookData,
+    execute: () => IWorkbookData, beforeExecute: () => undefined): Promise<void> {
+    if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
+    const run = async () => {
+      if (!this.active || this.sheetActionConflict || this.recoveryConflict || !this.journal?.scope || !this.journal.validate || !this.journal.isCurrent?.()) throw Error('Protected worksheet Delete replay is not ready.');
+      const source = this.source, revision = this.revision, pending = this.pending;
+      const checkpoint = this.checkpoint();
+      const matches = this.sheetDeletions.filter(value => canonicalCommentJson(value.descriptor) === canonicalCommentJson(origin));
+      if (matches.length !== 1) throw Error('The worksheet Delete has no unique retained context.');
+      const snapshot = structuredClone(prospective);
+      workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { scope: this.journal.scope,
+        pending, deletions: this.sheetDeletions, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() });
+      this.journal.validate({ ...checkpoint, desired: snapshot });
+      const durable = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
+      this.persistence = durable;
+      await durable;
+      if (!this.active || this.source !== source || this.revision !== revision || this.pending !== pending || !this.journal.isCurrent()) throw Error('The workbook changed while protecting its worksheet action.');
+      beforeExecute();
+      await this.completeProtectedSheetCommand(checkpoint, snapshot, execute);
+    };
+    const promise = run();
+    const barrier = promise.then(() => {}, () => {});
+    this.protection = barrier;
+    this.publish();
+    void barrier.finally(() => { if (this.protection === barrier) this.protection = null; this.publish(); });
+    return promise;
+  }
+
   /** Data producer only: the installed controller must separately prove the
    * live birth/history issuer before asking for this durable native callback. */
   protectSheetBirthRemoval(origin: WorkbookSheetActionDescriptor, execute: (removal: WorkbookBirthRemoval) => IWorkbookData, beforeExecute?: () => undefined): Promise<WorkbookBirthRemoval> {
