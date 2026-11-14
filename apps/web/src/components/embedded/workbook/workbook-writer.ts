@@ -138,9 +138,9 @@ export class WorkbookWriter {
   protectSheetBirth(name: string, index: number, execute: (entry: WorkbookSheetBirthEntry) => IWorkbookData): Promise<WorkbookSheetBirthEntry> {
     if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
     const run = async () => {
-      if (!this.active || this.sheetActionConflict || this.recoveryConflict || this.pending || this.running) throw Error('Protected worksheet birth is not ready.');
+      if (!this.active || this.sheetActionConflict || this.recoveryConflict) throw Error('Protected worksheet birth is not ready.');
       if (!this.journal?.scope || !this.journal.validate || !this.journal.isCurrent?.()) throw Error('The workbook recovery lease is no longer current.');
-      const source = this.source, revision = this.revision;
+      const source = this.source, revision = this.revision, pending = this.pending;
       const prepared = prepareWorkbookSheetBirth(this.journal.scope, this.checkpoint(), name, index, this.sheetBirths);
       const checkpoint = { ...this.checkpoint(), sheetBirths: prepared.state };
       this.journal.validate(checkpoint);
@@ -150,7 +150,7 @@ export class WorkbookWriter {
       const durable = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
       this.persistence = durable;
       await durable;
-      if (!this.active || this.source !== source || this.revision !== revision || this.pending || this.running || !this.journal.isCurrent()) throw Error('The workbook changed while protecting its worksheet action.');
+      if (!this.active || this.source !== source || this.revision !== revision || this.pending !== pending || !this.journal.isCurrent()) throw Error('The workbook changed while protecting its worksheet action.');
       this.sheetBirths = prepared.state;
       await this.completeProtectedSheetCommand(checkpoint, prepared.snapshot, () => execute(prepared.entry));
       return structuredClone(prepared.entry);
@@ -233,6 +233,7 @@ export class WorkbookWriter {
           if (!this.active) return;
           if (this.pending !== pending) throw Error('The pending workbook save changed while protecting its receipt.');
           if (pending.acknowledgement && JSON.stringify(pending.acknowledgement) !== JSON.stringify(acknowledgement)) throw Error('The workbook acknowledgement changed while protecting its save.');
+          const births = this.sheetBirths;
           const bound = this.sheetDeletions.map(context => context.sourceSha256 === this.source.sourceSha256 && !context.receiptAssociation
             ? associateWorkbookSourceDeletion(context, acknowledgement) : context);
           pending.acknowledgement = structuredClone(acknowledgement);
@@ -240,7 +241,7 @@ export class WorkbookWriter {
           await this.persist();
           if (!this.active) return;
           if (this.sheetActionConflict) throw Error(this.sheetActionConflictMessage);
-          if (!this.protection && this.sheetDeletions === bound) break;
+          if (!this.protection && this.sheetDeletions === bound && this.sheetBirths === births) break;
         }
         const previous = { source: this.source, acknowledged: this.acknowledged, sourceAcknowledgement: this.sourceAcknowledgement, sourceSnapshotBinding: this.sourceSnapshotBinding };
         let binding: WorkbookSourceSnapshotBinding | undefined;

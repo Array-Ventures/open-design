@@ -82,7 +82,6 @@ export function checkedWorkbookSheetBirths(raw: WorkbookSheetBirthState, book: I
 export function prepareWorkbookSheetBirth(scope: WorkbookDraftScope, checkpoint: WorkbookCheckpoint, name: string, index: number, previous?: WorkbookSheetBirthState) {
   const checkedScope = workbookDraftScopeSchema.parse(scope), before = checkpoint.desired;
   assertWorkbookStructureIdentity(before);
-  if (checkpoint.pending) throw Error('Pending birth ownership is not connected yet.');
   workbookCommitRequestSchema.shape.fileName.parse(checkedScope.fileName);
   const unitId = `${checkedScope.projectId}:${checkedScope.fileName}`;
   if (before.id !== unitId || checkpoint.acknowledged.id !== unitId) throw Error('The worksheet birth belongs to another workbook.');
