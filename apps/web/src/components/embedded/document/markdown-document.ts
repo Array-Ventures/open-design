@@ -43,7 +43,13 @@ export async function readMarkdownDocument(source: string, title: string) {
   }
   for (const code of dom.querySelectorAll('pre > code')) {
     const language = [...code.classList].find(name => name.startsWith('language-'))?.slice(9);
+    const fenced = code.parentElement!.attributes.length === 0
+      && Array.from(code.attributes).every(attribute => attribute.name === 'class')
+      && Array.from(code.childNodes).every(node => node.nodeType === Node.TEXT_NODE);
+    // Language promotion also belongs to source-owned raw HTML. Only newline
+    // normalization is restricted to the plain fence-producer shape.
     if (language && /^[A-Za-z0-9_-]{1,40}$/.test(language)) code.parentElement!.setAttribute('data-language', language);
+    if (!fenced) continue;
     // A fenced block's terminating newline is Markdown syntax, not an extra code line.
     code.textContent = (code.textContent ?? '').replace(/\n$/, '');
   }

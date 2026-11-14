@@ -40,7 +40,28 @@ export function documentImport(html: string): Document {
     for (const [name, value] of properties) element.style.setProperty(name!, value!);
   }
   // Lexical imports PRE as a code block already; a multiline CODE wrapper would create a second block.
-  for (const code of fragment.querySelectorAll('pre > code')) code.replaceWith(...code.childNodes);
+  for (const code of fragment.querySelectorAll<HTMLElement>('pre > code')) {
+    // Retain admitted glyph presentation through the existing TextNode importer;
+    // keeping CODE itself would create a second block for multiline content.
+    if (code.style.length) {
+      const span = document.createElement('span');
+      span.style.cssText = code.style.cssText;
+      span.append(...code.childNodes);
+      code.replaceWith(span);
+    } else code.replaceWith(...code.childNodes);
+  }
+  // The pinned Lexical text converter returns an array for PRE newlines/tabs,
+  // but its DOM walker applies inherited forChild styles only to the last item.
+  // Separate source text boundaries so every actual text run receives its own
+  // existing style conversion. No character or visible whitespace is changed.
+  for (const pre of fragment.querySelectorAll('pre')) {
+    const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+    const texts: Text[] = [];
+    while (walker.nextNode()) texts.push(walker.currentNode as Text);
+    for (const text of texts) if (/[\n\t]/.test(text.data)) {
+      text.replaceWith(...text.data.split(/([\n\t])/).filter(Boolean).map(value => document.createTextNode(value)));
+    }
+  }
   for (const link of fragment.querySelectorAll('a')) {
     const href = link.getAttribute('href') ?? '';
     if (!isDocumentLinkSupported(href)) link.removeAttribute('href');
