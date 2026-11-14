@@ -7,18 +7,21 @@ import { $createHeadingNode, $createQuoteNode } from '@lexical/rich-text';
 import { $setBlocksType } from '@lexical/selection';
 import { INSERT_CHECK_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from '@lexical/list';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
-import { RiBold, RiItalic, RiUnderline, RiStrikethrough, RiCodeLine, RiListOrdered, RiListUnordered, RiTableLine, RiArrowGoBackLine, RiArrowGoForwardLine, RiFontSize, RiMoreLine, RiCheckLine, RiCheckboxLine, RiDoubleQuotesL, RiArrowDownSLine } from '@remixicon/react';
+import { RiChatNewLine, RiBold, RiItalic, RiUnderline, RiStrikethrough, RiCodeLine, RiListOrdered, RiListUnordered, RiTableLine, RiArrowGoBackLine, RiArrowGoForwardLine, RiFontSize, RiMoreLine, RiCheckLine, RiCheckboxLine, RiDoubleQuotesL, RiArrowDownSLine } from '@remixicon/react';
 import { Button } from '../boardui/button';
 import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem, DropdownGroup, DropdownDivider } from '../boardui/dropdown';
 import { cx } from '../boardui/cx';
+import { useEmbeddedViewer } from '../host-viewer';
+import { COMMENT_DOCUMENT_SELECTION } from './useDocumentCommentSelection';
 import { DocumentImageInsertion } from './DocumentImageInsertion';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
 import { documentFont, documentHeadingFont } from './document-identity';
 
 type SelectionState = { x: number; y: number; bold: boolean; italic: boolean; underline: boolean; strikethrough: boolean; code: boolean };
 /** Separate insertion and selected-text controls, following the observed document surfaces. */
-export function DocumentToolbar({ font, headingFont, onImageStatus, hidden = false }: { hidden?: boolean; font: 'sans' | 'serif'; headingFont: 'sans' | 'serif'; onImageStatus?(message: string | null): void }) {
+export function DocumentToolbar({ font, headingFont, onImageStatus, hidden = false, commentsAvailable = false }: { commentsAvailable?: boolean; hidden?: boolean; font: 'sans' | 'serif'; headingFont: 'sans' | 'serif'; onImageStatus?(message: string | null): void }) {
   const [editor] = useLexicalComposerContext();
+  const viewer = useEmbeddedViewer();
   const [menu, setMenu] = useState<string | null>(null);
   useEffect(() => { if (hidden) setMenu(null); }, [hidden]);
   const [selected, setSelected] = useState<SelectionState | null>(null);
@@ -78,6 +81,7 @@ export function DocumentToolbar({ font, headingFont, onImageStatus, hidden = fal
       </div>
     </div>
     {!hidden && selected ? createPortal(<div role="toolbar" aria-label="Selected text formatting" style={{ position: 'fixed', left: selected.x, top: selected.y }} className="z-30 flex max-w-[calc(100vw-24px)] items-center gap-1 rounded-xl border border-border-button-default bg-background-secondary-default p-1 shadow-lg">
+      {commentsAvailable && viewer ? <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiChatNewLine} aria-label="Comment on selected text" onMouseDown={event => event.preventDefault()} onClick={() => editor.dispatchCommand(COMMENT_DOCUMENT_SELECTION, undefined)} /> : null}
       <Dropdown isOpen={!hidden && menu === 'text'} onOpenChange={open => setMenu(open ? 'text' : null)}>
         <DropdownTrigger aria-label="Text style" className="box-border flex h-8 shrink-0 items-center gap-1 rounded-lg border-0 px-2 py-0 text-body-2-medium text-text-secondary hover:bg-background-secondary-hover">Text<RiArrowDownSLine className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
         <DropdownPopover aria-label="Text style" placement="bottom start">

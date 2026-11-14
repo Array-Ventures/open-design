@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
-import { mentionsKnownBot, useCommentChatDefault } from '../../../src/components/embedded/useCommentChatDefault';
+import { hasCommentBody, mentionsKnownBot, useCommentChatDefault } from '../../../src/components/embedded/useCommentChatDefault';
 const bots = [{ id: 'chief', name: 'Chief' }, { id: 'ava', name: 'Ava Chen' }, { id: 'math', name: 'A+B' }];
 vi.mock('../../../src/components/embedded/host-viewer', () => ({ useEmbeddedMentionBots: () => bots }));
 it.each(['@Chief', 'Ask @cHiEf.', '(@Ava Chen), please', '@A+B help'])('matches a complete known bot name: %s', value => {
@@ -36,4 +36,16 @@ it('updates the automatic default when a mention is removed, without overriding 
   hook.rerender({ value: 'help' }); expect(hook.result.current.selected).toBe(false);
   act(() => hook.result.current.choose(true));
   hook.rerender({ value: 'more plain text' }); expect(hook.result.current.selected).toBe(true);
+});
+
+it.each(['', '  ', '@Chief', ' @Chief  @Ava Chen ', '@A+B'])('requires a body beyond known recipients: %s', value => {
+  expect(hasCommentBody(value, bots)).toBe(false);
+});
+it.each(['A note', '@Chief help', 'help @Ava Chen', '@Unknown', 'hello@Chief.com', '@Chiefly', '@Chief !'])('preserves actual text and unrecognized handles: %s', value => {
+  expect(hasCommentBody(value, bots)).toBe(true);
+});
+it('uses normalized offsets consistently for Unicode names and overlapping recipients', () => {
+  const unicode = [{ id: 'i', name: 'İpek' }, { id: 'a', name: 'Ava' }, { id: 'ac', name: 'Ava Chen' }];
+  expect(hasCommentBody('@İpek @Ava Chen', unicode)).toBe(false);
+  expect(hasCommentBody('@İpek note', unicode)).toBe(true);
 });
