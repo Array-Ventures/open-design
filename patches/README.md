@@ -122,3 +122,20 @@ The three consumed runtime variants have real Node entry-loader coverage; the
 unused standalone UMD remains unpatched/unqualified. Refresh through pnpm patch,
 preserve all prior core boundaries and rerun these focused cases before changing
 the pinned SDK or removing this patch.
+
+The core patch adds frozen `IUndoRedoService.getUndoRedoCheckpoint()` with the
+actual focused editor-history unit, service-local monotone revision and boolean
+Undo/Redo availability. It exposes no native entries. The revision advances
+before pushes (including same-count grouped/batched replacement), clear, pop and
+successful rollback; unrelated units may conservatively invalidate it. Rollback
+can change history without emitting the existing status observable, so counting
+status emissions is insufficient. Empty focus reports an empty unit and false
+availability. Disposed or exhausted revision inspection refuses; exhaustion
+refuses before history mutation. It is an in-memory consistency checkpoint, not
+authorization, persisted lineage or a substitute for protected source/lease and
+live issued-descriptor checks. Consumed ES/CJS/compat entries and declarations
+are patched; standalone UMD remains unconsumed/unqualified. Actual SDK tests cover
+Undo/Redo ABA, grouped replacement, rollback, focus, empty focus, immutable output,
+disposal and test-injected exhaustion. Controller installation remains pending:
+real UI multi-implementation command dispatch must be qualified before selecting
+scoped replacement versus a pre-dispatch protection boundary.

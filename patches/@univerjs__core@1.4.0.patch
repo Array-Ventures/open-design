@@ -1,5 +1,5 @@
 diff --git a/lib/cjs/index.js b/lib/cjs/index.js
-index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..1b512d542f9366ccbb5321629b76ee1de0074b9a 100644
+index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..c4bd846c3fa596ce5fe3409ced64ca391d521b49 100644
 --- a/lib/cjs/index.js
 +++ b/lib/cjs/index.js
 @@ -2065,7 +2065,7 @@ var CommandRegistry = class {
@@ -71,10 +71,23 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..1b512d542f9366ccbb5321629b76ee1d
  				const commandInfo = {
  					id: command.id,
  					type: command.type,
-@@ -25602,6 +25632,52 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25602,6 +25632,65 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
++	getUndoRedoCheckpoint() {
++		this.ensureNotDisposed();
++		const revision = this._historyCheckpointRevision ?? 0;
++		if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER) throw new Error("History checkpoint revision is exhausted.");
++		const unitId = this._getFocusedUnitId();
++		return Object.freeze({ unitId, revision, undoAvailable: Boolean(this._pitchUndoElement(unitId)), redoAvailable: Boolean(this._pitchRedoElement(unitId)) });
++	}
++	_advanceHistoryCheckpoint() {
++		this.ensureNotDisposed();
++		const revision = this._historyCheckpointRevision ?? 0;
++		if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER - 1) throw new Error("History checkpoint revision is exhausted.");
++		this._historyCheckpointRevision = revision + 1;
++	}
 +	getUndoRedoMutationStrings(unitId, mutationId, propertyPath, position) {
 +		this.ensureNotDisposed();
 +		if (position !== undefined && position !== "top") throw new Error("History inspection position is invalid.");
@@ -124,8 +137,54 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..1b512d542f9366ccbb5321629b76ee1d
  	getUndoRedoStatus(unitId) {
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
+@@ -25610,6 +25699,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		};
+ 	}
+ 	pushUndoRedo(item) {
++		this._advanceHistoryCheckpoint();
+ 		const { unitID } = item;
+ 		const redoStack = this._getRedoStack(unitID, true);
+ 		const undoStack = this._getUndoStack(unitID, true);
+@@ -25652,6 +25742,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		});
+ 	}
+ 	clearUndoRedo(unitID) {
++		this._advanceHistoryCheckpoint();
+ 		const redoStack = this._getRedoStack(unitID);
+ 		if (redoStack) redoStack.length = 0;
+ 		const undoStack = this._getUndoStack(unitID);
+@@ -25675,7 +25766,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		return (stack === null || stack === void 0 ? void 0 : stack.length) ? stack[stack.length - 1] : null;
+ 	}
+ 	popUndoToRedo() {
+-		const element = this._getUndoStackForFocused().pop();
++		const stack = this._getUndoStackForFocused();
++		if (stack.length) this._advanceHistoryCheckpoint();
++		const element = stack.pop();
+ 		if (element) {
+ 			this._itemGroups.delete(element);
+ 			if (element.redoMutations.length > 0) this._getRedoStackForFocused().push(element);
+@@ -25683,7 +25776,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		}
+ 	}
+ 	popRedoToUndo() {
+-		const element = this._getRedoStackForFocused().pop();
++		const stack = this._getRedoStackForFocused();
++		if (stack.length) this._advanceHistoryCheckpoint();
++		const element = stack.pop();
+ 		if (element) {
+ 			this._itemGroups.delete(element);
+ 			this._getUndoStackForFocused().push(element);
+@@ -25695,6 +25790,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		const stack = this._getUndoStack(unitId);
+ 		const item = stack === null || stack === void 0 ? void 0 : stack[(stack === null || stack === void 0 ? void 0 : stack.length) - 1];
+ 		if (item && item.id === id) {
++			this._advanceHistoryCheckpoint();
+ 			stack.pop();
+ 			this._itemGroups.delete(item);
+ 			sequenceExecute(item.undoMutations, this._commandService);
 diff --git a/lib/es/index.js b/lib/es/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..7d8807d96e9304344a0f365b6b47f794fab438d4 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..110c06927168f4bd267d64a24a919934273f0ad6 100644
 --- a/lib/es/index.js
 +++ b/lib/es/index.js
 @@ -2036,7 +2036,7 @@ var CommandRegistry = class {
@@ -197,10 +256,23 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..7d8807d96e9304344a0f365b6b47f794
  				const commandInfo = {
  					id: command.id,
  					type: command.type,
-@@ -25573,6 +25603,52 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25573,6 +25603,65 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
++	getUndoRedoCheckpoint() {
++		this.ensureNotDisposed();
++		const revision = this._historyCheckpointRevision ?? 0;
++		if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER) throw new Error("History checkpoint revision is exhausted.");
++		const unitId = this._getFocusedUnitId();
++		return Object.freeze({ unitId, revision, undoAvailable: Boolean(this._pitchUndoElement(unitId)), redoAvailable: Boolean(this._pitchRedoElement(unitId)) });
++	}
++	_advanceHistoryCheckpoint() {
++		this.ensureNotDisposed();
++		const revision = this._historyCheckpointRevision ?? 0;
++		if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER - 1) throw new Error("History checkpoint revision is exhausted.");
++		this._historyCheckpointRevision = revision + 1;
++	}
 +	getUndoRedoMutationStrings(unitId, mutationId, propertyPath, position) {
 +		this.ensureNotDisposed();
 +		if (position !== undefined && position !== "top") throw new Error("History inspection position is invalid.");
@@ -250,8 +322,54 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..7d8807d96e9304344a0f365b6b47f794
  	getUndoRedoStatus(unitId) {
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
+@@ -25581,6 +25670,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		};
+ 	}
+ 	pushUndoRedo(item) {
++		this._advanceHistoryCheckpoint();
+ 		const { unitID } = item;
+ 		const redoStack = this._getRedoStack(unitID, true);
+ 		const undoStack = this._getUndoStack(unitID, true);
+@@ -25623,6 +25713,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		});
+ 	}
+ 	clearUndoRedo(unitID) {
++		this._advanceHistoryCheckpoint();
+ 		const redoStack = this._getRedoStack(unitID);
+ 		if (redoStack) redoStack.length = 0;
+ 		const undoStack = this._getUndoStack(unitID);
+@@ -25646,7 +25737,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		return (stack === null || stack === void 0 ? void 0 : stack.length) ? stack[stack.length - 1] : null;
+ 	}
+ 	popUndoToRedo() {
+-		const element = this._getUndoStackForFocused().pop();
++		const stack = this._getUndoStackForFocused();
++		if (stack.length) this._advanceHistoryCheckpoint();
++		const element = stack.pop();
+ 		if (element) {
+ 			this._itemGroups.delete(element);
+ 			if (element.redoMutations.length > 0) this._getRedoStackForFocused().push(element);
+@@ -25654,7 +25747,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		}
+ 	}
+ 	popRedoToUndo() {
+-		const element = this._getRedoStackForFocused().pop();
++		const stack = this._getRedoStackForFocused();
++		if (stack.length) this._advanceHistoryCheckpoint();
++		const element = stack.pop();
+ 		if (element) {
+ 			this._itemGroups.delete(element);
+ 			this._getUndoStackForFocused().push(element);
+@@ -25666,6 +25761,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		const stack = this._getUndoStack(unitId);
+ 		const item = stack === null || stack === void 0 ? void 0 : stack[(stack === null || stack === void 0 ? void 0 : stack.length) - 1];
+ 		if (item && item.id === id) {
++			this._advanceHistoryCheckpoint();
+ 			stack.pop();
+ 			this._itemGroups.delete(item);
+ 			sequenceExecute(item.undoMutations, this._commandService);
 diff --git a/lib/index.js b/lib/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..7d8807d96e9304344a0f365b6b47f794fab438d4 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..110c06927168f4bd267d64a24a919934273f0ad6 100644
 --- a/lib/index.js
 +++ b/lib/index.js
 @@ -2036,7 +2036,7 @@ var CommandRegistry = class {
@@ -323,10 +441,23 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..7d8807d96e9304344a0f365b6b47f794
  				const commandInfo = {
  					id: command.id,
  					type: command.type,
-@@ -25573,6 +25603,52 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25573,6 +25603,65 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
++	getUndoRedoCheckpoint() {
++		this.ensureNotDisposed();
++		const revision = this._historyCheckpointRevision ?? 0;
++		if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER) throw new Error("History checkpoint revision is exhausted.");
++		const unitId = this._getFocusedUnitId();
++		return Object.freeze({ unitId, revision, undoAvailable: Boolean(this._pitchUndoElement(unitId)), redoAvailable: Boolean(this._pitchRedoElement(unitId)) });
++	}
++	_advanceHistoryCheckpoint() {
++		this.ensureNotDisposed();
++		const revision = this._historyCheckpointRevision ?? 0;
++		if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER - 1) throw new Error("History checkpoint revision is exhausted.");
++		this._historyCheckpointRevision = revision + 1;
++	}
 +	getUndoRedoMutationStrings(unitId, mutationId, propertyPath, position) {
 +		this.ensureNotDisposed();
 +		if (position !== undefined && position !== "top") throw new Error("History inspection position is invalid.");
@@ -376,6 +507,52 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..7d8807d96e9304344a0f365b6b47f794
  	getUndoRedoStatus(unitId) {
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
+@@ -25581,6 +25670,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		};
+ 	}
+ 	pushUndoRedo(item) {
++		this._advanceHistoryCheckpoint();
+ 		const { unitID } = item;
+ 		const redoStack = this._getRedoStack(unitID, true);
+ 		const undoStack = this._getUndoStack(unitID, true);
+@@ -25623,6 +25713,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		});
+ 	}
+ 	clearUndoRedo(unitID) {
++		this._advanceHistoryCheckpoint();
+ 		const redoStack = this._getRedoStack(unitID);
+ 		if (redoStack) redoStack.length = 0;
+ 		const undoStack = this._getUndoStack(unitID);
+@@ -25646,7 +25737,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		return (stack === null || stack === void 0 ? void 0 : stack.length) ? stack[stack.length - 1] : null;
+ 	}
+ 	popUndoToRedo() {
+-		const element = this._getUndoStackForFocused().pop();
++		const stack = this._getUndoStackForFocused();
++		if (stack.length) this._advanceHistoryCheckpoint();
++		const element = stack.pop();
+ 		if (element) {
+ 			this._itemGroups.delete(element);
+ 			if (element.redoMutations.length > 0) this._getRedoStackForFocused().push(element);
+@@ -25654,7 +25747,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		}
+ 	}
+ 	popRedoToUndo() {
+-		const element = this._getRedoStackForFocused().pop();
++		const stack = this._getRedoStackForFocused();
++		if (stack.length) this._advanceHistoryCheckpoint();
++		const element = stack.pop();
+ 		if (element) {
+ 			this._itemGroups.delete(element);
+ 			this._getUndoStackForFocused().push(element);
+@@ -25666,6 +25761,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		const stack = this._getUndoStack(unitId);
+ 		const item = stack === null || stack === void 0 ? void 0 : stack[(stack === null || stack === void 0 ? void 0 : stack.length) - 1];
+ 		if (item && item.id === id) {
++			this._advanceHistoryCheckpoint();
+ 			stack.pop();
+ 			this._itemGroups.delete(item);
+ 			sequenceExecute(item.undoMutations, this._commandService);
 diff --git a/lib/types/services/command/command.service.d.ts b/lib/types/services/command/command.service.d.ts
 index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..d89703ab1e9386a0b89031e9d9e3e73fb17eb796 100644
 --- a/lib/types/services/command/command.service.d.ts
@@ -435,13 +612,20 @@ index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..d89703ab1e9386a0b89031e9d9e3e73f
      registerMultipleCommand(command: ICommand): IDisposable;
      beforeCommandExecuted(listener: CommandListener): IDisposable;
 diff --git a/lib/types/services/undoredo/undoredo.service.d.ts b/lib/types/services/undoredo/undoredo.service.d.ts
-index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..ece1845ef87ccf6c2da725b334e5afd1fe63d8a4 100644
+index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..8fc46bdd77086b702ee7631e42ee5b2959646dec 100644
 --- a/lib/types/services/undoredo/undoredo.service.d.ts
 +++ b/lib/types/services/undoredo/undoredo.service.d.ts
-@@ -37,6 +37,13 @@ export interface IUndoRedoService {
+@@ -37,6 +37,20 @@ export interface IUndoRedoService {
      undoRedoStatus$: Observable<IUndoRedoStatus>;
      /** Read a unit's history counts without changing the focused unit. */
      getUndoRedoStatus(unitId: string): IUndoRedoStatus;
++    /** Frozen primitive checkpoint of the native focused editor history.
++     * Service-local revision invalidates on pushes (including groups), clears,
++     * pops and rollback; unrelated units may conservatively invalidate it.
++     * Empty focus returns unitId "" and false availability. Not authority.
++     */
++    getUndoRedoCheckpoint(): { readonly unitId: string; readonly revision: number; readonly undoAvailable: boolean; readonly redoAvailable: boolean };
++
 +    /** Read frozen primitive metadata from both mutation directions of actual
 +     * SDK history items. No focus/stack/payload mutation or getter invocation.
 +     * Limits: path 1..16 ASCII keys, strings <=512 characters, <=100000 scanned
@@ -452,10 +636,21 @@ index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..ece1845ef87ccf6c2da725b334e5afd1
      pushUndoRedo(item: IUndoRedoItem): void;
      /**
       * Group undo redo items pushed while the returned scope is active.
-@@ -119,6 +126,13 @@ export declare class LocalUndoRedoService extends Disposable implements IUndoRed
+@@ -117,8 +131,24 @@ export declare class LocalUndoRedoService extends Disposable implements IUndoRed
+     private readonly _activeGroups;
+     private readonly _itemGroups;
      private readonly _historyLimit;
++    private _historyCheckpointRevision;
++    private _advanceHistoryCheckpoint;
      constructor(_univerInstanceService: IUniverInstanceService, _commandService: ICommandService, _contextService: IContextService, configService: IConfigService);
      getUndoRedoStatus(unitId: string): IUndoRedoStatus;
++    /** Frozen primitive checkpoint of the native focused editor history.
++     * Service-local revision invalidates on pushes (including groups), clears,
++     * pops and rollback; unrelated units may conservatively invalidate it.
++     * Empty focus returns unitId "" and false availability. Not authority.
++     */
++    getUndoRedoCheckpoint(): { readonly unitId: string; readonly revision: number; readonly undoAvailable: boolean; readonly redoAvailable: boolean };
++
 +    /** Read frozen primitive metadata from both mutation directions of actual
 +     * SDK history items. No focus/stack/payload mutation or getter invocation.
 +     * Limits: path 1..16 ASCII keys, strings <=512 characters, <=100000 scanned
