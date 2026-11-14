@@ -1,5 +1,5 @@
 diff --git a/lib/cjs/index.js b/lib/cjs/index.js
-index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..9ee4aa69b9ff8ca3099e0f5816391f8961fba8e6 100644
+index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..bcda66c8e541c3971e5fc5934b8b72a561fba748 100644
 --- a/lib/cjs/index.js
 +++ b/lib/cjs/index.js
 @@ -2065,7 +2065,7 @@ var CommandRegistry = class {
@@ -80,7 +80,98 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..9ee4aa69b9ff8ca3099e0f5816391f89
  			if (result instanceof Promise) throw new TypeError("[CommandService]: Command handler should not return a promise.");
  			this._commandExecutingLevel--;
  		} catch (e) {
-@@ -25594,6 +25624,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25578,6 +25608,90 @@ const RedoCommand = new class extends MultiImplementationCommand {
+ 		return false;
+ 	}
+ }();
++function historyOwnDataDescriptor(object, key) {
++	if (object === null || typeof object !== "object") return undefined;
++	const descriptor = Object.getOwnPropertyDescriptor(object, key);
++	if (descriptor && !("value" in descriptor)) throw new Error("History inspection requires a data property.");
++	return descriptor;
++}
++function validateHistoryJson(value) {
++	const maxBytes = 128 * 1024 * 1024, maxText = 64 * 1024 * 1024, maxNodes = 4000000;
++	let bytes = 0, text = 0, nodes = 0;
++	const ancestors = new Set();
++	const spend = (count) => {
++		bytes += count;
++		if (bytes > maxBytes) throw new Error("History mutation data exceeds its byte limit.");
++	};
++	const addText = (value) => {
++		text += value.length;
++		if (text > maxText) throw new Error("History mutation data exceeds its text limit.");
++	};
++	const string = (value) => {
++		addText(value);
++		let count = 2;
++		for (let index = 0; index < value.length; index++) {
++			const code = value.charCodeAt(index);
++			if (code === 34 || code === 92) count += 2;
++			else if (code < 32) count += (code === 8 || code === 9 || code === 10 || code === 12 || code === 13) ? 2 : 6;
++			else if (code < 128) count++;
++			else if (code < 2048) count += 2;
++			else if (code >= 55296 && code <= 56319) {
++				const next = value.charCodeAt(index + 1);
++				if (next >= 56320 && next <= 57343) { count += 4; index++; }
++				else count += 6;
++			} else if (code >= 56320 && code <= 57343) count += 6;
++			else count += 3;
++			if (count > maxBytes - bytes) throw new Error("History mutation data exceeds its byte limit.");
++		}
++		spend(count);
++	};
++	const visit = (item, depth) => {
++		if (++nodes > maxNodes || depth > 64) throw new Error("History mutation data exceeds its node/depth limit.");
++		if (item === undefined) return;
++		if (item === null) { spend(4); return; }
++		if (typeof item === "string") { string(item); return; }
++		if (typeof item === "number") {
++			if (!Number.isFinite(item)) throw new Error("History mutation data requires finite numbers.");
++			spend(String(item === 0 ? 0 : item).length); return;
++		}
++		if (typeof item === "boolean") { spend(item ? 4 : 5); return; }
++		if (typeof item !== "object") throw new Error("History mutation data requires JSON values.");
++		const array = Array.isArray(item), prototype = Object.getPrototypeOf(item);
++		if (ancestors.has(item) || prototype !== (array ? Array.prototype : Object.prototype) && prototype !== null) throw new Error("History mutation data requires plain acyclic JSON.");
++		if (Object.getOwnPropertySymbols(item).length) throw new Error("History mutation data requires JSON keys.");
++		ancestors.add(item); spend(2);
++		if (array) {
++			if (item.length > maxNodes - nodes) throw new Error("History mutation data exceeds its node/depth limit.");
++			if (Object.getOwnPropertyNames(item).length !== item.length + 1) throw new Error("History mutation data requires dense JSON arrays.");
++			for (let index = 0; index < item.length; index++) {
++				const property = historyOwnDataDescriptor(item, String(index));
++				if (!property || !property.enumerable || property.value === undefined) throw new Error("History mutation data requires dense JSON arrays.");
++				if (index) spend(1);
++				visit(property.value, depth + 1);
++			}
++		} else {
++			let emitted = 0;
++			for (const key of Object.getOwnPropertyNames(item)) {
++				const property = historyOwnDataDescriptor(item, key);
++				if (!property.enumerable) throw new Error("History mutation data requires enumerable JSON properties.");
++				if (property.value === undefined) { addText(key); visit(undefined, depth + 1); continue; }
++				if (emitted++) spend(1);
++				string(key); spend(1); visit(property.value, depth + 1);
++			}
++		}
++		ancestors.delete(item);
++	};
++	visit(value, 0);
++}
++function freezeHistoryJson(value) {
++	if (typeof value === "number" && value === 0) return 0;
++	if (value === null || typeof value !== "object") return value;
++	for (const key of Object.keys(value)) {
++		if (value[key] === undefined) delete value[key];
++		else value[key] = freezeHistoryJson(value[key]);
++	}
++	return Object.freeze(value);
++}
+ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 	constructor(_univerInstanceService, _commandService, _contextService, configService) {
+ 		super();
+@@ -25594,6 +25708,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		_defineProperty(this, "_batchingStatus", /* @__PURE__ */ new Map());
  		_defineProperty(this, "_activeGroups", /* @__PURE__ */ new Map());
  		_defineProperty(this, "_itemGroups", /* @__PURE__ */ new WeakMap());
@@ -88,7 +179,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..9ee4aa69b9ff8ca3099e0f5816391f89
  		_defineProperty(this, "_historyLimit", void 0);
  		this._historyLimit = configService.getConfig("undoRedo.historyLimit") ?? 50;
  		this.undoRedoStatus$ = this._undoRedoStatus$.asObservable();
-@@ -25602,6 +25633,73 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25602,6 +25717,88 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
@@ -113,6 +204,27 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..9ee4aa69b9ff8ca3099e0f5816391f89
 +		if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER - 1) throw new Error("History checkpoint revision is exhausted.");
 +		this._historyCheckpointRevision = revision + 1;
 +	}
++	getUndoRedoMutationData(unitId, direction, entryId) {
++		if (typeof unitId !== "string" || !unitId.length || unitId.length > 600 || direction !== "undo" && direction !== "redo" || !Number.isSafeInteger(entryId) || entryId <= 0) throw new Error("History mutation data query is invalid.");
++		const checkpoint = this.getUndoRedoCheckpoint();
++		const field = direction === "undo" ? "undoEntryId" : "redoEntryId";
++		if (checkpoint.unitId !== unitId || checkpoint[field] !== entryId) throw new Error("History mutation data owner changed.");
++		const item = direction === "undo" ? this._pitchUndoElement(unitId) : this._pitchRedoElement(unitId);
++		const data = (object, key) => historyOwnDataDescriptor(object, key)?.value;
++		if (data(item, "unitID") !== unitId) throw new Error("History mutation data owner changed.");
++		const undoMutations = data(item, "undoMutations"), redoMutations = data(item, "redoMutations");
++		if (!Array.isArray(undoMutations) || !Array.isArray(redoMutations) || undoMutations.length + redoMutations.length > 100000) throw new Error("History mutation data exceeds its mutation limit.");
++		for (const mutations of [undoMutations, redoMutations]) for (let index = 0; index < mutations.length; index++) {
++			const mutation = data(mutations, String(index)), id = data(mutation, "id");
++			if (!mutation || typeof mutation !== "object" || Array.isArray(mutation) || typeof id !== "string" || !/^[A-Za-z0-9_.-]{1,200}$/.test(id)) throw new Error("History mutation data requires mutation objects.");
++		}
++		const raw = { unitId, entryId, undoMutations, redoMutations };
++		validateHistoryJson(raw);
++		const result = freezeHistoryJson(structuredClone(raw));
++		const current = this.getUndoRedoCheckpoint();
++		if (current.unitId !== unitId || current[field] !== entryId || current.revision !== checkpoint.revision) throw new Error("History mutation data owner changed.");
++		return result;
++	}
 +	getUndoRedoMutationStrings(unitId, mutationId, propertyPath, position) {
 +		this.ensureNotDisposed();
 +		if (position !== undefined && position !== "top") throw new Error("History inspection position is invalid.");
@@ -126,13 +238,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..9ee4aa69b9ff8ca3099e0f5816391f89
 +			path.push(key);
 +		}
 +		let visited = 0, collected = 0;
-+		const data = (object, key) => {
-+			if (object === null || typeof object !== "object") return undefined;
-+			const descriptor = Object.getOwnPropertyDescriptor(object, key);
-+			if (!descriptor) return undefined;
-+			if (!("value" in descriptor)) throw new Error("History inspection requires a data property.");
-+			return descriptor.value;
-+		};
++		const data = (object, key) => historyOwnDataDescriptor(object, key)?.value;
 +		const inspect = (stack) => {
 +			const values = [];
 +			const entries = position === "top" ? stack === null || stack === void 0 ? void 0 : stack.slice(-1) : stack;
@@ -162,7 +268,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..9ee4aa69b9ff8ca3099e0f5816391f89
  	getUndoRedoStatus(unitId) {
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
-@@ -25610,6 +25708,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25610,6 +25807,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		};
  	}
  	pushUndoRedo(item) {
@@ -170,7 +276,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..9ee4aa69b9ff8ca3099e0f5816391f89
  		const { unitID } = item;
  		const redoStack = this._getRedoStack(unitID, true);
  		const undoStack = this._getUndoStack(unitID, true);
-@@ -25638,6 +25737,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25638,6 +25836,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  			undoStack.push(item);
  			if (undoStack.length > historyLimit) undoStack.splice(0, 1);
  		}
@@ -179,7 +285,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..9ee4aa69b9ff8ca3099e0f5816391f89
  		this._updateStatus();
  	}
  	beginUndoRedoGroup(unitId, groupId, mode = "replace") {
-@@ -25652,6 +25753,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25652,6 +25852,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		});
  	}
  	clearUndoRedo(unitID) {
@@ -187,7 +293,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..9ee4aa69b9ff8ca3099e0f5816391f89
  		const redoStack = this._getRedoStack(unitID);
  		if (redoStack) redoStack.length = 0;
  		const undoStack = this._getUndoStack(unitID);
-@@ -25675,7 +25777,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25675,7 +25876,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		return (stack === null || stack === void 0 ? void 0 : stack.length) ? stack[stack.length - 1] : null;
  	}
  	popUndoToRedo() {
@@ -198,7 +304,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..9ee4aa69b9ff8ca3099e0f5816391f89
  		if (element) {
  			this._itemGroups.delete(element);
  			if (element.redoMutations.length > 0) this._getRedoStackForFocused().push(element);
-@@ -25683,7 +25787,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25683,7 +25886,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		}
  	}
  	popRedoToUndo() {
@@ -209,7 +315,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..9ee4aa69b9ff8ca3099e0f5816391f89
  		if (element) {
  			this._itemGroups.delete(element);
  			this._getUndoStackForFocused().push(element);
-@@ -25695,6 +25801,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25695,6 +25900,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		const stack = this._getUndoStack(unitId);
  		const item = stack === null || stack === void 0 ? void 0 : stack[(stack === null || stack === void 0 ? void 0 : stack.length) - 1];
  		if (item && item.id === id) {
@@ -218,7 +324,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..9ee4aa69b9ff8ca3099e0f5816391f89
  			this._itemGroups.delete(item);
  			sequenceExecute(item.undoMutations, this._commandService);
 diff --git a/lib/es/index.js b/lib/es/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016801997ec 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c3194e9e7 100644
 --- a/lib/es/index.js
 +++ b/lib/es/index.js
 @@ -2036,7 +2036,7 @@ var CommandRegistry = class {
@@ -299,7 +405,98 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  			if (result instanceof Promise) throw new TypeError("[CommandService]: Command handler should not return a promise.");
  			this._commandExecutingLevel--;
  		} catch (e) {
-@@ -25565,6 +25595,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25549,6 +25579,90 @@ const RedoCommand = new class extends MultiImplementationCommand {
+ 		return false;
+ 	}
+ }();
++function historyOwnDataDescriptor(object, key) {
++	if (object === null || typeof object !== "object") return undefined;
++	const descriptor = Object.getOwnPropertyDescriptor(object, key);
++	if (descriptor && !("value" in descriptor)) throw new Error("History inspection requires a data property.");
++	return descriptor;
++}
++function validateHistoryJson(value) {
++	const maxBytes = 128 * 1024 * 1024, maxText = 64 * 1024 * 1024, maxNodes = 4000000;
++	let bytes = 0, text = 0, nodes = 0;
++	const ancestors = new Set();
++	const spend = (count) => {
++		bytes += count;
++		if (bytes > maxBytes) throw new Error("History mutation data exceeds its byte limit.");
++	};
++	const addText = (value) => {
++		text += value.length;
++		if (text > maxText) throw new Error("History mutation data exceeds its text limit.");
++	};
++	const string = (value) => {
++		addText(value);
++		let count = 2;
++		for (let index = 0; index < value.length; index++) {
++			const code = value.charCodeAt(index);
++			if (code === 34 || code === 92) count += 2;
++			else if (code < 32) count += (code === 8 || code === 9 || code === 10 || code === 12 || code === 13) ? 2 : 6;
++			else if (code < 128) count++;
++			else if (code < 2048) count += 2;
++			else if (code >= 55296 && code <= 56319) {
++				const next = value.charCodeAt(index + 1);
++				if (next >= 56320 && next <= 57343) { count += 4; index++; }
++				else count += 6;
++			} else if (code >= 56320 && code <= 57343) count += 6;
++			else count += 3;
++			if (count > maxBytes - bytes) throw new Error("History mutation data exceeds its byte limit.");
++		}
++		spend(count);
++	};
++	const visit = (item, depth) => {
++		if (++nodes > maxNodes || depth > 64) throw new Error("History mutation data exceeds its node/depth limit.");
++		if (item === undefined) return;
++		if (item === null) { spend(4); return; }
++		if (typeof item === "string") { string(item); return; }
++		if (typeof item === "number") {
++			if (!Number.isFinite(item)) throw new Error("History mutation data requires finite numbers.");
++			spend(String(item === 0 ? 0 : item).length); return;
++		}
++		if (typeof item === "boolean") { spend(item ? 4 : 5); return; }
++		if (typeof item !== "object") throw new Error("History mutation data requires JSON values.");
++		const array = Array.isArray(item), prototype = Object.getPrototypeOf(item);
++		if (ancestors.has(item) || prototype !== (array ? Array.prototype : Object.prototype) && prototype !== null) throw new Error("History mutation data requires plain acyclic JSON.");
++		if (Object.getOwnPropertySymbols(item).length) throw new Error("History mutation data requires JSON keys.");
++		ancestors.add(item); spend(2);
++		if (array) {
++			if (item.length > maxNodes - nodes) throw new Error("History mutation data exceeds its node/depth limit.");
++			if (Object.getOwnPropertyNames(item).length !== item.length + 1) throw new Error("History mutation data requires dense JSON arrays.");
++			for (let index = 0; index < item.length; index++) {
++				const property = historyOwnDataDescriptor(item, String(index));
++				if (!property || !property.enumerable || property.value === undefined) throw new Error("History mutation data requires dense JSON arrays.");
++				if (index) spend(1);
++				visit(property.value, depth + 1);
++			}
++		} else {
++			let emitted = 0;
++			for (const key of Object.getOwnPropertyNames(item)) {
++				const property = historyOwnDataDescriptor(item, key);
++				if (!property.enumerable) throw new Error("History mutation data requires enumerable JSON properties.");
++				if (property.value === undefined) { addText(key); visit(undefined, depth + 1); continue; }
++				if (emitted++) spend(1);
++				string(key); spend(1); visit(property.value, depth + 1);
++			}
++		}
++		ancestors.delete(item);
++	};
++	visit(value, 0);
++}
++function freezeHistoryJson(value) {
++	if (typeof value === "number" && value === 0) return 0;
++	if (value === null || typeof value !== "object") return value;
++	for (const key of Object.keys(value)) {
++		if (value[key] === undefined) delete value[key];
++		else value[key] = freezeHistoryJson(value[key]);
++	}
++	return Object.freeze(value);
++}
+ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 	constructor(_univerInstanceService, _commandService, _contextService, configService) {
+ 		super();
+@@ -25565,6 +25679,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		_defineProperty(this, "_batchingStatus", /* @__PURE__ */ new Map());
  		_defineProperty(this, "_activeGroups", /* @__PURE__ */ new Map());
  		_defineProperty(this, "_itemGroups", /* @__PURE__ */ new WeakMap());
@@ -307,7 +504,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  		_defineProperty(this, "_historyLimit", void 0);
  		this._historyLimit = configService.getConfig("undoRedo.historyLimit") ?? 50;
  		this.undoRedoStatus$ = this._undoRedoStatus$.asObservable();
-@@ -25573,6 +25604,73 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25573,6 +25688,88 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
@@ -332,6 +529,27 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
 +		if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER - 1) throw new Error("History checkpoint revision is exhausted.");
 +		this._historyCheckpointRevision = revision + 1;
 +	}
++	getUndoRedoMutationData(unitId, direction, entryId) {
++		if (typeof unitId !== "string" || !unitId.length || unitId.length > 600 || direction !== "undo" && direction !== "redo" || !Number.isSafeInteger(entryId) || entryId <= 0) throw new Error("History mutation data query is invalid.");
++		const checkpoint = this.getUndoRedoCheckpoint();
++		const field = direction === "undo" ? "undoEntryId" : "redoEntryId";
++		if (checkpoint.unitId !== unitId || checkpoint[field] !== entryId) throw new Error("History mutation data owner changed.");
++		const item = direction === "undo" ? this._pitchUndoElement(unitId) : this._pitchRedoElement(unitId);
++		const data = (object, key) => historyOwnDataDescriptor(object, key)?.value;
++		if (data(item, "unitID") !== unitId) throw new Error("History mutation data owner changed.");
++		const undoMutations = data(item, "undoMutations"), redoMutations = data(item, "redoMutations");
++		if (!Array.isArray(undoMutations) || !Array.isArray(redoMutations) || undoMutations.length + redoMutations.length > 100000) throw new Error("History mutation data exceeds its mutation limit.");
++		for (const mutations of [undoMutations, redoMutations]) for (let index = 0; index < mutations.length; index++) {
++			const mutation = data(mutations, String(index)), id = data(mutation, "id");
++			if (!mutation || typeof mutation !== "object" || Array.isArray(mutation) || typeof id !== "string" || !/^[A-Za-z0-9_.-]{1,200}$/.test(id)) throw new Error("History mutation data requires mutation objects.");
++		}
++		const raw = { unitId, entryId, undoMutations, redoMutations };
++		validateHistoryJson(raw);
++		const result = freezeHistoryJson(structuredClone(raw));
++		const current = this.getUndoRedoCheckpoint();
++		if (current.unitId !== unitId || current[field] !== entryId || current.revision !== checkpoint.revision) throw new Error("History mutation data owner changed.");
++		return result;
++	}
 +	getUndoRedoMutationStrings(unitId, mutationId, propertyPath, position) {
 +		this.ensureNotDisposed();
 +		if (position !== undefined && position !== "top") throw new Error("History inspection position is invalid.");
@@ -345,13 +563,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
 +			path.push(key);
 +		}
 +		let visited = 0, collected = 0;
-+		const data = (object, key) => {
-+			if (object === null || typeof object !== "object") return undefined;
-+			const descriptor = Object.getOwnPropertyDescriptor(object, key);
-+			if (!descriptor) return undefined;
-+			if (!("value" in descriptor)) throw new Error("History inspection requires a data property.");
-+			return descriptor.value;
-+		};
++		const data = (object, key) => historyOwnDataDescriptor(object, key)?.value;
 +		const inspect = (stack) => {
 +			const values = [];
 +			const entries = position === "top" ? stack === null || stack === void 0 ? void 0 : stack.slice(-1) : stack;
@@ -381,7 +593,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  	getUndoRedoStatus(unitId) {
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
-@@ -25581,6 +25679,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25581,6 +25778,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		};
  	}
  	pushUndoRedo(item) {
@@ -389,7 +601,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  		const { unitID } = item;
  		const redoStack = this._getRedoStack(unitID, true);
  		const undoStack = this._getUndoStack(unitID, true);
-@@ -25609,6 +25708,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25609,6 +25807,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  			undoStack.push(item);
  			if (undoStack.length > historyLimit) undoStack.splice(0, 1);
  		}
@@ -398,7 +610,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  		this._updateStatus();
  	}
  	beginUndoRedoGroup(unitId, groupId, mode = "replace") {
-@@ -25623,6 +25724,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25623,6 +25823,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		});
  	}
  	clearUndoRedo(unitID) {
@@ -406,7 +618,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  		const redoStack = this._getRedoStack(unitID);
  		if (redoStack) redoStack.length = 0;
  		const undoStack = this._getUndoStack(unitID);
-@@ -25646,7 +25748,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25646,7 +25847,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		return (stack === null || stack === void 0 ? void 0 : stack.length) ? stack[stack.length - 1] : null;
  	}
  	popUndoToRedo() {
@@ -417,7 +629,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  		if (element) {
  			this._itemGroups.delete(element);
  			if (element.redoMutations.length > 0) this._getRedoStackForFocused().push(element);
-@@ -25654,7 +25758,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25654,7 +25857,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		}
  	}
  	popRedoToUndo() {
@@ -428,7 +640,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  		if (element) {
  			this._itemGroups.delete(element);
  			this._getUndoStackForFocused().push(element);
-@@ -25666,6 +25772,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25666,6 +25871,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		const stack = this._getUndoStack(unitId);
  		const item = stack === null || stack === void 0 ? void 0 : stack[(stack === null || stack === void 0 ? void 0 : stack.length) - 1];
  		if (item && item.id === id) {
@@ -437,7 +649,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  			this._itemGroups.delete(item);
  			sequenceExecute(item.undoMutations, this._commandService);
 diff --git a/lib/index.js b/lib/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016801997ec 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..3ba415cac96a25125ae9345365d4276c3194e9e7 100644
 --- a/lib/index.js
 +++ b/lib/index.js
 @@ -2036,7 +2036,7 @@ var CommandRegistry = class {
@@ -518,7 +730,98 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  			if (result instanceof Promise) throw new TypeError("[CommandService]: Command handler should not return a promise.");
  			this._commandExecutingLevel--;
  		} catch (e) {
-@@ -25565,6 +25595,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25549,6 +25579,90 @@ const RedoCommand = new class extends MultiImplementationCommand {
+ 		return false;
+ 	}
+ }();
++function historyOwnDataDescriptor(object, key) {
++	if (object === null || typeof object !== "object") return undefined;
++	const descriptor = Object.getOwnPropertyDescriptor(object, key);
++	if (descriptor && !("value" in descriptor)) throw new Error("History inspection requires a data property.");
++	return descriptor;
++}
++function validateHistoryJson(value) {
++	const maxBytes = 128 * 1024 * 1024, maxText = 64 * 1024 * 1024, maxNodes = 4000000;
++	let bytes = 0, text = 0, nodes = 0;
++	const ancestors = new Set();
++	const spend = (count) => {
++		bytes += count;
++		if (bytes > maxBytes) throw new Error("History mutation data exceeds its byte limit.");
++	};
++	const addText = (value) => {
++		text += value.length;
++		if (text > maxText) throw new Error("History mutation data exceeds its text limit.");
++	};
++	const string = (value) => {
++		addText(value);
++		let count = 2;
++		for (let index = 0; index < value.length; index++) {
++			const code = value.charCodeAt(index);
++			if (code === 34 || code === 92) count += 2;
++			else if (code < 32) count += (code === 8 || code === 9 || code === 10 || code === 12 || code === 13) ? 2 : 6;
++			else if (code < 128) count++;
++			else if (code < 2048) count += 2;
++			else if (code >= 55296 && code <= 56319) {
++				const next = value.charCodeAt(index + 1);
++				if (next >= 56320 && next <= 57343) { count += 4; index++; }
++				else count += 6;
++			} else if (code >= 56320 && code <= 57343) count += 6;
++			else count += 3;
++			if (count > maxBytes - bytes) throw new Error("History mutation data exceeds its byte limit.");
++		}
++		spend(count);
++	};
++	const visit = (item, depth) => {
++		if (++nodes > maxNodes || depth > 64) throw new Error("History mutation data exceeds its node/depth limit.");
++		if (item === undefined) return;
++		if (item === null) { spend(4); return; }
++		if (typeof item === "string") { string(item); return; }
++		if (typeof item === "number") {
++			if (!Number.isFinite(item)) throw new Error("History mutation data requires finite numbers.");
++			spend(String(item === 0 ? 0 : item).length); return;
++		}
++		if (typeof item === "boolean") { spend(item ? 4 : 5); return; }
++		if (typeof item !== "object") throw new Error("History mutation data requires JSON values.");
++		const array = Array.isArray(item), prototype = Object.getPrototypeOf(item);
++		if (ancestors.has(item) || prototype !== (array ? Array.prototype : Object.prototype) && prototype !== null) throw new Error("History mutation data requires plain acyclic JSON.");
++		if (Object.getOwnPropertySymbols(item).length) throw new Error("History mutation data requires JSON keys.");
++		ancestors.add(item); spend(2);
++		if (array) {
++			if (item.length > maxNodes - nodes) throw new Error("History mutation data exceeds its node/depth limit.");
++			if (Object.getOwnPropertyNames(item).length !== item.length + 1) throw new Error("History mutation data requires dense JSON arrays.");
++			for (let index = 0; index < item.length; index++) {
++				const property = historyOwnDataDescriptor(item, String(index));
++				if (!property || !property.enumerable || property.value === undefined) throw new Error("History mutation data requires dense JSON arrays.");
++				if (index) spend(1);
++				visit(property.value, depth + 1);
++			}
++		} else {
++			let emitted = 0;
++			for (const key of Object.getOwnPropertyNames(item)) {
++				const property = historyOwnDataDescriptor(item, key);
++				if (!property.enumerable) throw new Error("History mutation data requires enumerable JSON properties.");
++				if (property.value === undefined) { addText(key); visit(undefined, depth + 1); continue; }
++				if (emitted++) spend(1);
++				string(key); spend(1); visit(property.value, depth + 1);
++			}
++		}
++		ancestors.delete(item);
++	};
++	visit(value, 0);
++}
++function freezeHistoryJson(value) {
++	if (typeof value === "number" && value === 0) return 0;
++	if (value === null || typeof value !== "object") return value;
++	for (const key of Object.keys(value)) {
++		if (value[key] === undefined) delete value[key];
++		else value[key] = freezeHistoryJson(value[key]);
++	}
++	return Object.freeze(value);
++}
+ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 	constructor(_univerInstanceService, _commandService, _contextService, configService) {
+ 		super();
+@@ -25565,6 +25679,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		_defineProperty(this, "_batchingStatus", /* @__PURE__ */ new Map());
  		_defineProperty(this, "_activeGroups", /* @__PURE__ */ new Map());
  		_defineProperty(this, "_itemGroups", /* @__PURE__ */ new WeakMap());
@@ -526,7 +829,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  		_defineProperty(this, "_historyLimit", void 0);
  		this._historyLimit = configService.getConfig("undoRedo.historyLimit") ?? 50;
  		this.undoRedoStatus$ = this._undoRedoStatus$.asObservable();
-@@ -25573,6 +25604,73 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25573,6 +25688,88 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
@@ -551,6 +854,27 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
 +		if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER - 1) throw new Error("History checkpoint revision is exhausted.");
 +		this._historyCheckpointRevision = revision + 1;
 +	}
++	getUndoRedoMutationData(unitId, direction, entryId) {
++		if (typeof unitId !== "string" || !unitId.length || unitId.length > 600 || direction !== "undo" && direction !== "redo" || !Number.isSafeInteger(entryId) || entryId <= 0) throw new Error("History mutation data query is invalid.");
++		const checkpoint = this.getUndoRedoCheckpoint();
++		const field = direction === "undo" ? "undoEntryId" : "redoEntryId";
++		if (checkpoint.unitId !== unitId || checkpoint[field] !== entryId) throw new Error("History mutation data owner changed.");
++		const item = direction === "undo" ? this._pitchUndoElement(unitId) : this._pitchRedoElement(unitId);
++		const data = (object, key) => historyOwnDataDescriptor(object, key)?.value;
++		if (data(item, "unitID") !== unitId) throw new Error("History mutation data owner changed.");
++		const undoMutations = data(item, "undoMutations"), redoMutations = data(item, "redoMutations");
++		if (!Array.isArray(undoMutations) || !Array.isArray(redoMutations) || undoMutations.length + redoMutations.length > 100000) throw new Error("History mutation data exceeds its mutation limit.");
++		for (const mutations of [undoMutations, redoMutations]) for (let index = 0; index < mutations.length; index++) {
++			const mutation = data(mutations, String(index)), id = data(mutation, "id");
++			if (!mutation || typeof mutation !== "object" || Array.isArray(mutation) || typeof id !== "string" || !/^[A-Za-z0-9_.-]{1,200}$/.test(id)) throw new Error("History mutation data requires mutation objects.");
++		}
++		const raw = { unitId, entryId, undoMutations, redoMutations };
++		validateHistoryJson(raw);
++		const result = freezeHistoryJson(structuredClone(raw));
++		const current = this.getUndoRedoCheckpoint();
++		if (current.unitId !== unitId || current[field] !== entryId || current.revision !== checkpoint.revision) throw new Error("History mutation data owner changed.");
++		return result;
++	}
 +	getUndoRedoMutationStrings(unitId, mutationId, propertyPath, position) {
 +		this.ensureNotDisposed();
 +		if (position !== undefined && position !== "top") throw new Error("History inspection position is invalid.");
@@ -564,13 +888,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
 +			path.push(key);
 +		}
 +		let visited = 0, collected = 0;
-+		const data = (object, key) => {
-+			if (object === null || typeof object !== "object") return undefined;
-+			const descriptor = Object.getOwnPropertyDescriptor(object, key);
-+			if (!descriptor) return undefined;
-+			if (!("value" in descriptor)) throw new Error("History inspection requires a data property.");
-+			return descriptor.value;
-+		};
++		const data = (object, key) => historyOwnDataDescriptor(object, key)?.value;
 +		const inspect = (stack) => {
 +			const values = [];
 +			const entries = position === "top" ? stack === null || stack === void 0 ? void 0 : stack.slice(-1) : stack;
@@ -600,7 +918,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  	getUndoRedoStatus(unitId) {
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
-@@ -25581,6 +25679,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25581,6 +25778,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		};
  	}
  	pushUndoRedo(item) {
@@ -608,7 +926,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  		const { unitID } = item;
  		const redoStack = this._getRedoStack(unitID, true);
  		const undoStack = this._getUndoStack(unitID, true);
-@@ -25609,6 +25708,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25609,6 +25807,8 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  			undoStack.push(item);
  			if (undoStack.length > historyLimit) undoStack.splice(0, 1);
  		}
@@ -617,7 +935,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  		this._updateStatus();
  	}
  	beginUndoRedoGroup(unitId, groupId, mode = "replace") {
-@@ -25623,6 +25724,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25623,6 +25823,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		});
  	}
  	clearUndoRedo(unitID) {
@@ -625,7 +943,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  		const redoStack = this._getRedoStack(unitID);
  		if (redoStack) redoStack.length = 0;
  		const undoStack = this._getUndoStack(unitID);
-@@ -25646,7 +25748,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25646,7 +25847,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		return (stack === null || stack === void 0 ? void 0 : stack.length) ? stack[stack.length - 1] : null;
  	}
  	popUndoToRedo() {
@@ -636,7 +954,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  		if (element) {
  			this._itemGroups.delete(element);
  			if (element.redoMutations.length > 0) this._getRedoStackForFocused().push(element);
-@@ -25654,7 +25758,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25654,7 +25857,9 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		}
  	}
  	popRedoToUndo() {
@@ -647,7 +965,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..0c4093f3e2f75dac0b0c6511de6f4016
  		if (element) {
  			this._itemGroups.delete(element);
  			this._getUndoStackForFocused().push(element);
-@@ -25666,6 +25772,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25666,6 +25871,7 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		const stack = this._getUndoStack(unitId);
  		const item = stack === null || stack === void 0 ? void 0 : stack[(stack === null || stack === void 0 ? void 0 : stack.length) - 1];
  		if (item && item.id === id) {
@@ -725,10 +1043,10 @@ index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..bda168408f522f0aec434a6cb780216a
      registerMultipleCommand(command: ICommand): IDisposable;
      beforeCommandExecuted(listener: CommandListener): IDisposable;
 diff --git a/lib/types/services/undoredo/undoredo.service.d.ts b/lib/types/services/undoredo/undoredo.service.d.ts
-index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..0388748835efd4e9f5bfbd28d21ce79a0f80960d 100644
+index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..d82f799b990a9965ae06bb4b91366415be8f8b58 100644
 --- a/lib/types/services/undoredo/undoredo.service.d.ts
 +++ b/lib/types/services/undoredo/undoredo.service.d.ts
-@@ -37,6 +37,22 @@ export interface IUndoRedoService {
+@@ -37,6 +37,32 @@ export interface IUndoRedoService {
      undoRedoStatus$: Observable<IUndoRedoStatus>;
      /** Read a unit's history counts without changing the focused unit. */
      getUndoRedoStatus(unitId: string): IUndoRedoStatus;
@@ -741,6 +1059,16 @@ index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..0388748835efd4e9f5bfbd28d21ce79a
 +     */
 +    getUndoRedoCheckpoint(): { readonly unitId: string; readonly revision: number; readonly undoAvailable: boolean; readonly redoAvailable: boolean; readonly undoEntryId: number | null; readonly redoEntryId: number | null };
 +
++    /** Detached deeply frozen JSON-domain top mutation data, bound to focused
++     * unit and exact native entry. Preserves all mutation fields, including trigger.
++     * Limits: 100000 mutations, depth 64, 4000000 nodes, 64 Mi UTF-16 text units,
++     * 128 MiB UTF-8 JSON bytes. Rejects getters, holes, cycles and exotic values.
++     * No history or parameter references escape; this query grants no authority. */
++    getUndoRedoMutationData(unitId: string, direction: 'undo' | 'redo', entryId: number): {
++        readonly unitId: string; readonly entryId: number;
++        readonly undoMutations: readonly Readonly<Record<string, unknown>>[];
++        readonly redoMutations: readonly Readonly<Record<string, unknown>>[];
++    };
 +    /** Read frozen primitive metadata from both mutation directions of actual
 +     * SDK history items. No focus/stack/payload mutation or getter invocation.
 +     * Limits: path 1..16 ASCII keys, strings <=512 characters, <=100000 scanned
@@ -751,7 +1079,7 @@ index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..0388748835efd4e9f5bfbd28d21ce79a
      pushUndoRedo(item: IUndoRedoItem): void;
      /**
       * Group undo redo items pushed while the returned scope is active.
-@@ -117,8 +133,27 @@ export declare class LocalUndoRedoService extends Disposable implements IUndoRed
+@@ -117,8 +143,37 @@ export declare class LocalUndoRedoService extends Disposable implements IUndoRed
      private readonly _activeGroups;
      private readonly _itemGroups;
      private readonly _historyLimit;
@@ -769,6 +1097,16 @@ index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..0388748835efd4e9f5bfbd28d21ce79a
 +     */
 +    getUndoRedoCheckpoint(): { readonly unitId: string; readonly revision: number; readonly undoAvailable: boolean; readonly redoAvailable: boolean; readonly undoEntryId: number | null; readonly redoEntryId: number | null };
 +
++    /** Detached deeply frozen JSON-domain top mutation data, bound to focused
++     * unit and exact native entry. Preserves all mutation fields, including trigger.
++     * Limits: 100000 mutations, depth 64, 4000000 nodes, 64 Mi UTF-16 text units,
++     * 128 MiB UTF-8 JSON bytes. Rejects getters, holes, cycles and exotic values.
++     * No history or parameter references escape; this query grants no authority. */
++    getUndoRedoMutationData(unitId: string, direction: 'undo' | 'redo', entryId: number): {
++        readonly unitId: string; readonly entryId: number;
++        readonly undoMutations: readonly Readonly<Record<string, unknown>>[];
++        readonly redoMutations: readonly Readonly<Record<string, unknown>>[];
++    };
 +    /** Read frozen primitive metadata from both mutation directions of actual
 +     * SDK history items. No focus/stack/payload mutation or getter invocation.
 +     * Limits: path 1..16 ASCII keys, strings <=512 characters, <=100000 scanned

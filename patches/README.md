@@ -173,3 +173,21 @@ registration, lease, generation, revision and issued descriptor guards still
 apply. Actual tests cover native movement, copied/same-object push, grouping,
 batching, unrelated-unit invalidation and all three consumed runtime variants.
 No worksheet controller is installed by this dependency checkpoint.
+
+`IUndoRedoService.getUndoRedoMutationData(unitId, direction, entryId)` returns a
+bounded, detached, deeply frozen JSON-domain projection of the exact focused top
+item's mutation arrays. The core knows no worksheet command names or field policy
+and preserves every mutation field, including `trigger`. It reuses the existing
+own-data-descriptor getter refusal; validation runs before native structuredClone,
+which also refuses proxies. Optional undefined object properties are omitted and
+-0 normalizes to 0, matching JSON transport. Arrays must be dense; cycles, accessors,
+non-enumerable/symbol keys, exotic objects and non-finite values refuse. Limits:
+100,000 mutations, depth 64, 4,000,000 nodes, 64 Mi UTF-16 text units and 128 MiB actual UTF-8
+JSON bytes. Exact escaped string bytes are counted before clone allocation. The
+focused unit, native item ID and revision are rechecked after copying/freezing.
+
+This permits an app owner to detect same-item redo payload aliases exposed by
+public command listeners. The app must still compare against its own issued
+immutable configuration and decide allowed commands/fields; the core neither
+strips routing fields nor grants command authority. See
+`docs/workbook-history-mutation-data.md` for qualification and remaining gates.
