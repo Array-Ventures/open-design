@@ -26,6 +26,9 @@ patchedDependencies:
   '@univerjs/rpc@1.4.0':
     hash: 5b65d725c143707c237fb70415d2cb35c651aeac5c1c88a07e10d8c32460382c
     path: patches/@univerjs__rpc@1.4.0.patch
+  '@univerjs/sheets-formula@1.4.0':
+    hash: ccbe45478fdc7d975f364f86502e22e8d5c142d5631ad6300e7a479febd0799f
+    path: patches/@univerjs__sheets-formula@1.4.0.patch
 
 importers:
 
@@ -151,7 +154,7 @@ importers:
         version: 1.4.0(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/sheets-formula':
         specifier: 1.4.0
-        version: 1.4.0(react@18.3.1)(rxjs@7.8.2)
+        version: 1.4.0(patch_hash=ccbe45478fdc7d975f364f86502e22e8d5c142d5631ad6300e7a479febd0799f)(react@18.3.1)(rxjs@7.8.2)
       '@xmldom/xmldom':
         specifier: 0.9.12
         version: 0.9.12
@@ -445,7 +448,7 @@ importers:
         version: 1.4.0(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/sheets-formula':
         specifier: 1.4.0
-        version: 1.4.0(react@18.3.1)(rxjs@7.8.2)
+        version: 1.4.0(patch_hash=ccbe45478fdc7d975f364f86502e22e8d5c142d5631ad6300e7a479febd0799f)(react@18.3.1)(rxjs@7.8.2)
       '@xterm/addon-fit':
         specifier: 0.10.0
         version: 0.10.0(@xterm/xterm@5.5.0)
@@ -10886,7 +10889,7 @@ snapshots:
       '@univerjs/network': 1.4.0(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/rpc': 1.4.0(patch_hash=5b65d725c143707c237fb70415d2cb35c651aeac5c1c88a07e10d8c32460382c)(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/sheets': 1.4.0(react@18.3.1)(rxjs@7.8.2)
-      '@univerjs/sheets-formula': 1.4.0(react@18.3.1)(rxjs@7.8.2)
+      '@univerjs/sheets-formula': 1.4.0(patch_hash=ccbe45478fdc7d975f364f86502e22e8d5c142d5631ad6300e7a479febd0799f)(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/sheets-formula-ui': 1.4.0(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/sheets-numfmt': 1.4.0(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/sheets-numfmt-ui': 1.4.0(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
@@ -10935,7 +10938,7 @@ snapshots:
       '@univerjs/engine-render': 1.4.0(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/icons': 1.47.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@univerjs/sheets': 1.4.0(react@18.3.1)(rxjs@7.8.2)
-      '@univerjs/sheets-formula': 1.4.0(react@18.3.1)(rxjs@7.8.2)
+      '@univerjs/sheets-formula': 1.4.0(patch_hash=ccbe45478fdc7d975f364f86502e22e8d5c142d5631ad6300e7a479febd0799f)(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/sheets-ui': 1.4.0(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/ui': 1.4.0(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(rxjs@7.8.2)
       react: 18.3.1
@@ -10945,7 +10948,7 @@ snapshots:
       - '@types/react'
       - '@types/react-dom'
 
-  '@univerjs/sheets-formula@1.4.0(react@18.3.1)(rxjs@7.8.2)':
+  '@univerjs/sheets-formula@1.4.0(patch_hash=ccbe45478fdc7d975f364f86502e22e8d5c142d5631ad6300e7a479febd0799f)(react@18.3.1)(rxjs@7.8.2)':
     dependencies:
       '@univerjs/core': 1.4.0(patch_hash=7c2c5964a818f921c0e038f88c4f910e6d600d99a99f15e5e30dcf954caf57ed)(react@18.3.1)(rxjs@7.8.2)
       '@univerjs/docs': 1.4.0(react@18.3.1)(rxjs@7.8.2)

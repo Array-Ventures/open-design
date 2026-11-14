@@ -51,3 +51,21 @@ entry; these are not full worksheet/browser qualification in every variant.
 Propose upstreaming the generic read-only inspection API when updating the pin;
 remove this patch only after an equivalent upstream boundary passes the same
 actual-history and entry-loader cases. No dependency version changes here.
+
+
+`@univerjs__sheets-formula@1.4.0.patch` removes two misleading pure-constructor
+annotations from chained `new Set(...).forEach(...)` traversals in the SDK's
+reference Undo/Redo builder. The production Next bundle eliminated both loops,
+leaving empty undo/redo maps even after the SDK correctly computed shifted local
+and quoted cross-sheet formulas. Raw source tests and an esbuild browser probe
+retained the loops, so they did not expose this production optimization failure.
+
+The patch changes annotations only in the ESM, CommonJS and compatibility entry
+files consumed here; it does not change command paths, formula semantics, source
+identity checks or computed-result provenance. The unused standalone UMD build is
+not patched or qualified. Refresh through `pnpm patch` / `pnpm patch-commit` and
+install the updated lockfile. A successful source-level SDK test is insufficient:
+qualify the real production companion with row/column actions, actual formula
+readback, Save, post-ACK Undo/Redo and independent XLSX inspection before removing
+the patch. The frozen72 production failure and subsequent candidate qualification
+are recorded separately; source test success does not claim a fixed bundle.

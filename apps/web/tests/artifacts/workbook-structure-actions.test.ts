@@ -65,3 +65,30 @@ it.each(['row-before', 'row-after', 'row-delete', 'column-before', 'column-after
   expect(edit.rows.length).toBe(action.startsWith('row-') ? action.endsWith('-delete') ? 7 : 9 : 8);
   expect(edit.columns.length).toBe(action.startsWith('column-') ? action.endsWith('-delete') ? 5 : 7 : 6);
 });
+
+it.each([
+  ['row-before', 'C4', '=SUM(B3:B4)', "='Input cells'!B3"],
+  ['row-after', 'C4', '=SUM(B2:B4)', "='Input cells'!B2"],
+  ['row-delete', 'C2', '=SUM(B2)', '=#REF!'],
+  ['column-before', 'D3', '=SUM(C2:C3)', "='Input cells'!C2"],
+  ['column-after', 'D3', '=SUM(B2:B3)', "='Input cells'!B2"],
+  ['column-delete', 'B3', '=SUM(#REF!)', '=#REF!'],
+] as const)('keeps local and quoted cross-sheet references through %s and actual Undo/Redo', async (action, address, formula, dependent) => {
+  const model = source(); model.sheets[0]!.name = 'Input cells';
+  model.sheets.push({ ...structuredClone(model.sheets[0]!), id: 'other', name: 'Other',
+    cells: [{ row: 0, column: 0, kind: 'number', value: 12, formula: "='Input cells'!B2" }], rowDimensions: [] });
+  const { book, sheet, controller, api } = fixture(model), selection = controller.read()!;
+  const other = book.getSheetBySheetId('other')!;
+  const changed = () => {
+    expect(sheet.getRange(address).getFormulas()).toEqual([[formula]]);
+    expect(other.getRange('A1').getFormulas()).toEqual([[dependent]]);
+    const range = sheet.getRange(address).getRange();
+    expect(book.save().sheets.s!.cellData![range.startRow]![range.startColumn]!.f).toBe(formula);
+    expect(book.save().sheets.other!.cellData![0]![0]!.f).toBe(dependent);
+  };
+  controller.run(action, selection.key); changed();
+  await api.undo();
+  expect(sheet.getRange('C3').getFormulas()).toEqual([['=SUM(B2:B3)']]);
+  expect(other.getRange('A1').getFormulas()).toEqual([["='Input cells'!B2"]]);
+  await api.redo(); changed();
+});
