@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { canonicalWorkbookSheetBaseline, workbookSheetBaseline } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -59,4 +60,22 @@ it('refuses historical assets for CSV, planless or whole-file restore paths and 
   const { input, asset } = await fixture();
   for (const change of [{ format: 'csv' }, { fileName: 'book.csv' }, { dataFile: undefined }, { workbookSheetSources: [{ ...input.workbookSheetSources[0]!, fileName: 'caller-selected.xlsx' }] }, { restore: { fileName: 'old.xlsx', sourceSha256: 'a'.repeat(64), targetSha256: 'b'.repeat(64) } }]) expect(RenderInput.safeParse({ ...input, ...change }).success).toBe(false);
   const directory = await output(); await expect(renderWorkbook(directory, { ...input, fileName: 'book.csv', format: 'csv' }, asset)).rejects.toThrow('XLSX edit plan'); expect(await readdir(directory)).toEqual([]);
+});
+
+it('carries optional baseline identity to the actual renderer and refuses forged claims before output', async () => {
+  const { input, asset, assets, body, historical, current } = await fixture();
+  const model = (await readXlsxWorkbook(historical)).model;
+  const plan = JSON.parse(body.toString());
+  for (const sheet of plan.sheets.filter((entry: { origin: string }) => entry.origin === 'restore')) sheet.baselineIdentity = { version: 1, sha256: sha(Buffer.from(canonicalWorkbookSheetBaseline(workbookSheetBaseline(model, sheet.sheetId)))) };
+  const frozenPlan = JSON.stringify(plan);
+  assets.set('edits.json', Buffer.from(frozenPlan));
+  const directory = await output(); await renderWorkbook(directory, input, asset);
+  const independent = new ExcelJS.Workbook(); await independent.xlsx.load(Uint8Array.from(await readFile(path.join(directory, 'artifact.xlsx'))).buffer);
+  expect(independent.getWorksheet('Restored')!.getCell('A1').result).toBe(12);
+  for (const invalid of [{ version: 1, sha256: '0'.repeat(64) }, { version: 2, sha256: plan.sheets[1].baselineIdentity.sha256 }]) {
+    const forged = JSON.parse(frozenPlan); forged.sheets[1].baselineIdentity = invalid;
+    assets.set('edits.json', Buffer.from(JSON.stringify(forged)));
+    const refused = await output(); await expect(renderWorkbook(refused, input, asset)).rejects.toThrow(); expect(await readdir(refused)).toEqual([]);
+  }
+  expect(assets.get('book.xlsx')).toEqual(current); expect(assets.get(input.workbookSheetSources[0]!.fileName)).toEqual(historical);
 });

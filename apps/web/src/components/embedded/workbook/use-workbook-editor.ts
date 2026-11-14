@@ -1,3 +1,5 @@
+import type { WorkbookKernelAcknowledgement } from './kernel-acknowledgement';
+import { checkedWorkbookSaveAcknowledgement, type WorkbookSaveAcknowledgement } from './save-provenance';
 import { workbookGridPlan, workbookPlanHasChanges } from './grid-plan';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { IWorkbookData } from '@univerjs/presets';
@@ -19,7 +21,7 @@ const sameWriterScope = (a: WriterScope, b: WriterScope) => Boolean(a.journal &&
 
 
 export function useWorkbookEditor(projectId: string, fileName: string, source: Preview | null,
-  onAcknowledged: (source: Preview) => void, onDirtyChange?: (dirty: boolean) => void, journal?: WorkbookJournal, onDiscarded?: () => void, history?: { open: boolean; blocked: boolean; visible?: boolean; show(): void }) {
+  onAcknowledged: (source: Preview, ticket?: WorkbookKernelAcknowledgement) => void, onDirtyChange?: (dirty: boolean) => void, journal?: WorkbookJournal, onDiscarded?: () => void, history?: { open: boolean; blocked: boolean; visible?: boolean; show(): void }) {
   const [state, setState] = useState<WorkbookWriteState>({ dirty: false, saving: false, error: null });
   const [discarding, setDiscarding] = useState(false);
   const current = useRef({ projectId, fileName, source, onAcknowledged, onDirtyChange, journal, onDiscarded, history, discarding }); current.current = { projectId, fileName, source, onAcknowledged, onDirtyChange, journal, onDiscarded, history, discarding };
@@ -63,11 +65,16 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     handoff.current = null;
     const controller = new AbortController(); running.current = controller;
     const attempts = new Map<string, { save: ReturnType<typeof newWorkbookSaveAttempt>; previewId: string }>();
-    let acknowledged: Preview | null = null;
+    let acknowledged: { source: Preview; snapshot: IWorkbookData; acknowledgement: WorkbookSaveAcknowledgement } | null = null;
+    let publishedSource = source;
+    let historyContinuity = Boolean(scope.journal);
     const ownedJournal = scope.journal;
     const matching = (candidate: WriterHandoff | null | undefined) => {
       if (!candidate || !sameWriterScope(candidate.scope, scope) || candidate.checkpoint.source.sourceSha256 !== source.sourceSha256) return undefined;
       const checkpoint = candidate.checkpoint;
+      // A quarantined command deliberately restores its pre-command snapshot,
+      // which may have an empty ordinary plan. That is not reset authority.
+      if (checkpoint.sheetActionConflict) return checkpoint;
       // An acknowledged clean kernel replacement needs the fresh SDK baseline,
       // including its new source/axis identities. Only real dirty or unresolved
       // checkpoints may replace that baseline; invalid protected drafts stay.
@@ -95,11 +102,18 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
       catch (error) { if (error instanceof WorkbookHostError && [410, 422].includes(error.status)) intent.previewId = attempt.previewId = crypto.randomUUID(); await checkpoint(); throw error; }
       intent.previewId = attempt.previewId = crypto.randomUUID(); // a successfully consumed preview is removed
       if (refreshed.sourceSha256 !== receipt.targetSha256) throw new WorkbookHostError('The workbook changed after saving. Your edits are still here; keep a copy before reloading.', 409);
-      attempts.delete(intent.id); return refreshed;
+      const acknowledgement = checkedWorkbookSaveAcknowledgement(receipt, currentAttempt.save, refreshed.sourceSha256);
+      attempts.delete(intent.id); return { preview: refreshed, acknowledgement };
     }, next => {
       stateRef.current = next; setState(next); current.current.onDirtyChange?.(next.dirty);
-      if (!next.dirty && acknowledged) { const saved = acknowledged; acknowledged = null; current.current.onAcknowledged(saved); }
-    }, source => { acknowledged = source; }, ownedJournal ? { save: ownedJournal.save, restored: recovery } : undefined);
+      if (!next.dirty && acknowledged) {
+        const saved = acknowledged; acknowledged = null;
+        const ticket = historyContinuity && saved.acknowledgement.kind === 'history' && ownedJournal && generation.current === owner
+          && current.current.journal === ownedJournal && current.current.source === publishedSource
+          ? { previous: publishedSource, target: saved.source, snapshot: saved.snapshot, acknowledgement: saved.acknowledgement, controllerId, journal: ownedJournal } : undefined;
+        current.current.onAcknowledged(saved.source, ticket); publishedSource = saved.source;
+      }
+    }, (source, snapshot, acknowledgement) => { historyContinuity &&= acknowledgement.kind === 'history'; acknowledged = { source, snapshot, acknowledgement }; }, ownedJournal ? { save: ownedJournal.save, ...(ownedJournal.scope ? { scope: ownedJournal.scope } : {}), ...(ownedJournal.validate ? { validate: ownedJournal.validate } : {}), ...(ownedJournal.isCurrent ? { isCurrent: ownedJournal.isCurrent } : {}), restored: recovery } : undefined);
     const next = writer.current.state(); stateRef.current = next; setState(next); current.current.onDirtyChange?.(next.dirty);
   }, [projectId, fileName, sourceIdentity, journal, closeWriter]);
   useEffect(() => {

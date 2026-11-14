@@ -112,3 +112,38 @@ it('refuses a pending sheet projection until actual SDK derivation exists and pr
   await expect(saveWorkbookDraft(scope, invalid)).rejects.toThrow('does not match');
   expect((await readWorkbookDraft(scope))?.pending?.intent).toEqual(original?.pending?.intent);
 });
+
+
+it('protects and recovers the same acknowledged operation before transferring its baseline, refusing cross-owner metadata', async () => {
+  const { writer } = fixture(), source = writer.checkpoint().source, target = { ...source, sourceSha256: 'b'.repeat(64) };
+  let failTransfer = true; const attempts: string[] = [];
+  const transport = async (intent: import('../../src/components/embedded/workbook/workbook-writer').WorkbookWriteIntent) => {
+    attempts.push(intent.id); intent.renderId ??= '18a8301a-b6e1-4001-8000-c967b1eab223';
+    return { preview: target, acknowledgement: { kind: 'history' as const, provenance: {
+      operationId: intent.id, projectId: scope.projectId, fileName: scope.fileName, renderId: intent.renderId,
+      sourceSha256: source.sourceSha256, sourceVersionId: 'before', targetSha256: target.sourceSha256, versionId: 'after',
+    } } };
+  };
+  const journal = { save: async (value: WorkbookCheckpoint | null) => { if (failTransfer && value?.sourceAcknowledgement) throw Error('Device storage failed'); await saveWorkbookDraft(scope, value); } };
+  const first = new WorkbookWriter(source, writer.checkpoint().acknowledged, transport, () => {}, undefined, journal);
+  first.update(writer.recoveredSnapshot()); await first.flush();
+  const protectedAck = (await readWorkbookDraft(scope))!;
+  expect(protectedAck.source).toEqual(source); expect(protectedAck.pending?.acknowledgement?.kind).toBe('history');
+  for (const key of ['operationId', 'projectId', 'fileName', 'renderId', 'sourceSha256'] as const) {
+    const invalid = structuredClone(protectedAck), ack = invalid.pending!.acknowledgement!;
+    if (ack.kind !== 'history') throw Error('History proof required.');
+    Object.assign(ack.provenance, { [key]: key === 'fileName' ? 'Other.xlsx' : key === 'sourceSha256' ? 'c'.repeat(64) : crypto.randomUUID() });
+    await expect(saveWorkbookDraft(scope, invalid)).rejects.toThrow();
+    expect(await readWorkbookDraft(scope)).toEqual(protectedAck);
+  }
+  first.dispose(); failTransfer = false;
+  const recovered = new WorkbookWriter(target, writer.checkpoint().acknowledged, transport, () => {}, undefined, { ...journal, restored: protectedAck });
+  await recovered.flush();
+  expect(attempts).toEqual([attempts[0], attempts[0]]);
+  const transferred = (await readWorkbookDraft(scope))!;
+  expect(transferred).toMatchObject({ source: target, pending: null, sourceAcknowledgement: { kind: 'history', provenance: { sourceVersionId: 'before', versionId: 'after' } } });
+  const invalid = structuredClone(transferred);
+  if (invalid.sourceAcknowledgement?.kind !== 'history') throw Error('History proof required.');
+  invalid.sourceAcknowledgement.provenance.targetSha256 = 'c'.repeat(64);
+  await expect(saveWorkbookDraft(scope, invalid)).rejects.toThrow('identity'); expect(await readWorkbookDraft(scope)).toEqual(transferred);
+});

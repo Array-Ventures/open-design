@@ -1,3 +1,4 @@
+import { legacyWorkbookWrite } from '../fixtures/workbook-write-result';
 import { afterEach, expect, it } from 'vitest';
 import { IUniverInstanceService, LocaleType, Univer, type IWorkbookData } from '@univerjs/core';
 import { FUniver } from '@univerjs/core/facade';
@@ -39,7 +40,7 @@ it('journals and flushes structure-only changes and derives the next save relati
   const writer = new WorkbookWriter({ model: source, sourceSha256: sha }, initial, async intent => {
     writes.push(structuredClone(intent.plan));
     const next = structuredClone(source); next.sheets[0]!.rowCount = 101; next.sheets[0]!.cells[0]!.row = 2; next.sheets[0]!.cells[0]!.value = intent.plan.edits[0]?.cell.value ?? 12;
-    return { model: next, sourceSha256: (writes.length === 1 ? 'b' : 'c').repeat(64) };
+    return legacyWorkbookWrite({ model: next, sourceSha256: (writes.length === 1 ? 'b' : 'c').repeat(64) });
   }, () => {}, undefined, { save: async value => { checkpoints.push(value); } });
   sheet.insertRowsBefore(1, 1); writer.update(book.save()); expect(writer.state().dirty).toBe(true); await writer.flush();
   expect(writes).toHaveLength(1); expect((writes[0] as { structure: unknown[] }).structure).toHaveLength(1); expect(checkpoints.some(Boolean)).toBe(true); expect(writer.state().dirty).toBe(false);

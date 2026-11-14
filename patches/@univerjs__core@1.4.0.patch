@@ -1,0 +1,197 @@
+diff --git a/lib/cjs/index.js b/lib/cjs/index.js
+index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..1bd4c07bf34e6e199cbe6c11d3ba18f2e63751cf 100644
+--- a/lib/cjs/index.js
++++ b/lib/cjs/index.js
+@@ -25602,6 +25602,50 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
+ 		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
+ 	}
++	getUndoRedoMutationStrings(unitId, mutationId, propertyPath) {
++		this.ensureNotDisposed();
++		if (typeof unitId !== "string" || !unitId.length || unitId.length > 600 || typeof mutationId !== "string" || !/^[A-Za-z0-9_.-]{1,200}$/.test(mutationId) || !Array.isArray(propertyPath) || propertyPath.length < 1 || propertyPath.length > 16) throw new Error("History inspection query is invalid.");
++		const path = [];
++		for (let index = 0; index < propertyPath.length; index++) {
++			const descriptor = Object.getOwnPropertyDescriptor(propertyPath, String(index));
++			if (!descriptor || !("value" in descriptor)) throw new Error("History inspection requires a data property.");
++			const key = descriptor.value;
++			if (typeof key !== "string" || !/^[A-Za-z0-9_$-]{1,100}$/.test(key) || ["__proto__", "prototype", "constructor"].includes(key)) throw new Error("History inspection path is invalid.");
++			path.push(key);
++		}
++		let visited = 0, collected = 0;
++		const data = (object, key) => {
++			if (object === null || typeof object !== "object") return undefined;
++			const descriptor = Object.getOwnPropertyDescriptor(object, key);
++			if (!descriptor) return undefined;
++			if (!("value" in descriptor)) throw new Error("History inspection requires a data property.");
++			return descriptor.value;
++		};
++		const inspect = (stack) => {
++			const values = [];
++			for (const item of stack ?? []) {
++				if (data(item, "unitID") !== unitId) throw new Error("History inspection owner is invalid.");
++				// Both directions remain reachable while an item is on either stack.
++				for (const field of ["undoMutations", "redoMutations"]) {
++					const mutations = data(item, field);
++					if (!Array.isArray(mutations)) throw new Error("History inspection entry is invalid.");
++					for (let index = 0; index < mutations.length; index++) {
++						if (++visited > 100000) throw new Error("History inspection scan limit exceeded.");
++						const mutation = data(mutations, String(index));
++						if (data(mutation, "id") !== mutationId) continue;
++						let value = data(mutation, "params");
++						for (const key of path) value = data(value, key);
++						if (value === undefined) continue;
++						if (typeof value !== "string" || value.length > 512) throw new Error("History inspection metadata is not a bounded string.");
++						if (++collected > 4096) throw new Error("History inspection output limit exceeded.");
++						values.push(value);
++					}
++				}
++			}
++			return Object.freeze(values);
++		};
++		return Object.freeze({ undos: inspect(this._undoStacks.get(unitId)), redos: inspect(this._redoStacks.get(unitId)) });
++	}
+ 	getUndoRedoStatus(unitId) {
+ 		var _this$_undoStacks$get, _this$_redoStacks$get;
+ 		return {
+diff --git a/lib/es/index.js b/lib/es/index.js
+index 8d18611c3014a5518100e2999b31880919abbc8c..c5ccbd24b0e8a206d4cb7f6a01ac2c4556a10204 100644
+--- a/lib/es/index.js
++++ b/lib/es/index.js
+@@ -25573,6 +25573,50 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
+ 		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
+ 	}
++	getUndoRedoMutationStrings(unitId, mutationId, propertyPath) {
++		this.ensureNotDisposed();
++		if (typeof unitId !== "string" || !unitId.length || unitId.length > 600 || typeof mutationId !== "string" || !/^[A-Za-z0-9_.-]{1,200}$/.test(mutationId) || !Array.isArray(propertyPath) || propertyPath.length < 1 || propertyPath.length > 16) throw new Error("History inspection query is invalid.");
++		const path = [];
++		for (let index = 0; index < propertyPath.length; index++) {
++			const descriptor = Object.getOwnPropertyDescriptor(propertyPath, String(index));
++			if (!descriptor || !("value" in descriptor)) throw new Error("History inspection requires a data property.");
++			const key = descriptor.value;
++			if (typeof key !== "string" || !/^[A-Za-z0-9_$-]{1,100}$/.test(key) || ["__proto__", "prototype", "constructor"].includes(key)) throw new Error("History inspection path is invalid.");
++			path.push(key);
++		}
++		let visited = 0, collected = 0;
++		const data = (object, key) => {
++			if (object === null || typeof object !== "object") return undefined;
++			const descriptor = Object.getOwnPropertyDescriptor(object, key);
++			if (!descriptor) return undefined;
++			if (!("value" in descriptor)) throw new Error("History inspection requires a data property.");
++			return descriptor.value;
++		};
++		const inspect = (stack) => {
++			const values = [];
++			for (const item of stack ?? []) {
++				if (data(item, "unitID") !== unitId) throw new Error("History inspection owner is invalid.");
++				// Both directions remain reachable while an item is on either stack.
++				for (const field of ["undoMutations", "redoMutations"]) {
++					const mutations = data(item, field);
++					if (!Array.isArray(mutations)) throw new Error("History inspection entry is invalid.");
++					for (let index = 0; index < mutations.length; index++) {
++						if (++visited > 100000) throw new Error("History inspection scan limit exceeded.");
++						const mutation = data(mutations, String(index));
++						if (data(mutation, "id") !== mutationId) continue;
++						let value = data(mutation, "params");
++						for (const key of path) value = data(value, key);
++						if (value === undefined) continue;
++						if (typeof value !== "string" || value.length > 512) throw new Error("History inspection metadata is not a bounded string.");
++						if (++collected > 4096) throw new Error("History inspection output limit exceeded.");
++						values.push(value);
++					}
++				}
++			}
++			return Object.freeze(values);
++		};
++		return Object.freeze({ undos: inspect(this._undoStacks.get(unitId)), redos: inspect(this._redoStacks.get(unitId)) });
++	}
+ 	getUndoRedoStatus(unitId) {
+ 		var _this$_undoStacks$get, _this$_redoStacks$get;
+ 		return {
+diff --git a/lib/index.js b/lib/index.js
+index 8d18611c3014a5518100e2999b31880919abbc8c..c5ccbd24b0e8a206d4cb7f6a01ac2c4556a10204 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -25573,6 +25573,50 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+ 		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
+ 		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
+ 	}
++	getUndoRedoMutationStrings(unitId, mutationId, propertyPath) {
++		this.ensureNotDisposed();
++		if (typeof unitId !== "string" || !unitId.length || unitId.length > 600 || typeof mutationId !== "string" || !/^[A-Za-z0-9_.-]{1,200}$/.test(mutationId) || !Array.isArray(propertyPath) || propertyPath.length < 1 || propertyPath.length > 16) throw new Error("History inspection query is invalid.");
++		const path = [];
++		for (let index = 0; index < propertyPath.length; index++) {
++			const descriptor = Object.getOwnPropertyDescriptor(propertyPath, String(index));
++			if (!descriptor || !("value" in descriptor)) throw new Error("History inspection requires a data property.");
++			const key = descriptor.value;
++			if (typeof key !== "string" || !/^[A-Za-z0-9_$-]{1,100}$/.test(key) || ["__proto__", "prototype", "constructor"].includes(key)) throw new Error("History inspection path is invalid.");
++			path.push(key);
++		}
++		let visited = 0, collected = 0;
++		const data = (object, key) => {
++			if (object === null || typeof object !== "object") return undefined;
++			const descriptor = Object.getOwnPropertyDescriptor(object, key);
++			if (!descriptor) return undefined;
++			if (!("value" in descriptor)) throw new Error("History inspection requires a data property.");
++			return descriptor.value;
++		};
++		const inspect = (stack) => {
++			const values = [];
++			for (const item of stack ?? []) {
++				if (data(item, "unitID") !== unitId) throw new Error("History inspection owner is invalid.");
++				// Both directions remain reachable while an item is on either stack.
++				for (const field of ["undoMutations", "redoMutations"]) {
++					const mutations = data(item, field);
++					if (!Array.isArray(mutations)) throw new Error("History inspection entry is invalid.");
++					for (let index = 0; index < mutations.length; index++) {
++						if (++visited > 100000) throw new Error("History inspection scan limit exceeded.");
++						const mutation = data(mutations, String(index));
++						if (data(mutation, "id") !== mutationId) continue;
++						let value = data(mutation, "params");
++						for (const key of path) value = data(value, key);
++						if (value === undefined) continue;
++						if (typeof value !== "string" || value.length > 512) throw new Error("History inspection metadata is not a bounded string.");
++						if (++collected > 4096) throw new Error("History inspection output limit exceeded.");
++						values.push(value);
++					}
++				}
++			}
++			return Object.freeze(values);
++		};
++		return Object.freeze({ undos: inspect(this._undoStacks.get(unitId)), redos: inspect(this._redoStacks.get(unitId)) });
++	}
+ 	getUndoRedoStatus(unitId) {
+ 		var _this$_undoStacks$get, _this$_redoStacks$get;
+ 		return {
+diff --git a/lib/types/services/undoredo/undoredo.service.d.ts b/lib/types/services/undoredo/undoredo.service.d.ts
+index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..af494bb27e8a141906209cb1110fc212f2308d15 100644
+--- a/lib/types/services/undoredo/undoredo.service.d.ts
++++ b/lib/types/services/undoredo/undoredo.service.d.ts
+@@ -37,6 +37,13 @@ export interface IUndoRedoService {
+     undoRedoStatus$: Observable<IUndoRedoStatus>;
+     /** Read a unit's history counts without changing the focused unit. */
+     getUndoRedoStatus(unitId: string): IUndoRedoStatus;
++    /** Read frozen primitive metadata from both mutation directions of actual
++     * SDK history items. No focus/stack/payload mutation or getter invocation.
++     * Limits: path 1..16 ASCII keys, strings <=512 characters, <=100000 scanned
++     * mutations and <=4096 results across both stacks; refusal never truncates.
++     */
++    getUndoRedoMutationStrings(unitId: string, mutationId: string, propertyPath: readonly string[]): { readonly undos: readonly string[]; readonly redos: readonly string[] };
++
+     pushUndoRedo(item: IUndoRedoItem): void;
+     /**
+      * Group undo redo items pushed while the returned scope is active.
+@@ -119,6 +126,13 @@ export declare class LocalUndoRedoService extends Disposable implements IUndoRed
+     private readonly _historyLimit;
+     constructor(_univerInstanceService: IUniverInstanceService, _commandService: ICommandService, _contextService: IContextService, configService: IConfigService);
+     getUndoRedoStatus(unitId: string): IUndoRedoStatus;
++    /** Read frozen primitive metadata from both mutation directions of actual
++     * SDK history items. No focus/stack/payload mutation or getter invocation.
++     * Limits: path 1..16 ASCII keys, strings <=512 characters, <=100000 scanned
++     * mutations and <=4096 results across both stacks; refusal never truncates.
++     */
++    getUndoRedoMutationStrings(unitId: string, mutationId: string, propertyPath: readonly string[]): { readonly undos: readonly string[]; readonly redos: readonly string[] };
++
+     pushUndoRedo(item: IUndoRedoItem): void;
+     beginUndoRedoGroup(unitId: string, groupId: string, mode?: 'replace' | 'append'): IDisposable;
+     clearUndoRedo(unitID: string): void;
