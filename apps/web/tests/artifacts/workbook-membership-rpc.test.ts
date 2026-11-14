@@ -225,3 +225,71 @@ it('keeps membership completion pending until its actual derived cache mutation 
     expect(f.owner.ready).toBe(true);
   } finally { await f.close(); }
 }, 15_000);
+
+it('refuses completion when a later public listener changes an admitted derived cache payload', async () => {
+  vi.stubGlobal('Worker', NodeWorkbookWorker);
+  const f = await createWorkbookMembershipRpcFixture();
+  let changed = false;
+  const later = f.commands.beforeCommandExecuted((command, options) => {
+    if (command.id !== SetRangeValuesMutation.id || !options?.applyFormulaCalculationResult) return;
+    const params = command.params as { subUnitId: string; cellValue: Record<string, Record<string, { v?: unknown; t?: number }>> };
+    if (params.subUnitId !== '3') return;
+    for (const row of Object.values(params.cellValue)) for (const cell of Object.values(row)) { cell.v = 999; cell.t = 2; changed = true; }
+  });
+  try {
+    await f.controller.remove('2');
+    let settled = false;
+    const applied = f.calculation.awaitMembership().then(() => { settled = true; });
+    void applied.catch(() => {});
+    await vi.waitFor(() => expect(changed).toBe(true), { timeout: 5000 });
+    expect(settled).toBe(false);
+    expect(f.owner.ready).toBe(false);
+    expect(f.calculation.status('3', 1, 0)?.result).not.toBe('calculated');
+    await expect(applied).rejects.toThrow('unavailable');
+    expect(f.owner.ready).toBe(false);
+    expect(f.writer.checkpoint().source.sourceSha256).toBe('a'.repeat(64));
+  } finally { later.dispose(); await f.close(); }
+}, 15_000);
+
+it('strips a changed reverse RPC cache vector before SDK application or calculated promotion', async () => {
+  vi.stubGlobal('Worker', NodeWorkbookWorker);
+  const f = await createWorkbookMembershipRpcFixture();
+  let changed = 0;
+  const alter = (raw: unknown): void => {
+    if (!raw || typeof raw !== 'object') return;
+    const value = raw as Record<string, unknown>;
+    if (value.unitId === f.book.getId() && value.subUnitId === '3' && value.cellValue && value.sourceFormulaData && value.workbookCalculation) {
+      for (const row of Object.values(value.cellValue as Record<string, Record<string, { v?: unknown; t?: number }>>)) {
+        for (const cell of Object.values(row)) { cell.v = 999; cell.t = 2; }
+      }
+      changed++; return;
+    }
+    for (const child of Object.values(value)) alter(child);
+  };
+  f.worker.acceptIncoming = message => { if (!changed) alter(message); return true; };
+  try {
+    await f.controller.remove('2');
+    const applied = f.calculation.awaitMembership(); void applied.catch(() => {});
+    await vi.waitFor(() => expect(changed).toBe(1), { timeout: 5000 });
+    expect(f.owner.ready).toBe(false);
+    expect(f.book.save().sheets['3']!.cellData![1]![0]!.v).not.toBe(999);
+    expect(f.calculation.status('3', 1, 0)?.result).not.toBe('calculated');
+    await expect(applied).rejects.toThrow('unavailable');
+    expect(f.writer.checkpoint().source.sourceSha256).toBe('a'.repeat(64));
+  } finally { await f.close(); }
+}, 15_000);
+
+it('tracks an explicit epoch-stamped host calculation until its actual initial cache is refreshed', async () => {
+  vi.stubGlobal('Worker', NodeWorkbookWorker);
+  const f = await createWorkbookMembershipRpcFixture(true, 100, 999);
+  const { SetFormulaCalculationStartMutation } = await import('@univerjs/engine-formula');
+  try {
+    expect(f.book.save().sheets['3']!.cellData![1]![0]!.v).toBe(999);
+    await f.commands.executeCommand(SetFormulaCalculationStartMutation.id, { forceCalculation: true });
+    await f.calculation.awaitQuiescent();
+    expect(f.book.save().sheets['3']!.cellData![1]![0]!.v).toBe(38);
+    expect(f.calculation.status('3', 1, 0)?.result).toBe('calculated');
+    expect(f.writer.checkpoint().source.model.sheets[2]!.cells[1]!.value).toBe(999);
+    expect(f.owner.ready).toBe(true);
+  } finally { await f.close(); }
+}, 15_000);

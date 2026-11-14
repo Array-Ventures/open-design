@@ -27,13 +27,16 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
   let pendingMembership: { sequence: number; inputEpoch: number; inputSha256: string; applied: boolean; scalar: boolean } | null = null;
   let settledInputEpoch = 0;
   const pendingApplications = new Set<string>();
-  const applicationSources = new WeakMap<object, string>();
+  const completedApplications = new Set<string>();
+  const applicationSources = new WeakMap<object, unknown>();
   const applyingResults = new WeakMap<object, string>();
   type RangeResult = Parameters<WorkbookFormulaDisplay['rangeResult']>[0];
   const applicationKey = (unitId: string, sheetId: string, rows: RangeResult['cellValue'], source: RangeResult['sourceFormulaData'], provenance: unknown) => {
     if (!provenance) return undefined;
     const values = Object.fromEntries(Object.entries(rows).map(([row, columns]) => [row,
-      Object.fromEntries(Object.entries(columns).map(([column, cell]) => [column, { v: cell?.v, t: cell?.t }]))]));
+      Object.fromEntries(Object.entries(columns).map(([column, cell]) => {
+        const { s: _numberFormat, ...result } = (cell ?? {}) as ICellData; return [column, result];
+      }))]));
     return workbookSheetCommandSha256({ id: 'studio.formula.application', params: { unitId, sheetId, values, source, provenance } });
   };
   const waiters = new Set<{ quiescent: boolean; resolve(): void; reject(error: Error): void }>();
@@ -98,7 +101,7 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
   // first. Retain only one candidate for this input epoch, bounded by its
   // existing deadline, and require the matching graph before accepting it.
   const finishWithoutResult = () => {
-    if (pendingMembership && !pendingMembership.applied || scalarRequired || generation === null || !completion || !display.completeWithoutResult(completion)) return;
+    if (pendingApplications.size || pendingMembership && !pendingMembership.applied || scalarRequired || generation === null || !completion || !display.completeWithoutResult(completion)) return;
     owner?.deadline.complete(generation); generation = null; completion = null; settledInputEpoch = inputEpoch; publish();
   };
   const before = commands.beforeCommandExecuted((command, options) => {
@@ -125,12 +128,13 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
       if (permit) { options![WORKBOOK_MEMBERSHIP_OPTION] = JSON.stringify(permit); protectedSequence!.index++;
         if (command.id === SetRangeValuesMutation.id) authoredRange = command.params; }
       if (pendingMembership) pendingMembership.scalar = false;
-      display.expectInputEpoch(inputEpoch); completion = null; pendingApplications.clear();
+      display.expectInputEpoch(inputEpoch); completion = null; pendingApplications.clear(); completedApplications.clear();
     }
     if (owner && (membershipMutation || isWorkbookCalculationStructuralMutation(command.id)) && formulas(snapshot())) {
       generation = owner.deadline.begin(); scalarRequired = true;
     }
     if (owner && command.id === engine.SetFormulaCalculationStartMutation.id) {
+      if (generation === null && (formulas(snapshot()) || pendingMembership || pendingApplications.size)) generation = owner.deadline.begin();
       options![WORKBOOK_INPUT_EPOCH_OPTION] = inputEpoch;
       // Keep requiring a verified scalar pass through coalesced/restarted
       // calculations until this structural input epoch has really completed.
@@ -141,11 +145,14 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
       if (options?.fromFormula) {
         if (!protectedSequence || !protectedFormulaInputNormalization(command.params, authoredRange ?? protectedSequence?.params[protectedSequence.index])) {
           const params = command.params as Parameters<WorkbookFormulaDisplay['rangeResult']>[0];
-          if (display.rangeResult(params)) {
-            const key = applicationKey(params.unitId, params.subUnitId, params.cellValue, params.sourceFormulaData, params.workbookCalculation)
-              ?? (params.sourceFormulaData && applicationSources.get(params.sourceFormulaData));
-            if (key && pendingApplications.has(key)) applyingResults.set(params, key);
-          }
+          display.rangeResult(params, (normalized, tag) => {
+            const key = applicationKey(normalized.unitId, normalized.subUnitId, normalized.cellValue, normalized.sourceFormulaData, tag);
+            if (key && completedApplications.has(key)) return false;
+            if (!key || !pendingApplications.has(key)) {
+              display.pause('Calculation application changed.'); owner?.deadline.fail(); publish(); return false;
+            }
+            applyingResults.set(params, key); return true;
+          });
         }
       }
       else if (owner && workbookCalculationChangesInputs(command.params) && (formulas(snapshot()) || Object.values((command.params as { cellValue?: Record<string, Record<string, ICellData>> }).cellValue ?? {}).some(row => Object.values(row).some(cell => cell?.f)))) {
@@ -155,11 +162,12 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
       if (display.scalarResult(command.params as Parameters<WorkbookFormulaDisplay['scalarResult']>[0]) && generation !== null) {
         settledInputEpoch = inputEpoch;
         const params = command.params as Parameters<WorkbookFormulaDisplay['scalarResult']>[0];
+        pendingApplications.clear(); completedApplications.clear();
         for (const [sheet, rows] of Object.entries(params.unitData[initial.id] ?? {})) {
           const source = params.sourceFormulaData?.[initial.id]?.[sheet];
           if (source && Object.values(rows).some(columns => Object.keys(columns).length > 0)) {
             const key = applicationKey(initial.id, sheet, rows, source, params.workbookCalculation);
-            if (key) { pendingApplications.add(key); applicationSources.set(source, key); }
+            if (key) { pendingApplications.add(key); applicationSources.set(source, params.workbookCalculation); }
           }
         }
         if (pendingMembership) { pendingMembership.scalar = true; finishMembership(); }
@@ -177,11 +185,18 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
       const params = command.params as RangeResult;
       const key = applyingResults.get(params)!; applyingResults.delete(params);
       const actual = snapshot().sheets[params.subUnitId]?.cellData;
-      const applied = Object.entries(params.cellValue).every(([row, columns]) => Object.entries(columns).every(([column, cell]) => {
+      const unchanged = key === applicationKey(params.unitId, params.subUnitId, params.cellValue, params.sourceFormulaData, params.workbookCalculation
+        ?? (params.sourceFormulaData && applicationSources.get(params.sourceFormulaData)));
+      const provenance = params.workbookCalculation ?? (params.sourceFormulaData && applicationSources.get(params.sourceFormulaData));
+      const expectedInput = (provenance as { inputSha256?: unknown } | undefined)?.inputSha256;
+      const applied = unchanged && expectedInput === workbookCalculationInputSha256(snapshot()) && Object.entries(params.cellValue).every(([row, columns]) => Object.entries(columns).every(([column, cell]) => {
         const value = actual?.[Number(row)]?.[Number(column)];
         return value?.v === cell?.v && value?.t === cell?.t;
       }));
-      if (applied) pendingApplications.delete(key);
+      if (!applied) {
+        display.pause('Calculation application changed.'); owner?.deadline.fail(); publish(); return;
+      }
+      pendingApplications.delete(key); completedApplications.add(key);
       if (pendingMembership) finishMembership();
       else if (!pendingApplications.size && generation !== null && settledInputEpoch === inputEpoch) {
         owner?.deadline.complete(generation); generation = null;
