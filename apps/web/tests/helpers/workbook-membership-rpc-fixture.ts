@@ -19,7 +19,7 @@ import { WorkbookSheetHistoryController } from '../../src/components/embedded/wo
 import { serializeWorkbookDraft } from '../../src/components/embedded/workbook/draft-store';
 import type { WorkbookCalculationState } from '../../src/components/embedded/workbook/calculation-state';
 
-export async function createWorkbookMembershipRpcFixture(formulas = true, sourceRows = 100, importedCache = 38, preserved = false, importedModel?: WorkbookDocument) {
+export async function createWorkbookMembershipRpcFixture(formulas = true, sourceRows = 100, importedCache = 38, preserved = false, importedModel?: WorkbookDocument, restored?: (source: core.IWorkbookData) => core.IWorkbookData) {
   const scope = { viewerId: 'rpc-person', projectId: 'e15f57b8-c463-4ff6-a469-ddc985e034b1', fileName: 'Membership.xlsx', draftId: crypto.randomUUID() };
   const model: WorkbookDocument = importedModel ? structuredClone(importedModel) : { version: 1, date1904: false, activeSheetId: '1', styles: [{}], calculationMetadata: 'verified', worksheetMembershipEditable: true, worksheetStructureEditable: true,
     features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
@@ -42,7 +42,7 @@ export async function createWorkbookMembershipRpcFixture(formulas = true, source
   univer.registerPlugin(sheets.UniverSheetsPlugin, { notExecuteFormula: true });
   univer.registerPlugin(formula.UniverSheetsFormulaPlugin, { notExecuteFormula: true, initialFormulaComputing: formula.CalculationMode.NO_CALCULATION });
   const api = FUniver.newAPI(univer), initial = seedWorkbookStructureIdentity(gridWorkbook(model, id, 'Membership').data as core.IWorkbookData, sourceSha256);
-  const book = api.createWorkbook(initial), commands = univer.__getInjector().get(core.ICommandService);
+  const book = api.createWorkbook(restored ? restored(structuredClone(initial)) : initial), commands = univer.__getInjector().get(core.ICommandService);
   univer.__getInjector().get(core.IUniverInstanceService).focusUnit(id);
   const statuses: WorkbookCalculationState[] = [];
   const calculation = attachWorkbookCalculation(univer, api, model, initial, book.save(), () => book.save(), owner, value => statuses.push(value), () => !failed);
@@ -50,7 +50,7 @@ export async function createWorkbookMembershipRpcFixture(formulas = true, source
   const controller = new WorkbookSheetHistoryController(univer, writer, scope, () => book.save(), () => model.worksheetMembershipEditable === true && owner.ready, calculation.runProtectedSequence);
   const observer = commands.onCommandExecuted(command => { if (command.type === core.CommandType.MUTATION) writer.update(book.save()); });
   await univer.__getInjector().get(rpc.IRemoteInstanceService).whenReady();
-  return { scope, model, worker, owner, univer, api, book, commands, statuses, calculation, writer, controller, get failed() { return failed; },
+  return { scope, model, initial, worker, owner, univer, api, book, commands, statuses, calculation, writer, controller, get failed() { return failed; },
     async close() {
       await writer.close(); observer.dispose();
       const before = JSON.stringify(book.save());

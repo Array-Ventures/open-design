@@ -11,7 +11,7 @@ import { ICommandService, IUndoRedoService } from '@univerjs/core';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
 import { WorkbookGrid } from '../../../src/components/embedded/workbook/WorkbookGrid';
 
-const runtime = vi.hoisted(() => ({ rebaseSource: vi.fn(), calculationPublish: vi.fn(), visibilityBefore: vi.fn(), visibilityBeforeOff: vi.fn(), navigationCommand: vi.fn(), navigationShortcut: vi.fn(), navigationCommandOff: vi.fn(), navigationShortcutOff: vi.fn(), firstCell: vi.fn(), scrollToCell: vi.fn(), events: [] as string[], richInputs: [] as { dispose: ReturnType<typeof vi.fn> }[], workers: [] as { dispose: ReturnType<typeof vi.fn> }[], inputs: [] as { dispose: ReturnType<typeof vi.fn> }[], rendered: Promise.resolve(), context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
+const runtime = vi.hoisted(() => ({ calculateRestoredInputs: vi.fn(), rebaseSource: vi.fn(), calculationPublish: vi.fn(), visibilityBefore: vi.fn(), visibilityBeforeOff: vi.fn(), navigationCommand: vi.fn(), navigationShortcut: vi.fn(), navigationCommandOff: vi.fn(), navigationShortcutOff: vi.fn(), firstCell: vi.fn(), scrollToCell: vi.fn(), events: [] as string[], richInputs: [] as { dispose: ReturnType<typeof vi.fn> }[], workers: [] as { dispose: ReturnType<typeof vi.fn> }[], inputs: [] as { dispose: ReturnType<typeof vi.fn> }[], rendered: Promise.resolve(), context: vi.fn(), created: vi.fn(), register: vi.fn(), dispose: vi.fn(), off: vi.fn(), selectionOff: vi.fn(), theme: vi.fn(), dark: vi.fn(),
   calculation: null as null | ((state: { phase: string; stored: number; unavailable: number; paused: boolean }) => void),
   input: null as null | ((message: string) => void), live: false, fail: null as null | (() => void), calculationDisposed: vi.fn(),
   getRange: vi.fn(), select: vi.fn(), createWorkbook: vi.fn(), editable: vi.fn(), activeSheet: vi.fn(), saved: vi.fn(), listener: null as null | ((event: { type: number; id: string }) => void) }));
@@ -21,7 +21,7 @@ vi.mock('@univerjs/presets', async original => ({ ...await original<typeof impor
     addEvent: (event: string, callback: NonNullable<typeof runtime.listener>) => { if (event === 'CommandExecuted') { runtime.listener = callback; return { dispose: runtime.off }; } return { dispose() {} }; }, setTheme: runtime.theme, toggleDarkMode: runtime.dark }) },
 }));
 vi.mock('@univerjs/preset-sheets-core', () => ({ ...Object.fromEntries(['UniverRenderEnginePlugin', 'UniverFormulaEnginePlugin', 'UniverUIPlugin', 'UniverDocsPlugin', 'UniverDocsUIPlugin', 'UniverSheetsPlugin', 'UniverSheetsUIPlugin', 'UniverSheetsFormulaPlugin', 'UniverSheetsFormulaUIPlugin', 'UniverSheetsNumfmtPlugin', 'UniverSheetsNumfmtUIPlugin'].map(name => [name, name])), IShortcutService: 'IShortcutService', ShowMenuListCommand: { id: 'ui-sheet.command.show-menu-list' }, KeyCode: { HOME: 36, K: 75 }, MetaKeys: { CTRL_COMMAND: 2048, ALT: 512, SHIFT: 1024 }, whenSheetEditorFocused: (context: { focused: boolean }) => context.focused, SetSelectionsOperation: { id: 'sheet.operation.set-selections' }, IRenderManagerService: 'IRenderManagerService', DISABLE_AUTO_FOCUS_KEY: 'disableAutoFocus', CalculationMode: { NO_CALCULATION: 2 } }));
-vi.mock('../../../src/components/embedded/workbook/grid-calculation', () => ({ workbookLiveCalculationEligible: () => runtime.live, attachWorkbookCalculation: (...args: unknown[]) => { runtime.calculation = args[7] as NonNullable<typeof runtime.calculation>; return { rebaseSource: runtime.rebaseSource, publish: runtime.calculationPublish, dispose() {} }; } }));
+vi.mock('../../../src/components/embedded/workbook/grid-calculation', () => ({ workbookLiveCalculationEligible: () => runtime.live, attachWorkbookCalculation: (...args: unknown[]) => { runtime.calculation = args[7] as NonNullable<typeof runtime.calculation>; return { calculateRestoredInputs: runtime.calculateRestoredInputs, rebaseSource: runtime.rebaseSource, publish: runtime.calculationPublish, dispose() {} }; } }));
 vi.mock('../../../src/components/embedded/workbook/calculation-worker-owner', () => ({ ownWorkbookCalculationWorker: (fail: () => void) => { runtime.fail = fail; return { loaded: Promise.resolve(true), ready: true, worker: {}, dispose: runtime.calculationDisposed }; } }));
 vi.mock('../../../src/components/embedded/workbook/array-projection-owner', () => ({ ownArrayProjectionWorker: () => {
   const id = runtime.workers.length + 1, owned = { loaded: Promise.resolve(true), ready: true, dispose: vi.fn(() => runtime.events.push(`worker:${id}`)) }; runtime.workers.push(owned); return owned;
@@ -457,4 +457,40 @@ it('installs the readiness receiver before announcing each same-frame kernel, ev
       data: { type: 'studio:workbook-membership-probe', version: 1, projectId, controllerId, handshakeId } }));
     expect(messages).toHaveLength(count);
   } finally { release(); view.unmount(); post.mockRestore(); }
+});
+
+it('requests restored calculation only after writer readiness and the actual Rendered handoff', async () => {
+  runtime.live = true;
+  const seed = gridWorkbook(model, 'grid', 'Revenue').data as IWorkbookData;
+  runtime.saved.mockReturnValue(seed);
+  let releaseWriter!: () => void, releaseRender!: () => void;
+  const writer = new Promise<void>(resolve => { releaseWriter = resolve; });
+  runtime.rendered = new Promise<void>(resolve => { releaseRender = resolve; });
+  const ready = vi.fn(() => writer);
+  const view = render(<WorkbookGrid id="grid" title="Revenue" model={model} initialSnapshot={seed} onSnapshot={() => {}} onReady={ready} />);
+  await waitFor(() => expect(ready).toHaveBeenCalledTimes(1));
+  expect(runtime.calculateRestoredInputs).not.toHaveBeenCalled();
+  await act(async () => releaseWriter());
+  expect(runtime.calculateRestoredInputs).not.toHaveBeenCalled();
+  await act(async () => releaseRender());
+  await waitFor(() => expect(runtime.calculateRestoredInputs).toHaveBeenCalledTimes(1));
+  view.rerender(<WorkbookGrid id="grid" title="Changed title" model={model} initialSnapshot={seed} onSnapshot={() => {}} onReady={ready} />);
+  expect(runtime.calculateRestoredInputs).toHaveBeenCalledTimes(1);
+});
+
+it('does not request calculation after disposal wins a restored writer handoff', async () => {
+  runtime.live = true; const seed = gridWorkbook(model, 'grid', 'Revenue').data as IWorkbookData; runtime.saved.mockReturnValue(seed);
+  let release!: () => void; const ready = vi.fn(() => new Promise<void>(resolve => { release = resolve; }));
+  const view = render(<WorkbookGrid id="grid" title="Revenue" model={model} initialSnapshot={seed} onSnapshot={() => {}} onReady={ready} />);
+  await waitFor(() => expect(ready).toHaveBeenCalledTimes(1));
+  view.unmount(); await act(async () => release());
+  expect(runtime.calculateRestoredInputs).not.toHaveBeenCalled();
+});
+
+it.each(['clean', 'readonly'] as const)('preserves %s startup without a restored calculation request', async mode => {
+  runtime.live = true; const seed = gridWorkbook(model, 'grid', 'Revenue').data as IWorkbookData; runtime.saved.mockReturnValue(seed);
+  render(<WorkbookGrid id="grid" title="Revenue" model={model} initialSnapshot={mode === 'readonly' ? seed : undefined} onSnapshot={mode === 'clean' ? () => {} : undefined} />);
+  await waitFor(() => expect(runtime.listener).not.toBeNull());
+  await waitFor(() => expect(screen.getByRole('region', { name: 'Workbook grid' })).not.toHaveAttribute('aria-busy'));
+  expect(runtime.calculateRestoredInputs).not.toHaveBeenCalled();
 });
