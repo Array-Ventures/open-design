@@ -4,7 +4,33 @@ This is a bounded interaction fix, not full Claude workflow or markup parity.
 Production and shared development services were untouched. No comment was sent
 to a chat during the manual acceptance checks.
 
-## Problems and resulting behavior
+## Reference-guided workflow follow-up (source implemented, runtime pending)
+
+The candidate105 evidence below remains historical. A later direct inspection of
+our disposable Claude document showed that Comment without a selection opens the
+comments list; an explicit Comment action on selected text opens a compact,
+autofocused composer. Selecting text alone does not open it. A recipient mention
+alone leaves Send disabled and Escape closes without discard confirmation.
+
+The follow-up source implements that distinction: only a completed editor pointer
+or keyboard gesture owns a retained selection across host-header blur. Saved
+thread navigation does not restore Lexical selection. An exact CSS Custom
+Highlight marks its range without changing editor state, native selection or
+source. Unsupported Highlight API environments keep the thread available without
+that visual mark. Highlight registry/style ownership is cleaned up on close,
+range changes and editor teardown. The list leaves editing controls available.
+
+The compact composer exposes the exact quote as an accessible description rather
+than a repeated visible quote block. It retains existing comment authority,
+conditional saves, reply drafts and discard confirmation. Known host bot mentions
+alone are not substantive comment text; unknown handles, emails and mixed text
+remain content. No automatic bot choice is introduced for multi-bot conversations.
+
+Focused source checks cover these boundaries. Host-header blur, native selection,
+scroll/resize/theme rendering, compact placement and actual save/reopen still need
+paired browser qualification before this follow-up is treated as accepted.
+
+## Candidate105 problems and resulting behavior
 
 Opening Comment before selecting text previously left the selection prompt
 unbound. The editor now waits for a completed pointer gesture or keyboard range

@@ -40,7 +40,10 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); if (originalParent) Object.defineProperty(window, 'parent', originalParent); });
 async function selectAndOpen() {
-  act(() => editor().update(() => { const text = $getRoot().getFirstDescendant()!; if ($isTextNode(text)) text.select(0, 5); }, { discrete: true }));
+  const root = screen.getByRole('textbox', { name: 'Report' }), text = document.createTreeWalker(root, NodeFilter.SHOW_TEXT).nextNode()!;
+  const range = document.createRange(); range.setStart(text, 0); range.setEnd(text, Math.min(5, text.textContent!.length));
+  act(() => { window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range); document.dispatchEvent(new Event('selectionchange')); });
+  fireEvent(root, new MouseEvent('pointerup', { bubbles: true, button: 0 }));
   command('comment'); return screen.findByRole('textbox', { name: 'Comment on selected text' });
 }
 it('saves exact structured selection with mentions, opens the real reply thread and stages contextual chat', async () => {
@@ -104,6 +107,7 @@ it('captures real DOM selection in Viewing mode without enabling editing', async
   const text = screen.getByRole('textbox', { name: 'Report' }).querySelector('p')!.firstChild!.firstChild!;
   const range = document.createRange(); range.setStart(text, 6); range.setEnd(text, 9);
   act(() => { window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range); document.dispatchEvent(new Event('selectionchange')); });
+  fireEvent(screen.getByRole('textbox', { name: 'Report' }), new MouseEvent('pointerup', { bubbles: true, button: 0 }));
   command('comment'); await screen.findByRole('textbox', { name: 'Comment on selected text' }); expect(screen.getByText('for')).toBeTruthy(); expect(editor().isEditable()).toBe(false);
 });
 it('retains an unsent comment while an agent refreshes the document source', async () => {
@@ -156,7 +160,7 @@ it('does not reuse an old selection after a person collapses the document select
   render(<Harness />); await selectAndOpen(); fireEvent.click(screen.getByRole('button', { name: 'Close comments' }));
   await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Document comments' })).toBeNull());
   act(() => editor().update(() => { $getRoot().getFirstDescendant()!.selectEnd(); }, { discrete: true }));
-  command('comment'); await screen.findByText('Select text in the document to comment.');
+  command('comment'); await screen.findByText('No comments yet. Select text to add one.');
   expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
 });
 
@@ -193,7 +197,7 @@ it('reopens and edits a saved long multiline quote beyond the generic database e
   expect(screen.getByRole('dialog', { name: 'Document comments' }).querySelector('blockquote')!.textContent).toBe(quote);
   fireEvent.click(screen.getByRole('button', { name: 'Comment actions' })); fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
   await screen.findByRole('textbox', { name: 'Comment on selected text' });
-  expect(screen.getByRole('dialog', { name: 'Document comments' }).querySelector('blockquote')!.textContent).toBe(quote);
+  expect(document.getElementById(screen.getByRole('textbox', { name: 'Comment on selected text' }).getAttribute('aria-describedby')!)!.textContent).toBe(quote);
 });
 
 it.each(['ltr', 'rtl'])('resizes the comments pane with logical keyboard directions in %s', async direction => {
@@ -242,13 +246,13 @@ it('keeps unsent selected-text feedback and the same editor while navigating a d
   render(<Harness documentObserved={documentObserved} />);
   const active = editor(), content = screen.getByRole('textbox', { name: 'Report' });
   const input = await selectAndOpen(); fireEvent.change(input, { target: { value: 'Unsent section feedback' } });
-  const quote = screen.getByLabelText('Selected document text');
-  const before = quote.textContent;
+  const before = input.getAttribute('aria-describedby');
+  const quote = document.getElementById(before!)!;
   fireEvent.click(screen.getByRole('button', { name: 'Document outline' }));
   fireEvent.click(screen.getByRole('button', { name: 'Section 2, heading level 2: Next section' }));
   await waitFor(() => expect(content.querySelector('h2')).toHaveFocus());
   expect(editor()).toBe(active); expect(screen.getByRole('textbox', { name: 'Report' })).toBe(content);
-  expect(input).toHaveValue('Unsent section feedback'); expect(quote).toHaveTextContent(before!);
+  expect(input).toHaveValue('Unsent section feedback'); expect(input).toHaveAccessibleDescription(quote.textContent!);
   expect(api.save).not.toHaveBeenCalled(); expect(api.documentSave).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
 });
 
@@ -313,22 +317,24 @@ it('offers the mention default when explicitly editing a saved root, never when 
   expect(api.save).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
 });
 
-it.each([true, false])('binds the completed pointer range and retains drafts/threads with authored identities=%s', async authored => {
+it.each([true, false])('explicitly opens the completed pointer range and retains drafts/threads with authored identities=%s', async authored => {
   render(<Harness documentObserved={{ ...observed, html: documentHtml('Report', authored ? '<p data-od-id="body">Ready for review</p>' : '<p>Ready for review</p>') }} />);
   fireEvent.click(screen.getByRole('button', { name: 'Editing, mode' })); fireEvent.click(await screen.findByRole('button', { name: 'Viewing' }));
-  command('comment'); await screen.findByText('Select text in the document to comment.');
+  command('comment'); await screen.findByText('No comments yet. Select text to add one.');
   const root = screen.getByRole('textbox', { name: 'Report' }), text = root.querySelector('p')!.firstChild!.firstChild!;
   const select = (end: number) => act(() => { const range = document.createRange(); range.setStart(text, 6); range.setEnd(text, end); window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range); document.dispatchEvent(new Event('selectionchange')); });
   fireEvent.pointerDown(root, { button: 0 }); select(7);
   expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
   select(9); expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
   fireEvent(root, new MouseEvent('pointerup', { bubbles: true, button: 0 }));
+  expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
+  command('comment');
   const input = await screen.findByRole('textbox', { name: 'Comment on selected text' });
-  expect(screen.getByLabelText('Selected document text').textContent).toBe('for');
-  expect(document.activeElement).not.toBe(input);
+  expect(input).toHaveAccessibleDescription('for');
+  expect(document.activeElement).toBe(input);
   fireEvent.change(input, { target: { value: 'Retain this exact anchor' } });
   select(16); fireEvent(root, new MouseEvent('pointerup', { bubbles: true, button: 0 }));
-  expect(input).toHaveValue('Retain this exact anchor'); expect(screen.getByLabelText('Selected document text').textContent).toBe('for');
+  expect(input).toHaveValue('Retain this exact anchor'); expect(input).toHaveAccessibleDescription('for');
   expect(editor().isEditable()).toBe(false); expect(api.documentSave).not.toHaveBeenCalled(); expect(api.save).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Save comment' })); await screen.findByRole('textbox', { name: 'Reply' });
   select(16); fireEvent(root, new MouseEvent('pointerup', { bubbles: true, button: 0 }));
@@ -336,22 +342,24 @@ it.each([true, false])('binds the completed pointer range and retains drafts/thr
   expect(screen.getByLabelText('Selected document text').textContent).toBe('for'); expect(api.save).toHaveBeenCalledTimes(1); expect(api.send).not.toHaveBeenCalled();
 });
 
-it('waits for Shift release before binding the finished keyboard selection and ignores collapsed selections', async () => {
+it('waits for Shift release before explicitly opening the finished keyboard selection and ignores collapsed selections', async () => {
   render(<Harness />);
   fireEvent.click(screen.getByRole('button', { name: 'Editing, mode' })); fireEvent.click(await screen.findByRole('button', { name: 'Viewing' }));
-  command('comment'); await screen.findByText('Select text in the document to comment.');
+  command('comment'); await screen.findByText('No comments yet. Select text to add one.');
   const root = screen.getByRole('textbox', { name: 'Report' }), text = root.querySelector('p')!.firstChild!.firstChild!;
   const select = (end: number) => act(() => { const range = document.createRange(); range.setStart(text, 6); range.setEnd(text, end); window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range); document.dispatchEvent(new Event('selectionchange')); });
   select(6); fireEvent(root, new MouseEvent('pointerup', { bubbles: true, button: 0 })); expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
   fireEvent.keyDown(root, { key: 'Shift', shiftKey: true }); select(7); fireEvent.keyUp(root, { key: 'ArrowRight', shiftKey: true });
   expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
   select(9); fireEvent.keyUp(root, { key: 'Shift', shiftKey: false });
-  await screen.findByRole('textbox', { name: 'Comment on selected text' }); expect(screen.getByLabelText('Selected document text').textContent).toBe('for');
+  expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
+  command('comment');
+  await screen.findByRole('textbox', { name: 'Comment on selected text' }); expect(screen.getByRole('textbox', { name: 'Comment on selected text' })).toHaveAccessibleDescription('for');
 });
 
-it('withdraws the waiting target when navigating to the comment list', async () => {
-  render(<Harness />); command('comment'); await screen.findByText('Select text in the document to comment.');
-  fireEvent.click(screen.getByRole('button', { name: 'All comments' })); await screen.findByText('No comments yet. Select text to add one.');
+it('keeps selection gestures passive while the comment list is displayed', async () => {
+  render(<Harness />); command('comment'); await screen.findByText('No comments yet. Select text to add one.');
+  await screen.findByText('No comments yet. Select text to add one.');
   const root = screen.getByRole('textbox', { name: 'Report' }), text = root.querySelector('p')!.firstChild!.firstChild!, range = document.createRange();
   range.setStart(text, 0); range.setEnd(text, 5);
   act(() => { window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range); document.dispatchEvent(new Event('selectionchange')); });
@@ -375,4 +383,55 @@ it('keeps the mounted thread and its reply draft hidden while the comment list i
     fireEvent.click(screen.getByRole('button', { name: /Saved root/ }));
     expect(screen.getByRole('textbox', { name: 'Reply' })).toBe(reply); expect(reply).toHaveValue('Retained reply draft'); expect(quote).toBeVisible();
   } finally { utilities.remove(); }
+});
+
+it('opens the list without a genuine completed gesture, including a stale model selection', async () => {
+  render(<Harness />);
+  act(() => editor().update(() => { const text = $getRoot().getFirstDescendant()!; if ($isTextNode(text)) text.select(0, 5); }, { discrete: true }));
+  command('comment');
+  await screen.findByText('No comments yet. Select text to add one.');
+  expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
+  expect(screen.getByRole('toolbar', { name: 'Document insertion' })).toBeVisible();
+  expect(api.documentSave).not.toHaveBeenCalled(); expect(api.save).not.toHaveBeenCalled();
+});
+
+it('autofocuses only the explicit composer and closes a mention-only draft without discard', async () => {
+  render(<Harness />);
+  const input = await selectAndOpen();
+  expect(input).toHaveFocus(); expect(input).toHaveAccessibleDescription('Ready');
+  expect(screen.getByRole('dialog', { name: 'Document comments' }).querySelector('blockquote')).toBeNull();
+  fireEvent.change(input, { target: { value: '@Chief ' } });
+  expect(screen.getByRole('button', { name: 'Save comment' })).toBeDisabled();
+  expect(screen.getByRole('checkbox', { name: 'Add to chat' })).toBeChecked();
+  fireEvent.keyDown(input, { key: 'Escape' });
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Document comments' })).toBeNull());
+  expect(api.confirm).not.toHaveBeenCalled(); expect(api.save).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
+});
+
+it('highlights the exact saved range without changing editor state or native selection and clears it on close', async () => {
+  const registry = new Map<string, Set<Range>>();
+  const originalCSS = globalThis.CSS;
+  vi.stubGlobal('CSS', { ...originalCSS, highlights: registry });
+  vi.stubGlobal('Highlight', class extends Set<Range> { constructor(...ranges: Range[]) { super(ranges); } });
+  try {
+    const target = documentCommentTarget('report.html', { version: 1, start: { block: 'body', offset: 6 }, end: { block: 'body', offset: 9 }, quote: 'for' });
+    const saved: PreviewComment = { ...target, id: 'saved', projectId: 'project', conversationId: 'project', note: 'Existing thread', status: 'open', authorMemberId: 'evebot:person', createdAt: 1, updatedAt: 1 };
+    render(<Harness initial={[saved]} />);
+    const root = screen.getByRole('textbox', { name: 'Report' }), text = document.createTreeWalker(root, NodeFilter.SHOW_TEXT).nextNode()!;
+    const before = JSON.stringify(editor().getEditorState().toJSON());
+    const native = document.createRange(); native.setStart(text, 0); native.setEnd(text, 5);
+    window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(native);
+    command('comments'); fireEvent.click(await screen.findByRole('button', { name: /Existing thread/ }));
+    await screen.findByRole('textbox', { name: 'Reply' });
+    expect(registry.size).toBe(1);
+    const ranges = [...registry.values()][0]!;
+    expect([...ranges].map(range => range.toString())).toEqual(['for']);
+    expect(window.getSelection()!.toString()).toBe('Ready');
+    expect(JSON.stringify(editor().getEditorState().toJSON())).toBe(before);
+    expect(api.documentSave).not.toHaveBeenCalled(); expect(api.save).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Close comments' }));
+    await waitFor(() => expect(registry.size).toBe(0));
+    command('comment'); await screen.findByRole('button', { name: /Existing thread/ });
+    expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
+  } finally { cleanup(); vi.unstubAllGlobals(); }
 });

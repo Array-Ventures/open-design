@@ -1,8 +1,8 @@
-import { useCommentChatDefault } from '../useCommentChatDefault';
+import { COMMAND_PRIORITY_EDITOR } from 'lexical';
+import { hasCommentBody, useCommentChatDefault } from '../useCommentChatDefault';
 import { Checkbox } from '../boardui/checkbox';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $createRangeSelection, $getNearestNodeFromDOMNode, $getSelection, $isRangeSelection, $isTextNode, $setSelection } from 'lexical';
 import { RiArrowLeftLine, RiArrowUpLine, RiChatNewLine, RiCloseLine } from '@remixicon/react';
 import type { PreviewComment, PreviewCommentTarget } from '../../../types';
 import { projectRawUrl } from '../../../providers/registry';
@@ -10,7 +10,7 @@ import { commentsToAttachments } from '../../../comments';
 import { canDeleteComment, canEditComment, canSendCommentToAgent } from '../../../comments/comment-authority';
 import { ArtifactAnnotationControls } from '../ArtifactAnnotationControls';
 import type { ArtifactFeedbackProps } from '../LiveArtifactFeedbackPreview';
-import { useEmbeddedViewer } from '../host-viewer';
+import { useEmbeddedMentionBots, useEmbeddedViewer } from '../host-viewer';
 import { confirmHostFeedbackDiscard } from '../host-context';
 import { Button } from '../boardui/button';
 import { cx } from '../boardui/cx';
@@ -19,18 +19,21 @@ import { ScrollFade, useScrollFade } from '../boardui/scroll-fade';
 import { CommentMentions } from '../CommentMentions';
 import { CommentAuthor, SavedCommentThread } from '../SavedCommentThread';
 import { CommentReviewFilter, useCommentReview } from '../CommentReview';
+import { COMMENT_DOCUMENT_SELECTION, useDocumentCommentSelection } from './useDocumentCommentSelection';
+import { useDocumentCommentHighlight } from './useDocumentCommentHighlight';
 import { useDocumentCommentPlacement } from './useDocumentCommentPlacement';
 import { useRootCommentEditor } from '../useRootCommentEditor';
 import { RootCommentRecovery } from '../RootCommentRecovery';
 import { commentIconButton } from '../comment-button-style';
-import { captureDocumentComment, documentCommentQuote, documentCommentTarget, readDocumentCommentAnchor, resolveDocumentComment, type DocumentCommentAnchor } from './document-comment-anchor';
+import { documentCommentQuote, documentCommentTarget, readDocumentCommentAnchor, resolveDocumentComment } from './document-comment-anchor';
 
 /** Uses the existing authorized comment/CAS/reply/handoff services. The editor
  * owns exact text anchors; annotations never replace or freeze the document. */
 export function DocumentComments({ projectId, fileName, feedback, onDirtyChange, onOpenChange }: { onOpenChange?(open: boolean): void; onDirtyChange?(dirty: boolean): void; projectId: string; fileName: string; feedback: ArtifactFeedbackProps }) {
   const [editor] = useLexicalComposerContext(), viewer = useEmbeddedViewer(), review = useCommentReview();
+  const quoteId = useId();
   const [open, setOpen] = useState(false), [list, setList] = useState(false);
-  useEffect(() => { onOpenChange?.(open); return () => onOpenChange?.(false); }, [open, onOpenChange]);
+  useEffect(() => { onOpenChange?.(open && !list); return () => onOpenChange?.(false); }, [open, list, onOpenChange]);
   const [selected, setSelected] = useState<PreviewComment | null>(null), [target, setTarget] = useState<PreviewCommentTarget | null>(null);
   const [draft, setDraft] = useState(''), [editing, setEditing] = useState(false), [busy, setBusy] = useState(false), [replyDirty, setReplyDirty] = useState(false), [handoffPending, setHandoffPending] = useState(false), [notice, setNotice] = useState<string | null>(null);
   const [commentEpoch, setCommentEpoch] = useState(0);
@@ -38,8 +41,9 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
   const [revision, update] = useState(0);
   const cardScroll = useScrollFade();
   useEffect(() => { cardScroll.reset(); }, [open, list, selected?.id, cardScroll.reset]);
-  const waitingForSelection = useRef(false);
-  const anchor = useRef<DocumentCommentAnchor | null>(null), life = useRef(true), pending = useRef(false);
+  const selectionOwner = useDocumentCommentSelection(editor, JSON.stringify([projectId, fileName]));
+  const bots = useEmbeddedMentionBots(), substantive = hasCommentBody(draft, bots);
+  const life = useRef(true), pending = useRef(false);
   const returnFocus = useRef<() => void>(() => {});
   const current = feedback.previewComments?.find(comment => comment.id === selected?.id) ?? null;
   const authority = { viewerMemberId: viewer?.memberId ?? null, collabEnabled: true, isProjectOwner: false };
@@ -47,7 +51,7 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
   const mayStage = Boolean(viewer && feedback.onSendBoardCommentAttachments && canSendCommentToAgent(current ?? selected, authority));
   const { selected: addToChat, choose: setAddToChat } = useCommentChatDefault(draft, JSON.stringify([commentEpoch, handoffPending ? null : selected?.id]), mayEdit && mayStage, editing);
   const persisted = useMemo(() => feedback.previewComments?.filter(comment => comment.filePath === fileName && readDocumentCommentAnchor(comment)) ?? [], [feedback.previewComments, fileName]);
-  const dirty = busy || replyDirty || handoffPending || editing && draft !== (selected?.note ?? '');
+  const dirty = busy || replyDirty || handoffPending || editing && (selected ? draft !== selected.note : substantive);
   const notify = useRef(onDirtyChange); notify.current = onDirtyChange;
   useEffect(() => { notify.current?.(dirty); }, [dirty, draft, replyRevision]);
   useEffect(() => () => notify.current?.(false), []);
@@ -57,43 +61,12 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
   if (!draftParts.every((part, index) => Object.is(part, draftVersion.current.parts[index]))) draftVersion.current = { parts: draftParts, value: draftVersion.current.value + 1 };
   const draftCurrent = useRef(draft); draftCurrent.current = draft;
   const root = useRootCommentEditor({ existing: current, retained: selected, draft, hasExtras: false, selectionKey: selected?.id ?? JSON.stringify(target), onDraft: setDraft });
-  const capture = () => editor.getEditorState().read(() => {
-    const dom = window.getSelection(), element = editor.getRootElement();
-    if (dom?.anchorNode && dom.focusNode && element?.contains(dom.anchorNode) && element.contains(dom.focusNode)) {
-      anchor.current = null;
-      const start = $getNearestNodeFromDOMNode(dom.anchorNode), end = $getNearestNodeFromDOMNode(dom.focusNode);
-      if ($isTextNode(start) && $isTextNode(end)) {
-        const selection = $createRangeSelection(); selection.setTextNodeRange(start, dom.anchorOffset, end, dom.focusOffset);
-        anchor.current = captureDocumentComment(selection);
-      }
-    } else {
-      const selection = $getSelection();
-      if ($isRangeSelection(selection)) anchor.current = captureDocumentComment(selection);
-    }
-  }, { editor });
   useEffect(() => {
     life.current = true;
-    const completeSelection = (event: Event) => {
-      if (!waitingForSelection.current || !life.current || pending.current || dirtyRef.current) return;
-      const element = editor.getRootElement(), dom = window.getSelection();
-      if (!(event.target instanceof Node) || !element?.contains(event.target) || !dom?.anchorNode || !dom.focusNode || dom.isCollapsed || !element.contains(dom.anchorNode) || !element.contains(dom.focusNode)) return;
-      capture();
-      const captured = anchor.current;
-      if (!captured || !editor.getEditorState().read(() => resolveDocumentComment(captured))) return;
-      waitingForSelection.current = false;
-      setNotice(null); setTarget(documentCommentTarget(fileName, captured)); setEditing(true);
-    };
-    // selectionchange fires repeatedly during drag/Shift extension. Capture the
-    // live range there, but bind a new target only when that gesture completes.
-    const pointerCompleted = (event: PointerEvent) => { if (event.button === 0) completeSelection(event); };
-    const keyboardCompleted = (event: KeyboardEvent) => {
-      if (event.key === 'Shift' || !event.shiftKey && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') completeSelection(event);
-    };
-    const stop = editor.registerUpdateListener(({ dirtyElements, dirtyLeaves }) => { capture(); if (dirtyElements.size || dirtyLeaves.size) update(value => value + 1); });
-    document.addEventListener('selectionchange', capture);
-    document.addEventListener('pointerup', pointerCompleted, true);
-    document.addEventListener('keyup', keyboardCompleted, true);
-    return () => { life.current = false; stop(); document.removeEventListener('selectionchange', capture); document.removeEventListener('pointerup', pointerCompleted, true); document.removeEventListener('keyup', keyboardCompleted, true); };
+    const stop = editor.registerUpdateListener(({ dirtyElements, dirtyLeaves }) => {
+      if (dirtyElements.size || dirtyLeaves.size) update(value => value + 1);
+    });
+    return () => { life.current = false; stop(); };
   }, [editor, fileName]);
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => { if (dirtyRef.current) { event.preventDefault(); event.returnValue = ''; } };
@@ -105,31 +78,29 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
     const accepted = !dirtyRef.current || await confirmHostFeedbackDiscard(projectId, 'comment');
     return accepted && life.current && !pending.current && version === draftVersion.current.value;
   };
-  const showList = () => { waitingForSelection.current = false; setList(true); };
-  const reset = () => { waitingForSelection.current = false; setCommentEpoch(value => value + 1); feedback.onDiscardPreviewCommentWrite?.(); setSelected(null); setTarget(null); setDraft(''); setEditing(false); setReplyDirty(false); setHandoffPending(false); setNotice(null); };
+  const showList = () => { selectionOwner.clear(); setList(true); };
+  const reset = () => { selectionOwner.clear(); setCommentEpoch(value => value + 1); feedback.onDiscardPreviewCommentWrite?.(); setSelected(null); setTarget(null); setDraft(''); setEditing(false); setReplyDirty(false); setHandoffPending(false); setNotice(null); };
   const close = async () => { if (!await allowed() || !life.current) return; reset(); setOpen(false); returnFocus.current(); };
   const begin = async () => {
-    capture();
+    if (!viewer) return;
+    const captured = selectionOwner.take();
     if (!await allowed() || !life.current) return;
-    const captured = anchor.current;
     reset(); setOpen(true); setList(false);
-    if (!captured || !editor.getEditorState().read(() => resolveDocumentComment(captured))) { waitingForSelection.current = true; setNotice('Select text in the document to comment.'); return; }
+    if (!captured || !editor.getEditorState().read(() => resolveDocumentComment(captured))) { setList(true); return; }
     setTarget(documentCommentTarget(fileName, captured)); setEditing(true);
   };
+  const beginRef = useRef(begin); beginRef.current = begin;
+  useEffect(() => editor.registerCommand(COMMENT_DOCUMENT_SELECTION, () => { void beginRef.current(); return true; }, COMMAND_PRIORITY_EDITOR), [editor]);
   const show = async (comment: PreviewComment) => {
     // Returning to the retained thread is navigation, not a target change.
     if (selected?.id === comment.id) { setOpen(true); setList(false); return; }
     if (!await allowed() || !life.current) return;
     reset(); setSelected(comment); setTarget(comment); setOpen(true); setList(false);
     const savedAnchor = readDocumentCommentAnchor(comment);
-    editor.update(() => {
-      const selection = savedAnchor && resolveDocumentComment(savedAnchor);
-      if (selection) $setSelection(selection);
-      else setNotice('The selected text changed or was removed. The saved thread is still available.');
-    }, { discrete: true });
+    if (!savedAnchor || !editor.getEditorState().read(() => resolveDocumentComment(savedAnchor))) setNotice('The selected text changed or was removed. The saved thread is still available.');
   };
   const save = async (attach: boolean) => {
-    if (!mayEdit || attach && !mayStage || !target || !draft.trim() || pending.current || !feedback.onSavePreviewComment || root.deleted || root.stale) return;
+    if (!mayEdit || attach && !mayStage || !target || !substantive || pending.current || !feedback.onSavePreviewComment || root.deleted || root.stale) return;
     pending.current = true; setBusy(true);
     const note = draft;
     await root.save(async baseline => {
@@ -160,23 +131,23 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
   };
   const location = useMemo(() => target && readDocumentCommentAnchor(target), [target]);
   const located = useMemo(() => location ? editor.getEditorState().read(() => Boolean(resolveDocumentComment(location))) : true, [editor, location, revision]);
-  const awaitingSelection = open && !list && !selected && !target && !editing;
+  useDocumentCommentHighlight(editor, open && !list ? location : null, revision);
   const placement = useDocumentCommentPlacement(editor, location, open && !list, revision, width);
   return <>
     <ArtifactAnnotationControls projectId={projectId} commenting={open && !list} marking={false} markupAvailable={false} dirty={dirty} disabled={!viewer}
-      onComment={() => { void (open && !list ? close() : begin()); }} onMark={() => {}} onComments={focus => { returnFocus.current = focus; void allowed().then(ok => { if (ok && life.current) { setOpen(true); showList(); } }); }} onDiscard={() => { if (!pending.current) { reset(); setOpen(false); } }} />
-    {open ? <aside ref={placement.card} role="dialog" aria-label="Document comments" onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); void close(); } }} className={cx(awaitingSelection && "pointer-events-none select-none", "absolute z-30 flex min-h-0 max-w-[calc(100%_-_24px)] flex-col rounded-2xl border border-separator-border bg-background-primary-default shadow-lg", placement.style ? "left-[var(--document-comment-left)] right-auto top-[var(--document-comment-top)] max-h-[var(--document-comment-max-height)]" : "end-3 top-3 max-h-[calc(100%_-_24px)]")} style={{ width, ...placement.style }}>
+      onComment={() => { void (open && !list ? close() : begin()); }} onMark={() => {}} onComments={focus => { returnFocus.current = focus; void allowed().then(ok => { if (ok && life.current) { if (!selected && editing) reset(); setOpen(true); showList(); } }); }} onDiscard={() => { if (!pending.current) { reset(); setOpen(false); } }} />
+    {open ? <aside ref={placement.card} role="dialog" aria-label="Document comments" onFocusCapture={() => selectionOwner.clear()} onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); void close(); } }} className={cx("absolute z-30 flex min-h-0 max-w-[calc(100%_-_24px)] flex-col rounded-2xl border border-separator-border bg-background-primary-default shadow-lg", placement.style ? "left-[var(--document-comment-left)] right-auto top-[var(--document-comment-top)] max-h-[var(--document-comment-max-height)]" : "end-3 top-3 max-h-[calc(100%_-_24px)]")} style={{ width, ...placement.style }}>
       <div role="separator" aria-label="Resize document comments" aria-orientation="vertical" aria-valuemin={240} aria-valuemax={480} aria-valuenow={width} tabIndex={0}
         className="pointer-events-auto absolute inset-y-0 -start-1 w-2 cursor-col-resize focus-visible:ring-2 focus-visible:ring-border-focus-ring"
         onKeyDown={event => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { event.preventDefault(); const grows = event.key === (getComputedStyle(event.currentTarget).direction === 'rtl' ? 'ArrowRight' : 'ArrowLeft'); setWidth(value => event.key === 'Home' ? 240 : event.key === 'End' ? 480 : Math.max(240, Math.min(480, value + (grows ? 16 : -16)))); } }}
         onPointerDown={event => { if (event.button !== 0) return; event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); }}
         onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) { const parent = event.currentTarget.parentElement?.getBoundingClientRect(); if (parent) setWidth(Math.max(240, Math.min(480, (getComputedStyle(event.currentTarget).direction === 'rtl' ? event.clientX - parent.left : parent.right - event.clientX)))); } }} onPointerUp={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }} />
-      <header className={cx("flex shrink-0 items-center gap-1 border-b border-separator-border px-3 py-2", awaitingSelection && "[&_button]:pointer-events-auto")}>
+      {list || selected ? <header className="flex shrink-0 items-center gap-1 border-b border-separator-border px-3 py-2">
         {!list ? <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiArrowLeftLine} aria-label="All comments" onClick={showList} /> : null}
         <span className="min-w-0 flex-1 truncate text-body-2-medium text-text-primary">{list ? 'Comments' : 'Selected text'}</span>
         <CommentReviewFilter />
         <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiCloseLine} aria-label="Close comments" onClick={() => { void close(); }} />
-      </header>
+      </header> : null}
       <div className="relative flex min-h-0 flex-col">
       <div onScroll={cardScroll.onScroll} className="min-h-0 overflow-y-auto">
       {list ? <div className="flex min-h-0 flex-col gap-2 p-3">
@@ -186,10 +157,10 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
       </div> : null}
       {!list && (notice || !located) ? <p role="status" className="m-0 px-3 py-2 text-caption-1-regular text-text-tertiary">{notice ?? 'The selected text changed. The original selection is retained.'}</p> : null}
       {!list && editing ? <div className="flex min-h-0 flex-col gap-2 p-3">
-        <blockquote tabIndex={0} aria-label="Selected document text" className="focus-visible:ring-2 focus-visible:ring-border-focus-ring m-0 max-h-32 overflow-y-auto whitespace-pre-wrap break-words border-s-2 border-separator-border ps-2 text-caption-1-regular text-text-tertiary">{documentCommentQuote(target)}</blockquote>
+        <span id={quoteId} className="sr-only">{documentCommentQuote(target)}</span>
         <RootCommentRecovery failure={root.failure} stale={root.stale} deleted={root.deleted} busy={busy} onRebase={root.rebase} />
-        <CommentMentions value={draft} onChange={setDraft}><TextareaBase aria-label="Comment on selected text" value={draft} onChange={event => setDraft(event.target.value)} rows={3} maxLength={20000} readOnly={!mayEdit} /></CommentMentions>
-        <div className="flex items-center justify-between gap-2">{mayEdit && mayStage ? <Checkbox size="sm" isSelected={addToChat} onChange={setAddToChat} isDisabled={busy}>Add to chat</Checkbox> : <span />}{mayEdit ? <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiArrowUpLine} aria-label="Save comment" disabled={busy || !draft.trim() || root.deleted || root.stale} onClick={() => { void save(addToChat); }} /> : null}</div>
+        <CommentMentions value={draft} onChange={setDraft}><TextareaBase autoFocus={!selected} aria-describedby={quoteId} aria-label="Comment on selected text" value={draft} onChange={event => setDraft(event.target.value)} rows={3} maxLength={20000} readOnly={!mayEdit} /></CommentMentions>
+        <div className="flex items-center justify-between gap-2">{!selected ? <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiCloseLine} aria-label="Close comments" onClick={() => { void close(); }} /> : null}{mayEdit && mayStage ? <Checkbox size="sm" isSelected={addToChat} onChange={setAddToChat} isDisabled={busy}>Add to chat</Checkbox> : <span />}{mayEdit ? <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiArrowUpLine} aria-label="Save comment" disabled={busy || !substantive || root.deleted || root.stale} onClick={() => { void save(addToChat); }} /> : null}</div>
       </div> : null}
       {selected && !editing ? <div hidden={list} className={cx("min-h-0 flex-1 flex-col p-3", list ? "hidden" : "flex")}>
         <blockquote tabIndex={0} aria-label="Selected document text" className="focus-visible:ring-2 focus-visible:ring-border-focus-ring m-0 mb-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-words border-s-2 border-separator-border ps-2 text-caption-1-regular text-text-tertiary">{documentCommentQuote(current ?? selected)}</blockquote>
