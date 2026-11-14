@@ -22,3 +22,12 @@ its byte/quota checks before an SDK callback. The current draft byte cap is
 their separate checks. The existing baseline-only helper remains baseline-only;
 the new pair can be attached by the upcoming checked pending-target conversion.
 Controls, pending conversion and complete history/recovery remain uninstalled.
+
+The synchronous internal `captureWorkbookDeletionBaselines` batch performs the
+same complete source/ACK/axis/capability/scope qualification once, then returns
+only the requested selected contexts. The existing single-capture API delegates
+to a one-item batch. Nothing escapes as a reusable qualification token, and no
+asynchronous boundary separates validation from capture. Separate results are
+independent copies, including repeated requests for the same sheet. The actual
+source projection is counted once in the focused regression; source/ACK bytes
+remain unchanged. 39 affected cases, full repository typecheck and guard passed.
