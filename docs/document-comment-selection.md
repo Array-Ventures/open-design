@@ -104,7 +104,7 @@ reply/chat drafts were cleared. No chat handoff or external message was sent.
 
 ![Dark 390-wide saved thread with a retained unsent reply](images/document-comment-workflow/dark-phone-thread.png)
 
-### Composer surface follow-up (source checked, packaged acceptance pending)
+### Composer surface follow-up (candidate 108 qualified; placeholder follow-up pending)
 
 A fresh scoped reference inspection measured a transparent, borderless focused
 comment editor with no inner shadow. Candidate 107's real textarea was already
@@ -124,12 +124,27 @@ compiled Tailwind rules verified native 20→60→100→20-pixel grow/cap/shrink
 text retention, transparent/no-inner-ring presentation, and keyboard Tab focus
 showing the outer ring and removing it after focus leaves. This is bounded
 component evidence, not a new immutable companion or full product visual proof.
-Actual paired light/dark desktop/phone inspection and rapid typing remain pending.
+Those checks preceded packaged acceptance. Candidate 108, built from clean
+`86cad09225d6114f302475e806967effbad67264`, then passed actual light/dark
+1440/390-wide manual empty/grow/cap/shrink checks and the unchanged six-case native
+browser suite in one sequence. Header and inline entry points were exercised in
+the documented manual flow; exact draft text and keyboard focus were retained.
+The fake 275-byte source stayed unchanged through a plain comment save, list
+navigation and reload, with its exact generated anchor and zero replies. The
+placeholder was still absent in 108, as the retained screenshots show.
+
+A separate source commit adds the reference-observed “Add a comment” placeholder,
+without changing the accessible name, quote description, controlled value or
+styling. A source regression verifies that placeholder text never enables Save;
+a bounded real-Chromium component check confirms :placeholder-shown for empty,
+hidden while actual text is typed, and shown again after native deletion. Paired
+candidate 109 visual and rapid-typing acceptance remains pending.
 
 ### Remaining reference and visual differences
 
-The composer still has a nested gray textarea fill/focus ring, visibly heavier
-than the reference's single-card treatment. The list fallback at a 640-wide
+Candidate107 had a nested gray textarea fill/focus ring, visibly heavier
+than the reference's single-card treatment; candidate108 removes that nested
+surface, as the separate acceptance above records. The list fallback at a 640-wide
 artifact pane overlaps the heading; narrow-reference comparison and placement
 policy remain follow-up work. These observations are not claims of full visual
 acceptance. Markup, cross-type anchoring and broader feedback refinements remain

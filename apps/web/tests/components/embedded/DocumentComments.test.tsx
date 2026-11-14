@@ -454,3 +454,16 @@ it('grows and shrinks the compact composer within five rows without losing its d
   expect(input).toHaveValue('Short'); expect(input.style.height).toBe('20px'); expect(input.style.overflowY).toBe('hidden');
   expect(input).toHaveFocus(); expect(api.save).not.toHaveBeenCalled(); expect(api.documentSave).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
 });
+
+it('keeps the comment placeholder separate from the draft and submission guard', async () => {
+  render(<Harness />);
+  const input = await selectAndOpen();
+  expect(screen.getByPlaceholderText('Add a comment')).toBe(input);
+  expect(input).toHaveValue(''); expect(screen.getByRole('button', { name: 'Save comment' })).toBeDisabled();
+  fireEvent.input(input, { target: { value: 'A real note' } });
+  expect(input).toHaveValue('A real note'); expect(screen.getByRole('button', { name: 'Save comment' })).toBeEnabled();
+  fireEvent.input(input, { target: { value: '' } });
+  expect(input).toHaveValue(''); expect(input).toHaveAttribute('placeholder', 'Add a comment');
+  expect(screen.getByRole('button', { name: 'Save comment' })).toBeDisabled();
+  expect(api.save).not.toHaveBeenCalled(); expect(api.send).not.toHaveBeenCalled();
+});
