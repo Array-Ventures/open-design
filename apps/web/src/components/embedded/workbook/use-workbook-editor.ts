@@ -84,7 +84,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
       // including its new source/axis identities. Only real dirty or unresolved
       // checkpoints may replace that baseline; invalid protected drafts stay.
       if (!checkpoint.pending) {
-        try { if (!workbookPlanHasChanges(workbookGridPlan(checkpoint.source.model, checkpoint.source.sourceSha256, checkpoint.acknowledged, checkpoint.desired, { deletions: checkpoint.sheetDeletions, births: checkpoint.sheetBirths, sourceOwner: ownedJournal?.scope && checkpoint.sourceAcknowledgement && checkpoint.sourceSnapshotBinding ? { scope: ownedJournal.scope, acknowledgement: checkpoint.sourceAcknowledgement, binding: checkpoint.sourceSnapshotBinding } : undefined }))) return undefined; }
+        try { if (!workbookPlanHasChanges(workbookGridPlan(checkpoint.source.model, checkpoint.source.sourceSha256, checkpoint.acknowledged, checkpoint.desired, { scope: ownedJournal?.scope, deletions: checkpoint.sheetDeletions, births: checkpoint.sheetBirths, sourceOwner: ownedJournal?.scope && checkpoint.sourceAcknowledgement && checkpoint.sourceSnapshotBinding ? { scope: ownedJournal.scope, acknowledgement: checkpoint.sourceAcknowledgement, binding: checkpoint.sourceSnapshotBinding } : undefined }))) return undefined; }
         catch { /* Preserve an unsupported or conflicted draft for recovery. */ }
       }
       return checkpoint;

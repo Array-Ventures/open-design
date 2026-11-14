@@ -66,7 +66,7 @@ export class WorkbookWriter {
     return this.journal?.scope && this.sourceAcknowledgement && this.sourceSnapshotBinding
       ? { scope: this.journal.scope, acknowledgement: this.sourceAcknowledgement, binding: this.sourceSnapshotBinding } : undefined;
   }
-  private plan() { return workbookGridPlan(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired, { deletions: this.sheetDeletions, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() }); }
+  private plan() { return workbookGridPlan(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired, { scope: this.journal?.scope, deletions: this.sheetDeletions, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() }); }
   state(): WorkbookWriteState {
     let dirty = Boolean(this.pending || this.running || this.protection || this.sheetActionConflict);
     try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
@@ -114,7 +114,7 @@ export class WorkbookWriter {
       const candidate = this.prospectiveDeletionContexts(raw), source = this.source, revision = this.revision, pending = this.pending;
       const snapshot = structuredClone(prospective);
       if (snapshot.sheets[raw.descriptor.sheetId] || snapshot.sheetOrder.includes(raw.descriptor.sheetId)) throw Error('The prospective worksheet deletion changed.');
-      const plan = workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { deletions: candidate, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() });
+      const plan = workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { scope: this.journal?.scope, deletions: candidate, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() });
       const checkpoint = { ...this.checkpoint(), sheetDeletions: candidate };
       this.journal.validate({ ...checkpoint, desired: snapshot });
       // Same decoder and exact byte limit as real pending storage. These local
@@ -145,7 +145,7 @@ export class WorkbookWriter {
       const checkpoint = { ...this.checkpoint(), sheetBirths: prepared.state };
       this.journal.validate(checkpoint);
       this.journal.validate({ ...checkpoint, desired: prepared.snapshot });
-      const plan = workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, prepared.snapshot, { deletions: this.sheetDeletions, births: prepared.state, sourceOwner: this.sheetProjectionOwner() });
+      const plan = workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, prepared.snapshot, { scope: this.journal?.scope, deletions: this.sheetDeletions, births: prepared.state, sourceOwner: this.sheetProjectionOwner() });
       this.journal.validate({ ...checkpoint, desired: prepared.snapshot, pending: { snapshot: prepared.snapshot, intent: { id: crypto.randomUUID(), preparationId: crypto.randomUUID(), previewId: crypto.randomUUID(), plan } } });
       const durable = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
       this.persistence = durable;

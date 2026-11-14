@@ -1,3 +1,4 @@
+import { workbookSheetRemovalSelection } from './sheet-removal-selection';
 import { checkedWorkbookSheetBirths, blankWorkbookSheet, WORKBOOK_SHEET_BIRTH_MARKER, type WorkbookSheetBirthState } from './sheet-birth-context';
 import { matchesWorkbookSourceSnapshot, type WorkbookSourceSnapshotBinding } from './source-snapshot-binding';
 import type { WorkbookSaveAcknowledgement } from './save-provenance';
@@ -19,15 +20,37 @@ export interface WorkbookSheetProjectionOwner {
 }
 
 export interface WorkbookPlanContext {
+  scope?: WorkbookDraftScope | undefined;
   deletions?: readonly WorkbookSourceDeleteContext[] | undefined;
   births?: WorkbookSheetBirthState | undefined;
   sourceOwner?: WorkbookSheetProjectionOwner | undefined;
+}
+
+/** Validate every selected retained reference, including a clean desired view.
+ * Scope is supplied by the current caller, never inferred from stored contexts.
+ * This is data consistency only; source eligibility and template authorization
+ * remain independent checks at their existing owners. */
+export function checkedWorkbookRemovalContexts(snapshot: IWorkbookData, initial: IWorkbookData, context?: WorkbookPlanContext) {
+  const generation = initial.custom?.evebotStructureOwner?.generation;
+  const selection = workbookSheetRemovalSelection(snapshot, typeof generation === 'string' ? generation : '');
+  const checked = (context?.deletions ?? []).map(value => workbookSourceDeleteContextSchema.parse(value));
+  const scope = context?.scope ?? context?.sourceOwner?.scope;
+  for (const [id, token] of Object.entries(selection)) {
+    if (!scope || snapshot.id !== initial.id || `${scope.projectId}:${scope.fileName}` !== initial.id) throw Error('The worksheet removal selection has no current scope.');
+    const matches = checked.filter(value => value.descriptor.sheetId === id && value.descriptor.token === token);
+    if (matches.length !== 1) throw Error('The worksheet removal selection has no unique retained context.');
+    const value = matches[0]!;
+    if (value.scope.viewerId !== scope.viewerId || value.scope.projectId !== scope.projectId || value.scope.fileName !== scope.fileName
+      || canonicalCommentJson(value.axisOwner) !== canonicalCommentJson(initial.custom?.evebotStructureOwner)) throw Error('The worksheet removal selection changed scope or generation.');
+  }
+  return { selection, checked };
 }
 
 /** Derive source survivors and explicitly protected blank origins. A marker is
  * never a birth/restore grant; unknown and historical restoration still refuse. */
 export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256: string, initial: IWorkbookData, current: IWorkbookData, context?: WorkbookPlanContext) {
   if (initial.id !== current.id) throw Error('Workbook identity changed.');
+  const { selection, checked } = checkedWorkbookRemovalContexts(current, initial, context);
   const sourceIds = model.sheets.map(sheet => sheet.id), afterIds = current.sheetOrder;
   const changed = canonicalCommentJson(sourceIds) !== canonicalCommentJson(afterIds) || model.sheets.some(sheet => current.sheets[sheet.id] && current.sheets[sheet.id]!.name !== sheet.name);
   if (!changed) return null;
@@ -47,7 +70,6 @@ export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256:
   }
   if (canonicalCommentJson(sourceIds.filter(id => afterIds.includes(id))) !== canonicalCommentJson(afterIds.filter(id => sourceIds.includes(id)))) throw Error('Reordering source worksheets is unsupported.');
   assertWorkbookStructureIdentity(initial); assertWorkbookStructureIdentity(current);
-  const checked = (context?.deletions ?? []).map(value => workbookSourceDeleteContextSchema.parse(value));
   const owner = context?.sourceOwner;
   const carriedSource = owner && matchesWorkbookSourceSnapshot({
     version: 1, source: { model, sourceSha256 }, acknowledged: initial, desired: initial,
@@ -56,7 +78,7 @@ export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256:
   for (const id of sourceIds.filter(id => !afterIds.includes(id))) {
     if (model.sheets.find(sheet => sheet.id === id)!.visibility === 'veryHidden') throw Error('A very hidden worksheet cannot be deleted here.');
     const matches = checked.filter(value => {
-      if (value.descriptor.sheetId !== id) return false;
+      if (value.descriptor.sheetId !== id || selection[id] !== undefined && value.descriptor.token !== selection[id]) return false;
       if (value.sourceSha256 === sourceSha256) return true;
       return Boolean(carriedSource && owner && value.receiptAssociation
         && owner.scope.viewerId === value.scope.viewerId

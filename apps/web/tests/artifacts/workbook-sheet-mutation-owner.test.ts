@@ -2,7 +2,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { IUniverInstanceService, UniverInstanceType, UndoCommand, RedoCommand, type IWorkbookData, type Workbook } from '@univerjs/core';
 import { InsertSheetCommand, InsertSheetMutation, RemoveSheetCommand, RemoveSheetMutation } from '@univerjs/sheets';
 import { createWorkbookBirthFixture } from '../helpers/workbook-birth-fixture';
-import { WorkbookSheetMutationOwner, workbookSheetMutationSnapshot, WORKBOOK_SHEET_REMOVALS } from '../../src/components/embedded/workbook/sheet-mutation-owner';
+import { WorkbookSheetMutationOwner } from '../../src/components/embedded/workbook/sheet-mutation-owner';
+import { workbookSheetMutationSnapshot, WORKBOOK_SHEET_REMOVALS } from '../../src/components/embedded/workbook/sheet-removal-selection';
 import type { WorkbookSheetActionDescriptor } from '../../src/components/embedded/workbook/sheet-action-descriptor';
 
 const close: (() => void)[] = [];
