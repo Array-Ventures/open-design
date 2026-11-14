@@ -378,7 +378,7 @@ export class WorkbookWriter {
     const next = this.persistence.catch(() => {}).then(() => {
       let dirty = Boolean(this.pending);
       try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
-      const checkpoint = dirty || this.sheetActionConflict || this.sheetDeletions.length || this.sourceAcknowledgement?.kind === 'history' ? this.checkpoint() : null;
+      const checkpoint = dirty || this.sheetActionConflict || this.sheetDeletions.length || this.sheetBirths || this.sourceAcknowledgement?.kind === 'history' ? this.checkpoint() : null;
       return journal.save(checkpoint);
     });
     this.persistence = next;
