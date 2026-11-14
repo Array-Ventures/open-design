@@ -14,7 +14,7 @@ it('retains native CodeBlock semantics under an exact generated size owner', () 
   const source = documentDocxSourcePresentation('<pre><code>block\n  indent</code></pre>');
   const $ = load(source.html);
   const id = $('pre').attr(source.attributeName)!;
-  const resolved = new Map(source.requests.map(request => [request.id, request.id === id ? {fontSizePt:10.5,fontLineHeightPt:15.75,fontSizeSource:'code-context' as never} : {}]));
+  const resolved = new Map(source.requests.map(request => [request.id, request.id === id ? {fontSizePt:10.5,fontLineHeightPt:15.75,fontSizeSource:'code-context' as const} : {}]));
   const html = normalizedDocumentDocxHtml(source, resolved);
   expect(load(html)('pre').text()).toBe('block\n  indent');
   const block = {t:'CodeBlock',c:[['', ['javascript'], [[source.attributeName.slice(5),id]]], 'block\n  indent']};
