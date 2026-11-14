@@ -4,7 +4,7 @@ This is a bounded interaction fix, not full Claude workflow or markup parity.
 Production and shared development services were untouched. No comment was sent
 to a chat during the manual acceptance checks.
 
-## Reference-guided workflow follow-up (source implemented, runtime pending)
+## Reference-guided workflow follow-up (candidate 107 qualified)
 
 The candidate105 evidence below remains historical. A later direct inspection of
 our disposable Claude document showed that Comment without a selection opens the
@@ -26,9 +26,9 @@ conditional saves, reply drafts and discard confirmation. Known host bot mention
 alone are not substantive comment text; unknown handles, emails and mixed text
 remain content. No automatic bot choice is introduced for multi-bot conversations.
 
-Focused source checks cover these boundaries. Host-header blur, native selection,
-scroll/resize/theme rendering, compact placement and actual save/reopen still need
-paired browser qualification before this follow-up is treated as accepted.
+Candidate107 passed the paired six-case browser suite and the bounded manual
+checks below. This establishes the functional selection/comment checkpoint,
+not full reference parity or cross-type feedback acceptance.
 
 ### Candidate106 rapid-input failures and source follow-up
 
@@ -51,6 +51,69 @@ input, selection, pointer, keyboard or blur events invalidate it. No delayed
 focus/caret write remains. The scratch browser is a bounded component proof,
 not acceptance of the full candidate. Both fixes require the next paired native
 browser run, including unchanged rapid typing assertions.
+
+### Frozen candidate 107 provenance and acceptance
+
+The qualified companion 107 / renderer 50 pair was built from clean source
+`b25bd1726d0a3103e0e1fc78e17adcea49e446cb`. This later evidence-only commit does
+not relabel that build.
+
+- Source tree: `69da7e3506eb207ad1262da26e2455162d347fa80e615aa9c7f307b9c6bc9b27`.
+- Companion: `0188ef0b1046ddacf82754bde7d8bb6c11d77fe5fc91a4031b1610a3329fab6e`.
+- Renderer: `sha256:bd64ce6b4e535b782d0eb875edeec31b649ed95d009871ae8b862cebff9a90c6`.
+- Worker: `03cfef8d890e7f1780a9bb1706e7a9f34335684bee64b6f1830fc32dad76ec9c`.
+- Document-color helper: `a8935e725e3ddf66620ec72c356d7c270514c13977969a31c055eda29e7fed8c`.
+- Native preview: `35595d371ee8fa7f3c3382c0bb29e3b8024d8b18`.
+
+Strict companion inventory, clean source pairing, local immutable-image identity,
+platform and entrypoint checks passed. The actual image worker/helper hashes
+match candidate 106 / renderer 49. Owned preview shutdown and startup both exited 0;
+login returned 200. Production, installer pins and publication were untouched.
+
+Source validation passed 69 focused tests, full workspace typecheck, separate web
+typecheck and guard. The unchanged six-case native browser suite passed in one
+sequence on 107: four saved-comment cases at 1440/390 in light/dark, plus two
+fresh-selection workflow cases at 1440/light and 390/dark. Exact rapid typing after
+mention selection now passes; the 106 failures above remain part of the record.
+The cases also assert passive ranges, accessible quotes, mention-only disabled
+submission, source bytes, reload anchors, no stale thread selection and draft
+retention. No delays, forced input or production DOM overrides were added.
+
+The coordinator manually checked both themes on desktop and 390-wide layouts:
+no-selection Comment opened the list with Editing/insertion still available;
+a real full-paragraph drag followed by inline Comment opened an autofocused
+composer, with an exact passive range and empty native selection. Keep editing
+retained the draft; explicit Discard removed composer/highlight. Fullscreen and
+restore kept the same iframe, document and input while preserving unsent comment
+and chat drafts. Mobile Show chat/Return to artifact retained the same document
+and reply node. List navigation hid that reply with zero rectangles and returned
+the same DOM node and unsent text.
+
+The fake manual artifact remained 328 bytes with SHA256
+`66a16a21de900756016c1bfbb2db80fd143e488e4abefc0914fe4d131513a7b3`.
+Its one saved comment resolved the generated block identity and exact offsets 0–31
+for “Select this complete paragraph.” There were zero saved replies; temporary
+reply/chat drafts were cleared. No chat handoff or external message was sent.
+
+![Light compact composer on the fake manual artifact](images/document-comment-workflow/light-composer.png)
+
+![Dark 390-wide saved thread with a retained unsent reply](images/document-comment-workflow/dark-phone-thread.png)
+
+### Remaining reference and visual differences
+
+The composer still has a nested gray textarea fill/focus ring, visibly heavier
+than the reference's single-card treatment. The list fallback at a 640-wide
+artifact pane overlaps the heading; narrow-reference comparison and placement
+policy remain follow-up work. These observations are not claims of full visual
+acceptance. Markup, cross-type anchoring and broader feedback refinements remain
+outside this document-only checkpoint.
+
+A fresh reference check also showed Escape discarding an unsaved substantive
+comment body without confirmation. Evebot intentionally retains its protected
+unsent-draft confirmation. No automatic recipient is chosen for multi-bot
+conversations; only an explicitly entered known mention defaults Add to chat.
+Host Show all versus in-card list navigation draft-confirmation consistency
+remains a separate follow-up, without weakening existing draft protection.
 
 ## Candidate105 problems and resulting behavior
 
