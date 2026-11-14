@@ -1,3 +1,4 @@
+import { canonicalWorkbookJsonValue } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import type { WorkbookKernelAcknowledgement } from './kernel-acknowledgement';
 import { checkedWorkbookSaveAcknowledgement, type WorkbookSaveAcknowledgement } from './save-provenance';
 import { workbookGridPlan, workbookPlanHasChanges } from './grid-plan';
@@ -75,11 +76,15 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
       // A quarantined command deliberately restores its pre-command snapshot,
       // which may have an empty ordinary plan. That is not reset authority.
       if (checkpoint.sheetActionConflict) return checkpoint;
+      // Keep only data needed by a still-live native history generation. A new
+      // kernel starts new history; serialized birth records are not its issuer.
+      if (checkpoint.sheetBirths && canonicalWorkbookJsonValue(checkpoint.sheetBirths.axisOwner)
+        === canonicalWorkbookJsonValue(initial.custom?.evebotStructureOwner)) return checkpoint;
       // An acknowledged clean kernel replacement needs the fresh SDK baseline,
       // including its new source/axis identities. Only real dirty or unresolved
       // checkpoints may replace that baseline; invalid protected drafts stay.
       if (!checkpoint.pending) {
-        try { if (!workbookPlanHasChanges(workbookGridPlan(checkpoint.source.model, checkpoint.source.sourceSha256, checkpoint.acknowledged, checkpoint.desired))) return undefined; }
+        try { if (!workbookPlanHasChanges(workbookGridPlan(checkpoint.source.model, checkpoint.source.sourceSha256, checkpoint.acknowledged, checkpoint.desired, { scope: ownedJournal?.scope, pending: checkpoint.pending, deletions: checkpoint.sheetDeletions, births: checkpoint.sheetBirths, sourceOwner: ownedJournal?.scope && checkpoint.sourceAcknowledgement && checkpoint.sourceSnapshotBinding ? { scope: ownedJournal.scope, acknowledgement: checkpoint.sourceAcknowledgement, binding: checkpoint.sourceSnapshotBinding } : undefined }))) return undefined; }
         catch { /* Preserve an unsupported or conflicted draft for recovery. */ }
       }
       return checkpoint;

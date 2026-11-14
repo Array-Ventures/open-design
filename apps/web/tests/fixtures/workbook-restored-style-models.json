@@ -1,0 +1,195 @@
+{
+  "historical": {
+    "version": 1,
+    "worksheetVisibilityEditable": true,
+    "richTextMetadata": "verified",
+    "date1904": false,
+    "activeSheetId": "1",
+    "themeColors": [
+      "FFFFFFFF",
+      "FF000000",
+      "FFEEECE1",
+      "FF1F497D",
+      "FF4F81BD",
+      "FFC0504D",
+      "FF9BBB59",
+      "FF8064A2",
+      "FF4BACC6",
+      "FFF79646",
+      "FF0000FF",
+      "FF800080"
+    ],
+    "styles": [
+      {
+        "font": {
+          "name": "Calibri",
+          "family": 2,
+          "size": 11,
+          "color": {
+            "kind": "theme",
+            "index": 1
+          }
+        },
+        "fill": {
+          "pattern": "none"
+        }
+      },
+      {
+        "font": {
+          "size": 11,
+          "bold": true
+        },
+        "fill": {
+          "pattern": "none"
+        }
+      }
+    ],
+    "sheets": [
+      {
+        "id": "1",
+        "name": "Survivor",
+        "visibility": "visible",
+        "rowCount": 100,
+        "columnCount": 26,
+        "defaultRowHeight": 15,
+        "cells": [
+          {
+            "row": 0,
+            "column": 0,
+            "kind": "number",
+            "value": 3
+          }
+        ],
+        "merges": [],
+        "arrayFormulas": [],
+        "rowDimensions": [],
+        "columnDimensions": [],
+        "frozenRows": 0,
+        "frozenColumns": 0
+      },
+      {
+        "id": "2",
+        "name": "Restored",
+        "visibility": "visible",
+        "rowCount": 100,
+        "columnCount": 26,
+        "defaultRowHeight": 15,
+        "cells": [
+          {
+            "row": 0,
+            "column": 0,
+            "style": 1,
+            "kind": "number",
+            "value": 12
+          }
+        ],
+        "merges": [],
+        "arrayFormulas": [],
+        "rowDimensions": [],
+        "columnDimensions": [],
+        "frozenRows": 0,
+        "frozenColumns": 0
+      }
+    ],
+    "definedNames": [],
+    "tables": [],
+    "features": {
+      "charts": 0,
+      "drawings": 0,
+      "externalLinks": 0,
+      "macros": false,
+      "signed": false
+    },
+    "calculationMetadata": "verified",
+    "worksheetStructureEditable": true,
+    "worksheetMembershipEditable": true
+  },
+  "current": {
+    "version": 1,
+    "worksheetVisibilityEditable": true,
+    "richTextMetadata": "verified",
+    "date1904": false,
+    "activeSheetId": "1",
+    "themeColors": [
+      "FFFFFFFF",
+      "FF000000",
+      "FFEEECE1",
+      "FF1F497D",
+      "FF4F81BD",
+      "FFC0504D",
+      "FF9BBB59",
+      "FF8064A2",
+      "FF4BACC6",
+      "FFF79646",
+      "FF0000FF",
+      "FF800080"
+    ],
+    "styles": [
+      {
+        "font": {
+          "name": "Calibri",
+          "family": 2,
+          "size": 11,
+          "color": {
+            "kind": "theme",
+            "index": 1
+          }
+        },
+        "fill": {
+          "pattern": "none"
+        }
+      },
+      {
+        "font": {
+          "name": "Calibri",
+          "family": 2,
+          "size": 22.25,
+          "color": {
+            "kind": "theme",
+            "index": 1
+          }
+        },
+        "fill": {
+          "pattern": "none"
+        }
+      }
+    ],
+    "sheets": [
+      {
+        "id": "1",
+        "name": "Current survivor",
+        "visibility": "visible",
+        "rowCount": 100,
+        "columnCount": 26,
+        "defaultRowHeight": 15,
+        "cells": [
+          {
+            "row": 0,
+            "column": 0,
+            "style": 1,
+            "kind": "number",
+            "value": 20
+          }
+        ],
+        "merges": [],
+        "arrayFormulas": [],
+        "rowDimensions": [],
+        "columnDimensions": [],
+        "frozenRows": 0,
+        "frozenColumns": 0
+      }
+    ],
+    "definedNames": [],
+    "tables": [],
+    "features": {
+      "charts": 0,
+      "drawings": 0,
+      "externalLinks": 0,
+      "macros": false,
+      "signed": false
+    },
+    "calculationMetadata": "verified",
+    "worksheetStructureEditable": true,
+    "worksheetMembershipEditable": true
+  }
+}

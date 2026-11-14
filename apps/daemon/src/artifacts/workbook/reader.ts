@@ -5,7 +5,7 @@ import { assertWorkbookImportLayout } from './import-layout.js';
 import StylesXform from 'exceljs-community/lib/xlsx/xform/style/styles-xform.js';
 import { Readable } from 'node:stream';
 import ExcelJS from 'exceljs-community';
-import { workbookDocumentSchema, WORKBOOK_MODEL_LIMITS, type WorkbookCell, type WorkbookSheet, type WorkbookStyle } from '@open-design/contracts/runtime/workbook';
+import { workbookDocumentSchema, WORKBOOK_MODEL_LIMITS, WORKBOOK_MINIMUM_SHEET_WINDOW, type WorkbookCell, type WorkbookSheet, type WorkbookStyle } from '@open-design/contracts/runtime/workbook';
 import { WorkbookFormatError, readWorkbookPackage, type WorkbookParts } from './package.js';
 import { address, child, children, MAIN_NAMESPACES, range, relationships, xmlPart } from './parts.js';
 import { font, style } from './styles.js';
@@ -149,7 +149,7 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
     const root = xmlPart(parts, relation.target).documentElement;
     if (!root || root.localName !== 'worksheet' || !MAIN_NAMESPACES.has(root.namespaceURI ?? '')) throw new WorkbookFormatError('Invalid worksheet root.');
     const cells: WorkbookCell[] = [], rowDimensions: WorkbookSheet['rowDimensions'] = [], columnDimensions: WorkbookSheet['columnDimensions'] = [], arrayFormulas: NonNullable<WorkbookSheet['arrayFormulas']> = [];
-    let rowCount = 100, columnCount = 26, previousRow = -1;
+    let rowCount: number = WORKBOOK_MINIMUM_SHEET_WINDOW.rows, columnCount: number = WORKBOOK_MINIMUM_SHEET_WINDOW.columns, previousRow = -1;
     const data = child(root, 'sheetData');
     for (const rowNode of data ? children(data, 'row') : []) {
       const rowIndex = rowNode.hasAttribute('r') ? integer(rowNode.getAttribute('r')) - 1 : previousRow + 1;

@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { workbookSheetBaseline, canonicalWorkbookSheetBaseline, workbookSheetBaselineSchema, canonicalWorkbookJsonValue, canonicalWorkbookSourceModel } from '../src/runtime/workbook-sheet-baseline';
-import { workbookEditPlanSchema, type WorkbookDocument } from '../src/runtime/workbook';
+import { workbookSheetBaseline, withWorkbookSheetBaselines, canonicalWorkbookSheetBaseline, workbookSheetBaselineSchema, canonicalWorkbookJsonValue, canonicalWorkbookSourceModel } from '../src/runtime/workbook-sheet-baseline';
+import { workbookEditPlanSchema, workbookDocumentSchema, type WorkbookDocument } from '../src/runtime/workbook';
 function source(): WorkbookDocument {
   return { version: 1, date1904: false, activeSheetId: '1', worksheetStructureEditable: true, calculationMetadata: 'verified', richTextMetadata: 'verified', themeColors: Array(12).fill('FF123456'),
     styles: [{ font: { name: 'Arial', size: 11 } }, { font: { bold: true, size: 22.25 } }, { numberFormat: '0.00' }, { fill: { pattern: 'solid', foreground: { kind: 'theme', index: 2 } } }, { font: { italic: true } }],
@@ -108,4 +108,37 @@ it('binds the full strict source model including unused style definitions', () =
   expect(canonicalWorkbookSheetBaseline(workbookSheetBaseline(model, '1'))).toBe(canonicalWorkbookSheetBaseline(workbookSheetBaseline(changed, '1')));
   expect(canonicalWorkbookSourceModel(model)).not.toBe(canonicalWorkbookSourceModel(changed));
   expect(() => canonicalWorkbookSourceModel({ ...model, unknownInterpretation: true })).toThrow();
+});
+
+it('qualifies all source owners once and extracts each requested closure once inside a synchronous data callback', () => {
+  const model = source(), before = structuredClone(model);
+  const expected = ['1', '2'].map(id => workbookSheetBaseline(model, id));
+  const parse = vi.spyOn(workbookDocumentSchema, 'parse');
+  try {
+    const result = withWorkbookSheetBaselines(model, ['1', '2', '1'], (parsed, selected) => {
+      expect(parsed).not.toBe(model);
+      expect([...selected.keys()]).toEqual(['1', '2']);
+      expect(selected.get('1')!.sheet).toBe(parsed.sheets[0]);
+      return [...selected.values()].map(value => workbookSheetBaselineSchema.parse(value));
+    });
+    expect(parse).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(expected);
+    result[0]!.sheet.cells[0]!.value = 77;
+    expect(model).toEqual(before); expect(result[1]!.sheet.cells[0]!.value).toBe(-0);
+  } finally { parse.mockRestore(); }
+});
+it('refuses malformed unselected owners and oversized selection before publishing any callback data', () => {
+  for (const mutate of [
+    (model: WorkbookDocument) => { model.sheets[1]!.cells[0]!.style = 999; },
+    (model: WorkbookDocument) => { model.sheets[1]!.rowDimensions[0]!.index = 101; },
+    (model: WorkbookDocument) => { model.sheets[1]!.cells[0]!.row = 100; },
+    (model: WorkbookDocument) => { model.sheets[1]!.name = model.sheets[0]!.name; },
+  ]) {
+    const model = source(); mutate(model); const use = vi.fn();
+    expect(() => withWorkbookSheetBaselines(model, ['1'], use)).toThrow();
+    expect(use).not.toHaveBeenCalled();
+  }
+  const use = vi.fn();
+  expect(() => withWorkbookSheetBaselines(source(), Array(4097).fill('1'), use)).toThrow('batch limit');
+  expect(use).not.toHaveBeenCalled();
 });

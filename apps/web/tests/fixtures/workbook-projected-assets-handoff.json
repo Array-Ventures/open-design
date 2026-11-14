@@ -1,0 +1,289 @@
+{
+  "phase": "restore",
+  "historical": {
+    "sourceSha256": "2081c4b28824c7fc4829bcd3717b39eb9ed21f1654d0273db3155d55116cd998",
+    "model": {
+      "version": 1,
+      "worksheetVisibilityEditable": true,
+      "richTextMetadata": "verified",
+      "date1904": false,
+      "activeSheetId": "1",
+      "themeColors": [
+        "FFFFFFFF",
+        "FF000000",
+        "FFEEECE1",
+        "FF1F497D",
+        "FF4F81BD",
+        "FFC0504D",
+        "FF9BBB59",
+        "FF8064A2",
+        "FF4BACC6",
+        "FFF79646",
+        "FF0000FF",
+        "FF800080"
+      ],
+      "styles": [
+        {
+          "font": {
+            "name": "Calibri",
+            "family": 2,
+            "size": 11,
+            "color": {
+              "kind": "theme",
+              "index": 1
+            }
+          },
+          "fill": {
+            "pattern": "none"
+          }
+        },
+        {
+          "font": {
+            "name": "Calibri",
+            "family": 2,
+            "size": 11,
+            "bold": true,
+            "color": {
+              "kind": "theme",
+              "index": 1
+            }
+          },
+          "numberFormat": "0.0000\" units\"",
+          "fill": {
+            "pattern": "none"
+          }
+        }
+      ],
+      "sheets": [
+        {
+          "id": "1",
+          "name": "Rich cells",
+          "visibility": "visible",
+          "rowCount": 100,
+          "columnCount": 26,
+          "defaultRowHeight": 15,
+          "cells": [
+            {
+              "row": 1,
+              "column": 1,
+              "style": 1,
+              "kind": "number",
+              "value": 12
+            },
+            {
+              "row": 2,
+              "column": 2,
+              "formula": "=SUM(B2:B3)",
+              "kind": "number",
+              "value": 999
+            },
+            {
+              "row": 3,
+              "column": 3,
+              "formula": "='Retained sheet'!A1+1",
+              "kind": "number",
+              "value": 999
+            }
+          ],
+          "merges": [],
+          "arrayFormulas": [],
+          "rowDimensions": [
+            {
+              "index": 1,
+              "height": 37
+            }
+          ],
+          "columnDimensions": [
+            {
+              "index": 0,
+              "width": 28
+            },
+            {
+              "index": 1,
+              "width": 34
+            },
+            {
+              "index": 2,
+              "width": 16
+            }
+          ],
+          "frozenRows": 0,
+          "frozenColumns": 0
+        },
+        {
+          "id": "2",
+          "name": "Retained sheet",
+          "visibility": "visible",
+          "rowCount": 100,
+          "columnCount": 26,
+          "defaultRowHeight": 15,
+          "cells": [
+            {
+              "row": 0,
+              "column": 0,
+              "formula": "='Rich cells'!B2",
+              "kind": "number",
+              "value": 999
+            }
+          ],
+          "merges": [],
+          "arrayFormulas": [],
+          "rowDimensions": [],
+          "columnDimensions": [],
+          "frozenRows": 0,
+          "frozenColumns": 0
+        }
+      ],
+      "definedNames": [],
+      "tables": [],
+      "features": {
+        "charts": 0,
+        "drawings": 0,
+        "externalLinks": 0,
+        "macros": false,
+        "signed": false
+      },
+      "calculationMetadata": "verified",
+      "worksheetStructureEditable": true,
+      "worksheetMembershipEditable": true
+    }
+  },
+  "scope": {
+    "viewerId": "owned-person",
+    "projectId": "11111111-1111-4111-8111-111111111111",
+    "fileName": "book.xlsx",
+    "draftId": "22222222-2222-4222-8222-222222222222"
+  },
+  "current": {
+    "sourceSha256": "dab1626c360e7998516c8b0b949aecebb6d02c803dd97655aa7b48664323c2a9",
+    "model": {
+      "version": 1,
+      "worksheetVisibilityEditable": true,
+      "richTextMetadata": "verified",
+      "date1904": false,
+      "activeSheetId": "2",
+      "themeColors": [
+        "FFFFFFFF",
+        "FF000000",
+        "FFEEECE1",
+        "FF1F497D",
+        "FF4F81BD",
+        "FFC0504D",
+        "FF9BBB59",
+        "FF8064A2",
+        "FF4BACC6",
+        "FFF79646",
+        "FF0000FF",
+        "FF800080"
+      ],
+      "styles": [
+        {
+          "font": {
+            "name": "Calibri",
+            "family": 2,
+            "size": 11,
+            "color": {
+              "kind": "theme",
+              "index": 1
+            }
+          },
+          "fill": {
+            "pattern": "none"
+          }
+        },
+        {
+          "font": {
+            "name": "Calibri",
+            "family": 2,
+            "size": 22.25,
+            "color": {
+              "kind": "theme",
+              "index": 1
+            }
+          },
+          "fill": {
+            "pattern": "none"
+          }
+        }
+      ],
+      "sheets": [
+        {
+          "id": "2",
+          "name": "Current survivor",
+          "visibility": "visible",
+          "rowCount": 100,
+          "columnCount": 26,
+          "defaultRowHeight": 15,
+          "cells": [
+            {
+              "row": 0,
+              "column": 0,
+              "style": 1,
+              "kind": "number",
+              "value": 20
+            }
+          ],
+          "merges": [],
+          "arrayFormulas": [],
+          "rowDimensions": [],
+          "columnDimensions": [],
+          "frozenRows": 0,
+          "frozenColumns": 0
+        }
+      ],
+      "definedNames": [],
+      "tables": [],
+      "features": {
+        "charts": 0,
+        "drawings": 0,
+        "externalLinks": 0,
+        "macros": false,
+        "signed": false
+      },
+      "calculationMetadata": "verified",
+      "worksheetStructureEditable": true,
+      "worksheetMembershipEditable": true
+    }
+  },
+  "receipt": {
+    "id": "b5efb2f2-7a33-4f90-98eb-30f78d92aabe",
+    "projectId": "11111111-1111-4111-8111-111111111111",
+    "fileName": "book.xlsx",
+    "renderId": "566e2631-819b-43ff-9562-1af247e929ab",
+    "state": "applied",
+    "sourceSha256": "2081c4b28824c7fc4829bcd3717b39eb9ed21f1654d0273db3155d55116cd998",
+    "targetSha256": "dab1626c360e7998516c8b0b949aecebb6d02c803dd97655aa7b48664323c2a9",
+    "actualSha256": "dab1626c360e7998516c8b0b949aecebb6d02c803dd97655aa7b48664323c2a9",
+    "sourceVersionId": "actual-before",
+    "versionId": "actual-after"
+  },
+  "deletionPlan": {
+    "sourceSha256": "2081c4b28824c7fc4829bcd3717b39eb9ed21f1654d0273db3155d55116cd998",
+    "edits": [
+      {
+        "sheetId": "2",
+        "cell": {
+          "row": 0,
+          "column": 0,
+          "kind": "number",
+          "value": 20
+        }
+      }
+    ],
+    "styles": [
+      {
+        "sheetId": "2",
+        "row": 0,
+        "column": 0,
+        "fontSize": 22.25
+      }
+    ],
+    "sheets": [
+      {
+        "sheetId": "2",
+        "name": "Current survivor",
+        "origin": "source"
+      }
+    ]
+  }
+}
