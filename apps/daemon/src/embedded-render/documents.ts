@@ -1,3 +1,5 @@
+import { projectDocumentDocxPage } from './document-docx-page.js';
+import { documentExportProfile, cssPxToTwips, wordFontSize } from './document-export-profile.js';
 import { documentDocxDividers, projectDocumentDocxDividers } from './document-docx-dividers.js';
 import { execFile } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -7,9 +9,9 @@ import { load } from 'cheerio';
 import JSZip from 'jszip';
 import { bundleStandaloneHtml } from '../artifacts/standalone-html.js';
 import { documentHtml, documentMetadataDirective, documentMetadataSchema } from '@open-design/contracts/runtime/document';
-import { documentDocxSourceColors, normalizedDocumentDocxHtml, resolvedDocumentDocxColorOwners } from './document-docx-source-colors.js';
-import { projectDocumentDocxColors } from './document-docx-colors.js';
-import { normalizeDocumentDocxColors } from './document-color-normalize.js';
+import { documentDocxSourcePresentation, normalizedDocumentDocxHtml, resolvedDocumentDocxPresentationOwners } from './document-docx-source-colors.js';
+import { projectDocumentDocxPresentation } from './document-docx-colors.js';
+import { normalizeDocumentDocxPresentation } from './document-color-normalize.js';
 import { documentMarkdownInput, restoreDocumentMarkdownOwners } from './document-markdown.js';
 
 type Font = 'sans' | 'serif';
@@ -71,14 +73,17 @@ export async function documentReference(bytes: Buffer, fonts: { text: Font; head
   const file = zip.file('word/styles.xml');
   if (!file) throw new Error('The document style reference is unavailable.');
   const $ = load(await file.async('string'), { xml: true });
-  const fontName = (font: Font) => font === 'serif' ? 'Georgia' : 'Arial';
+  const fontName = (font: Font) => documentExportProfile.fonts[font];
   const setFont = (properties: ReturnType<typeof $>, font: Font) => {
     properties.find('w\\:rFonts').remove();
     properties.prepend(`<w:rFonts w:ascii="${fontName(font)}" w:hAnsi="${fontName(font)}" w:eastAsia="${fontName(font)}" w:cs="${fontName(font)}"/>`);
   };
   const defaults = $('w\\:docDefaults w\\:rPrDefault w\\:rPr');
   setFont(defaults, fonts.text);
-  defaults.find('w\\:sz,w\\:szCs').remove(); defaults.append('<w:sz w:val="22"/><w:szCs w:val="22"/>');
+  defaults.find('w\\:sz,w\\:szCs').remove();
+  const defaultSize = `<w:sz w:val="${wordFontSize(documentExportProfile.body.sizePx)}"/><w:szCs w:val="${wordFontSize(documentExportProfile.body.sizePx)}"/>`;
+  const defaultLang = defaults.children('w\\:lang').first();
+  if (defaultLang.length) defaultLang.before(defaultSize); else defaults.append(defaultSize);
   for (const style of $('w\\:style').toArray()) {
     const item = $(style); const id = item.attr('w:styleId') ?? '';
     if (!['Normal', 'BodyText', 'FirstParagraph', 'Compact'].includes(id) && !/^Heading[1-6]$/.test(id)) continue;
@@ -87,15 +92,20 @@ export async function documentReference(bytes: Buffer, fonts: { text: Font; head
     const heading = /^Heading([1-6])$/.exec(id);
     setFont(properties, heading ? fonts.headings : fonts.text);
     properties.find('w\\:sz,w\\:szCs').remove();
-    const size = heading ? [32,26,24,22,22,22][Number(heading[1])-1] : 22;
+    const geometry = heading ? documentExportProfile.headings[Number(heading[1])-1]! : { ...documentExportProfile.body, beforePx: 0, afterPx: id === 'Compact' ? 0 : documentExportProfile.body.afterPx };
+    const size = wordFontSize(geometry.sizePx);
     if (!item.children('w\\:pPr').length) item.append('<w:pPr/>');
     const paragraph = item.children('w\\:pPr');
     paragraph.find('w\\:spacing').remove();
-    const level = heading ? Number(heading[1]) : 0;
-    const before = [0,360,280,240][level] ?? 240;
-    const after = heading ? [120,100,80][level-1] ?? 80 : id === 'Compact' ? 0 : 160;
-    paragraph.append(`<w:spacing w:before="${before}" w:after="${after}" w:line="259" w:lineRule="auto"/>`);
-    properties.append(`<w:sz w:val="${size}"/><w:szCs w:val="${size}"/>`);
+    const spacing = `<w:spacing w:before="${cssPxToTwips(geometry.beforePx)}" w:after="${cssPxToTwips(geometry.afterPx)}" w:line="${cssPxToTwips(geometry.linePx)}" w:lineRule="atLeast"/>`;
+    const laterParagraphProperty = paragraph.children('w\\:ind,w\\:contextualSpacing,w\\:mirrorIndents,w\\:suppressOverlap,w\\:jc,w\\:textDirection,w\\:textAlignment,w\\:textboxTightWrap,w\\:outlineLvl,w\\:divId,w\\:cnfStyle,w\\:rPr,w\\:sectPr,w\\:pPrChange').first();
+    if (laterParagraphProperty.length) laterParagraphProperty.before(spacing); else paragraph.append(spacing);
+    // Pandoc's stock reference colors/italic heading defaults are not authored
+    // canonical styles. Explicit source formatting remains native run data.
+    if (heading) properties.find('w\\:color,w\\:b,w\\:bCs,w\\:i,w\\:iCs').remove();
+    const sizes = `<w:sz w:val="${size}"/><w:szCs w:val="${size}"/>`;
+    const laterRunProperty = properties.children('w\\:highlight,w\\:u,w\\:effect,w\\:bdr,w\\:shd,w\\:fitText,w\\:vertAlign,w\\:rtl,w\\:cs,w\\:em,w\\:lang,w\\:eastAsianLayout,w\\:specVanish,w\\:oMath,w\\:rPrChange').first();
+    if (laterRunProperty.length) laterRunProperty.before(sizes); else properties.append(sizes);
   }
   zip.file('word/styles.xml', $.xml());
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
@@ -127,18 +137,18 @@ export async function exportDocument(html: string, original: string, fileName: s
     const reference = await documentReference(await pandoc(['--print-default-data-file=reference.docx']), { text: font, headings: headings === 'serif' ? 'serif' : 'sans' });
     const referencePath = path.join(directory, 'reference.docx');
     await writeFile(referencePath, reference, { flag: 'wx', mode: 0o600 });
-    const source = documentDocxSourceColors($.html());
-    const normalized = await normalizeDocumentDocxColors(source.html, source.requests, source.attributeName);
+    const source = documentDocxSourcePresentation($.html());
+    const normalized = await normalizeDocumentDocxPresentation(source.html, source.requests, source.attributeName);
     const dividers = documentDocxDividers(normalizedDocumentDocxHtml(source, normalized), source, normalized);
     const ast = JSON.parse((await pandoc(['--sandbox', '--from=html+raw_html', '--to=json', '--fail-if-warnings'], dividers.html)).toString('utf8'));
     const textSource = { ...source, requests: source.requests.filter(request => request.kind !== 'divider') };
     const textIds = new Set(textSource.requests.map(request => request.id));
-    const owners = resolvedDocumentDocxColorOwners(ast, textSource, new Map([...normalized].filter(([id]) => textIds.has(id))));
+    const owners = resolvedDocumentDocxPresentationOwners(ast, textSource, new Map([...normalized].filter(([id]) => textIds.has(id))));
     const converted = await pandoc(['--sandbox', '--from=json', '--to=docx', `--reference-doc=${referencePath}`, '--fail-if-warnings'], JSON.stringify(ast));
     const zip = await JSZip.loadAsync(converted);
     const document = zip.file('word/document.xml');
     if (!document) throw new Error('The document converter did not produce editable Word content.');
-    zip.file('word/document.xml', projectDocumentDocxDividers(projectDocumentDocxColors(await document.async('string'), owners), dividers.owners));
+    zip.file('word/document.xml', projectDocumentDocxPage(projectDocumentDocxDividers(projectDocumentDocxPresentation(await document.async('string'), owners), dividers.owners)));
     const core = zip.file('docProps/core.xml');
     if (core) { const properties = load(await core.async('string'), { xml: true }); properties('dc\\:title').text(title); zip.file('docProps/core.xml', properties.xml()); }
     const body = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
@@ -148,13 +158,13 @@ export async function exportDocument(html: string, original: string, fileName: s
 }
 
 /** Print geometry measured from the authorized document reference export. */
-export const documentPrintCss = '@media print{body{padding:0!important;font-size:20px!important;line-height:1.5!important}h1{font-size:40px!important;line-height:1.25!important}h2{font-size:30px!important;line-height:1.3!important}h3{font-size:25px!important;line-height:1.4!important}h1,h2,h3,h4,h5,h6{font-weight:500!important}ul.task-list{list-style:none;padding-inline-start:0}ul.task-list input{margin-inline-end:8px}}';
+export { documentExportPrintCss as documentPrintCss } from './document-export-profile.js';
 export function documentPrintOptions(title: string): Parameters<import('playwright-core').Page['pdf']>[0] {
   const header = load('<div></div>');
   header('div').attr('style', 'width:100%;font:9px Arial,sans-serif;color:Gray;padding:0 60px').text(title);
   return {
     format: 'Letter', printBackground: true, preferCSSPageSize: false,
-    margin: { top: '0.75in', right: '0.75in', bottom: '0.75in', left: '0.75in' },
+    margin: { top: `${documentExportProfile.page.marginPt / 72}in`, right: `${documentExportProfile.page.marginPt / 72}in`, bottom: `${documentExportProfile.page.marginPt / 72}in`, left: `${documentExportProfile.page.marginPt / 72}in` },
     displayHeaderFooter: true, headerTemplate: header('div').toString(),
     footerTemplate: '<div style="width:100%;font:9px Arial,sans-serif;color:Gray;text-align:right;padding:0 60px">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
   };

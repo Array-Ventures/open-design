@@ -1,3 +1,4 @@
+import { documentExportProfile, cssPxToTwips, cssPxToPoints } from './document-export-profile.js';
 import { randomBytes } from 'node:crypto';
 import { load } from 'cheerio';
 import { DOMParser, XMLSerializer, type Element } from '@xmldom/xmldom';
@@ -77,6 +78,18 @@ export function projectDocumentDocxDividers(xml: string, owners: readonly Divide
     const rect = rects[0]!; if (rect.getAttributeNS(o, 'hr') !== 't') return fail();
     let properties = Array.from(paragraph.childNodes).find(node => node.nodeType === 1 && (node as Element).namespaceURI === w && (node as Element).localName === 'pPr') as Element | undefined;
     if (!properties) { properties = document.createElementNS(w, 'w:pPr'); paragraph.insertBefore(properties, paragraph.firstChild); }
+    const spacingMatches = Array.from(properties.childNodes).filter(node => node.nodeType === 1 && (node as Element).namespaceURI === w && (node as Element).localName === 'spacing') as Element[];
+    if (spacingMatches.length > 1) return fail();
+    const spacing = spacingMatches[0] ?? document.createElementNS(w, 'w:spacing');
+    spacing.setAttributeNS(w, 'w:before', String(cssPxToTwips(documentExportProfile.rule.marginPx)));
+    spacing.setAttributeNS(w, 'w:after', String(cssPxToTwips(documentExportProfile.rule.marginPx)));
+    spacing.setAttributeNS(w, 'w:line', String(cssPxToTwips(documentExportProfile.rule.borderPx)));
+    spacing.setAttributeNS(w, 'w:lineRule', 'exact');
+    if (!spacing.parentNode) {
+      const later = new Set(['ind','contextualSpacing','mirrorIndents','suppressOverlap','jc','textDirection','textAlignment','textboxTightWrap','outlineLvl','divId','cnfStyle','rPr','sectPr','pPrChange']);
+      const successor = Array.from(properties.childNodes).find(node => node.nodeType === 1 && (node as Element).namespaceURI === w && later.has((node as Element).localName ?? ''));
+      properties.insertBefore(spacing, successor ?? null);
+    }
     const justification = Array.from(properties.childNodes).filter(node => node.nodeType === 1 && (node as Element).namespaceURI === w && (node as Element).localName === 'jc');
     if (justification.length > 1) return fail();
     const jc = justification[0] as Element | undefined ?? document.createElementNS(w, 'w:jc');
@@ -87,7 +100,7 @@ export function projectDocumentDocxDividers(xml: string, owners: readonly Divide
       properties.insertBefore(jc, successor ?? null);
     }
     rect.setAttribute('style', 'width:0;height:0pt');
-    rect.setAttribute('strokeweight', '0.75pt');
+    rect.setAttribute('strokeweight', `${cssPxToPoints(documentExportProfile.rule.borderPx)}pt`);
     if (owner.width?.endsWith('%')) rect.setAttributeNS(o, 'o:hrpct', String(Math.round(Number.parseFloat(owner.width) * 10)));
     else if (owner.width) {
       rect.removeAttributeNS(o, 'hrpct');

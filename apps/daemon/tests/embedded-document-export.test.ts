@@ -18,9 +18,9 @@ it('writes independent editor fonts and type sizes into real Word reference styl
   zip.file('word/styles.xml', '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Old"/></w:rPr></w:rPrDefault></w:docDefaults><w:style w:styleId="Normal"><w:rPr><w:rFonts w:ascii="Old"/></w:rPr></w:style><w:style w:styleId="Heading1"><w:rPr><w:sz w:val="10"/></w:rPr></w:style></w:styles>');
   const result = await JSZip.loadAsync(await documentReference(await zip.generateAsync({ type: 'nodebuffer' }), { text: 'sans', headings: 'serif' }));
   const $ = load(await result.file('word/styles.xml')!.async('string'), { xml: true });
-  expect($('w\\:style[w\\:styleId="Normal"] w\\:rFonts').attr('w:ascii')).toBe('Arial');
-  expect($('w\\:style[w\\:styleId="Heading1"] w\\:rFonts').attr('w:ascii')).toBe('Georgia');
-  expect($('w\\:style[w\\:styleId="Heading1"] w\\:sz').attr('w:val')).toBe('32');
+  expect($('w\\:style[w\\:styleId="Normal"] w\\:rFonts').attr('w:ascii')).toBe('DejaVu Sans');
+  expect($('w\\:style[w\\:styleId="Heading1"] w\\:rFonts').attr('w:ascii')).toBe('DejaVu Serif');
+  expect($('w\\:style[w\\:styleId="Heading1"] w\\:sz').attr('w:val')).toBe('60');
 });
 
 it('keeps a document title inert in the printable page header', () => {
