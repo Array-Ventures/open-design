@@ -1,4 +1,4 @@
-import { documentSourceImageSha256 } from './document-image-assets.js';
+import { documentSourceImageIdentity } from './document-image-assets.js';
 import { randomBytes } from 'node:crypto';
 import { load } from 'cheerio';
 import { documentDocxPresentationOwners } from './document-docx-colors.js';
@@ -110,8 +110,12 @@ export function resolvedDocumentDocxPresentationOwners(ast: unknown, source: Doc
           const matches = pairs.filter(pair => Array.isArray(pair) && pair[0] === imageKey);
           if (matches.length !== 1 || (matches[0] as string[])[1] !== own![1]) return false;
           const sourceImage = html(`img[${source.attributeName}-image="${own![1]}"]`);
-          if (sourceImage.length !== 1 || !Array.isArray(inline.c?.[2]) || inline.c[2][0] !== sourceImage.attr('src')) return fail();
-          imageHashes.set(own![1]!, documentSourceImageSha256(sourceImage.attr('src') ?? ''));
+          if (sourceImage.length !== 1 || !Array.isArray(inline.c?.[2]) || typeof inline.c[2][0] !== 'string') return fail();
+          const originalTarget = sourceImage.attr('src') ?? '', astTarget = inline.c[2][0];
+          const originalAsset = documentSourceImageIdentity(originalTarget);
+          const astAsset = astTarget === originalTarget ? originalAsset : documentSourceImageIdentity(astTarget);
+          if (originalAsset.mime !== astAsset.mime || originalAsset.sha256 !== astAsset.sha256) return fail();
+          imageHashes.set(own![1]!, originalAsset.sha256);
           // Point dimensions are conversion-only native intent. Original HTML,
           // CSS, source bytes, image target and alternative text stay unchanged.
           attr[2] = pairs.filter(pair => pair !== matches[0] && !(Array.isArray(pair) && ['width','height'].includes(String(pair[0]))));

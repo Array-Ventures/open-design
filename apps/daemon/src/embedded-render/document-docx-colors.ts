@@ -1,3 +1,4 @@
+import { documentSimplePicture } from './document-picture.js';
 import { documentWordFontSize, validDocumentFontSize, validDocumentFontLineHeight, validDocumentHeadingLevel, validDocumentHeadingImage } from '@open-design/document-style';
 import { randomBytes } from 'node:crypto';
 import { DOMParser, XMLSerializer, type Element, type Node } from '@xmldom/xmldom';
@@ -213,20 +214,11 @@ export function projectDocumentDocxPresentation(xml: string, owners: readonly Do
     const relationship = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
     const graphics = image.getElementsByTagNameNS(drawing,'graphicData'), pictures = image.getElementsByTagNameNS(picture,'pic');
     if (graphics.length !== 1 || graphics[0]!.getAttribute('uri') !== picture || pictures.length !== 1) return fail();
-    const blips = pictures[0]!.getElementsByTagNameNS(drawing,'blip');
-    if (blips.length !== 1 || !blips[0]!.getAttributeNS(relationship,'embed') || blips[0]!.hasAttributeNS(relationship,'link')) return fail();
+    const {blip,extent} = documentSimplePicture(image,graphics[0]!,pictures[0]!);
     if (own.imageAssetSha256 !== undefined && (!/^[a-f0-9]{64}$/.test(own.imageAssetSha256)
-      || imageAssets?.get(blips[0]!.getAttributeNS(relationship,'embed')!) !== own.imageAssetSha256)) return fail();
-    if (pictures[0]!.parentNode !== graphics[0] || blips[0]!.parentNode?.namespaceURI !== picture || blips[0]!.parentNode?.localName !== 'blipFill') return fail();
-    const transforms = pictures[0]!.getElementsByTagNameNS(drawing,'xfrm');
-    if (transforms.length !== 1 || transforms[0]!.parentNode?.namespaceURI !== picture || transforms[0]!.parentNode?.localName !== 'spPr'
-      || transforms[0]!.parentNode?.parentNode !== pictures[0]) return fail();
-    const transformExtents = transforms.length === 1 ? Array.from(transforms[0]!.childNodes).filter(node => node.nodeType === 1 && (node as Element).namespaceURI === drawing && (node as Element).localName === 'ext') as Element[] : [];
-    const offsets = transforms.length === 1 ? Array.from(transforms[0]!.childNodes).filter(node => node.nodeType === 1 && (node as Element).namespaceURI === drawing && (node as Element).localName === 'off') as Element[] : [];
-    if (offsets.length !== 1 || offsets[0]!.getAttribute('x') !== '0' || offsets[0]!.getAttribute('y') !== '0'
-      || ['rot','flipH','flipV'].some(attribute => transforms[0]!.hasAttribute(attribute))) return fail();
-    if (transformExtents.length !== 1 || Number(transformExtents[0]!.getAttribute('cx')) !== Math.round(own.presentation.headingImageWidthPt!*12700)
-      || Number(transformExtents[0]!.getAttribute('cy')) !== Math.round(own.presentation.headingImageHeightPt!*12700)) return fail();
+      || imageAssets?.get(blip.getAttributeNS(relationship,'embed')!) !== own.imageAssetSha256)) return fail();
+    if (Number(extent.getAttribute('cx')) !== Math.round(own.presentation.headingImageWidthPt!*12700)
+      || Number(extent.getAttribute('cy')) !== Math.round(own.presentation.headingImageHeightPt!*12700)) return fail();
     if (extents.length !== 1 || Number(extents[0]!.getAttribute('cx')) !== Math.round(own.presentation.headingImageWidthPt!*12700)
       || Number(extents[0]!.getAttribute('cy')) !== Math.round(own.presentation.headingImageHeightPt!*12700)) return fail();
     for (const side of ['T','B','L','R']) image.setAttribute(`dist${side}`,'0');

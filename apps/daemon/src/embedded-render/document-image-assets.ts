@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { DOMParser } from '@xmldom/xmldom';
 import type JSZip from 'jszip';
-import { MAX_STANDALONE_ASSET_BYTES } from '../artifacts/standalone-html.js';
+import { MAX_STANDALONE_ASSET_BYTES, MAX_STANDALONE_OUTPUT_BYTES } from '../artifacts/standalone-html.js';
 
 const fail = (): never => { throw new Error('The document converter could not preserve source image ownership.'); };
 const relationships = 'http://schemas.openxmlformats.org/package/2006/relationships';
@@ -10,12 +10,29 @@ export const documentImageSha256 = (bytes: Uint8Array): string => createHash('sh
 
 /** The standalone bundler has already resolved local source assets. Do not let
  * an unrelated native picture satisfy the exact source Image owner. */
+export function documentSourceImageIdentity(source: string): { mime: string; sha256: string } {
+  if (source.length > MAX_STANDALONE_OUTPUT_BYTES) return fail();
+  const prefix = /^data:(image\/(?:png|jpeg));base64,/.exec(source);
+  if (!prefix) return fail();
+  let payload: string;
+  try { payload = decodeURIComponent(source.slice(prefix[0].length)); }
+  catch { return fail(); }
+  // Actual browser-valid HTML whitespace becomes percent-escaped (and tabs
+  // become spaces) in Pandoc's Image target. Normalize the base64 payload,
+  // never an external URL, source ID, MIME type or image bytes.
+  const compact = payload.replace(/[ \t\n\r\f]/g,'');
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact) || compact.length % 4 === 1
+    || compact.length > Math.ceil(MAX_STANDALONE_ASSET_BYTES/3)*4) return fail();
+  const bytes = Buffer.from(compact,'base64');
+  if (!bytes.length || bytes.length > MAX_STANDALONE_ASSET_BYTES) return fail();
+  const canonical = bytes.toString('base64');
+  // Permit canonical padding or valid omitted padding. Buffer's permissive
+  // decoder must not admit wrong padding or nonzero unused trailing bits.
+  if (compact !== (compact.includes('=') ? canonical : canonical.replace(/=+$/,''))) return fail();
+  return {mime:prefix[1]!,sha256:documentImageSha256(bytes)};
+}
 export function documentSourceImageSha256(source: string): string {
-  const match = /^data:image\/(?:png|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/.exec(source);
-  if (!match || match[1]!.length % 4 !== 0) return fail();
-  const bytes = Buffer.from(match[1]!, 'base64');
-  if (!bytes.length || bytes.length > MAX_STANDALONE_ASSET_BYTES || bytes.toString('base64') !== match[1]) return fail();
-  return documentImageSha256(bytes);
+  return documentSourceImageIdentity(source).sha256;
 }
 
 /** Resolve package-local image relationships, not URL or filename guesses.

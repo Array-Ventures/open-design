@@ -31,3 +31,9 @@ it('does not resolve an external image or a nested forged relationship as packag
   nested.file('word/_rels/document.xml.rels', `<Relationships xmlns="${ns}"><Wrapper><Relationship Id="rImage" Type="${type}" Target="media/image1.png"/></Wrapper></Relationships>`);
   await expect(documentDocxImageAssets(nested)).rejects.toThrow('ownership');
 });
+it.each(['data:image/png;base64,AA','data:image/png;base64,A A==','data:image/png;base64,A\r\n\tA==','data:image/png;base64,A%20A%3D%3D'])('preserves bytes across observed browser/Pandoc base64 spellings: %s', source => {
+  expect(documentSourceImageSha256(source)).toBe(documentSourceImageSha256('data:image/png;base64,AA=='));
+});
+it.each(['data:image/png;base64,A','data:image/png;base64,AB','data:image/png;base64,AA=','data:image/png;base64,AA===','data:image/png;base64,A%zzA==','data:image/png;base64,A\u000bA=='])('refuses malformed padding, unused bits and non-base64 whitespace: %s', source => {
+  expect(() => documentSourceImageSha256(source)).toThrow();
+});
