@@ -104,7 +104,7 @@ reply/chat drafts were cleared. No chat handoff or external message was sent.
 
 ![Dark 390-wide saved thread with a retained unsent reply](images/document-comment-workflow/dark-phone-thread.png)
 
-### Composer surface follow-up (candidate 108 qualified; placeholder follow-up pending)
+### Composer surface follow-up (candidates 108 and 109 qualified)
 
 A fresh scoped reference inspection measured a transparent, borderless focused
 comment editor with no inner shadow. Candidate 107's real textarea was already
@@ -137,8 +137,60 @@ A separate source commit adds the reference-observed “Add a comment” placeho
 without changing the accessible name, quote description, controlled value or
 styling. A source regression verifies that placeholder text never enables Save;
 a bounded real-Chromium component check confirms :placeholder-shown for empty,
-hidden while actual text is typed, and shown again after native deletion. Paired
-candidate 109 visual and rapid-typing acceptance remains pending.
+hidden while actual text is typed, and shown again after native deletion. Candidate 109 then passed the paired manual and unchanged six-case browser
+qualification below.
+
+### Frozen candidate109 provenance and acceptance
+
+The final placeholder/style pair was built from clean
+`09e5bb09f535fd7bff719e0a115b2ed67293dc20`; later evidence commits do not
+relabel those bytes.
+
+- Source tree: `97edf1a55e099696d76da0804e521e943d733948752aa3272d0b18f7b041bf91`.
+- Companion 109 clean rebuild: `0459255f8baf45df2f6b4743eb75e08c513095dce29d710d5ce17e0edf8365a6`.
+- Renderer 52: `sha256:615544690ace7333dedc44ba99b0a8e6c6a4c6c10e850a1737d8a012b3056c18`.
+- Worker: `03cfef8d890e7f1780a9bb1706e7a9f34335684bee64b6f1830fc32dad76ec9c`.
+- Color helper: `a8935e725e3ddf66620ec72c356d7c270514c13977969a31c055eda29e7fed8c`.
+- Native: `66437246f84b16b527fdacfe39e51e620918c055` (merged acceptance PR68).
+
+The first companion attempt printed a completed build but returned 143. Although
+its inventory verified, that did not establish clean builder completion. It was
+never activated. A separately labeled rebuild completed with exit 0, followed by
+sequential renderer packaging with exit 0. Full strict inventory, clean source
+pair, local image platform/entrypoint and actual worker/helper hash checks passed.
+Worker/helper bytes match renderer 51. The owned preview was changed only after
+those checks; shutdown/startup exited 0 and login returned 200. The unexplained
+first SIGTERM remains recorded rather than being called a successful build.
+
+Final source qualification passed 81 focused checks, full workspace types,
+separate web types and guard. On 109 the unchanged native six-case browser suite
+passed in one sequence (1.2 min), preserving its exact rapid typing, saved quote,
+source, draft and selection assertions. Earlier 108 also passed the same six cases
+and its full four-combination sizing manual checks; those are historical 86-source
+evidence, not relabeled 109 runs.
+
+Manual 109 checks personally inspected the empty placeholder in light/dark at
+1440/390 viewport widths. In all four combinations, trusted typing produced only
+“A real note” as the value and hid the placeholder; native Select all/Backspace
+restored an empty value and the visible placeholder. The one-row field, focus and
+unchecked Add to chat remained intact. Empty submission stayed disabled in the
+observed guard checks. These short 109 checks did not repeat 108's multiline cap
+matrix or all earlier fullscreen/chat actions.
+
+One own plain comment was saved on dark phone with Add to chat unchecked, then
+opened through the list. Its generated heading anchor was exactly 0–21 for
+“Compact comment style”, matching the passive highlight. The fake source remained
+281 bytes with SHA256
+`3e7fb3c71f1d54177d778ff94a562504ae775c3732cd28176445556654b82cac`.
+There was one comment, zero replies, no root composer or unsent reply at cleanup.
+The named browser closed normally. No chat handoff, external message, production
+update, installer pin change or publication occurred.
+
+![Light desktop artifact pane with the 109 placeholder](images/document-comment-style/light-desktop-placeholder.png)
+
+![Dark 390-wide artifact with the 109 placeholder](images/document-comment-style/dark-phone-placeholder.png)
+
+![Historical 108 dark phone five-row cap; placeholder was absent in 108](images/document-comment-style/dark-phone-capped-108.png)
 
 ### Remaining reference and visual differences
 
