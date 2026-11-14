@@ -28,16 +28,36 @@ checksum, not the pre-save version. Source retirement loops if protection or the
 retained pool changes while receipt storage is pending. Unconverted roots remain
 protected on uncertainty; no root is pruned to make a plan fit.
 
-A real SDK/Writer test freezes creation17, edits19, protects/removes19, receives
-a checked stand-in target17, persists the target17 baseline and removed19 with
-that pending ACK, then derives a separate delete save. The native initial blank
-insertion configuration remains blank. Targets and receipts in this unit test
-are stand-ins: no actual history asset, HTTP authorization, container or browser
-qualification is claimed. Existing affected source tests also remain green.
+Nine real SDK/Writer source cases now cover creation17/removal19; multiple
+removed19/20 roots carried through an unrelated ACK and then creation21; capture
+after an unrelated ACK; pre-command storage refusal; an early ACK behind blocked
+protection; lost ACK/storage failure with serialized recovery into a fresh SDK;
+creation-association storage refusal; another removal during ACK persistence; and
+newer edits during protection. Frozen intents remain unchanged, and the initial
+blank native insertion configuration remains blank. Negative cases reject forged
+tokens, old receipts and different operations even when their hashes match. A
+fresh recovered kernel has no native issuance or serialized native history.
 
-Further qualification is required for multiple19/20 records through unrelated
-ACKs and creation21, storage/lease failures, lost ACK replay and early-ACK barrier
-ordering. The live pre-pop wrapper, full restored-source projection, membership
+The original pending creation snapshot can be structurally rederived after its
+provisional roots have converted only when the exact stored pending ACK, creation
+operation/source, generation, scope, descriptor and birth marker agree. This is
+data consistency, not authentication or native history authority. Actual receipt
+reconciliation and authorized historical-asset access remain separate gates.
+
+A failing storage-case run exposed an unhandled secondary rejection from the
+coordination barrier. That barrier now settles on either outcome so ACK/close can
+drain; the caller's original operation still rejects, and no SDK callback executes
+on pre-command failure. No global rejection suppression was added.
+
+Qualification: 99 affected cases across12 files, full fork typecheck and guard
+passed. The quarantine-handoff fixture now explicitly declares its already
+intended membership-qualified source. Its same two failures were reproduced on
+the earlier approved checkpoint before this conversion work; missing/false
+capability refusal assertions remain intact.
+
+Targets, checked receipts and transport in these source cases are stand-ins. No
+actual history asset, HTTP authorization, container or browser qualification is
+claimed. The live pre-pop wrapper, full restored-source projection, membership
 calculation epochs/results and end-to-end UI remain uninstalled/unqualified.
 The complete existing128MiB prospective encoder is reused before native mutation;
 this is not a future quota reservation or a guarantee after arbitrary later edits.

@@ -24,4 +24,4 @@ retirement and failed-transfer tests remain green. This is source-level Writer/
 SDK/journal proof, not a new packaged browser qualification.
 
 70 affected cases across five files, full repository typecheck, guard and diff
-check passed. No source file, container, runtime, production or quota changed.
+check passed. No artifact source file, container, runtime, production or quota changed.

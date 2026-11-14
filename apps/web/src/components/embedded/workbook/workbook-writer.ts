@@ -160,7 +160,8 @@ export class WorkbookWriter {
       return structuredClone(prepared.entry);
     };
     const promise = run();
-    this.protection = promise.then(() => {});
+    // Coordination waits for completion; the returned operation still rejects.
+    this.protection = promise.then(() => {}, () => {});
     const barrier = this.protection;
     this.publish();
     void promise.finally(() => { if (this.protection === barrier) this.protection = null; this.publish(); }).catch(() => {});
@@ -191,7 +192,8 @@ export class WorkbookWriter {
       return structuredClone(prepared.removal);
     };
     const promise = run();
-    this.protection = promise.then(() => {});
+    // Coordination waits for completion; the returned operation still rejects.
+    this.protection = promise.then(() => {}, () => {});
     const barrier = this.protection;
     this.publish();
     void promise.finally(() => { if (this.protection === barrier) this.protection = null; this.publish(); }).catch(() => {});

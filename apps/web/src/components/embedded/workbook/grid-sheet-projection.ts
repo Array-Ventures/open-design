@@ -78,9 +78,26 @@ export function gridSourceSheetProjection(model: WorkbookDocument, sourceSha256:
   for (const id of afterIds.filter(id => !sourceIds.includes(id))) {
     const item = entries.get(id);
     const removal = current.sheets[id]!.custom?.[WORKBOOK_SHEET_DELETE_MARKER];
-    if (removal !== undefined && !births?.removals?.some(value => value.descriptor.sheetId === id
+    const provisional = removal !== undefined && births?.removals?.some(value => value.descriptor.sheetId === id
       && canonicalCommentJson(value.descriptor) === canonicalCommentJson(removal)
-      && value.birthToken === item?.descriptor.token)) throw Error('A restored worksheet requires its checked historical template owner.');
+      && value.birthToken === item?.descriptor.token);
+    // Conversion must not invalidate the already frozen creation while its ACK
+    // is being protected. This is the SAME origin:new operation, not a general
+    // historical restore or a grant from a marker/receipt stored in metadata.
+    const pending = context?.pending, scope = context?.scope ?? context?.sourceOwner?.scope;
+    const converted = removal !== undefined && checked.some(value => {
+      const origin = value.birthOrigin, receipt = value.receiptAssociation, acknowledgement = pending?.acknowledgement;
+      if (!origin || !receipt || !pending || !scope || !item || !pending.snapshot.sheets[id] || acknowledgement?.kind !== 'history') return false;
+      return value.descriptor.sheetId === id && canonicalCommentJson(value.descriptor) === canonicalCommentJson(removal)
+        && origin.birthToken === item?.descriptor.token && origin.creation.operationId === pending.intent.id
+        && origin.creation.sourceSha256 === sourceSha256 && pending.intent.plan.sourceSha256 === sourceSha256
+        && receipt.renderId === pending.intent.renderId && canonicalCommentJson(receipt) === canonicalCommentJson(acknowledgement.provenance)
+        && value.scope.viewerId === scope.viewerId && value.scope.projectId === scope.projectId && value.scope.fileName === scope.fileName
+        && canonicalCommentJson(value.axisOwner) === canonicalCommentJson(initial.custom?.evebotStructureOwner)
+        && pending.intent.plan.sheets?.some(sheet => sheet.sheetId === id && sheet.origin === 'new')
+        && canonicalCommentJson(pending.snapshot.sheets[id]?.custom?.[WORKBOOK_SHEET_BIRTH_MARKER]) === canonicalCommentJson(item?.descriptor);
+    });
+    if (removal !== undefined && !provisional && !converted) throw Error('A restored worksheet requires its checked historical template owner.');
     if (!item || canonicalCommentJson(current.sheets[id]!.custom?.[WORKBOOK_SHEET_BIRTH_MARKER]) !== canonicalCommentJson(item.descriptor)) throw Error('A new or restored worksheet requires its own protected owner.');
   }
   if (canonicalCommentJson(sourceIds.filter(id => afterIds.includes(id))) !== canonicalCommentJson(afterIds.filter(id => sourceIds.includes(id)))) throw Error('Reordering source worksheets is unsupported.');
