@@ -1,8 +1,69 @@
 diff --git a/lib/cjs/index.js b/lib/cjs/index.js
-index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..4fd2e16893dbce9cdd61ec5b3d6186a0a622fd21 100644
+index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..1b512d542f9366ccbb5321629b76ee1de0074b9a 100644
 --- a/lib/cjs/index.js
 +++ b/lib/cjs/index.js
-@@ -2211,6 +2211,7 @@ let CommandService = class CommandService extends Disposable {
+@@ -2065,7 +2065,7 @@ var CommandRegistry = class {
+ 	}
+ 	registerCommand(command) {
+ 		if (this._commands.has(command.id)) throw new Error(`[CommandRegistry]: command "${command.id}" has been registered before.`);
+-		this._commands.set(command.id, command);
++		this._commands.set(command.id, { command });
+ 		this._commandTypes.set(command.id, command.type);
+ 		return toDisposable(() => {
+ 			this.unregisterCommand(command.id);
+@@ -2080,7 +2080,10 @@ var CommandRegistry = class {
+ 	}
+ 	getCommand(id) {
+ 		if (!this._commands.has(id)) return null;
+-		return [this._commands.get(id)];
++		return [this._commands.get(id).command];
++	}
++	getCommandRegistration(id) {
++		return this._commands.get(id);
+ 	}
+ 	getCommandType(id) {
+ 		return this._commandTypes.get(id);
+@@ -2102,6 +2105,7 @@ let CommandService = class CommandService extends Disposable {
+ 		_defineProperty(this, "_commandExecutedListeners", []);
+ 		_defineProperty(this, "_collabMutationListeners", []);
+ 		_defineProperty(this, "_multiCommandDisposables", /* @__PURE__ */ new Map());
++		_defineProperty(this, "_scopedCommandReplacements", new Map());
+ 		_defineProperty(this, "_commandExecutingLevel", 0);
+ 		_defineProperty(this, "_commandExecutionStack", []);
+ 		this._commandRegistry = new CommandRegistry();
+@@ -2125,6 +2129,31 @@ let CommandService = class CommandService extends Disposable {
+ 	registerCommand(command) {
+ 		return this._commandRegistry.registerCommand(command);
+ 	}
++	replaceCommand(expected, replacement) {
++		const id = expected.id;
++		if (this._disposed || expected === replacement || replacement.id !== id || replacement.type !== expected.type || typeof replacement.handler !== "function") throw new Error("[CommandService]: invalid scoped command replacement.");
++		if (this._scopedCommandReplacements.has(id)) throw new Error("[CommandService]: command replacement is already active.");
++		const current = this._commandRegistry.getCommand(id);
++		if (!current || current[0] !== expected || this._multiCommandDisposables.has(id)) throw new Error("[CommandService]: expected command registration changed.");
++		this._commandRegistry.unregisterCommand(id);
++		this._commandRegistry.registerCommand(replacement);
++		const registration = this._commandRegistry.getCommandRegistration(id);
++		this._scopedCommandReplacements.set(id, registration);
++		let disposed = false;
++		const isCurrent = () => !disposed && !this._disposed && this._commandRegistry.getCommandRegistration(id) === registration;
++		return Object.freeze({
++			isCurrent,
++			dispose: () => {
++				if (disposed) return;
++				const restore = isCurrent();
++				disposed = true;
++				if (this._scopedCommandReplacements.get(id) === registration) this._scopedCommandReplacements.delete(id);
++				if (!restore) return;
++				this._commandRegistry.unregisterCommand(id);
++				this._commandRegistry.registerCommand(expected);
++			}
++		});
++	}
+ 	unregisterCommand(commandId) {
+ 		var _this$_multiCommandDi;
+ 		this._commandRegistry.unregisterCommand(commandId);
+@@ -2211,6 +2240,7 @@ let CommandService = class CommandService extends Disposable {
  			const item = this._commandRegistry.getCommand(id);
  			if (item) {
  				const [command] = item;
@@ -10,7 +71,7 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..4fd2e16893dbce9cdd61ec5b3d6186a0
  				const commandInfo = {
  					id: command.id,
  					type: command.type,
-@@ -25602,6 +25603,52 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25602,6 +25632,52 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
@@ -64,10 +125,71 @@ index 1f56fc87dbda3a8afff4a19d2eca17f77e26c680..4fd2e16893dbce9cdd61ec5b3d6186a0
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
 diff --git a/lib/es/index.js b/lib/es/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..27014ba0a76614d29c4be0d53c27a210d9e3de88 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..7d8807d96e9304344a0f365b6b47f794fab438d4 100644
 --- a/lib/es/index.js
 +++ b/lib/es/index.js
-@@ -2182,6 +2182,7 @@ let CommandService = class CommandService extends Disposable {
+@@ -2036,7 +2036,7 @@ var CommandRegistry = class {
+ 	}
+ 	registerCommand(command) {
+ 		if (this._commands.has(command.id)) throw new Error(`[CommandRegistry]: command "${command.id}" has been registered before.`);
+-		this._commands.set(command.id, command);
++		this._commands.set(command.id, { command });
+ 		this._commandTypes.set(command.id, command.type);
+ 		return toDisposable(() => {
+ 			this.unregisterCommand(command.id);
+@@ -2051,7 +2051,10 @@ var CommandRegistry = class {
+ 	}
+ 	getCommand(id) {
+ 		if (!this._commands.has(id)) return null;
+-		return [this._commands.get(id)];
++		return [this._commands.get(id).command];
++	}
++	getCommandRegistration(id) {
++		return this._commands.get(id);
+ 	}
+ 	getCommandType(id) {
+ 		return this._commandTypes.get(id);
+@@ -2073,6 +2076,7 @@ let CommandService = class CommandService extends Disposable {
+ 		_defineProperty(this, "_commandExecutedListeners", []);
+ 		_defineProperty(this, "_collabMutationListeners", []);
+ 		_defineProperty(this, "_multiCommandDisposables", /* @__PURE__ */ new Map());
++		_defineProperty(this, "_scopedCommandReplacements", new Map());
+ 		_defineProperty(this, "_commandExecutingLevel", 0);
+ 		_defineProperty(this, "_commandExecutionStack", []);
+ 		this._commandRegistry = new CommandRegistry();
+@@ -2096,6 +2100,31 @@ let CommandService = class CommandService extends Disposable {
+ 	registerCommand(command) {
+ 		return this._commandRegistry.registerCommand(command);
+ 	}
++	replaceCommand(expected, replacement) {
++		const id = expected.id;
++		if (this._disposed || expected === replacement || replacement.id !== id || replacement.type !== expected.type || typeof replacement.handler !== "function") throw new Error("[CommandService]: invalid scoped command replacement.");
++		if (this._scopedCommandReplacements.has(id)) throw new Error("[CommandService]: command replacement is already active.");
++		const current = this._commandRegistry.getCommand(id);
++		if (!current || current[0] !== expected || this._multiCommandDisposables.has(id)) throw new Error("[CommandService]: expected command registration changed.");
++		this._commandRegistry.unregisterCommand(id);
++		this._commandRegistry.registerCommand(replacement);
++		const registration = this._commandRegistry.getCommandRegistration(id);
++		this._scopedCommandReplacements.set(id, registration);
++		let disposed = false;
++		const isCurrent = () => !disposed && !this._disposed && this._commandRegistry.getCommandRegistration(id) === registration;
++		return Object.freeze({
++			isCurrent,
++			dispose: () => {
++				if (disposed) return;
++				const restore = isCurrent();
++				disposed = true;
++				if (this._scopedCommandReplacements.get(id) === registration) this._scopedCommandReplacements.delete(id);
++				if (!restore) return;
++				this._commandRegistry.unregisterCommand(id);
++				this._commandRegistry.registerCommand(expected);
++			}
++		});
++	}
+ 	unregisterCommand(commandId) {
+ 		var _this$_multiCommandDi;
+ 		this._commandRegistry.unregisterCommand(commandId);
+@@ -2182,6 +2211,7 @@ let CommandService = class CommandService extends Disposable {
  			const item = this._commandRegistry.getCommand(id);
  			if (item) {
  				const [command] = item;
@@ -75,7 +197,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..27014ba0a76614d29c4be0d53c27a210
  				const commandInfo = {
  					id: command.id,
  					type: command.type,
-@@ -25573,6 +25574,52 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25573,6 +25603,52 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
@@ -129,10 +251,71 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..27014ba0a76614d29c4be0d53c27a210
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
 diff --git a/lib/index.js b/lib/index.js
-index 8d18611c3014a5518100e2999b31880919abbc8c..27014ba0a76614d29c4be0d53c27a210d9e3de88 100644
+index 8d18611c3014a5518100e2999b31880919abbc8c..7d8807d96e9304344a0f365b6b47f794fab438d4 100644
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -2182,6 +2182,7 @@ let CommandService = class CommandService extends Disposable {
+@@ -2036,7 +2036,7 @@ var CommandRegistry = class {
+ 	}
+ 	registerCommand(command) {
+ 		if (this._commands.has(command.id)) throw new Error(`[CommandRegistry]: command "${command.id}" has been registered before.`);
+-		this._commands.set(command.id, command);
++		this._commands.set(command.id, { command });
+ 		this._commandTypes.set(command.id, command.type);
+ 		return toDisposable(() => {
+ 			this.unregisterCommand(command.id);
+@@ -2051,7 +2051,10 @@ var CommandRegistry = class {
+ 	}
+ 	getCommand(id) {
+ 		if (!this._commands.has(id)) return null;
+-		return [this._commands.get(id)];
++		return [this._commands.get(id).command];
++	}
++	getCommandRegistration(id) {
++		return this._commands.get(id);
+ 	}
+ 	getCommandType(id) {
+ 		return this._commandTypes.get(id);
+@@ -2073,6 +2076,7 @@ let CommandService = class CommandService extends Disposable {
+ 		_defineProperty(this, "_commandExecutedListeners", []);
+ 		_defineProperty(this, "_collabMutationListeners", []);
+ 		_defineProperty(this, "_multiCommandDisposables", /* @__PURE__ */ new Map());
++		_defineProperty(this, "_scopedCommandReplacements", new Map());
+ 		_defineProperty(this, "_commandExecutingLevel", 0);
+ 		_defineProperty(this, "_commandExecutionStack", []);
+ 		this._commandRegistry = new CommandRegistry();
+@@ -2096,6 +2100,31 @@ let CommandService = class CommandService extends Disposable {
+ 	registerCommand(command) {
+ 		return this._commandRegistry.registerCommand(command);
+ 	}
++	replaceCommand(expected, replacement) {
++		const id = expected.id;
++		if (this._disposed || expected === replacement || replacement.id !== id || replacement.type !== expected.type || typeof replacement.handler !== "function") throw new Error("[CommandService]: invalid scoped command replacement.");
++		if (this._scopedCommandReplacements.has(id)) throw new Error("[CommandService]: command replacement is already active.");
++		const current = this._commandRegistry.getCommand(id);
++		if (!current || current[0] !== expected || this._multiCommandDisposables.has(id)) throw new Error("[CommandService]: expected command registration changed.");
++		this._commandRegistry.unregisterCommand(id);
++		this._commandRegistry.registerCommand(replacement);
++		const registration = this._commandRegistry.getCommandRegistration(id);
++		this._scopedCommandReplacements.set(id, registration);
++		let disposed = false;
++		const isCurrent = () => !disposed && !this._disposed && this._commandRegistry.getCommandRegistration(id) === registration;
++		return Object.freeze({
++			isCurrent,
++			dispose: () => {
++				if (disposed) return;
++				const restore = isCurrent();
++				disposed = true;
++				if (this._scopedCommandReplacements.get(id) === registration) this._scopedCommandReplacements.delete(id);
++				if (!restore) return;
++				this._commandRegistry.unregisterCommand(id);
++				this._commandRegistry.registerCommand(expected);
++			}
++		});
++	}
+ 	unregisterCommand(commandId) {
+ 		var _this$_multiCommandDi;
+ 		this._commandRegistry.unregisterCommand(commandId);
+@@ -2182,6 +2211,7 @@ let CommandService = class CommandService extends Disposable {
  			const item = this._commandRegistry.getCommand(id);
  			if (item) {
  				const [command] = item;
@@ -140,7 +323,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..27014ba0a76614d29c4be0d53c27a210
  				const commandInfo = {
  					id: command.id,
  					type: command.type,
-@@ -25573,6 +25574,52 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
+@@ -25573,6 +25603,52 @@ let LocalUndoRedoService = class LocalUndoRedoService extends Disposable {
  		this.disposeWithMe(toDisposable(() => this._undoRedoStatus$.complete()));
  		this.disposeWithMe(toDisposable(this._univerInstanceService.focused$.subscribe(() => this._updateStatus())));
  	}
@@ -194,7 +377,7 @@ index 8d18611c3014a5518100e2999b31880919abbc8c..27014ba0a76614d29c4be0d53c27a210
  		var _this$_undoStacks$get, _this$_redoStacks$get;
  		return {
 diff --git a/lib/types/services/command/command.service.d.ts b/lib/types/services/command/command.service.d.ts
-index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..d169600c3c11394edf095dd5fdb5ef750717f883 100644
+index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..d89703ab1e9386a0b89031e9d9e3e73fb17eb796 100644
 --- a/lib/types/services/command/command.service.d.ts
 +++ b/lib/types/services/command/command.service.d.ts
 @@ -67,6 +67,8 @@ export interface ICommand<P extends object = object, R = boolean> {
@@ -206,6 +389,51 @@ index 11401d7e800f4a9bfd9898d135c773e31bdeaba5..d169600c3c11394edf095dd5fdb5ef75
      /**
       * The handler of the command.
       * @param accessor The accessor to the dependency injection container.
+@@ -189,6 +191,10 @@ export declare const ICommandService: import("@wendellhu/redi").IdentifierDecora
+ /**
+  * The service to register and execute commands.
+  */
++/** Identity-scoped registration only; no mutable command registry is exposed. */
++export interface IScopedCommandReplacement extends IDisposable {
++    isCurrent(): boolean;
++}
+ export interface ICommandService {
+     disposed(): boolean;
+     /**
+@@ -202,6 +208,9 @@ export interface ICommandService {
+      * @param command The command to register.
+      */
+     registerCommand(command: ICommand<object, unknown>): IDisposable;
++    /** Refuses unknown or actively scoped registrations. Dispose restores the
++     * expected command only while this exact registration is still current. */
++    replaceCommand(expected: ICommand<object, unknown>, replacement: ICommand<object, unknown>): IScopedCommandReplacement;
+     /**
+      * Unregister a command from the command service.
+      * @param commandId The id of the command to unregister.
+@@ -254,6 +263,7 @@ declare class CommandRegistry {
+     unregisterCommand(commandId: string): void;
+     hasCommand(id: string): boolean;
+     getCommand(id: string): [ICommand] | null;
++    getCommandRegistration(id: string): object | undefined;
+     getCommandType(id: string): CommandType | undefined;
+ }
+ export declare const NilCommand: ICommand;
+@@ -266,6 +276,7 @@ export declare class CommandService extends Disposable implements ICommandServic
+     private readonly _commandExecutedListeners;
+     private readonly _collabMutationListeners;
+     private _multiCommandDisposables;
++    private _scopedCommandReplacements;
+     private _commandExecutingLevel;
+     private _commandExecutionStack;
+     constructor(_injector: Injector, _logService: ILogService, _configService: IConfigService);
+@@ -274,6 +285,7 @@ export declare class CommandService extends Disposable implements ICommandServic
+     private _warnCommandSkippedAfterDisposed;
+     hasCommand(commandId: string): boolean;
+     registerCommand(command: ICommand): IDisposable;
++    replaceCommand(expected: ICommand, replacement: ICommand): IScopedCommandReplacement;
+     unregisterCommand(commandId: string): void;
+     registerMultipleCommand(command: ICommand): IDisposable;
+     beforeCommandExecuted(listener: CommandListener): IDisposable;
 diff --git a/lib/types/services/undoredo/undoredo.service.d.ts b/lib/types/services/undoredo/undoredo.service.d.ts
 index eab6e1e9e5149ebb257336b4f3ffa76290d2845f..ece1845ef87ccf6c2da725b334e5afd1fe63d8a4 100644
 --- a/lib/types/services/undoredo/undoredo.service.d.ts

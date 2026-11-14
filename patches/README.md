@@ -99,3 +99,26 @@ authorization token. A pending sheet-action owner must also revalidate its
 source, Writer revision, lease and focused unit after awaiting storage: actual
 SDK edit/Undo and sheet Undo/Redo can return to the same top token after changing
 state in between. No top query or matching token alone admits a command.
+
+The core patch also adds `ICommandService.replaceCommand(expected, replacement)`
+for an identity-scoped registration. Both commands must have equal ID/type,
+replacement must be a different object with a handler, and the exact expected
+object must still be the registered single command. Active scoped replacements
+are non-nestable per ID. The returned frozen handle exposes only `isCurrent()`
+and idempotent `dispose()`. Its authority is the private registration record,
+not command-object identity: unregistering and reinserting the very same object
+revokes the old handle. Disposal restores expected only while that exact
+registration is still current; it never overwrites an unknown later owner or
+resurrects a disposed wrapper. No mutable registry or registration token escapes.
+Existing internal getCommand callers retain their fresh `[command]` tuple shape.
+
+This boundary permits a future worksheet owner to revalidate registration after
+awaited protection and before invoking native Undo/Redo or membership mutations.
+It does not protect storage, grant a worksheet action, install wrappers or change
+native command/history behavior itself. Actual SDK tests cover earlier/later
+unknown owners, non-nesting, same-object registration ABA, normal restoration,
+exported-object immutability and authority withdrawal before native history pop.
+The three consumed runtime variants have real Node entry-loader coverage; the
+unused standalone UMD remains unpatched/unqualified. Refresh through pnpm patch,
+preserve all prior core boundaries and rerun these focused cases before changing
+the pinned SDK or removing this patch.
