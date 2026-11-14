@@ -147,3 +147,18 @@ it('protects and recovers the same acknowledged operation before transferring it
   invalid.sourceAcknowledgement.provenance.targetSha256 = 'c'.repeat(64);
   await expect(saveWorkbookDraft(scope, invalid)).rejects.toThrow('identity'); expect(await readWorkbookDraft(scope)).toEqual(transferred);
 });
+
+it.each([1, 2])('aborts guarded draft bytes and head atomically when ownership fails at check %s', async phase => {
+  const { checkpoint } = fixture();
+  await saveWorkbookDraft(scope, checkpoint);
+  const beforeHeads = await listWorkbookDrafts(scope);
+  const next = structuredClone(checkpoint);
+  next.desired.sheets.s!.cellData![0]![0]!.v = 7;
+  let checks = 0;
+  await expect(saveWorkbookDraft(scope, next, () => {
+    if (++checks === phase) throw Error('Owned guard changed');
+  })).rejects.toThrow();
+  expect(checks).toBe(phase);
+  expect(await readWorkbookDraft(scope)).toEqual(checkpoint);
+  expect(await listWorkbookDrafts(scope)).toEqual(beforeHeads);
+});

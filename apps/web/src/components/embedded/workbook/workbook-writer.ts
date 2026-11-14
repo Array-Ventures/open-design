@@ -1,3 +1,4 @@
+import { workbookProtectedRootRetirement, type WorkbookNativeRoot } from './sheet-root-retirement';
 import { MAX_WORKBOOK_SHEET_CONTEXTS } from './workbook-draft-limits';
 import { prepareWorkbookBirthReplay } from './sheet-birth-replay';
 import { prepareWorkbookBirthRemoval, bindWorkbookBirthRemovalsToCreation, convertWorkbookBirthRemovals } from './sheet-birth-removal';
@@ -30,7 +31,16 @@ export interface WorkbookCheckpoint {
   sheetActionConflict?: true;
   sourceSnapshotBinding?: WorkbookSourceSnapshotBinding;
 }
-export interface WorkbookJournal { scope?: WorkbookDraftScope; save(checkpoint: WorkbookCheckpoint | null): Promise<void>; validate?(checkpoint: WorkbookCheckpoint): void; isCurrent?(): boolean; restored?: WorkbookCheckpoint }
+export interface WorkbookJournal {
+  scope?: WorkbookDraftScope;
+  save(checkpoint: WorkbookCheckpoint | null): Promise<void>;
+  /** Same owned draft transaction, with synchronous guards before writes and
+   * at its last successful request before explicit commit. */
+  saveGuarded?(checkpoint: WorkbookCheckpoint, guard: () => void): Promise<void>;
+  validate?(checkpoint: WorkbookCheckpoint): void;
+  isCurrent?(): boolean;
+  restored?: WorkbookCheckpoint;
+}
 /** Serializes edits against acknowledged bytes. A failed/uncertain intent keeps
  * its exact plan and identity; edits made during it are rebased only after its
  * receipt and refreshed model agree. This class never owns or remounts a grid. */
@@ -284,6 +294,55 @@ export class WorkbookWriter {
     const barrier = this.protection;
     this.publish();
     void promise.finally(() => { if (this.protection === barrier) this.protection = null; this.publish(); }).catch(() => {});
+    return promise;
+  }
+
+  /** Retire data only after a serialized durable checkpoint and live native
+   * owner rechecks. No source/snapshot/intent or SDK history mutation occurs. */
+  protectSheetRootRetirement(live: IWorkbookData, native: readonly WorkbookNativeRoot[], verify: () => void,
+    commit: (retained: ReadonlySet<string>) => void): Promise<{ retiredContexts: number }> {
+    if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
+    const run = async () => {
+      if (!this.active || this.sheetActionConflict || this.recoveryConflict || !this.journal?.validate || !this.journal.saveGuarded || !this.journal.isCurrent?.()) throw Error('Protected worksheet retirement is not ready.');
+      const before = this.checkpoint(), identity = canonicalCommentJson(before), revision = this.revision;
+      this.journal.validate(before);
+      if (canonicalCommentJson(live) !== canonicalCommentJson(before.desired)) throw Error('The live worksheet snapshot is not current.');
+      const reduced = workbookProtectedRootRetirement(before, live, native);
+      const candidate: WorkbookCheckpoint = { ...before };
+      if (reduced.births) candidate.sheetBirths = reduced.births;
+      if (reduced.deletions.length) candidate.sheetDeletions = reduced.deletions;
+      else delete candidate.sheetDeletions;
+      this.journal.validate(candidate);
+      const check = () => {
+        if (!this.active || !this.journal!.isCurrent?.() || this.revision !== revision
+          || canonicalCommentJson(this.currentCheckpoint()) !== identity) throw Error('The workbook changed while retiring worksheet roots.');
+        verify();
+      };
+      const durable = this.persistence.catch(() => {}).then(async () => {
+        check();
+        await this.journal!.saveGuarded!(structuredClone(candidate), check);
+        // The guarded storage commit is the linearization point. No protected
+        // issuer can be created while this barrier is held; scalar edits and
+        // public copied history cannot grant a newly retained origin. Even if
+        // focus/lease is lost after commit, the Writer must adopt the committed
+        // reduced pool before refusing private-map maintenance. Never restore
+        // unpruned in-memory authority over a durably retired origin.
+        this.sheetBirths = reduced.births;
+        this.sheetDeletions = reduced.deletions;
+        verify();
+        commit(reduced.retained);
+      });
+      this.persistence = durable;
+      await durable;
+      return { retiredContexts: (before.sheetDeletions?.length ?? 0) + (before.sheetBirths?.entries.length ?? 0)
+        + (before.sheetBirths?.removals?.length ?? 0) - reduced.deletions.length - (reduced.births?.entries.length ?? 0)
+        - (reduced.births?.removals?.length ?? 0) };
+    };
+    const promise = run();
+    const barrier = promise.then(() => {}, () => {});
+    this.protection = barrier;
+    this.publish();
+    void barrier.finally(() => { if (this.protection === barrier) this.protection = null; this.publish(); });
     return promise;
   }
 

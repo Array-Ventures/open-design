@@ -19,6 +19,7 @@ export function createSourceDeleteHistoryFixture(owned: boolean, options: {
   initial?: IWorkbookData;
   sourceCells?: number;
   save?: (state: WorkbookCheckpoint | null) => Promise<void>;
+  saveGuarded?: (state: WorkbookCheckpoint, guard: () => void) => Promise<void>;
   current?: () => boolean;
   runProtectedSequence?: WorkbookProtectedSheetSequence;
   write?: (intent: WorkbookWriteIntent, checkpoint: () => Promise<void>) => Promise<WorkbookWriteResult>;
@@ -48,7 +49,7 @@ export function createSourceDeleteHistoryFixture(owned: boolean, options: {
   const commands = univer.__getInjector().get(ICommandService);
   const history = univer.__getInjector().get(IUndoRedoService);
   const writer = new WorkbookWriter(source, book.save(), options.write ?? (async () => { throw Error('Unexpected transport'); }), () => {}, undefined, {
-    scope, isCurrent: options.current ?? (() => true), validate: state => { serializeWorkbookDraft(scope, state); }, save: options.save ?? (async () => {}),
+    scope, isCurrent: options.current ?? (() => true), validate: state => { serializeWorkbookDraft(scope, state); }, save: options.save ?? (async () => {}), ...(options.saveGuarded ? { saveGuarded: options.saveGuarded } : {}),
   });
   const controller = owned ? new WorkbookSheetHistoryController(univer, writer, scope, () => book.save(), options.current ?? (() => true), options.runProtectedSequence) : undefined;
   const observer = commands.onCommandExecuted(command => {

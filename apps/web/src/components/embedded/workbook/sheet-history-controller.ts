@@ -1,3 +1,4 @@
+import type { WorkbookNativeRoot } from './sheet-root-retirement';
 import { assertNativeWorkbookBirthHistory } from './native-birth-history';
 import { ICommandService, IUndoRedoService, IUniverInstanceService, RedoCommand, UndoCommand, UniverInstanceType, type ICommand, type IWorkbookData, type Univer, type Workbook } from '@univerjs/core';
 import { getSheetCommandTarget, InsertSheetCommand, InsertSheetMutation, RemoveSheetCommand, RemoveSheetMutation, RemoveSheetUndoMutationFactory, SheetInterceptorService, SetWorksheetNameCommand, SetWorksheetNameMutation } from '@univerjs/sheets';
@@ -146,6 +147,63 @@ export class WorkbookSheetHistoryController {
     const admitted = this.issuerAdmission(descriptor, detail);
     this.issued.set(descriptor.token, structuredClone(descriptor));
     this.issuerBytes = admitted.total;
+  }
+
+  private protectedNativeRoots(history: ReturnType<IUndoRedoService['getUndoRedoEntryIds']>): WorkbookNativeRoot[] {
+    const reachable = new Set([...history.undos, ...history.redos]);
+    const roots: WorkbookNativeRoot[] = [];
+    for (const birth of this.births.values()) {
+      for (const direction of ['undo', 'redo'] as const) if (history[direction === 'undo' ? 'undos' : 'redos'].includes(birth.nativeEntryId)) {
+        assertNativeWorkbookBirthHistory(this.history.getUndoRedoMutationData(history.unitId, direction, birth.nativeEntryId), history.unitId, birth.entry, birth.index);
+      }
+      roots.push({ descriptor: birth.entry.descriptor, reachable: reachable.has(birth.nativeEntryId), sheets: [birth.entry.initialSheet] });
+    }
+    for (const issued of [...this.deletions.values(), ...this.renames.values()]) {
+      for (const direction of ['undo', 'redo'] as const) if (history[direction === 'undo' ? 'undos' : 'redos'].includes(issued.nativeEntryId)) {
+        this.assertNativePayload(issued, this.history.getUndoRedoMutationData(history.unitId, direction, issued.nativeEntryId));
+      }
+      const sheets = [...issued.payload.undoMutations, ...issued.payload.redoMutations]
+        .filter(value => value.id === InsertSheetMutation.id).map(value => (value.params as { sheet: IWorkbookData['sheets'][string] }).sheet);
+      roots.push({ descriptor: issued.descriptor, reachable: reachable.has(issued.nativeEntryId), sheets });
+    }
+    return roots;
+  }
+
+  /** Explicit live-controller maintenance; returned IDs are retention evidence,
+   * never durable issuance. Referenced snapshot metadata is not cleaned here. */
+  async retireProtectedRoots(): Promise<{ retiredContexts: number; retiredIssuers: number }> {
+    if (this.busy || !this.isCurrent()) throw Error('The worksheet action owner is not current.');
+    this.busy = true;
+    try {
+      const writer = this.writer, snapshot = this.snapshot();
+      const history = this.history.getUndoRedoEntryIds(this.unit.getUnitId());
+      const checkpoint = this.history.getUndoRedoCheckpoint();
+      const roots = this.protectedNativeRoots(history);
+      const verify = () => {
+        if (this.writer !== writer || !this.isCurrent() || canonicalWorkbookJsonValue(this.snapshot()) !== canonicalWorkbookJsonValue(snapshot)
+          || canonicalWorkbookJsonValue(this.history.getUndoRedoEntryIds(history.unitId)) !== canonicalWorkbookJsonValue(history)) throw Error('The worksheet history changed while retiring roots.');
+        this.assertHistoryCheckpoint(checkpoint);
+        this.protectedNativeRoots(history);
+      };
+      let retiredIssuers = 0;
+      const result = await writer.protectSheetRootRetirement(snapshot, roots, verify, retained => {
+        // Compute the retained accounting first; all following Map/Set deletes
+        // are synchronous and cannot call application/native callbacks.
+        let count = 0, bytes = 2;
+        for (const [token, descriptor] of this.issued) if (retained.has(token)) {
+          const birth = this.births.get(token), action = this.deletions.get(token) ?? this.renames.get(token);
+          const detail = birth ? this.birthIssuerData(birth.entry, birth.index)
+            : action ? this.historyIssuerData(action.purpose, descriptor, action.payload) : undefined;
+          bytes = admitWorkbookNativeIssuer(count++, bytes, { descriptor, ...(detail ? { owned: detail } : {}) }).total;
+        }
+        for (const token of this.issued.keys()) if (!retained.has(token)) {
+          this.issued.delete(token); this.births.delete(token); this.deletions.delete(token); this.renames.delete(token); this.renameTokens.delete(token);
+          retiredIssuers++;
+        }
+        this.issuerBytes = bytes;
+      });
+      return { ...result, retiredIssuers };
+    } finally { this.busy = false; }
   }
 
   async remove(sheetId: string): Promise<void> {
