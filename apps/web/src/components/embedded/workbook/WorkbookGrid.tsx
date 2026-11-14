@@ -410,6 +410,6 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
     <WorkbookStructureMenu controller={structureMenu.current} resetKey={`${id}:${sourceSha256 ?? ""}:${kernel}`} disabled={structureBlocked || Boolean(formatScope?.blocked) || Boolean(formatScope?.saving) || !editable}>
     <div ref={container} className={cx(styles.grid, 'h-full min-h-0 w-full')} role="region" aria-label="Workbook grid" tabIndex={0} />
     </WorkbookStructureMenu>
-    {error ? <div role="alert" className="absolute inset-0 bg-background-primary-default p-4 text-body-2-regular text-text-error-primary">{error}</div> : null}
+    {error ? <div role="alert" className="absolute inset-0 z-20 bg-background-primary-default p-4 text-body-2-regular text-text-error-primary">{error}</div> : null}
   </div>;
 }
