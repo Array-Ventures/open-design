@@ -1,3 +1,4 @@
+import { uniformDocumentCodeStyle } from './document-code-paint';
 import { documentTextStyles } from './document-styles';
 import { $getState, $getRoot, $isElementNode, $setState, createState, ParagraphNode, $isTextNode, TextNode, type DOMConversionMap, type HTMLConfig, type Klass, type LexicalNode } from 'lexical';
 import { DocumentImageNode } from './DocumentImageNode';
@@ -27,6 +28,26 @@ export function documentHtmlConfig(): HTMLConfig {
         if (node.getBackgroundColor() === null) output.element.style.removeProperty('background-color');
         if (!node.getWidth()) output.element.style.removeProperty('width');
         if (!node.getFormatType() && output.element.style.textAlign === 'start') output.element.style.removeProperty('text-align');
+      }
+      if (node instanceof CodeNode) {
+        const style = uniformDocumentCodeStyle(node);
+        if (style) {
+          const previous = output.after;
+          const text = node.getTextContent();
+          output.after = element => {
+            const exported = previous ? previous(element) : element;
+            if (exported instanceof HTMLElement && exported.tagName === 'PRE') {
+              // CodeNode generates only its editor theme class here. Standalone
+              // HTML owns canonical PRE styling, not that live scoped class.
+              exported.removeAttribute('class');
+              const code = document.createElement('code');
+              code.style.cssText = style;
+              code.textContent = text;
+              exported.replaceChildren(code);
+            }
+            return exported;
+          };
+        }
       }
       const id = $getState(node, documentBlockId);
       if (id && output.element instanceof HTMLElement) output.element.setAttribute('data-od-id', id);

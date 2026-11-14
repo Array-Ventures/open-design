@@ -76,3 +76,36 @@ and PDF conversion with the new native indents/margins and paint intact
 (`final-producer/paint14/qualification.json`). Its consumer appearance is not
 separately qualified; the four plain-code consumers above establish the bounded
 spacing claim, and the preceding paint checkpoint establishes glyph shading.
+## Actual immutable129/72 UI export followup
+
+The installed candidate at clean source
+`a024edb43d70060eee47212b180a58725141d5f0` subsequently qualified one existing
+canonical painted-code fixture through the real native Word/PDF export controls,
+without worker/helper overlays. Exact paired build/image identities are retained
+in `/tmp/workbook-live129-root-pair-receipt.json`. The owned TEAM source was
+1535 bytes with SHA256
+`592b8896d70bdb3e9645d608646b7bd6c00a11474e5f8329e8dad347063f3386`;
+raw readback after both downloads matched it exactly.
+
+The downloaded editable Word document retained SourceCode/VerbatimChar,
+10.5pt code, before/after540/450twips, left/right240twips, minimum line315twips
+and red foreground/yellow glyph highlighting, without temporary owner markers.
+An unchanged DOCX copy rendered through an isolated LibreOffice profile passed
+the same five-pixel-at-100DPI glyph-bounds oracle against the actual PDF download.
+Both yellow line-fragment dimensions matched within two pixels, with positions
+within the same five-pixel bound. The author and independent reviewer personally
+viewed the actual PDF and LibreOffice pages. Residual baseline offsets and page
+furniture remain visible; this is not Microsoft Word or general layout parity.
+
+Evidence: `/tmp/document-code-geometry129-ui/{qualification.json,native-check.json,
+consumer-bounds.json,paint-bounds.json,browser-pdf.png,libreoffice-word.png}`.
+The DOCX download SHA256 is
+`39c077552e0dab7f85e5366acfe6525fb79570ae87b7d96e2eb0188498e4c04b`.
+The browser and LibreOffice closed normally; its unique TEAM fixture is retained
+because no normal project-delete route is available. No runtime/pin/publication
+change was made by this qualification.
+
+The live Lexical editor displayed neutral code paint for that authored red/yellow
+fixture. Its original-source exports retained paint, but no live edit/save/reopen
+paint-preservation claim follows. This distinct editor import/render gap remains
+open for a source-owned correction.
