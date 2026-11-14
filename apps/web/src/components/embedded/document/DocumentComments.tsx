@@ -38,6 +38,7 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
   const [revision, update] = useState(0);
   const cardScroll = useScrollFade();
   useEffect(() => { cardScroll.reset(); }, [open, list, selected?.id, cardScroll.reset]);
+  const waitingForSelection = useRef(false);
   const anchor = useRef<DocumentCommentAnchor | null>(null), life = useRef(true), pending = useRef(false);
   const returnFocus = useRef<() => void>(() => {});
   const current = feedback.previewComments?.find(comment => comment.id === selected?.id) ?? null;
@@ -72,10 +73,28 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
   }, { editor });
   useEffect(() => {
     life.current = true;
+    const completeSelection = (event: Event) => {
+      if (!waitingForSelection.current || !life.current || pending.current || dirtyRef.current) return;
+      const element = editor.getRootElement(), dom = window.getSelection();
+      if (!(event.target instanceof Node) || !element?.contains(event.target) || !dom?.anchorNode || !dom.focusNode || dom.isCollapsed || !element.contains(dom.anchorNode) || !element.contains(dom.focusNode)) return;
+      capture();
+      const captured = anchor.current;
+      if (!captured || !editor.getEditorState().read(() => resolveDocumentComment(captured))) return;
+      waitingForSelection.current = false;
+      setNotice(null); setTarget(documentCommentTarget(fileName, captured)); setEditing(true);
+    };
+    // selectionchange fires repeatedly during drag/Shift extension. Capture the
+    // live range there, but bind a new target only when that gesture completes.
+    const pointerCompleted = (event: PointerEvent) => { if (event.button === 0) completeSelection(event); };
+    const keyboardCompleted = (event: KeyboardEvent) => {
+      if (event.key === 'Shift' || !event.shiftKey && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') completeSelection(event);
+    };
     const stop = editor.registerUpdateListener(({ dirtyElements, dirtyLeaves }) => { capture(); if (dirtyElements.size || dirtyLeaves.size) update(value => value + 1); });
     document.addEventListener('selectionchange', capture);
-    return () => { life.current = false; stop(); document.removeEventListener('selectionchange', capture); };
-  }, [editor]);
+    document.addEventListener('pointerup', pointerCompleted, true);
+    document.addEventListener('keyup', keyboardCompleted, true);
+    return () => { life.current = false; stop(); document.removeEventListener('selectionchange', capture); document.removeEventListener('pointerup', pointerCompleted, true); document.removeEventListener('keyup', keyboardCompleted, true); };
+  }, [editor, fileName]);
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => { if (dirtyRef.current) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', beforeUnload); return () => window.removeEventListener('beforeunload', beforeUnload);
@@ -86,14 +105,15 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
     const accepted = !dirtyRef.current || await confirmHostFeedbackDiscard(projectId, 'comment');
     return accepted && life.current && !pending.current && version === draftVersion.current.value;
   };
-  const reset = () => { setCommentEpoch(value => value + 1); feedback.onDiscardPreviewCommentWrite?.(); setSelected(null); setTarget(null); setDraft(''); setEditing(false); setReplyDirty(false); setHandoffPending(false); setNotice(null); };
+  const showList = () => { waitingForSelection.current = false; setList(true); };
+  const reset = () => { waitingForSelection.current = false; setCommentEpoch(value => value + 1); feedback.onDiscardPreviewCommentWrite?.(); setSelected(null); setTarget(null); setDraft(''); setEditing(false); setReplyDirty(false); setHandoffPending(false); setNotice(null); };
   const close = async () => { if (!await allowed() || !life.current) return; reset(); setOpen(false); returnFocus.current(); };
   const begin = async () => {
     capture();
     if (!await allowed() || !life.current) return;
     const captured = anchor.current;
     reset(); setOpen(true); setList(false);
-    if (!captured || !editor.getEditorState().read(() => resolveDocumentComment(captured))) { setNotice('Select text in the document to comment.'); return; }
+    if (!captured || !editor.getEditorState().read(() => resolveDocumentComment(captured))) { waitingForSelection.current = true; setNotice('Select text in the document to comment.'); return; }
     setTarget(documentCommentTarget(fileName, captured)); setEditing(true);
   };
   const show = async (comment: PreviewComment) => {
@@ -140,18 +160,19 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
   };
   const location = useMemo(() => target && readDocumentCommentAnchor(target), [target]);
   const located = useMemo(() => location ? editor.getEditorState().read(() => Boolean(resolveDocumentComment(location))) : true, [editor, location, revision]);
+  const awaitingSelection = open && !list && !selected && !target && !editing;
   const placement = useDocumentCommentPlacement(editor, location, open && !list, revision, width);
   return <>
     <ArtifactAnnotationControls projectId={projectId} commenting={open && !list} marking={false} markupAvailable={false} dirty={dirty} disabled={!viewer}
-      onComment={() => { void (open && !list ? close() : begin()); }} onMark={() => {}} onComments={focus => { returnFocus.current = focus; void allowed().then(ok => { if (ok && life.current) { setOpen(true); setList(true); } }); }} onDiscard={() => { if (!pending.current) { reset(); setOpen(false); } }} />
-    {open ? <aside ref={placement.card} role="dialog" aria-label="Document comments" onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); void close(); } }} className={cx("absolute z-30 flex min-h-0 max-w-[calc(100%_-_24px)] flex-col rounded-2xl border border-separator-border bg-background-primary-default shadow-lg", placement.style ? "left-[var(--document-comment-left)] right-auto top-[var(--document-comment-top)] max-h-[var(--document-comment-max-height)]" : "end-3 top-3 max-h-[calc(100%_-_24px)]")} style={{ width, ...placement.style }}>
+      onComment={() => { void (open && !list ? close() : begin()); }} onMark={() => {}} onComments={focus => { returnFocus.current = focus; void allowed().then(ok => { if (ok && life.current) { setOpen(true); showList(); } }); }} onDiscard={() => { if (!pending.current) { reset(); setOpen(false); } }} />
+    {open ? <aside ref={placement.card} role="dialog" aria-label="Document comments" onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); void close(); } }} className={cx(awaitingSelection && "pointer-events-none select-none", "absolute z-30 flex min-h-0 max-w-[calc(100%_-_24px)] flex-col rounded-2xl border border-separator-border bg-background-primary-default shadow-lg", placement.style ? "left-[var(--document-comment-left)] right-auto top-[var(--document-comment-top)] max-h-[var(--document-comment-max-height)]" : "end-3 top-3 max-h-[calc(100%_-_24px)]")} style={{ width, ...placement.style }}>
       <div role="separator" aria-label="Resize document comments" aria-orientation="vertical" aria-valuemin={240} aria-valuemax={480} aria-valuenow={width} tabIndex={0}
-        className="absolute inset-y-0 -start-1 w-2 cursor-col-resize focus-visible:ring-2 focus-visible:ring-border-focus-ring"
+        className="pointer-events-auto absolute inset-y-0 -start-1 w-2 cursor-col-resize focus-visible:ring-2 focus-visible:ring-border-focus-ring"
         onKeyDown={event => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { event.preventDefault(); const grows = event.key === (getComputedStyle(event.currentTarget).direction === 'rtl' ? 'ArrowRight' : 'ArrowLeft'); setWidth(value => event.key === 'Home' ? 240 : event.key === 'End' ? 480 : Math.max(240, Math.min(480, value + (grows ? 16 : -16)))); } }}
         onPointerDown={event => { if (event.button !== 0) return; event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); }}
         onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) { const parent = event.currentTarget.parentElement?.getBoundingClientRect(); if (parent) setWidth(Math.max(240, Math.min(480, (getComputedStyle(event.currentTarget).direction === 'rtl' ? event.clientX - parent.left : parent.right - event.clientX)))); } }} onPointerUp={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }} />
-      <header className="flex shrink-0 items-center gap-1 border-b border-separator-border px-3 py-2">
-        {!list ? <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiArrowLeftLine} aria-label="All comments" onClick={() => { setList(true); }} /> : null}
+      <header className={cx("flex shrink-0 items-center gap-1 border-b border-separator-border px-3 py-2", awaitingSelection && "[&_button]:pointer-events-auto")}>
+        {!list ? <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiArrowLeftLine} aria-label="All comments" onClick={showList} /> : null}
         <span className="min-w-0 flex-1 truncate text-body-2-medium text-text-primary">{list ? 'Comments' : 'Selected text'}</span>
         <CommentReviewFilter />
         <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiCloseLine} aria-label="Close comments" onClick={() => { void close(); }} />
@@ -170,9 +191,9 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
         <CommentMentions value={draft} onChange={setDraft}><TextareaBase aria-label="Comment on selected text" value={draft} onChange={event => setDraft(event.target.value)} rows={3} maxLength={20000} readOnly={!mayEdit} /></CommentMentions>
         <div className="flex items-center justify-between gap-2">{mayEdit && mayStage ? <Checkbox size="sm" isSelected={addToChat} onChange={setAddToChat} isDisabled={busy}>Add to chat</Checkbox> : <span />}{mayEdit ? <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiArrowUpLine} aria-label="Save comment" disabled={busy || !draft.trim() || root.deleted || root.stale} onClick={() => { void save(addToChat); }} /> : null}</div>
       </div> : null}
-      {selected && !editing ? <div hidden={list} className="flex min-h-0 flex-1 flex-col p-3">
+      {selected && !editing ? <div hidden={list} className={cx("min-h-0 flex-1 flex-col p-3", list ? "hidden" : "flex")}>
         <blockquote tabIndex={0} aria-label="Selected document text" className="focus-visible:ring-2 focus-visible:ring-border-focus-ring m-0 mb-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-words border-s-2 border-separator-border ps-2 text-caption-1-regular text-text-tertiary">{documentCommentQuote(current ?? selected)}</blockquote>
-        <SavedCommentThread key={selected.id} projectId={projectId} hideClose comment={current ?? selected} deleted={!current} hidden={list} onDirty={value => { setReplyDirty(value); setReplyRevision(revision => revision + 1); }} onClose={() => { void close(); }} onViewAll={() => setList(true)}
+        <SavedCommentThread key={selected.id} projectId={projectId} hideClose comment={current ?? selected} deleted={!current} hidden={list} onDirty={value => { setReplyDirty(value); setReplyRevision(revision => revision + 1); }} onClose={() => { void close(); }} onViewAll={showList}
           onEditRoot={() => { setEditing(true); setDraft((current ?? selected).note); }} onDeleteRoot={remove} canEditRoot={canEditComment(current ?? selected, authority)} canDeleteRoot={canDeleteComment(current ?? selected, authority)} existingImages={(current ?? selected).attachments?.map(image => ({ ...image, url: projectRawUrl(projectId, image.path) })) ?? []} />
         {canSendCommentToAgent(current ?? selected, authority) ? <Button variant="ghost" size="small" iconOnly className={commentIconButton} leadingIcon={RiChatNewLine} aria-label="Add comment to chat" disabled={replyDirty || busy} onClick={() => { void send(); }} /> : null}
       </div> : null}
