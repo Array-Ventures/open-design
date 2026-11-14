@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { prepareDeckSourceCapture } from '../src/embedded-render/deck-source.js';
+import { prepareDeckSourceCapture, checkedDeckRuntimeIndex } from '../src/embedded-render/deck-source.js';
 import { RenderInput } from '../src/embedded-render/input.js';
 const html = '<deck-stage><section class="slide">One</section><section class="slide">Two</section></deck-stage>';
 const bytes = Buffer.from(html);
@@ -34,6 +34,10 @@ describe('source-owned deck image capture', () => {
     expect(prepareDeckSourceCapture(raw, { ...selection, deckSourceSha256: createHash('sha256').update(raw).digest('hex') }).html).toContain('二 café');
     const invalid = Buffer.concat([Buffer.from([0xff]), bytes]);
     expect(() => prepareDeckSourceCapture(invalid, { ...selection, deckSourceSha256: createHash('sha256').update(invalid).digest('hex') })).toThrow('valid UTF-8');
+  });
+  it('refuses absent or non-finite browser index/count results before navigation', () => {
+    expect(checkedDeckRuntimeIndex({ index: 1, count: 2 })).toBe(1);
+    for (const value of [undefined, null, {}, { index: undefined, count: 2 }, { index: NaN, count: 2 }, { index: Infinity, count: 2 }, { index: 0.5, count: 2 }, { index: -1, count: 2 }, { index: 2, count: 2 }, { index: 0, count: 201 }, { index: 0, count: 0 }]) expect(() => checkedDeckRuntimeIndex(value)).toThrow('source-owned');
   });
   it('requires all new binding fields only for the new deck-image contract, preserving legacy explicit index', () => {
     const input = { fileName: 'index.html', format: 'image', deck: true, index: 1 };

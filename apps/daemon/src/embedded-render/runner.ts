@@ -1,4 +1,4 @@
-import { prepareDeckSourceCapture } from './deck-source.js';
+import { prepareDeckSourceCapture, checkedDeckRuntimeIndex } from './deck-source.js';
 import { extractSpeakerNotesFromHtml } from '@open-design/contracts/runtime/speaker-notes';
 import { withPptxSpeakerNotes } from './pptx-notes.js';
 import { editablePptx } from './editable-pptx.js';
@@ -152,13 +152,14 @@ export async function renderSnapshot(source: string, output: string, value: unkn
         const captured = slideCapture ? await page.evaluateHandle(slideCapture.targetExpression) : null;
         let runtimeIndex = index;
         if (slideCapture && captured) {
-          runtimeIndex = await page.evaluate<number>(`(() => { const node=${slideCapture.targetExpression}; const args=${JSON.stringify({ attribute: slideCapture.attribute, nonce: slideCapture.nonce, selector: realSlideSelector })};
+          const runtime = await page.evaluate<unknown>(`(() => { const node=${slideCapture.targetExpression}; const args=${JSON.stringify({ attribute: slideCapture.attribute, nonce: slideCapture.nonce, selector: realSlideSelector })};
             if (!(node instanceof HTMLElement) || !node.isConnected || document.querySelectorAll("["+args.attribute+"]").length !== 1 || node.getAttribute(args.attribute) !== args.nonce) throw new Error('The source-owned slide was replaced or duplicated.');
             const list = Array.from(document.querySelectorAll(args.selector));
             const current = list.indexOf(node);
             if (current < 0) throw new Error('The source-owned slide is unavailable.');
-            return current;
+            return { index: current, count: list.length };
           })()`);
+          runtimeIndex = checkedDeckRuntimeIndex(runtime);
         }
         await page.evaluate(`window.postMessage({type:'od:slide',action:'go',index:${runtimeIndex}},'*')`);
         await page.evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');

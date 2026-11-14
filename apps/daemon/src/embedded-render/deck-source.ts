@@ -65,3 +65,12 @@ export function prepareDeckSourceCapture(bytes: Buffer, selection: { deckSourceS
 
   return { html: $.html(), bootstrap, targetExpression: `window[${JSON.stringify(read)}]()`, attribute, nonce };
 }
+
+/** The browser evaluation is an untyped boundary. Never interpolate an absent
+ * or fractional result into navigation, even if evaluation stops invoking. */
+export function checkedDeckRuntimeIndex(value: unknown): number {
+  if (!value || typeof value !== 'object') return fail();
+  const { index, count } = value as { index?: unknown; count?: unknown };
+  if (typeof index !== 'number' || typeof count !== 'number' || !Number.isSafeInteger(index) || !Number.isSafeInteger(count) || count < 1 || count > 200 || index < 0 || index >= count) return fail();
+  return index;
+}
