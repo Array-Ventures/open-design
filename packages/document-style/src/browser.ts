@@ -94,8 +94,16 @@ export function documentColorLayoutQualified(document: Document, ownedStyles: re
   for (const element of [document.documentElement, document.body, ...Array.from(document.body.querySelectorAll('*'))]) {
     if (element.namespaceURI === mathNamespace) { if (!passiveDocumentMath(element)) return false; continue; }
     if (element.namespaceURI !== htmlNamespace || element.parentElement?.namespaceURI === mathNamespace || !tags.has(element.tagName.toLowerCase())) return false;
-    // Only the unstyled separator emitted by default GFM is qualified.
-    if (element.tagName === 'HR' && element.attributes.length) return false;
+    if (element.tagName === 'HR') {
+      if (Array.from(element.attributes).some(attribute => !['id','data-od-id','style'].includes(attribute.name) && !/^data-eve-docx-color-[a-f0-9]{16}$/.test(attribute.name))) return false;
+      const rule = element as HTMLElement;
+      for (const declaration of (rule.getAttribute('style') ?? '').split(';').filter(value => value.trim())) {
+        const colon = declaration.indexOf(':');
+        const name = declaration.slice(0,colon).trim().toLowerCase(), value = declaration.slice(colon+1).trim();
+        if (colon < 1 || !['width','color','background-color'].includes(name)) return false;
+        if (name === 'width' && (!/^(?:[1-9][0-9]{0,3}(?:\.[0-9]+)?px|(?:[1-9][0-9]?|100)(?:\.[0-9]+)?%)$/.test(value) || (value.endsWith('%') && Number.parseFloat(value) > 100))) return false;
+      }
+    }
     const owner = element as HTMLElement;
     if (owner.tagName === 'INPUT' && ((owner as HTMLInputElement).type !== 'checkbox' || !owner.hasAttribute('disabled'))) return false;
     for (const declaration of (owner.getAttribute('style') ?? '').split(';').filter(value => value.trim())) {
@@ -104,7 +112,7 @@ export function documentColorLayoutQualified(document: Document, ownedStyles: re
       if (!presentation.has(name) && !/^border(?:-(?:top|right|bottom|left))?(?:-(?:width|style|color))?$/.test(name) && !/^border-image-(?:source|slice|width|outset|repeat)$/.test(name)) return false;
       if (name === 'padding-inline-start' && !['P','H1','H2','H3','H4','H5','H6','BLOCKQUOTE'].includes(owner.tagName)) return false;
       if (/var\(/i.test(value) || !owner.style.getPropertyValue(name)) return false;
-      if ((name === 'background' || name === 'background-color') && (!inline.has(owner.tagName.toLowerCase()) && !['td','th'].includes(owner.tagName.toLowerCase()))) return false;
+      if ((name === 'background' || name === 'background-color') && (!inline.has(owner.tagName.toLowerCase()) && !['td','th','hr'].includes(owner.tagName.toLowerCase()))) return false;
       if (name === 'background' && !document.defaultView?.CSS?.supports('color', value.replace(/!important\s*$/i,''))) return false;
     }
   }
@@ -128,7 +136,7 @@ export function documentCanvasColor(document: Document, read: DocumentColorReade
 export function normalizeDocumentColorOwners(document: Document, requests: readonly import('./color.js').DocumentColorRequest[], attributeName: string, ownedStyles: readonly string[], read: DocumentColorReader = documentColorReader(document)): Array<{ id: string; colors: import('./color.js').NormalizedDocumentColors }> {
   const fail = (): never => { throw new Error('The document color ownership or authored presentation is not representable.'); };
   if (!/^data-eve-docx-[a-z0-9-]{1,80}$/.test(attributeName) || requests.length > 20000 || !documentColorLayoutQualified(document, ownedStyles)) return fail();
-  if (requests.some(request => !/^[A-Za-z0-9_-]{1,100}$/.test(request.id) || !['cell','inline'].includes(request.kind))) return fail();
+  if (requests.some(request => !/^[A-Za-z0-9_-]{1,100}$/.test(request.id) || !['cell','inline','divider'].includes(request.kind))) return fail();
   const expected = new Map(requests.map(request => [request.id, request.kind])); if (expected.size !== requests.length) return fail();
   const elements = new Map<string, HTMLElement>();
   for (const element of Array.from(document.body.querySelectorAll(`[${attributeName}]`))) {
@@ -140,8 +148,19 @@ export function normalizeDocumentColorOwners(document: Document, requests: reado
   if (!canvas || canvas[3] !== 1) return fail();
   return requests.map(request => {
     const owner = elements.get(request.id)!;
-    if (request.kind === 'cell' ? !['TD','TH'].includes(owner.tagName) : owner.tagName !== 'SPAN') return fail();
+    if (request.kind === 'cell' ? !['TD','TH'].includes(owner.tagName) : request.kind === 'divider' ? owner.tagName !== 'HR' : owner.tagName !== 'SPAN') return fail();
     const colors: import('./color.js').NormalizedDocumentColors = {};
+    if (request.kind === 'divider') {
+      const background = documentEffectiveBackground(owner, read, canvas); if (!background) return fail();
+      for (const [property, key] of [['color','foreground'], ['background-color','background']] as const) {
+        if (property === 'background-color' && !owner.style.getPropertyValue(property)) continue;
+        const value = read(document.defaultView!.getComputedStyle(owner).getPropertyValue(property));
+        if (!value) return fail();
+        colors[key] = opaqueDocumentColorHex(key === 'background' ? background : compositeDocumentColor(value, background));
+        if (key === 'foreground') colors.foregroundSource = authoredForeground(owner) ? 'authored' : 'inherited';
+      }
+      return { id: request.id, colors };
+    }
     if (request.kind === 'inline' && !owner.textContent?.trim()) {
       const range = document.createRange(); range.selectNodeContents(owner);
       if (!Array.from(range.getClientRects()).some(rect => rect.width > 0 && rect.height > 0)) {

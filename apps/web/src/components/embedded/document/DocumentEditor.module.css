@@ -3,7 +3,7 @@
 .page { position: relative; box-sizing: border-box; max-width: 824px; margin-inline: auto; padding: 16px 52px 80px; }
 .content { outline: none; min-height: 50vh; font-size: var(--text-headline-regular); line-height: 1.5; font-weight: var(--text-headline-regular--font-weight); letter-spacing: var(--text-headline-regular--letter-spacing); overflow-wrap: anywhere; }
 .content p { margin: 0 0 16px; }
-.content hr { color: var(--color-separator-border); border: 0; border-block-start: 1px solid currentColor; margin-block: 24px; }
+.content hr { color: var(--color-border-button-default); border: 0; border-block-start: 1px solid currentColor; margin-block: 24px; }
 .content hr.dividerSelected { outline: 2px solid var(--color-border-focus-ring); outline-offset: 4px; }
 .content h1 { font-size: var(--text-display-4-medium); line-height: var(--text-display-4-medium--line-height); font-weight: var(--text-display-4-medium--font-weight); margin: 24px 0 16px; }
 .content h2 { font-size: var(--text-title-1-medium); line-height: var(--text-title-1-medium--line-height); font-weight: var(--text-title-1-medium--font-weight); margin: 24px 0 12px; }

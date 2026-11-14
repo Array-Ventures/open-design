@@ -44,10 +44,16 @@ export async function normalizeDocumentDocxColors(html: string, requests: readon
     if (unavailable) return fail(); return colors;
   } finally { await browser.close(); }
 }
+export const documentDividerPrintCss = '@media print{hr{border:0;border-block-start:1px solid currentColor;margin-block:24px}}';
 export async function repairDocumentPdfColors(page: Page, html: string, printStyles: readonly string[]): Promise<void> {
   await page.emulateMedia({ media: 'print' });
   await page.evaluate('Promise.all([document.fonts.ready,...Array.from(document.images).map(image=>image.decode().catch(()=>{}))])');
   await page.addScriptTag({ content: await readFile(browserScript, 'utf8') });
+  // This conversion-only rule matches the editor's border-only divider. Apply
+  // it only after the original DOM/styles pass the shared bounded policy.
+  const styles = [...ownedStyles(html), ...printStyles];
+  const qualified = await page.evaluate(`globalThis.odDocumentColor.documentColorLayoutQualified(document,${JSON.stringify(styles)})`);
+  if (qualified === true) { await page.addStyleTag({ content: documentDividerPrintCss }); styles.push(documentDividerPrintCss); }
   // Unknown authored selectors decline correction; PDF keeps that exact layout.
-  await page.evaluate(`globalThis.odDocumentColor.repairDocumentPrintInk(document,${JSON.stringify([...ownedStyles(html), ...printStyles])})`);
+  await page.evaluate(`globalThis.odDocumentColor.repairDocumentPrintInk(document,${JSON.stringify(styles)})`);
 }

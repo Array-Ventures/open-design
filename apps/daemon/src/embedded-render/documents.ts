@@ -1,3 +1,4 @@
+import { documentDocxDividers, projectDocumentDocxDividers } from './document-docx-dividers.js';
 import { execFile } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -128,13 +129,16 @@ export async function exportDocument(html: string, original: string, fileName: s
     await writeFile(referencePath, reference, { flag: 'wx', mode: 0o600 });
     const source = documentDocxSourceColors($.html());
     const normalized = await normalizeDocumentDocxColors(source.html, source.requests, source.attributeName);
-    const ast = JSON.parse((await pandoc(['--sandbox', '--from=html+raw_html', '--to=json', '--fail-if-warnings'], normalizedDocumentDocxHtml(source, normalized))).toString('utf8'));
-    const owners = resolvedDocumentDocxColorOwners(ast, source, normalized);
+    const dividers = documentDocxDividers(normalizedDocumentDocxHtml(source, normalized), source, normalized);
+    const ast = JSON.parse((await pandoc(['--sandbox', '--from=html+raw_html', '--to=json', '--fail-if-warnings'], dividers.html)).toString('utf8'));
+    const textSource = { ...source, requests: source.requests.filter(request => request.kind !== 'divider') };
+    const textIds = new Set(textSource.requests.map(request => request.id));
+    const owners = resolvedDocumentDocxColorOwners(ast, textSource, new Map([...normalized].filter(([id]) => textIds.has(id))));
     const converted = await pandoc(['--sandbox', '--from=json', '--to=docx', `--reference-doc=${referencePath}`, '--fail-if-warnings'], JSON.stringify(ast));
     const zip = await JSZip.loadAsync(converted);
     const document = zip.file('word/document.xml');
     if (!document) throw new Error('The document converter did not produce editable Word content.');
-    zip.file('word/document.xml', projectDocumentDocxColors(await document.async('string'), owners));
+    zip.file('word/document.xml', projectDocumentDocxDividers(projectDocumentDocxColors(await document.async('string'), owners), dividers.owners));
     const core = zip.file('docProps/core.xml');
     if (core) { const properties = load(await core.async('string'), { xml: true }); properties('dc\\:title').text(title); zip.file('docProps/core.xml', properties.xml()); }
     const body = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });

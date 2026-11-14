@@ -10,6 +10,7 @@ import { MAX_STANDALONE_OUTPUT_BYTES } from '../src/artifacts/standalone-html.js
 const html = '<html data-eve-document="1"><body><p>Owned document</p></body></html>';
 const requests = [{ id: 'text', kind: 'inline' as const }];
 const attribute = 'data-eve-docx-color-fixture';
+let qualified = true;
 let result: unknown, routeRequest: string | undefined, projectError: Error | undefined;
 let events: string[], route: ((value: unknown) => Promise<void>) | undefined;
 const close = vi.fn(), proceed = vi.fn(), abort = vi.fn();
@@ -21,16 +22,18 @@ const page = {
     events.push('content');
     if (routeRequest) await route!({ request: () => ({ url: () => routeRequest }), continue: proceed, abort });
   }),
+  addStyleTag: vi.fn(async () => { events.push('divider-style'); }),
   addScriptTag: vi.fn(async () => { events.push('bundle'); }),
   evaluate: vi.fn(async (script: string) => {
     if (script.startsWith('Promise.all(')) { events.push('assets'); return; }
+    if (script.startsWith('globalThis.odDocumentColor.documentColorLayoutQualified')) { events.push('qualification'); return qualified; }
     events.push('projection');
     if (projectError) throw projectError;
     return result;
   }),
 };
 beforeEach(() => {
-  vi.clearAllMocks(); events = []; route = undefined; routeRequest = undefined; projectError = undefined;
+  vi.clearAllMocks(); qualified = true; events = []; route = undefined; routeRequest = undefined; projectError = undefined;
   result = [{ id: 'text', colors: { foreground: 'FFFFFF', foregroundSource: 'inherited' } }];
   mock.read.mockResolvedValue('/* owned color closure */');
   mock.launch.mockResolvedValue({ newPage: vi.fn().mockResolvedValue(page), close });
@@ -115,8 +118,15 @@ it('closes the browser when the owned bundle is unavailable', async () => {
 });
 it('repairs only the existing PDF page after print assets, without owning its lifecycle', async () => {
   await repairDocumentPdfColors(page as unknown as Page, html, ['owned-print-css']);
-  expect(events).toEqual(['print', 'assets', 'bundle', 'projection']);
+  expect(events).toEqual(['print', 'assets', 'bundle', 'qualification', 'divider-style', 'projection']);
   expect(page.evaluate.mock.calls.at(-1)![0]).toContain('repairDocumentPrintInk');
   expect(page.evaluate.mock.calls.at(-1)![0]).toContain('owned-print-css');
   expect(mock.launch).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled();
+});
+
+it('does not restyle an unqualified PDF document', async () => {
+  qualified = false;
+  await repairDocumentPdfColors(page as unknown as Page, html, ['owned-print-css']);
+  expect(page.addStyleTag).not.toHaveBeenCalled();
+  expect(events).toEqual(['print','assets','bundle','qualification','projection']);
 });
