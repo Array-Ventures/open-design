@@ -18,10 +18,10 @@ it('normalizes shorthand, contextual alpha, nested backgrounds and explicit fore
   source(`<table><tr><td ${attribute}="cell" style="background:rgb(24,24,40)"><span ${attribute}="direct">Implicit dark ink</span><span style="background-color:rgb(255,246,170)"><span ${attribute}="nested">Nested light</span></span><span style="color:rgba(255,0,0,.5)"><span ${attribute}="authored">Authored alpha</span></span></td></tr></table>`);
   const result = normalizeDocumentColorOwners(document, [{id:'cell',kind:'cell'},{id:'direct',kind:'inline'},{id:'nested',kind:'inline'},{id:'authored',kind:'inline'}], attribute, [style], read);
   expect(result).toEqual([
-    {id:'cell',colors:{background:'181828'}},
-    {id:'direct',colors:{foreground:'FFFFFF',foregroundSource:'inherited'}},
-    {id:'nested',colors:{background:'FFF6AA'}},
-    {id:'authored',colors:{foreground:'8C0C14',foregroundSource:'authored'}},
+    {id:'cell',presentation:{background:'181828'}},
+    {id:'direct',presentation:{foreground:'FFFFFF',foregroundSource:'inherited'}},
+    {id:'nested',presentation:{background:'FFF6AA'}},
+    {id:'authored',presentation:{foreground:'8C0C14',foregroundSource:'authored'}},
   ]);
 });
 it('requires every staged owner exactly once and never calls unresolved authored ink empty', () => {
@@ -57,7 +57,7 @@ it('composites an authored alpha cell background over an explicit canvas', () =>
   source(`<table><tr><td ${attribute}="cell" style="background-color:rgba(0,0,0,.5)">Alpha background</td></tr></table>`);
   // This injected reader represents exact .5 alpha. The real Canvas reader's
   // 8-bit alpha and opaque output are separately checked in Chromium.
-  expect(normalizeDocumentColorOwners(document,[{id:'cell',kind:'cell'}],attribute,[style],read)).toEqual([{id:'cell',colors:{background:'808080'}}]);
+  expect(normalizeDocumentColorOwners(document,[{id:'cell',kind:'cell'}],attribute,[style],read)).toEqual([{id:'cell',presentation:{background:'808080'}}]);
 });
 it('refuses a quoted semicolon declaration instead of silently dropping an authored font', () => {
   source(`<p><span ${attribute}="font" style='font-family:"semi;colon"'>Font</span></p>`);
@@ -71,7 +71,7 @@ it('proves collapsed indentation empty but retains visible highlighted whitespac
     let visible = false;
     return { selectNodeContents(node: Node) { visible = (node as Element).getAttribute(attribute) === 'visible'; }, getClientRects() { return visible ? [{width:4,height:16}] : []; } } as unknown as Range;
   });
-  expect(normalizeDocumentColorOwners(document,[{id:'indent',kind:'inline'},{id:'visible',kind:'inline'}],attribute,[style],read)).toEqual([{id:'indent',colors:{}},{id:'visible',colors:{background:'FFF6AA'}}]);
+  expect(normalizeDocumentColorOwners(document,[{id:'indent',kind:'inline'},{id:'visible',kind:'inline'}],attribute,[style],read)).toEqual([{id:'indent',presentation:{}},{id:'visible',presentation:{background:'FFF6AA'}}]);
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) { return {width:this.style.backgroundColor ? 40 : 0,height:16} as DOMRect; });
   source(`<p><span style="background-color:rgb(255,246,170)"><span ${attribute}="painted"> </span></span></p>`);
   expect(() => normalizeDocumentColorOwners(document,[{id:'painted',kind:'inline'}],attribute,[style],read)).toThrow();
@@ -153,17 +153,50 @@ it('admits bounded divider identity and presentation without inventing text corr
   const attribute = 'data-eve-docx-color-0123456789abcdef';
   source(`<p>Before</p><hr data-od-id="rule-one" style="width:40%;color:rgb(255,0,0);background-color:rgb(0,255,0)" ${attribute}="rule"><p>After</p>`);
   expect(documentColorLayoutQualified(document,[style])).toBe(true);
-  expect(normalizeDocumentColorOwners(document,[{id:'rule',kind:'divider'}],attribute,[style],read)).toEqual([{id:'rule',colors:{foreground:'FF0000',background:'00FF00',foregroundSource:'authored'}}]);
+  expect(normalizeDocumentColorOwners(document,[{id:'rule',kind:'divider'}],attribute,[style],read)).toEqual([{id:'rule',presentation:{foreground:'FF0000',background:'00FF00',foregroundSource:'authored'}}]);
   for (const presentation of ['position:absolute','height:10px','width:calc(100% - 1px)','background-image:url(data:image/png,a)','color:var(--author)']) {
     document.querySelector('hr')!.setAttribute('style',presentation);
     expect(() => normalizeDocumentColorOwners(document,[{id:'rule',kind:'divider'}],attribute,[style],read)).toThrow();
   }
   document.querySelector('hr')!.setAttribute('style','color:rgba(1,2,3,0.5)');
-  expect(normalizeDocumentColorOwners(document,[{id:'rule',kind:'divider'}],attribute,[style],read)).toEqual([{id:'rule',colors:{foreground:'808181',foregroundSource:'authored'}}]);
+  expect(normalizeDocumentColorOwners(document,[{id:'rule',kind:'divider'}],attribute,[style],read)).toEqual([{id:'rule',presentation:{foreground:'808181',foregroundSource:'authored'}}]);
 });
 
 it('retains a plain divider computed ink without applying a text contrast heuristic', () => {
   const attribute = 'data-eve-docx-color-0123456789abcdef';
   source(`<hr ${attribute}="rule">`);
-  expect(normalizeDocumentColorOwners(document,[{id:'rule',kind:'divider'}],attribute,[style],read)).toEqual([{id:'rule',colors:{foreground:'808080',foregroundSource:'inherited'}}]);
+  expect(normalizeDocumentColorOwners(document,[{id:'rule',kind:'divider'}],attribute,[style],read)).toEqual([{id:'rule',presentation:{foreground:'808080',foregroundSource:'inherited'}}]);
+});
+it('normalizes authored inline font size and actual block-strut line height through the measurement port', () => {
+  source(`<p><span style="font-size:2em"><span ${attribute}="owner">Large</span></span></p>`);
+  const original = window.getComputedStyle.bind(window);
+  const spy = vi.spyOn(window,'getComputedStyle').mockImplementation(element => {
+    const computed = original(element);
+    return new Proxy(computed,{get(target,key){
+      if (key === 'fontSize') return element.tagName === 'P' ? '20px' : '40px';
+      if (key === 'lineHeight') return element.tagName === 'P' ? '30px' : '60px';
+      const value = Reflect.get(target,key,target); return typeof value === 'function' ? value.bind(target) : value;
+    }});
+  });
+  try {
+    expect(normalizeDocumentColorOwners(document,[{id:'owner',kind:'inline'}],attribute,[style],read)).toEqual([{id:'owner',presentation:{fontSizePt:30,fontLineHeightPt:45,fontSizeSource:'authored'}}]);
+    spy.mockImplementation(element => {
+      const computed = original(element);
+      return new Proxy(computed,{get(target,key){
+        if (key === 'fontSize') return '10px';
+        if (key === 'lineHeight') return element.tagName === 'P' ? '30px' : '15px';
+        const value = Reflect.get(target,key,target); return typeof value === 'function' ? value.bind(target) : value;
+      }});
+    });
+    expect(normalizeDocumentColorOwners(document,[{id:'owner',kind:'inline'}],attribute,[style],read)[0]!.presentation).toEqual({fontSizePt:7.5,fontLineHeightPt:22.5,fontSizeSource:'authored'});
+    spy.mockImplementation(element => {
+      const computed = original(element);
+      return new Proxy(computed,{get(target,key){
+        if (key === 'fontSize') return '40px';
+        if (key === 'lineHeight') return 'normal';
+        const value = Reflect.get(target,key,target); return typeof value === 'function' ? value.bind(target) : value;
+      }});
+    });
+    expect(() => normalizeDocumentColorOwners(document,[{id:'owner',kind:'inline'}],attribute,[style],read)).toThrow();
+  } finally { spy.mockRestore(); }
 });

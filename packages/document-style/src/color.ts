@@ -16,5 +16,5 @@ export function opaqueDocumentColorHex(color: DocumentColor): string {
   if (color[3] !== 1 || color.some(value => !Number.isFinite(value)) || color.slice(0, 3).some(value => value < 0 || value > 255)) throw new Error('The document color is not an opaque sRGB color.');
   return color.slice(0, 3).map(value => Math.round(value).toString(16).padStart(2, '0')).join('').toUpperCase();
 }
-export interface DocumentColorRequest { id: string; kind: 'cell' | 'inline' | 'divider' }
-export interface NormalizedDocumentColors { foreground?: string; background?: string; foregroundSource?: 'authored' | 'inherited' }
+export * from './presentation.js';
+export type { DocumentPresentationRequest as DocumentColorRequest, NormalizedDocumentPresentation as NormalizedDocumentColors } from './presentation.js';

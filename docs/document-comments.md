@@ -277,3 +277,23 @@ its earlier light-desktop run; this addendum supplies the extended matrix.
 ![Light phone deleted-thread notice](images/document-comment-status/matrix/deleted-light-phone.png)
 
 ![Dark desktop deleted-thread notice](images/document-comment-status/matrix/deleted-dark-wide.png)
+
+### Floating card edge source checkpoint
+
+Actual 113 inspection confirmed that the dark comment card's outer border and
+background both computed to `lab(15.204 0 -0.00000596046)`: its separator token is
+the same neutral 800 surface. The existing floating-panel border token instead
+resolves to `lab(27.036% 0 0)` (neutral 700). Light mode maps both border choices
+to `#ebebeb`, so the expected light edge does not change. The installed BoardUI
+`MENU_POPOVER_SURFACE` already uses `border-border-button-default` on its primary
+surface; the comment card now uses that semantic outer-edge token too. Its
+internal header separator, surface, shadow, spacing, placement, focus and
+handlers are unchanged. No raw palette value or new theme was introduced.
+
+A read-only authorized reference inspection found a dark Comments region with
+its own surface distinction, not the same layout/token system; it does not
+justify copying a new theme. The own audit restored Light and closed normally,
+and the reference card was closed without edits or sends. Actual next-pair
+light/dark desktop/phone card inspection remains required: 113 retains its old
+outer edge and is not relabelled by this source checkpoint. No class-name mirror
+test substitutes for that visual gate.
