@@ -20,7 +20,7 @@ import '@univerjs/engine-formula/facade';
 const closers: (() => void)[] = [];
 afterEach(() => { closers.splice(0).reverse().forEach(close => close()); vi.useRealTimers(); });
 class Channel extends EventTarget { terminate = vi.fn(); send(value: object) { this.dispatchEvent(new MessageEvent('message', { data: { type: 'studio:workbook-calculation-worker', ...value } })); } }
-async function fixture(render?: { ready: Promise<void>; available(): boolean }, paint?: () => void) {
+async function fixture(render?: { ready: Promise<void>; available(): boolean }, paint?: () => void, source?: { input?: number; cache?: number; unsupported?: boolean; unknownArrays?: boolean }) {
   vi.useFakeTimers();
   const channel = new Channel(), unavailable = vi.fn(), owner = ownWorkbookCalculationWorker(unavailable, () => channel as unknown as Worker); closers.push(() => owner.dispose()); channel.send({ kind: 'ready' }); await owner.loaded;
   const English = pinned('@univerjs/preset-sheets-core/locales/en-US'), univer = new core.Univer({ locale: core.LocaleType.EN_US, locales: { [core.LocaleType.EN_US]: English.default ?? English } }); closers.push(() => univer.dispose());
@@ -31,7 +31,12 @@ async function fixture(render?: { ready: Promise<void>; available(): boolean }, 
   book = api.createWorkbook(seedWorkbookStructureIdentity(gridWorkbook(model, 'completion', 'Completion').data as IWorkbookData, 'a'.repeat(64))); book.setEditable(true); univer.__getInjector().get(core.IUniverInstanceService).focusUnit(book.getId());
   let paintUnit = book.getId();
   const repaint = vi.fn(paint), paintApi = render ? new Proxy(api, { get(target, name) { if (name === 'getActiveWorkbook') return () => ({ id: paintUnit, getSheets: () => [{ refreshCanvas: repaint }] }); return Reflect.get(target, name); } }) : api;
-  const original = book.save(), phases: string[] = [], calculation = attachWorkbookCalculation(univer, paintApi, model, original, original, () => book!.save(), owner, state => phases.push(state.phase), () => false, render); closers.push(() => calculation.dispose());
+  const original = structuredClone(book.save());
+  if (source?.input !== undefined) { original.sheets.s!.cellData![0]![0]!.v = source.input; model.sheets[0]!.cells[0] = { row: 0, column: 0, kind: 'number', value: source.input }; }
+  if (source?.cache !== undefined) { original.sheets.s!.cellData![0]![2]!.v = source.cache; model.sheets[0]!.cells[1] = { row: 0, column: 2, kind: 'number', value: source.cache, formula: '=A1+3' }; }
+  if (source?.unsupported) model.calculationMetadata = 'unsupported';
+  if (source?.unknownArrays) delete model.sheets[0]!.arrayFormulas;
+  const phases: string[] = [], calculation = attachWorkbookCalculation(univer, paintApi, model, original, book.save(), () => book!.save(), owner, state => phases.push(state.phase), () => false, render); closers.push(() => calculation.dispose());
   const commands = univer.__getInjector().get(core.ICommandService); let epoch = 0;
   const observe = commands.onCommandExecuted((_command, options) => { if (typeof options?.[WORKBOOK_INPUT_EPOCH_OPTION] === 'number') epoch = options[WORKBOOK_INPUT_EPOCH_OPTION] as number; }); closers.push(() => observe.dispose());
   const edit = (value: number, column = 3) => commands.syncExecuteCommand(sheets.SetRangeValuesMutation.id, { unitId: book!.getId(), subUnitId: 's', cellValue: { 0: { [column]: { v: value, t: 2, ...(column === 2 ? { f: null } : {}) } } } });
@@ -39,7 +44,7 @@ async function fixture(render?: { ready: Promise<void>; available(): boolean }, 
   const graph = (proof: ReturnType<typeof tag>) => channel.send({ kind: 'graph', workbookCalculation: proof, result: [{ treeId: 1, unitId: book!.getId(), subUnitId: 's', row: 0, column: 2, formula: '=A1+3', parents: [] }] });
   const complete = (proof: ReturnType<typeof tag>) => channel.send({ kind: 'complete', outcome: 'not-executed', workbookCalculation: proof });
   const insert = () => commands.syncExecuteCommand(sheets.InsertRowByRangeCommand.id, { unitId: book!.getId(), subUnitId: 's', range: { startRow: 1, endRow: 1, startColumn: 0, endColumn: 25 }, direction: core.Direction.UP });
-  return { model, original, univer, owner, channel, unavailable, phases, calculation, commands, book, edit, tag, graph, complete, insert, repaint, setPaintUnit: (id: string) => { paintUnit = id; } };
+  return { api, model, original, univer, owner, channel, unavailable, phases, calculation, commands, book, edit, tag, graph, complete, insert, repaint, setPaintUnit: (id: string) => { paintUnit = id; } };
 }
 it('rejects an old never-settled A pass after real A-B-A mutations despite an identical input digest', async () => {
   const f = await fixture(); f.edit(77); const old = f.tag(1); f.edit(78); f.edit(77); const current = f.tag(2);
@@ -125,4 +130,38 @@ it('refreshes checked source-cache rebasing without changing live inputs', async
   f.calculation.rebaseSource(f.model, f.original, f.original);
   expect(f.repaint).toHaveBeenCalledTimes(paints + 1);
   expect(f.book.save()).toEqual(before);
+});
+
+it('requests exactly one restored input calculation and fences synchronous reentrancy', async () => {
+  const f = await fixture(undefined, undefined, { input: 1 }); f.book.setEditable(true);
+  const before = f.book.save(); let starts = 0;
+  const observer = f.commands.beforeCommandExecuted(command => {
+    if (command.id === engine.SetFormulaCalculationStartMutation.id) { starts++; expect(f.calculation.calculateRestoredInputs()).toBe(false); }
+  }); closers.push(() => observer.dispose());
+  expect(f.calculation.calculateRestoredInputs()).toBe(true);
+  expect(f.calculation.calculateRestoredInputs()).toBe(false); expect(starts).toBe(1);
+  expect(f.calculation.inputEpoch).toBe(0); expect(f.book.save()).toEqual(before);
+  const proof = f.tag(1); f.graph(proof); f.complete(proof);
+  expect(f.calculation.quiescent).toBe(false); expect(f.phases.at(-1)).toBe('pending');
+});
+it.each([undefined, { input: 2, cache: 888 }])('keeps clean inputs and source cache differences stored without an initial request: %j', async source => {
+  const f = await fixture(undefined, undefined, source); f.book.setEditable(true);
+  const before = f.book.save(); expect(f.calculation.calculateRestoredInputs()).toBe(false);
+  expect(f.calculation.status('s', 0, 2)?.result).toBe('stored'); expect(f.book.save()).toEqual(before);
+});
+it.each([{ input: 1, unsupported: true }, { input: 1, unknownArrays: true }])('does not start an unqualified restored calculation: %j', async source => {
+  const f = await fixture(undefined, undefined, source); f.book.setEditable(true);
+  const before = f.book.save(); expect(f.calculation.calculateRestoredInputs()).toBe(false); expect(f.book.save()).toEqual(before);
+});
+it('refuses readonly, replacement-unit, disposed and authored-epoch ABA startup requests', async () => {
+  const readonly = await fixture(undefined, undefined, { input: 1 }); readonly.book.setEditable(false);
+  expect(readonly.calculation.calculateRestoredInputs()).toBe(false);
+  const foreign = await fixture(undefined, undefined, { input: 1 }); foreign.book.setEditable(true);
+  foreign.api.createWorkbook({ ...structuredClone(foreign.book.save()), id: 'replacement' });
+  foreign.univer.__getInjector().get(core.IUniverInstanceService).focusUnit('replacement');
+  expect(foreign.calculation.calculateRestoredInputs()).toBe(false);
+  const disposed = await fixture(undefined, undefined, { input: 1 }); disposed.book.setEditable(true); disposed.calculation.dispose();
+  expect(disposed.calculation.calculateRestoredInputs()).toBe(false);
+  const aba = await fixture(undefined, undefined, { input: 1 }); aba.book.setEditable(true); aba.edit(77, 0); aba.edit(2, 0);
+  expect(aba.calculation.inputEpoch).toBe(2); expect(aba.calculation.calculateRestoredInputs()).toBe(false);
 });

@@ -23,7 +23,9 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
   const injector = univer.__getInjector(), commands = injector.get(ICommandService), functions = injector.get(engine.IFunctionService);
   const display = new WorkbookFormulaDisplay(model, original, initial, { sequenceNodesBuilder: value => api.getFormula().sequenceNodesBuilder(value), hasExecutor: name => functions.hasExecutor(name), deserializeRangeWithSheet: engine.deserializeRangeWithSheet, sequenceNodeType: engine.sequenceNodeType });
   if (!owner) display.pause('Stored results');
-  let active = true, rendered = false, paintPending = false;
+  let active = true, rendered = false, paintPending = false, restoredCalculationRequested = false;
+  const initialInputSha256 = workbookCalculationInputSha256(initial);
+  const restoredInputsChanged = original.id === initial.id && workbookCalculationInputSha256(original) !== initialInputSha256;
   const repaint = () => {
     if (!active || !render) return;
     paintPending = true;
@@ -256,7 +258,17 @@ export function attachWorkbookCalculation(univer: Univer, api: FUniver, model: W
     handler: (cell, location, next) => next(display.display(location.subUnitId, location.row, location.col, (cell ?? {}) as ICellData, location.rawData || undefined)),
   });
   publish();
-  return { freezeAuthoring() {
+  return { calculateRestoredInputs() {
+    if (!active || restoredCalculationRequested || !owner?.ready || inputEpoch !== 0 || !restoredInputsChanged
+      || model.sourceFormat === 'csv' || !workbookLiveCalculationEligible(model, initial) || !formulas(initial)) return false;
+    const book = api.getActiveWorkbook();
+    if (book?.id !== initial.id || !book.getWorkbookPermission().canEdit()
+      || workbookCalculationInputSha256(snapshot()) !== initialInputSha256) return false;
+    // This is a per-kernel bootstrap request, never a replayable draft authority.
+    // Set before dispatch because command listeners can synchronously re-enter.
+    restoredCalculationRequested = true; scalarRequired = true; completion = null;
+    return commands.syncExecuteCommand(engine.SetFormulaCalculationStartMutation.id, { forceCalculation: true }, { onlyLocal: true });
+  }, freezeAuthoring() {
     if (!owner?.ready || authoredFreeze) throw Error('The workbook calculation cannot be paused.');
     const ticket = {}; authoredFreeze = ticket;
     return () => { if (authoredFreeze === ticket && owner.ready) authoredFreeze = null; };
