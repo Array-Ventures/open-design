@@ -320,6 +320,30 @@ it.each(['new', 'edit'] as const)('still protects a dirty %s root when the host 
   expect(input).toBeVisible(); expect(input).toHaveValue('Protected root draft');
 });
 
+it.each(['new', 'edit'] as const)('discards an accepted %s root draft before returning to the saved thread', async mode => {
+  render(<Harness />); let input = await selectAndOpen();
+  fireEvent.change(input, { target: { value: 'Persisted root note' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+  await screen.findByRole('textbox', { name: 'Reply' });
+  if (mode === 'edit') {
+    fireEvent.click(screen.getByRole('button', { name: 'Comment actions' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    input = await screen.findByRole('textbox', { name: 'Comment on selected text' });
+  } else {
+    fireEvent.click(screen.getByRole('button', { name: 'Close comments' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Document comments' })).toBeNull());
+    input = await selectAndOpen();
+  }
+  fireEvent.change(input, { target: { value: 'Discard this root draft' } });
+  api.confirm.mockResolvedValueOnce(true); command('comments');
+  fireEvent.click(await screen.findByRole('button', { name: /Persisted root note/ }));
+  await screen.findByRole('textbox', { name: 'Reply' });
+  expect(screen.getByText('Persisted root note')).toBeVisible();
+  expect(screen.queryByRole('textbox', { name: 'Comment on selected text' })).toBeNull();
+  expect(screen.queryByDisplayValue('Discard this root draft')).toBeNull();
+  expect(api.confirm).toHaveBeenCalledWith('project', 'comment'); expect(api.save).toHaveBeenCalledTimes(1);
+});
+
 it('does not navigate the host list during a pending root handoff', async () => {
   let finish!: (value: { status: string; commentIds: string[] }) => void;
   api.send.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));

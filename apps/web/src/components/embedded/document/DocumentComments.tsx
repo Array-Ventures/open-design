@@ -87,7 +87,7 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
     // New and edited root comments still leave their composer and need consent.
     if ((!selected || editing) && !await allowed()) return;
     if (!life.current || pending.current) return;
-    if (!selected && editing) reset();
+    if (editing) reset();
     setOpen(true); showList();
   };
   const close = async () => { if (!await allowed() || !life.current) return; reset(); setOpen(false); returnFocus.current(); };

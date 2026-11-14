@@ -94,3 +94,11 @@ suite verifies the same reply and thread DOM identities, exact draft, no
 confirmation, and no extra reply or document writes, plus pending-handoff and
 dirty new/edit-root/close safeguards. Packaged browser acceptance of this source
 change remains pending; candidate 109 keeps its original frozen source.
+
+Review found a second inconsistency in the first source checkpoint: after
+accepting discard for an edited saved root, returning from the list still showed
+that root draft. A real component regression failed on this accepted edit path
+while the accepted new-root case and 38 other cases passed. The handler now
+resets any root composer after consent before listing comments; returning to a
+saved row shows its persisted note. Denied new/edit consent and retained reply
+navigation keep their separate protections.
