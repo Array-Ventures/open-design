@@ -53,7 +53,10 @@ function fixture(owned: boolean, options: {
     scope, isCurrent: options.current ?? (() => true), validate: state => { serializeWorkbookDraft(scope, state); }, save: options.save ?? (async () => {}),
   });
   const controller = owned ? new WorkbookSheetHistoryController(univer, writer, scope, () => book.save(), options.current ?? (() => true)) : undefined;
-  const observer = commands.onCommandExecuted(command => { if (command.type === CommandType.MUTATION) writer.update(book.save()); });
+  const observer = commands.onCommandExecuted(command => {
+    const params = command.params as { unitId?: unknown } | undefined;
+    if (command.type === CommandType.MUTATION && params?.unitId === book.getId()) writer.update(book.save());
+  });
   return { source, initial, univer, book, commands, history, writer, controller, api,
     async close() { await writer.close(); observer.dispose(); controller?.dispose(); univer.dispose(); },
   };
@@ -352,6 +355,33 @@ it.each(['async', 'sync'] as const)('delegates an unrelated workbook native %s D
   } finally { await f.close(); }
 });
 
+it.each(['delete', 'undo', 'redo'] as const)('refuses a foreign-unit mutation during the later formula stage of an owned %s callback', async phase => {
+  const f = fixture(true);
+  let injecting = false;
+  const other = f.api.createWorkbook({ id: 'foreign-during-formula', sheetOrder: ['x', 'y'], sheets: {
+    x: { id: 'x', name: 'Foreign first', rowCount: 10, columnCount: 10 },
+    y: { id: 'y', name: 'Foreign retained', rowCount: 10, columnCount: 10, cellData: { 0: { 0: { v: 42 } } } },
+  } });
+  f.univer.__getInjector().get(IUniverInstanceService).focusUnit(f.book.getId());
+  const observer = f.commands.onCommandExecuted(command => {
+    if (!injecting || command.id !== SetRangeValuesMutation.id) return;
+    injecting = false;
+    f.commands.syncExecuteCommand(RemoveSheetMutation.id, { unitId: other.getId(), subUnitId: 'y', subUnitName: 'Foreign retained' });
+  });
+  try {
+    if (phase !== 'delete') await f.controller!.remove('2');
+    if (phase === 'redo') await f.api.undo();
+    const beforeOther = other.save();
+    const protectedBefore = f.writer.checkpoint().desired;
+    injecting = true;
+    const execute = () => phase === 'delete' ? f.controller!.remove('2') : phase === 'undo' ? f.api.undo() : f.api.redo();
+    await expect(execute()).rejects.toThrow('needs recovery');
+    expect(other.save()).toEqual(beforeOther);
+    expect(f.writer.checkpoint().sheetActionConflict).toBe(true);
+    expect(f.writer.recoveredSnapshot()).toEqual(protectedBefore);
+  } finally { observer.dispose(); await f.close(); }
+});
+
 it.each(['before', 'during'] as const)('refuses a same-item public native payload alias changed %s Undo storage before pop', async phase => {
   const blocked = gate(), release = gate();
   let blocking = false;
@@ -379,7 +409,7 @@ it.each(['before', 'during'] as const)('refuses a same-item public native payloa
   } finally { release.resolve(); await undo?.catch(() => {}); await f.close(); }
 });
 
-it('retains all6001 removed cells and native Undo above the SDK history-clearing threshold, still refusing denied storage', async () => {
+it('preserves a6001-cell removed payload and native Undo while still refusing denied storage', async () => {
   let denied = true;
   const f = fixture(true, { sourceCells: 6001, save: async () => { if (denied) throw Error('Large draft storage denied'); } });
   try {

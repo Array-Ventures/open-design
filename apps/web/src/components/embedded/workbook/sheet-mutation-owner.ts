@@ -28,6 +28,7 @@ export class WorkbookSheetMutationOwner {
   private readonly instances;
   private readonly unit: Workbook;
   private ticket: MutationTicket | undefined;
+  private running = false;
   private executing = false;
   private fault: Error | undefined;
   private disposed = false;
@@ -46,7 +47,7 @@ export class WorkbookSheetMutationOwner {
           const input = params as { unitId?: string; subUnitId?: string; sheet?: { id?: string } } | undefined;
           // The replacement belongs to one kernel. Other explicit units retain
           // the unchanged native mutation when no owned callback is in flight.
-          if (!this.ticket && !this.executing && typeof input?.unitId === 'string' && input.unitId !== unitId) return originalCommand.handler(accessor, params, options);
+          if (!this.running && !this.ticket && !this.executing && typeof input?.unitId === 'string' && input.unitId !== unitId) return originalCommand.handler(accessor, params, options);
           const ticket = this.ticket;
           this.ticket = undefined;
           if (this.executing) throw this.conflict('A nested worksheet mutation was refused.');
@@ -82,7 +83,7 @@ export class WorkbookSheetMutationOwner {
 
   run(kind: WorkbookSheetMutationKind, descriptor: WorkbookSheetActionDescriptor, before: IWorkbookData,
     after: IWorkbookData, execute: () => boolean, completed?: IWorkbookData): IWorkbookData {
-    if (this.ticket || this.executing || !this.isCurrent() || !this.authority.owns(descriptor)) throw Error('The worksheet action owner is not current.');
+    if (this.running || this.ticket || this.executing || !this.isCurrent() || !this.authority.owns(descriptor)) throw Error('The worksheet action owner is not current.');
     const expected = workbookSheetMutationSnapshot(before, after, kind, descriptor);
     const final = completed ?? expected;
     for (const [sheetId, token] of Object.entries(workbookSheetRemovalSelection(before, descriptor.generation))) {
@@ -90,6 +91,7 @@ export class WorkbookSheetMutationOwner {
     }
     const ticket: MutationTicket = { kind, descriptor: workbookSheetActionDescriptorSchema.parse(descriptor), before: structuredClone(before), after: expected, invoked: false };
     this.ticket = ticket;
+    this.running = true;
     try {
       const result = execute();
       if (this.fault) throw this.fault;
@@ -103,7 +105,7 @@ export class WorkbookSheetMutationOwner {
         throw this.conflict(error instanceof Error ? error.message : 'The worksheet action changed its protected result.');
       }
       throw error;
-    } finally { this.ticket = undefined; }
+    } finally { this.ticket = undefined; this.running = false; }
   }
 
   private conflict(message: string): Error {

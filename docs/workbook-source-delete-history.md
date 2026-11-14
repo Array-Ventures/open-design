@@ -45,6 +45,11 @@ the original native Delete handler, including synchronous entry and ordinary
 Undo/Redo. Its explicit membership mutations delegate only when no owned ticket
 or callback is active. Owned or ambiguous targets never use that fallback. Both
 unrelated-unit entry modes genuinely failed before this correction.
+The callback boundary covers the entire pre/main/post sequence, including later
+formula mutations after the membership ticket has been consumed. Three real
+listener regressions exposed foreign-sheet removal during that later stage;
+the whole-run guard now refuses the foreign mutation and quarantines the entered
+owned callback while preserving its protected pre-command draft.
 
 Undo/Redo persist the existing checkpoint before native history can pop. They
 retain its original pending identity, plan and snapshot. A checked deletion ACK
@@ -62,14 +67,22 @@ here does not claim a complete application permission or revocation acceptance.
 Unexpected post-callback effects retain the existing sticky quarantine; no
 speculative native rollback or history pruning was added.
 
-## Deliberate SDK divergence and limits
+## Native factory scope and limits
 
-Pinned SDK1.4.0 clears Undo history at its default6000-populated-cell Delete
-threshold. The protected producer deliberately retains the complete factory
-configuration instead. It remains subject to existing100000-cell geometry,
-model, recovery-byte and context-pool limits. A6001-cell case proves storage
-denial leaves history/data intact and a successful Delete Undo restores every
-cell. No truncation, threshold-driven history clearing or quota bypass is used.
+The protected producer retains the complete native factory configuration within
+existing100000-cell geometry, model, recovery-byte and context-pool limits.
+A6001-cell case proves storage denial leaves history/data intact and a successful
+Delete Undo restores every cell. Those cells occupy301 stored rows; this is a
+large-payload test, not qualification of the SDK's history-clearing threshold.
+
+Independent review corrected the earlier interpretation: pinned SDK1.4.0's
+`countCells` helper counts stored row keys, not populated cells. Its default6000
+threshold is therefore not crossed by this fixture. Reaching6001 rows with the
+ordinary minimum26-column reader window exceeds the existing100000-cell geometry
+limit. The producer does not implement native threshold-driven history clearing,
+but that divergence is unqualified here; no budget was loosened to fabricate a
+threshold proof. Earlier passing6001-cell results remain valid only for payload
+preservation. No truncation or quota bypass is used.
 Retention remains conservative and bounded; unused historical contexts/native
 issuer associations still need the existing-root retirement qualification.
 
@@ -85,21 +98,21 @@ with a dependent cross-sheet formula. The implemented small-source producer
 matches its native mutation sequence, survivor data, order and active selection,
 apart from its explicit protected annotation and outer routing normalization.
 
-Twenty-five new real SDK/Writer cases cover Delete/Undo/Redo, source17/removed19/
+Twenty-eight new real SDK/Writer cases cover Delete/Undo/Redo, source17/removed19/
 survivor21, storage denial and exact retry in all directions, checked stand-in ACK
 transfer, unchanged pending deletion through Undo/Redo, Undo across a pending
 deletion ACK followed by the exact next restore plan, public command veto,
 6001-cell preservation, copied entry IDs, interceptor-reference detachment,
 same-item payload aliases before/during storage, focus/lease/registration/controller
 withdrawal, edit/Undo ABA, absent-versus-defined theme identity, protected native
-history side effects, unrelated-unit delegation, owned sync/ambiguous refusal
+history side effects, foreign-unit mutations during the later formula stage,
+unrelated-unit delegation, owned sync/ambiguous refusal
 and active-versus-inactive target selection. Stand-in transport receipts are explicitly not
 HTTP/history access evidence.
 
-Focused author qualification passed120 tests across seven source suites, including
+Focused author qualification passed125 tests across seven source suites, including
 existing birth history, membership mutation ownership, restored styles, deletion
-contexts and Writer regressions. Two final additional test-only entry/selection
-cases are covered by the final25-case source Delete suite. Full workspace types,
+contexts and Writer regressions. The source Delete suite contains28 cases. Full workspace types,
 guard and the final web typecheck passed. No package, stack, model call, production
 change or installer pin was made. Installation and actual packaged authorized
 Delete/save/pending/lost-ACK/Undo/Redo acceptance remain the next gates.
