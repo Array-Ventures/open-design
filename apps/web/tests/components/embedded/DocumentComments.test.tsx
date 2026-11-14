@@ -276,6 +276,66 @@ it('returns from All comments to the same thread without discarding its unsent r
 });
 
 
+it('browses the retained thread from the host without confirming or discarding its reply', async () => {
+  render(<Harness />);
+  const input = await selectAndOpen(); fireEvent.change(input, { target: { value: 'Retained host thread' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+  const reply = await screen.findByRole('textbox', { name: 'Reply' });
+  fireEvent.change(reply, { target: { value: 'Keep this host reply' } });
+  const thread = screen.getByTestId('saved-comment-thread');
+  command('comments');
+  const row = await screen.findByRole('button', { name: /Retained host thread/ });
+  expect(reply).not.toBeVisible(); expect(api.confirm).not.toHaveBeenCalled();
+  fireEvent.click(row);
+  expect(await screen.findByRole('textbox', { name: 'Reply' })).toBe(reply);
+  expect(screen.getByTestId('saved-comment-thread')).toBe(thread);
+  expect(reply).toHaveValue('Keep this host reply');
+  expect(api.createReply).not.toHaveBeenCalled(); expect(api.documentSave).not.toHaveBeenCalled();
+  expect(api.save).toHaveBeenCalledTimes(1);
+});
+
+it('still confirms closing a retained thread with an unsent reply', async () => {
+  render(<Harness />); const input = await selectAndOpen();
+  fireEvent.change(input, { target: { value: 'Close protected thread' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+  const reply = await screen.findByRole('textbox', { name: 'Reply' });
+  fireEvent.change(reply, { target: { value: 'Keep this reply on denied close' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Close comments' }));
+  await waitFor(() => expect(api.confirm).toHaveBeenCalledWith('project', 'comment'));
+  expect(reply).toBeVisible(); expect(reply).toHaveValue('Keep this reply on denied close');
+});
+
+it.each(['new', 'edit'] as const)('still protects a dirty %s root when the host requests the list', async mode => {
+  render(<Harness />); let input = await selectAndOpen();
+  if (mode === 'edit') {
+    fireEvent.change(input, { target: { value: 'Existing root' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+    await screen.findByRole('textbox', { name: 'Reply' });
+    fireEvent.click(screen.getByRole('button', { name: 'Comment actions' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    input = await screen.findByRole('textbox', { name: 'Comment on selected text' });
+  }
+  fireEvent.change(input, { target: { value: 'Protected root draft' } }); command('comments');
+  await waitFor(() => expect(api.confirm).toHaveBeenCalledWith('project', 'comment'));
+  expect(input).toBeVisible(); expect(input).toHaveValue('Protected root draft');
+});
+
+it('does not navigate the host list during a pending root handoff', async () => {
+  let finish!: (value: { status: string; commentIds: string[] }) => void;
+  api.send.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  render(<Harness />); const input = await selectAndOpen();
+  fireEvent.change(input, { target: { value: 'Pending handoff root' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save comment' }));
+  const reply = await screen.findByRole('textbox', { name: 'Reply' });
+  fireEvent.click(screen.getByRole('button', { name: 'Add comment to chat' }));
+  await waitFor(() => expect(api.send).toHaveBeenCalledTimes(1));
+  command('comments'); await act(async () => {});
+  expect(reply).toBeVisible(); expect(screen.queryByRole('button', { name: /Pending handoff root/ })).toBeNull();
+  expect(api.confirm).not.toHaveBeenCalled();
+  await act(async () => finish({ status: 'queued', commentIds: ['root'] }));
+  command('comments'); expect(await screen.findByRole('button', { name: /Pending handoff root/ })).toBeVisible();
+});
+
 it('defaults a fresh mentioned comment to chat staging but preserves an explicit opt-out', async () => {
   render(<Harness />);
   const input = await selectAndOpen();

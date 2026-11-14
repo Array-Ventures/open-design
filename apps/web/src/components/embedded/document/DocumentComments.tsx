@@ -80,6 +80,16 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
   };
   const showList = () => { selectionOwner.clear(); setList(true); };
   const reset = () => { selectionOwner.clear(); setCommentEpoch(value => value + 1); feedback.onDiscardPreviewCommentWrite?.(); setSelected(null); setTarget(null); setDraft(''); setEditing(false); setReplyDirty(false); setHandoffPending(false); setNotice(null); };
+  const browseComments = async (focus: () => void) => {
+    returnFocus.current = focus;
+    if (pending.current) return;
+    // The retained thread stays mounted in the list, including its reply draft.
+    // New and edited root comments still leave their composer and need consent.
+    if ((!selected || editing) && !await allowed()) return;
+    if (!life.current || pending.current) return;
+    if (!selected && editing) reset();
+    setOpen(true); showList();
+  };
   const close = async () => { if (!await allowed() || !life.current) return; reset(); setOpen(false); returnFocus.current(); };
   const begin = async () => {
     if (!viewer) return;
@@ -135,7 +145,7 @@ export function DocumentComments({ projectId, fileName, feedback, onDirtyChange,
   const placement = useDocumentCommentPlacement(editor, location, open && !list, revision, width);
   return <>
     <ArtifactAnnotationControls projectId={projectId} commenting={open && !list} marking={false} markupAvailable={false} dirty={dirty} disabled={!viewer}
-      onComment={() => { void (open && !list ? close() : begin()); }} onMark={() => {}} onComments={focus => { returnFocus.current = focus; void allowed().then(ok => { if (ok && life.current) { if (!selected && editing) reset(); setOpen(true); showList(); } }); }} onDiscard={() => { if (!pending.current) { reset(); setOpen(false); } }} />
+      onComment={() => { void (open && !list ? close() : begin()); }} onMark={() => {}} onComments={focus => { void browseComments(focus); }} onDiscard={() => { if (!pending.current) { reset(); setOpen(false); } }} />
     {open ? <aside ref={placement.card} role="dialog" aria-label="Document comments" onFocusCapture={() => selectionOwner.clear()} onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); void close(); } }} className={cx(editing && "has-focus-visible:ring-2 has-focus-visible:ring-border-focus-ring", "absolute z-30 flex min-h-0 max-w-[calc(100%_-_24px)] flex-col rounded-2xl border border-separator-border bg-background-primary-default shadow-lg", placement.style ? "left-[var(--document-comment-left)] right-auto top-[var(--document-comment-top)] max-h-[var(--document-comment-max-height)]" : "end-3 top-3 max-h-[calc(100%_-_24px)]")} style={{ width, ...placement.style }}>
       <div role="separator" aria-label="Resize document comments" aria-orientation="vertical" aria-valuemin={240} aria-valuemax={480} aria-valuenow={width} tabIndex={0}
         className="pointer-events-auto absolute inset-y-0 -start-1 w-2 cursor-col-resize focus-visible:ring-2 focus-visible:ring-border-focus-ring"
