@@ -1,3 +1,4 @@
+import { workbookRootMaintenance } from './sheet-root-maintenance';
 import { copyWorkbookRemovalMap } from './sheet-selector-retirement';
 import { WORKBOOK_SHEET_REMOVALS } from './sheet-removal-selection';
 import type { WorkbookNativeRoot } from './sheet-root-retirement';
@@ -42,6 +43,7 @@ export class WorkbookSheetHistoryController {
   private readonly injector;
   private busy = false;
   private retirementBarrier: Promise<void> | null = null;
+  private maintenance: ReturnType<typeof workbookRootMaintenance> | undefined;
   private disposed = false;
 
   constructor(univer: Univer, private readonly writer: WorkbookWriter, private readonly scope: WorkbookDraftScope,
@@ -154,7 +156,32 @@ export class WorkbookSheetHistoryController {
 
   /** Read-only drain for a History/clean-resume gate that already withdrew
    * operational admission. It never starts maintenance, flushes or closes. */
-  settleMaintenance(): Promise<void> { return this.retirementBarrier ?? Promise.resolve(); }
+  settleMaintenance(): Promise<void> {
+    return (this.retirementBarrier ?? Promise.resolve()).then(() => this.maintenance?.settled());
+  }
+
+  /** Install once for the live kernel lifetime. The runtime also marks the
+   * exact checked ACK/rebase boundary through requestMaintenance(). */
+  startMaintenance(): { dispose(): void } {
+    if (this.disposed) throw Error('The worksheet action owner is not current.');
+    this.maintenance ??= workbookRootMaintenance(this.history, this.instances, {
+      isCurrent: () => this.isCurrent(),
+      canRun: () => this.isCurrent() && !this.busy && !this.writer.protectedSheetWorkPending(),
+      hasWork: () => this.issued.size > 0 || this.writer.hasProtectedSheetRecords(),
+      run: async () => { await this.retireObsoleteSelectors(); },
+    });
+    const owned = this.maintenance;
+    return { dispose: () => { if (this.maintenance === owned) { owned.dispose(); this.maintenance = undefined; } } };
+  }
+
+  requestMaintenance(): void { this.maintenance?.request(); }
+
+  private async prepareProtectedAction(): Promise<void> {
+    // This runs before factory/issuer preparation. One coalesced maintenance
+    // attempt can release stale accounting without repeating a native command
+    // or its interceptors. A real retained-root quota still refuses normally.
+    await this.maintenance?.runNow();
+  }
 
   private beginRetirement(): () => void {
     if (this.busy || !this.isCurrent()) throw Error('The worksheet action owner is not current.');
@@ -252,6 +279,7 @@ export class WorkbookSheetHistoryController {
         this.protectedNativeRoots(history);
       };
       const metadata = {
+        needsPrivatePrune: (retained: ReadonlySet<string>) => [...this.issued.keys()].some(token => !retained.has(token)),
         apply: (next: IWorkbookData) => {
           verify();
           if (canonicalWorkbookJsonValue(copyWorkbookRemovalMap(before, next)) !== canonicalWorkbookJsonValue(next)) throw Error('Selector retirement changed unrelated SDK data.');
@@ -294,6 +322,7 @@ export class WorkbookSheetHistoryController {
   }
 
   private async performRename(sheetId: string, name: string): Promise<void> {
+    if (this.maintenance) await this.prepareProtectedAction();
     if (this.busy || !this.isCurrent()) throw Error('The worksheet action owner is not current.');
     this.busy = true;
     try {
@@ -324,7 +353,7 @@ export class WorkbookSheetHistoryController {
         verify();
         return this.commitNativeAction('rename', descriptor, before, payload, checkpoint);
       }, verify);
-    } finally { this.busy = false; }
+    } finally { this.busy = false; this.requestMaintenance(); }
   }
 
   private deletionOrigin(state: WorkbookCheckpoint, sheetId: string) {
@@ -348,6 +377,7 @@ export class WorkbookSheetHistoryController {
   }
 
   private async performRemove(sheetId: string): Promise<void> {
+    if (this.maintenance) await this.prepareProtectedAction();
     if (this.busy || !this.isCurrent()) throw Error('The worksheet action owner is not current.');
     this.busy = true;
     try {
@@ -394,7 +424,7 @@ export class WorkbookSheetHistoryController {
         await this.writer.protectSheetDeletion(context, prepared.projection.snapshot, () => execute(prepared), verify,
           origin.kind === 'restored' ? origin.ancestor : undefined);
       }
-    } finally { this.busy = false; }
+    } finally { this.busy = false; this.requestMaintenance(); }
   }
 
   private commitNativeAction(purpose: 'delete' | 'rename', descriptor: WorkbookSheetActionDescriptor,
@@ -456,6 +486,8 @@ export class WorkbookSheetHistoryController {
   }
 
   private async replayNativeAction(action: NativeSheetAction, execute: () => boolean, kind: 'delete' | 'rename'): Promise<boolean> {
+    if (this.maintenance) await this.prepareProtectedAction();
+    if (this.busy || !this.isCurrent()) throw Error('The worksheet action owner is not current.');
     this.busy = true;
     try {
       const descriptor = action.issued.descriptor;
@@ -481,7 +513,7 @@ export class WorkbookSheetHistoryController {
       if (kind === 'delete') await this.writer.protectSheetDeletionReplay(descriptor, projection.snapshot, protectedExecute, verify);
       else await this.writer.protectSheetRename(projection.snapshot, protectedExecute, verify);
       return true;
-    } finally { this.busy = false; }
+    } finally { this.busy = false; this.requestMaintenance(); }
   }
 
   private runNativeSequence(descriptor: WorkbookSheetActionDescriptor, before: IWorkbookData,
@@ -492,6 +524,7 @@ export class WorkbookSheetHistoryController {
   }
 
   async add(name: string, index: number): Promise<WorkbookSheetBirthEntry> {
+    if (this.maintenance) await this.prepareProtectedAction();
     if (this.busy || !this.isCurrent()) throw Error('The worksheet action owner is not current.');
     this.busy = true;
     try {
@@ -515,7 +548,7 @@ export class WorkbookSheetHistoryController {
         this.issuerAdmission(entry.descriptor, this.birthIssuerData(entry, index));
         return undefined;
       });
-    } finally { this.busy = false; }
+    } finally { this.busy = false; this.requestMaintenance(); }
   }
 
   private action(direction: Direction): BirthAction | null {
@@ -555,6 +588,8 @@ export class WorkbookSheetHistoryController {
     assertNativeWorkbookBirthHistory(this.history.getUndoRedoMutationData(action.checkpoint.unitId, action.direction, action.birth.nativeEntryId), action.checkpoint.unitId, action.birth.entry, action.birth.index);
   }
   private async protect(action: BirthAction, execute: () => boolean): Promise<boolean> {
+    if (this.maintenance) await this.prepareProtectedAction();
+    if (this.busy || !this.isCurrent()) throw Error('The worksheet action owner is not current.');
     this.busy = true;
     try {
       const origin = action.birth.entry.descriptor;
@@ -595,11 +630,13 @@ export class WorkbookSheetHistoryController {
         }
       }
       return true;
-    } finally { this.busy = false; }
+    } finally { this.busy = false; this.requestMaintenance(); }
   }
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.maintenance?.dispose();
+    this.maintenance = undefined;
     for (const handle of [...this.handles].reverse()) handle.dispose();
     this.mutation.dispose();
     this.issued.clear();

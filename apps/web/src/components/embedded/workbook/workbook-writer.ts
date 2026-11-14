@@ -93,6 +93,11 @@ export class WorkbookWriter {
     try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
     return { dirty, saving: this.running !== null || this.protection !== null, error: this.error };
   }
+  /** Cheap maintenance gates; neither clones state nor grants a sheet action. */
+  protectedSheetWorkPending(): boolean { return this.protection !== null || this.executingProtectedCommand; }
+  hasProtectedSheetRecords(): boolean {
+    return this.sheetDeletions.length > 0 || Boolean(this.sheetBirths?.entries.length || this.sheetBirths?.removals?.length);
+  }
   update(snapshot: IWorkbookData) {
     if (!this.active || this.executingProtectedCommand) return;
     // Once a protected SDK command diverges, preserve the prior recovery branch.
@@ -355,7 +360,7 @@ export class WorkbookWriter {
    * lifetime rollback is supplied by the private controller, never a marker. */
   protectObsoleteSheetSelectors(live: IWorkbookData, native: readonly WorkbookNativeRoot[],
     owns: (descriptor: WorkbookSheetActionDescriptor) => boolean, verify: () => void,
-    metadata: { apply(next: IWorkbookData): void; rollback(): IWorkbookData | null },
+    metadata: { apply(next: IWorkbookData): void; rollback(): IWorkbookData | null; needsPrivatePrune(retained: ReadonlySet<string>): boolean },
     commit: (retained: ReadonlySet<string>) => void): Promise<{ retiredSelectors: number }> {
     if (this.protection) return Promise.reject(Error('Worksheet protection is already pending.'));
     const run = async () => {
@@ -367,6 +372,10 @@ export class WorkbookWriter {
       if (canonicalCommentJson(live) !== canonicalCommentJson(before.desired)) throw Error('The live worksheet snapshot is not current.');
       const prepared = prepareWorkbookSelectorRetirement(this.journal.scope, before, live, native, owns);
       this.journal.validate(prepared.checkpoint);
+      if (canonicalCommentJson(prepared.checkpoint) === identity && !metadata.needsPrivatePrune(prepared.retained)) {
+        verify();
+        return { retiredSelectors: 0 };
+      }
       const check = () => {
         if (!this.active || !this.journal!.isCurrent?.() || this.revision !== revision
           || canonicalCommentJson(this.currentCheckpoint()) !== identity) throw Error('The workbook changed while retiring worksheet selectors.');
