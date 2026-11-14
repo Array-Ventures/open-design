@@ -1,8 +1,9 @@
+import { membershipMutationIds, type WorkbookMembershipPermit } from './sheet-calculation-permit';
 import { assertWorkbookStructureIdentity, hasWorkbookStructureIdentity } from './grid-structure-identity';
 import { WORKBOOK_STRUCTURE_AXIS_BUDGET } from '@open-design/contracts/runtime/workbook-structure';
 import { assertWorkbookVisibilityMutation, WORKSHEET_VISIBILITY_MUTATION } from './grid-visibility-policy';
 import type { ICellData, IWorkbookData } from '@univerjs/presets';
-import { WORKBOOK_MODEL_LIMITS } from '@open-design/contracts/runtime/workbook';
+import { workbookSourceSheetProjectionSchema, WORKBOOK_MODEL_LIMITS } from '@open-design/contracts/runtime/workbook';
 
 export class WorkbookCalculationBudgetError extends Error {}
 // These pinned layout-only mutations cannot insert cells or change registered
@@ -70,8 +71,9 @@ export interface WorkbookCalculationMutation {
 /** Scalar/range writes stay within registered geometry. Only four pinned axis
  * mutations may change it, for source-qualified identity-stamped workbooks and
  * within prospective area/axis budgets; unknown geometry mutations fail closed. */
-export function assertWorkbookCalculationMutation(command: WorkbookCalculationMutation, books: readonly IWorkbookData[], rangeMutationId: string): void {
+export function assertWorkbookCalculationMutation(command: WorkbookCalculationMutation, books: readonly IWorkbookData[], rangeMutationId: string, membership?: WorkbookMembershipPermit): void {
   assertWorkbookCalculationBudget(books);
+  if (membershipMutationIds.has(command.id)) { assertMembershipMutation(command, books, membership); return; }
   if (isWorkbookCalculationStructuralMutation(command.id)) { assertStructuralMutation(command, books); return; }
   if (command.id === WORKSHEET_VISIBILITY_MUTATION) {
     if (books.length !== 1) throw new WorkbookCalculationBudgetError('Workbook visibility identity is unavailable.');
@@ -96,4 +98,58 @@ export function assertWorkbookCalculationMutation(command: WorkbookCalculationMu
       if (!/^(0|[1-9][0-9]*)$/.test(columnText) || !Number.isSafeInteger(column) || column < 0 || column >= (sheet.columnCount ?? 0) || ++count > WORKBOOK_MODEL_LIMITS.cells) throw new WorkbookCalculationBudgetError('Workbook calculation mutation exceeds its registered bounds.');
     }
   }
+}
+
+/** A private main-owner permit is still subject to independent prospective
+ * replica geometry/identity admission before either SDK allocates anything. */
+function assertMembershipMutation(command: WorkbookCalculationMutation, books: readonly IWorkbookData[], permit: WorkbookMembershipPermit | undefined): void {
+  projectWorkbookCalculationInputs(command, books[0], permit);
+}
+
+/** Replica-only prospective input view. It never selects source parts or grants
+ * template/native authority; both budget owners use the same mutation semantics. */
+export function projectWorkbookCalculationInputs(command: WorkbookCalculationMutation, input: IWorkbookData | undefined, permit: WorkbookMembershipPermit | undefined): IWorkbookData {
+  const books = input ? [input] : [];
+  const book = books.length === 1 ? books[0] : undefined;
+  const params = command.params as { unitId?: string; subUnitId?: string; subUnitName?: string; index?: number; sheet?: IWorkbookData['sheets'][string]; name?: string; oldName?: string; trigger?: string } | undefined;
+  if (!permit || !book || params?.unitId !== book.id || permit.unitId !== book.id) throw new WorkbookCalculationBudgetError('Worksheet calculation has no protected kernel permit.');
+  assertWorkbookStructureIdentity(book);
+  const keys = Object.keys(params).filter(key => key !== 'trigger');
+  let sheets = book.sheets, order = book.sheetOrder;
+  if (command.id === 'sheet.mutation.set-range-values') {
+    assertWorkbookCalculationMutation(command, books, command.id);
+    const range = command.params as { subUnitId: string; cellValue: Record<string, Record<string, ICellData | null>> };
+    const sheet = sheets[range.subUnitId]!;
+    const data = { ...sheet.cellData };
+    for (const [row, columns] of Object.entries(range.cellValue)) {
+      const entries = data[Number(row)] = { ...data[Number(row)] };
+      for (const [column, patch] of Object.entries(columns)) {
+        if (patch === null) delete entries[Number(column)];
+        else {
+          const cell = entries[Number(column)] = { ...entries[Number(column)], ...patch };
+          for (const key of Object.keys(cell) as (keyof ICellData)[]) if (cell[key] === null) delete cell[key];
+        }
+      }
+    }
+    sheets = { ...sheets, [range.subUnitId]: { ...sheet, cellData: data } };
+  } else if (command.id === 'sheet.mutation.insert-sheet') {
+    const sheet = params.sheet;
+    if (keys.some(key => !['unitId', 'index', 'sheet'].includes(key)) || !sheet || typeof sheet.id !== 'string' || Object.hasOwn(sheets, sheet.id)
+      || !Number.isSafeInteger(params.index) || params.index! < 0 || params.index! > order.length) throw new WorkbookCalculationBudgetError('Worksheet insertion identity is invalid.');
+    sheets = { ...sheets, [sheet.id]: sheet }; order = [...order]; order.splice(params.index!, 0, sheet.id);
+  } else if (command.id === 'sheet.mutation.remove-sheet') {
+    const sheet = params.subUnitId ? sheets[params.subUnitId] : undefined;
+    if (keys.some(key => !['unitId', 'subUnitId', 'subUnitName'].includes(key)) || !sheet || typeof sheet.id !== 'string' || params.subUnitName !== sheet.name) throw new WorkbookCalculationBudgetError('Worksheet removal identity is invalid.');
+    sheets = { ...sheets }; delete sheets[sheet.id]; order = order.filter(id => id !== sheet.id);
+  } else {
+    const sheet = params.subUnitId ? sheets[params.subUnitId] : undefined;
+    if (keys.some(key => !['unitId', 'subUnitId', 'name', 'oldName'].includes(key)) || !sheet || typeof sheet.id !== 'string' || params.oldName !== sheet.name || typeof params.name !== 'string') throw new WorkbookCalculationBudgetError('Worksheet rename identity is invalid.');
+    sheets = { ...sheets, [sheet.id]: { ...sheet, name: params.name } };
+  }
+  const prospective = { ...book, sheets, sheetOrder: order };
+  workbookSourceSheetProjectionSchema.parse(order.map(sheetId => ({ sheetId, name: sheets[sheetId]!.name, origin: 'source' })));
+  if (!order.some(id => !sheets[id]!.hidden)) throw new WorkbookCalculationBudgetError('Keep at least one worksheet visible.');
+  assertWorkbookCalculationBudget([prospective], true);
+  assertWorkbookStructureIdentity(prospective);
+  return prospective;
 }

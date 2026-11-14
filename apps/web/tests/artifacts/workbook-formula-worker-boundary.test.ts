@@ -1,8 +1,8 @@
+import { NodeWorkbookWorker } from '../helpers/workbook-node-worker';
 import { seedWorkbookStructureIdentity, ownWorkbookAxisIdentity } from '../../src/components/embedded/workbook/grid-structure-identity';
 import { createRequire } from 'node:module';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Worker as NodeWorker } from 'node:worker_threads';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ownWorkbookCalculationWorker } from '../../src/components/embedded/workbook/calculation-worker-owner';
 import { workbookGridEdits } from '../../src/components/embedded/workbook/grid-edits';
@@ -24,26 +24,11 @@ import '@univerjs/engine-formula/facade';
 import '@univerjs/sheets-formula/facade';
 const closers: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of closers.splice(0).reverse()) await close(); vi.unstubAllGlobals(); });
-class WorkerAdapter {
-  readonly thread: NodeWorker;
-  readonly sentInputEpochs: number[] = [];
-  private listeners = new Map<EventListener, (data: unknown) => void>();
+class WorkerAdapter extends NodeWorkbookWorker {
   constructor(budget = false, execution = false, stall = false, production = false) {
-    this.thread = new NodeWorker(new URL('../fixtures/workbook-formula-rpc-worker.ts', import.meta.url), { workerData: { packageRoot, stall, productionEntry: production ? fileURLToPath(new URL('../../src/components/embedded/workbook/workbook-formula.worker.ts', import.meta.url)) : undefined, executionModule: execution ? fileURLToPath(new URL('../../src/components/embedded/workbook/formula-execution-policy.ts', import.meta.url)) : undefined, budgetModule: budget ? fileURLToPath(new URL('../../src/components/embedded/workbook/formula-worker-budget.ts', import.meta.url)) : undefined }, execArgv: ['--experimental-transform-types', '--no-warnings'], resourceLimits: { maxOldGenerationSizeMb: 192, maxYoungGenerationSizeMb: 32 } });
-    closers.push(async () => { await this.thread.terminate(); }); }
-  terminate() { void this.thread.terminate(); }
-  postMessage(data: unknown) {
-    const inspect = (value: unknown, depth = 0): void => {
-      if (depth > 12 || !value || typeof value !== 'object') return;
-      const record = value as Record<string, unknown>;
-      if (typeof record[WORKBOOK_INPUT_EPOCH_OPTION] === 'number') this.sentInputEpochs.push(record[WORKBOOK_INPUT_EPOCH_OPTION] as number);
-      for (const nested of Object.values(record)) inspect(nested, depth + 1);
-    };
-    inspect(data); this.thread.postMessage(data);
+    super(budget, execution, stall, production);
+    closers.push(async () => { await this.thread.terminate(); });
   }
-  addEventListener(type: string, listener: EventListener) { if (type !== 'message') return; const handler = (data: unknown) => { listener({ data } as MessageEvent); }; this.listeners.set(listener, handler); this.thread.on('message', handler); }
-  removeEventListener(_type: string, listener: EventListener) { const handler = this.listeners.get(listener); if (handler) this.thread.off('message', handler); this.listeners.delete(listener); }
-  async ready() { await new Promise<void>((resolve, reject) => { const timer = setTimeout(() => reject(Error('Owned RPC worker did not start.')), 5000); this.thread.once('error', reject); const listen = (data: { fixtureReady?: boolean; type?: string; kind?: string }) => { if (data.fixtureReady || data.type === 'studio:workbook-calculation-worker' && data.kind === 'ready') { clearTimeout(timer); this.thread.off('message', listen); resolve(); } }; this.thread.on('message', listen); }); }
 }
 it.each([false, true, 'production'] as const)('runs genuine scalar RPC calculation and bounds execution (qualified policy=%s)', async execution => {
   vi.stubGlobal('Worker', WorkerAdapter);
@@ -276,7 +261,7 @@ it.each(['unrelated literal', 'all formulas removed', 'shared options A-B-A'] as
   const deadline = workbookCalculationDeadline(worker, () => { owner.dispose(); unavailable(); }, 500); closers.push(() => deadline.dispose());
   const statuses: { phase: string }[] = [];
   const calculation = attachWorkbookCalculation(univer, api, model, original, original, () => book.save(), { ...owner, deadline }, value => statuses.push(value)); closers.push(() => calculation.dispose());
-  const sidebands: unknown[] = []; const sideband = owner.onResult(result => sidebands.push({ kind: result.kind, tag: result.workbookCalculation, ...('result' in result ? { trees: result.result.length } : {}), digest: workbookCalculationInputSha256(book.save()) })); closers.push(sideband);
+  const sidebands: unknown[] = []; const sideband = owner.onResult(result => sidebands.push({ kind: result.kind, tag: 'workbookCalculation' in result ? result.workbookCalculation : undefined, ...('result' in result ? { trees: result.result.length } : {}), digest: workbookCalculationInputSha256(book.save()) })); closers.push(sideband);
   const commands = univer.__getInjector().get(core.ICommandService), scalar = vi.fn();
   const observe = commands.beforeCommandExecuted(command => { if (command.id === engine.SetFormulaCalculationResultMutation.id) scalar(); }); closers.push(() => observe.dispose());
   await univer.__getInjector().get(rpc.IRemoteInstanceService).whenReady();

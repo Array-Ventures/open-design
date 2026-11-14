@@ -324,3 +324,42 @@ it('keeps native Add Redo through a pending deletion ACK and re-creates only its
     expect(h.book.save().sheets['2']!.cellData?.[0]?.[0]?.v).toBeUndefined();
   } finally { release.resolve(); await saving; await h.close(); }
 });
+
+it('retains exact issued birth/native entry through a privately captured clean Writer replacement', async () => {
+  const { blankWorkbookSheet } = await import('../../src/components/embedded/workbook/sheet-birth-context');
+  const { standInWorkbookResult } = await import('../helpers/workbook-birth-transport');
+  const { birthScope } = await import('../helpers/workbook-birth-fixture');
+  const { WorkbookWriter } = await import('../../src/components/embedded/workbook/workbook-writer');
+  const { CommandType } = await import('@univerjs/core');
+  const { serializeWorkbookDraft } = await import('../../src/components/embedded/workbook/draft-store');
+  const h = createWorkbookHistoryControllerFixture({ write: async (intent, checkpoint, initial) => {
+    intent.renderId ??= crypto.randomUUID(); await checkpoint();
+    const target = structuredClone(initial); target.sourceSha256 = 'b'.repeat(64);
+    target.model.sheets.push(blankWorkbookSheet('2', 'Second'));
+    return standInWorkbookResult(birthScope, intent, target, 'before-birth', 'after-birth');
+  } });
+  let replacement: InstanceType<typeof WorkbookWriter> | undefined;
+  let observer: { dispose(): void } | undefined;
+  try {
+    await h.add(); await h.writer.flush();
+    const checkpoint = h.writer.checkpoint();
+    expect(h.writer.state().dirty).toBe(false);
+    const native = h.history.getUndoRedoCheckpoint();
+    const rebind = h.controller.prepareCleanResume(() => true);
+    expect(h.controller.isCurrent()).toBe(false);
+    await h.writer.close();
+    replacement = new WorkbookWriter(checkpoint.source, checkpoint.desired, async () => { throw Error('Unexpected transport'); }, () => {}, undefined,
+      { scope: birthScope, isCurrent: () => true, validate: state => { serializeWorkbookDraft(birthScope, state); }, save: async () => {}, restored: checkpoint });
+    observer = h.commands.onCommandExecuted(command => { if (command.type === CommandType.MUTATION) replacement!.update(h.book.save()); });
+    rebind(replacement);
+    expect(h.history.getUndoRedoCheckpoint()).toEqual(native);
+    expect(h.controller.isCurrent()).toBe(true);
+    await h.api.undo();
+    expect(h.book.save().sheets['2']).toBeUndefined();
+    expect(replacement.checkpoint().sheetDeletions?.at(-1)?.sourceSha256).toBe('b'.repeat(64));
+    expect(replacement.state().dirty).toBe(true);
+    await h.api.redo();
+    expect(h.book.save().sheets['2']!.cellData?.[0]?.[0]?.v).toBeUndefined();
+    expect(() => rebind(replacement!)).toThrow('consumed');
+  } finally { observer?.dispose(); await replacement?.close(); await h.close(); }
+});

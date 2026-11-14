@@ -1,3 +1,4 @@
+import { workbookCleanResumeSnapshotIdentity } from './clean-resume-snapshot';
 import { workbookRootMaintenance } from './sheet-root-maintenance';
 import { copyWorkbookRemovalMap } from './sheet-selector-retirement';
 import { WORKBOOK_SHEET_REMOVALS } from './sheet-removal-selection';
@@ -15,8 +16,10 @@ import { WorkbookSheetMutationOwner } from './sheet-mutation-owner';
 import { workbookSheetMutationSnapshot } from './sheet-removal-selection';
 import { prepareNativeWorkbookDelete, nativeSheetPayloadIdentity, projectNativeSheetSequence, type NativeSheetHistoryPayload, type NativeSheetMutation } from './native-delete-history';
 import { deriveWorkbookRestoredDeletion } from './sheet-delete-derived';
-import type { WorkbookProtectedSheetSequence } from './sheet-calculation-permit';
+import { workbookSheetCommandSha256, type WorkbookProtectedSheetSequence } from './sheet-calculation-permit';
 import { admitWorkbookNativeIssuer } from './native-history-budget';
+
+const cleanCheckpointIdentity = (writer: WorkbookWriter) => workbookSheetCommandSha256({ id: 'studio.workbook.clean-resume-checkpoint', params: { checkpoint: writer.checkpoint() } });
 
 type Direction = 'undo' | 'redo';
 interface IssuedBirth { entry: WorkbookSheetBirthEntry; index: number; nativeEntryId: number }
@@ -24,7 +27,7 @@ interface BirthAction { birth: IssuedBirth; direction: Direction; checkpoint: Re
 interface IssuedNativeSheetAction { purpose: 'delete' | 'rename'; descriptor: WorkbookSheetActionDescriptor; nativeEntryId: number; payload: NativeSheetHistoryPayload }
 interface NativeSheetAction { issued: IssuedNativeSheetAction; direction: Direction; checkpoint: ReturnType<IUndoRedoService['getUndoRedoCheckpoint']> }
 
-/** Uninstalled native-history producer. Imported/recovered descriptors are not
+/** Native-history producer. Imported/recovered descriptors are not
  * issuance. Source Delete uses only the exact privately issued native item and
  * the existing independently authorized template/projection consumers. */
 export class WorkbookSheetHistoryController {
@@ -45,8 +48,10 @@ export class WorkbookSheetHistoryController {
   private retirementBarrier: Promise<void> | null = null;
   private maintenance: ReturnType<typeof workbookRootMaintenance> | undefined;
   private disposed = false;
+  private cleanResume: object | null = null;
+  private historyPause: object | null = null;
 
-  constructor(univer: Univer, private readonly writer: WorkbookWriter, private readonly scope: WorkbookDraftScope,
+  constructor(univer: Univer, private writer: WorkbookWriter, private readonly scope: WorkbookDraftScope,
     private readonly snapshot: () => IWorkbookData, private readonly current: () => boolean,
     private readonly runProtectedSequence: WorkbookProtectedSheetSequence = (_sequence, _prospective, execute) => execute()) {
     const injector = univer.__getInjector();
@@ -66,6 +71,7 @@ export class WorkbookSheetHistoryController {
         this.handles.push(this.commands.replaceCommand(original, {
           id: original.id, type: original.type,
           handler: (accessor, params, options) => {
+            this.assertHistoryUnpaused();
             const deletion = this.nativeAction(direction, 'delete');
             if (deletion) return this.replayNativeAction(deletion, () => native.handler(accessor, params, options) === true, 'delete');
             const rename = this.nativeAction(direction, 'rename');
@@ -75,6 +81,7 @@ export class WorkbookSheetHistoryController {
             return this.protect(action, () => native.handler(accessor, params, options) === true);
           },
           syncHandler: (accessor, params, options) => {
+            this.assertHistoryUnpaused();
             if (this.nativeAction(direction, 'delete') || this.nativeAction(direction, 'rename') || this.action(direction)) throw Error('Protected worksheet history requires asynchronous dispatch.');
             return native.handler(accessor, params, options);
           },
@@ -125,10 +132,63 @@ export class WorkbookSheetHistoryController {
   }
 
   isCurrent(): boolean {
-    return !this.disposed && this.current() && this.handles.length === 5 && this.handles.every(handle => handle.isCurrent())
-      && this.instances.getFocusedUnit() === this.unit
+    return !this.historyPause && !this.cleanResume && this.current() && this.nativeCurrent();
+  }
+  private nativeOwned(): boolean {
+    return !this.disposed && this.handles.length === 5 && this.handles.every(handle => handle.isCurrent())
       && this.instances.getUnit(this.unit.getUnitId(), UniverInstanceType.UNIVER_SHEET) === this.unit;
   }
+  private nativeCurrent(): boolean { return this.nativeOwned() && this.instances.getFocusedUnit() === this.unit; }
+  private assertHistoryUnpaused(): void {
+    if ((this.historyPause || this.cleanResume) && this.instances.getFocusedUnit() === this.unit) throw Error('Workbook history is paused while a restore is checked.');
+  }
+  pauseHistory(): () => void {
+    if (this.historyPause || this.cleanResume || !this.nativeCurrent()) throw Error('Workbook history cannot be paused.');
+    const ticket = {}; this.historyPause = ticket;
+    return () => { if (this.historyPause === ticket && this.nativeOwned()) this.historyPause = null; };
+  }
+  /** One live, nonserializable handoff. Closing/recovering a Writer alone cannot
+   * issue this authority or recreate native entries. */
+  prepareCleanResume(qualified: () => boolean): (next: WorkbookWriter) => void {
+    const old = this.writer;
+    const state = old.state();
+    if (this.busy || this.cleanResume || !this.nativeCurrent() || !qualified() || state.dirty || state.saving || state.error) throw Error('The worksheet history cannot be paused cleanly.');
+    const checkpoint = cleanCheckpointIdentity(old);
+    const snapshot = workbookCleanResumeSnapshotIdentity(this.snapshot());
+    const history = canonicalWorkbookJsonValue(this.history.getUndoRedoCheckpoint());
+    const ticket = {}; this.cleanResume = ticket;
+    let consumed = false;
+    return next => {
+      if (consumed || this.cleanResume !== ticket) throw Error('The worksheet resume ticket was consumed.');
+      consumed = true;
+      // Consume before all checks. A failed handoff must never revive issuers.
+      this.cleanResume = null;
+      if (this.disposed || this.writer !== old || !this.nativeCurrent() || !qualified()
+        || snapshot !== workbookCleanResumeSnapshotIdentity(this.snapshot())
+        || history !== canonicalWorkbookJsonValue(this.history.getUndoRedoCheckpoint())
+        || checkpoint !== cleanCheckpointIdentity(old)
+        || checkpoint !== cleanCheckpointIdentity(next)
+        || next.state().dirty || next.state().saving || next.state().error) {
+        this.cleanResume = ticket;
+        throw Error('The worksheet history changed during its clean pause.');
+      }
+      this.writer = next;
+    };
+  }
+  /** Detached display data from this exact live owner. This neither admits a
+   * command nor exports private issuers; execution must recheck its own stamp. */
+  inspectManagement(): { snapshot: IWorkbookData; historyRevision: number; busy: boolean } | null {
+    if (!this.isCurrent()) return null;
+    const writer = this.writer;
+    const history = this.history.getUndoRedoCheckpoint();
+    if (history.unitId !== this.unit.getUnitId()) return null;
+    const snapshot = structuredClone(this.snapshot());
+    const busy = this.busy || writer.protectedSheetWorkPending() || writer.state().saving;
+    const after = this.history.getUndoRedoCheckpoint();
+    if (writer !== this.writer || !this.isCurrent() || after.unitId !== history.unitId || after.revision !== history.revision) return null;
+    return { snapshot, historyRevision: history.revision, busy };
+  }
+
   private owns(descriptor: WorkbookSheetActionDescriptor): boolean {
     const owned = this.issued.get(descriptor.token);
     if (!owned || canonicalWorkbookJsonValue(owned) !== canonicalWorkbookJsonValue(descriptor)) return false;

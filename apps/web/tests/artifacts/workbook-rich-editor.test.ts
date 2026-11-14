@@ -204,5 +204,6 @@ it.each([false, true])('keeps rich ownership through native editing, undo and di
   await controller.submitCellData(doc);
   expect(sheet.getCellRaw(0, 0)?.p ?? null).toBeNull();
   hook.dispose();
-  expect(removed).toBe(1);
+  // Both the pre-parser default adapter and rich-preservation interceptor retire.
+  expect(removed).toBe(2);
 });

@@ -262,3 +262,31 @@ advertising a fixed chord in standalone consumers where none is registered. The
 application owns the scoped registration and cleanup; this producer patch does
 not install a global shortcut or alter localization strings. The direct forwarded
 Button remains intact for Radix focus return.
+
+## Detached worksheet input parsing
+
+The maintained `@univerjs/sheets-ui@1.4.0` patch exports
+`BEFORE_CELL_INPUT_PARSE` through ES, CommonJS, compatibility and declaration
+entries. `EditingRenderController` invokes this key through the existing
+`SheetInterceptorService.writeCellInterceptor` on its detached document, just
+before the existing scalar/formula parser. The context is the actual workbook,
+worksheet, coordinate and original cell; it is not permission or source-history
+authority. With no handler the existing SDK behavior is unchanged. A null return
+skips submission; disposing the registration restores the prior behavior.
+
+The owned rich-input adapter uses this seam only to remove redundant,
+source-equivalent default text runs from an otherwise plain new cell. It does
+not implement a numeric parser, mutate the live editor buffer, flatten existing
+rich cells or bypass later command/Writer/worker admission. Actual three-entry
+producer tests and SDK/Worker consumer tests are described in
+[default-run input semantics](../docs/workbook-default-scalar-input.md). UMD is
+not patched or qualified. Refresh with `pnpm patch` / `pnpm patch-commit`, retain
+the earlier sheet-list patch and verify a frozen install.
+
+The core patch also fixes rich TextX insertion into a destination whose
+`textRuns` array is absent. The SDK editor clear operation can create that state;
+rehydration must insert incoming rich runs as well as text. Plain insertion
+continues to leave runs absent, and existing run offset handling is retained.
+See `docs/workbook-rich-editor-hydration.md` and the actual SDK hydration and
+three-entry insertion tests. Upstream removal requires those regressions to
+pass without the patch; this is source qualification, not packaged UI proof.

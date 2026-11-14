@@ -147,4 +147,8 @@ Actual native formula updates additionally emit derived `fromFormula` cache
 clearing events. The fixture records those separately and checks their null
 scalar caches rather than silently treating them as extra authored input.
 Affected author checks passed52 cases across four suites, web types and guard.
-Actual main/worker admission and RPC qualification remain a separate gate.
+At that adapter checkpoint, actual main/worker admission and RPC qualification
+remained a separate gate. Subsequent source consumer work is recorded in
+[the live consumer checkpoint](workbook-live-membership-consumer.md) and
+[the clean History handoff](workbook-clean-history-resume.md); packaged
+acceptance remains separate.

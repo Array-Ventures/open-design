@@ -1,3 +1,4 @@
+import { workbookFormulaSourceGuard } from './formula-result-sources';
 import { assertWorkbookSourceSnapshotInputs } from './source-snapshot-inputs';
 import type { ICellData, IWorkbookData } from '@univerjs/presets';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
@@ -119,23 +120,28 @@ export class WorkbookFormulaDisplay {
     }
     this.update(this.current, this.pending);
   }
-  scalarResult(params: FormulaCalculationResults & { workbookCalculation?: unknown; unitOtherData?: unknown }): boolean {
+  private prepareScalarResult(params: FormulaCalculationResults & { workbookCalculation?: unknown; unitOtherData?: unknown }) {
     const tag = this.matching(params.workbookCalculation);
-    if (!tag || !this.graph || this.graph.tag.generation !== tag.generation || this.graph.tag.inputSha256 !== tag.inputSha256) {
-      params.unitData = {}; params.unitOtherData = {}; this.update(this.current, this.pending); return false;
-    }
+    if (!tag || !this.graph || this.graph.tag.generation !== tag.generation || this.graph.tag.inputSha256 !== tag.inputSha256) return null;
     const policy = this.policy(this.graph.trees), limited = new Set(policy.limited.map(cell => key(cell.sheetId, cell.row, cell.column)));
     preserveWorkbookFormulaResults(params, this.original, this.current, policy);
-    for (const [sheetId, rows] of Object.entries(params.unitData[this.current.id] ?? {})) for (const [r, columns] of Object.entries(rows)) for (const [c, value] of Object.entries(columns)) {
+    for (const [sheetId, rows] of Object.entries(params.unitData[this.current.id] ?? {})) for (const [r, columns] of Object.entries(rows)) for (const c of Object.keys(columns)) {
       const row = Number(r), column = Number(c), coordinate = key(sheetId, row, column), formula = at(this.current, sheetId, row, column)?.f;
       const retained = params.sourceFormulaData?.[this.current.id]?.[sheetId]?.[row]?.[column]?.f;
-      if (!formula || retained !== undefined && retained !== formula) { delete columns[Number(c)]; continue; }
+      if (!formula || retained !== undefined && retained !== formula) { delete columns[column]; continue; }
       if (limited.has(coordinate)) continue;
-      // The matching input digest already binds exact formula spelling. Add
-      // the pinned atomic-application guard when an older kernel omits it.
+      // Normalize the exact source guard before an application is compared;
+      // this step cannot promote any value into calculated display state.
       const source = params.sourceFormulaData ??= {}, unit = source[this.current.id] ??= {}, sheet = unit[sheetId] ??= {}, cells = sheet[row] ??= {};
-      const identity = { f: formula, ...(at(this.current, sheetId, row, column)?.si ? { si: at(this.current, sheetId, row, column)!.si } : {}) };
-      cells[column] = identity;
+      cells[column] = workbookFormulaSourceGuard(this.current, sheetId, row, column)!;
+    }
+    return { tag, policy, limited };
+  }
+  private promoteScalarResult(params: FormulaCalculationResults, prepared: NonNullable<ReturnType<WorkbookFormulaDisplay['prepareScalarResult']>>) {
+    const { tag, policy, limited } = prepared;
+    for (const [sheetId, rows] of Object.entries(params.unitData[this.current.id] ?? {})) for (const [r, columns] of Object.entries(rows)) for (const [c, value] of Object.entries(columns)) {
+      const row = Number(r), column = Number(c), coordinate = key(sheetId, row, column), formula = at(this.current, sheetId, row, column)?.f;
+      if (!formula || limited.has(coordinate)) continue;
       this.calculated.set(coordinate, { formula, inputSha256: tag.inputSha256, value: structuredClone(value) });
       this.statuses.set(coordinate, { sheetId, row, column, formula, result: 'calculated', reason: '' });
     }
@@ -145,13 +151,22 @@ export class WorkbookFormulaDisplay {
     }
     for (const sheet of Object.values(params.sourceFormulaData?.[this.current.id] ?? {})) this.derivedSources.set(sheet, tag);
     this.settledGeneration = Math.max(this.settledGeneration, tag.generation);
-    this.pending = false; return true;
+    this.pending = false;
   }
-  rangeResult(params: { unitId: string; subUnitId: string; cellValue: FormulaCalculationResults['unitData'][string][string]; sourceFormulaData?: NonNullable<FormulaCalculationResults['sourceFormulaData']>[string][string]; workbookCalculation?: unknown }): boolean {
+  scalarResult(params: FormulaCalculationResults & { workbookCalculation?: unknown; unitOtherData?: unknown }): boolean {
+    const prepared = this.prepareScalarResult(params);
+    if (!prepared) { params.unitData = {}; params.unitOtherData = {}; this.update(this.current, this.pending); return false; }
+    this.promoteScalarResult(params, prepared); return true;
+  }
+  rangeResult(params: { unitId: string; subUnitId: string; cellValue: FormulaCalculationResults['unitData'][string][string]; sourceFormulaData?: NonNullable<FormulaCalculationResults['sourceFormulaData']>[string][string]; workbookCalculation?: unknown },
+    admit?: (normalized: typeof params, tag: WorkbookCalculationTag) => boolean): boolean {
     const wrapped = { unitData: { [params.unitId]: { [params.subUnitId]: params.cellValue } }, sourceFormulaData: params.sourceFormulaData ? { [params.unitId]: { [params.subUnitId]: params.sourceFormulaData } } : undefined, workbookCalculation: params.workbookCalculation ?? (params.sourceFormulaData && this.derivedSources.get(params.sourceFormulaData)) };
-    const accepted = this.scalarResult(wrapped);
-    params.cellValue = wrapped.unitData[params.unitId]?.[params.subUnitId] ?? {};
-    return accepted;
+    const prepared = this.prepareScalarResult(wrapped);
+    params.cellValue = prepared ? wrapped.unitData[params.unitId]?.[params.subUnitId] ?? {} : {};
+    const source = wrapped.sourceFormulaData?.[params.unitId]?.[params.subUnitId];
+    if (source) params.sourceFormulaData = source;
+    if (!prepared || admit && !admit(params, prepared.tag)) { params.cellValue = {}; return false; }
+    this.promoteScalarResult(wrapped, prepared); return true;
   }
   pause(reason: string) { this.paused = reason; this.update(this.current, false); }
   status(sheet: string, row: number, column: number) { return this.statuses.get(key(sheet, row, column)); }

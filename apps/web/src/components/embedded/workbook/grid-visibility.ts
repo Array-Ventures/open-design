@@ -1,11 +1,18 @@
 import { ICommandService, type IWorkbookData, type Univer } from '@univerjs/core';
 import { SetWorksheetHideCommand, SetWorksheetShowCommand } from '@univerjs/sheets';
 import type { FUniver } from '@univerjs/presets';
-import { workbookVisibilityEditSchema, type WorkbookDocument } from '@open-design/contracts/runtime/workbook';
+import { workbookVisibilityEditSchema, type WorkbookDocument, type WorkbookMembershipVisibility } from '@open-design/contracts/runtime/workbook';
 import { z } from 'zod';
 import { assertWorkbookVisibilityMutation, WORKSHEET_VISIBILITY_MUTATION } from './grid-visibility-policy';
 
 export interface WorkbookVisibilityScope { projectId: string; controllerId: string; sourceSha256: string; blocked: boolean }
+type VisibilityState = Omit<WorkbookMembershipVisibility, 'membership'>;
+export interface WorkbookVisibilityManagement {
+  snapshot(): IWorkbookData | null;
+  decorate(state: VisibilityState): WorkbookMembershipVisibility;
+  /** The installer owns asynchronous failure withdrawal and disposal. */
+  receive(event: MessageEvent): void;
+}
 const actionSchema = workbookVisibilityEditSchema.extend({ type: z.literal('studio:workbook-visibility'), projectId: z.string().uuid(), controllerId: z.string().uuid(), sourceSha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
 
 /** Register before SDK plugins: no nested handler may mutate visibility before
@@ -23,25 +30,38 @@ export function ownWorkbookVisibility(univer: Univer, model: () => WorkbookDocum
 /** Host controls use the same session/controller/source ownership as formatting.
  * Real SDK commands retain normal undo/redo; every write is independently
  * validated again against retained OOXML in the isolated worker. */
-export function workbookVisibilityBridge(univer: Univer, api: FUniver, model: () => WorkbookDocument, scope: () => WorkbookVisibilityScope | undefined) {
+export function workbookVisibilityBridge(univer: Univer, api: FUniver, model: () => WorkbookDocument, scope: () => WorkbookVisibilityScope | undefined, management?: WorkbookVisibilityManagement) {
+  let disposed = false;
   let error: string | null = null;
   const snapshot = () => api.getActiveWorkbook()?.save();
-  function publish() {
-    const current = scope(); if (!current) return;
-    const book = snapshot(), visible = Object.values(book?.sheets ?? {}).filter(sheet => sheet.hidden === undefined || sheet.hidden === 0).length;
+  function state(): VisibilityState | null {
+    if (disposed) return null;
+    const current = scope(); if (!current) return null;
+    const live = management?.snapshot();
+    const book = live ?? snapshot(), visible = Object.values(book?.sheets ?? {}).filter(sheet => sheet.hidden === undefined || sheet.hidden === 0).length;
     const editable = Boolean(book && model().worksheetVisibilityEditable && !current.blocked && api.getActiveWorkbook()?.getWorkbookPermission().canEdit());
-    const sheets = model().sheets.filter(sheet => sheet.visibility !== 'veryHidden').map(sheet => ({
+    const listed = live ? live.sheetOrder.map(id => {
+      const sheet = live.sheets[id];
+      if (!sheet || sheet.id !== id || typeof sheet.name !== 'string' || !sheet.name.trim()) throw Error('The live worksheet list is inconsistent.');
+      return { id, name: sheet.name, visibility: sheet.hidden === 2 ? 'veryHidden' : sheet.hidden === 1 ? 'hidden' : 'visible' };
+    }) : model().sheets;
+    const sheets = listed.filter(sheet => sheet.visibility !== 'veryHidden').map(sheet => ({
       id: sheet.id, name: sheet.name, visibility: book?.sheets[sheet.id]?.hidden === 1 ? 'hidden' as const : 'visible' as const,
       canHide: editable && visible > 1 && book?.sheets[sheet.id]?.hidden !== 1,
     }));
     const active = api.getActiveWorkbook()?.getActiveSheet()?.getSheetId();
     const activeSheetId = sheets.find(sheet => sheet.id === active && sheet.visibility === 'visible')?.id ?? sheets.find(sheet => sheet.visibility === 'visible')?.id;
-    if (!activeSheetId) return;
-    window.parent.postMessage({ type: 'studio:workbook-visibility-state', projectId: current.projectId, controllerId: current.controllerId, sourceSha256: current.sourceSha256, editable, activeSheetId, sheets, error }, window.location.origin);
+    if (!activeSheetId) return null;
+    return { type: 'studio:workbook-visibility-state', projectId: current.projectId, controllerId: current.controllerId, sourceSha256: current.sourceSha256, editable, activeSheetId, sheets, error };
+  }
+  function publish() {
+    const value = state(); if (!value) return;
+    window.parent.postMessage(management ? management.decorate(value) : value, window.location.origin);
   }
   const receive = (event: MessageEvent) => {
     if (event.source !== window.parent || event.origin !== window.location.origin) return;
     const current = scope(); if (!current) return;
+    if (management && (event.data?.type === 'studio:workbook-membership' || event.data?.type === 'studio:workbook-membership-probe' || event.data?.type === 'studio:artifact-request' && event.data.workbookMembershipVersion === 1)) { management.receive(event); return; }
     if (event.data?.type === 'studio:artifact-request' && event.data.projectId === current.projectId) { publish(); return; }
     if (current.blocked) return;
     const parsed = actionSchema.safeParse(event.data);
@@ -57,6 +77,7 @@ export function workbookVisibilityBridge(univer: Univer, api: FUniver, model: ()
     } catch (failure) { error = failure instanceof Error ? failure.message.slice(0, 300) : 'The worksheet visibility could not be changed.'; }
     publish();
   };
-  window.addEventListener('message', receive); publish();
-  return { publish, dispose: () => window.removeEventListener('message', receive) };
+  window.addEventListener('message', receive);
+  try { publish(); } catch (failure) { window.removeEventListener('message', receive); throw failure; }
+  return { state, publish, dispose() { disposed = true; window.removeEventListener('message', receive); } };
 }

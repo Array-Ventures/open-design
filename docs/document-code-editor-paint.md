@@ -131,3 +131,25 @@ was identified, and the prior HTML consumer remains a distinct proof rather
 than being relabeled as a new Markdown consumer. Updated packaged-web edit/save/
 reopen, mixed rich code, complete font-profile/Word-app fidelity and broader
 layout gates remain open. No runtime, build, publication or pin changes occurred.
+
+### Raw Markdown language-class admission follow-up
+
+Actual candidate131 manual qualification exposed a separate boundary gap: raw
+styled `<pre><code class="language-ts">…</code></pre>` reached the generic viewer,
+while the serializer-shaped fixture (PRE `data-language`, no CODE class) opened
+in the structured editor. The earlier serializer/import proof did not exercise
+`DocumentSurface`'s preceding `supportedDocument` gate.
+
+The Markdown reader now moves a sole, validated `language-*` class into PRE
+`data-language` and removes only that semantic class. Existing conflicting PRE
+metadata, mixed/unknown classes and unsafe styles remain intact and unqualified.
+The plain-fence shape is identified before normalization, so only its syntactic
+terminating newline is removed; raw styled code retains its actual final newline.
+
+The real reader → admission → Lexical import/export regression initially had
+four failures and seven passing refusal controls. All eleven pass after the
+reader-only correction, including exact text, language, block identity and paint.
+This is source qualification, not a new packaged browser result. The failed raw
+fixture and the separate passing serializer-shaped candidate131 fixture remain
+distinct evidence in `/tmp/document-code-paint131-ui/qualification.json`; no
+runtime or renderer change is claimed by this follow-up.
