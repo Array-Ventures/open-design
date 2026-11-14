@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { supportedDocument } from '../../../src/components/embedded/document/document-admission';
 import { DocumentSurface } from '../../../src/components/embedded/document/DocumentSurface';
+const savedSuggestion = readFileSync(`${process.cwd()}/tests/components/embedded/fixtures/suggestion135-saved.html`, 'utf8');
 const read = vi.hoisted(() => vi.fn());
 const consent = vi.hoisted(() => vi.fn());
 vi.mock('../../../src/components/embedded/host-context', () => ({ confirmHostFeedbackDiscard: consent }));
@@ -144,4 +147,20 @@ it('opens the already-supported plain divider in the rich surface', async () => 
   read.mockResolvedValue({ html:'<html data-eve-document="1"><body><hr><p>Rule</p></body></html>', sha256:'original' });
   render(<DocumentSurface projectId="fixture" fileName="report.html" title="Report" fallback={<div>Original viewer</div>} onSaved={() => {}} />);
   expect(await screen.findByText('Rich editor')).toBeInTheDocument(); expect(screen.queryByText('Original viewer')).toBeNull();
+});
+
+it('reopens the exact autosaved packaged insertion in the structured surface', async () => {
+  expect(supportedDocument(savedSuggestion, 'report.html')).toBe(true);
+  read.mockResolvedValue({ html: savedSuggestion, sha256: '25a04473b1a6a8921af377d2300c665af7b17eb09662a037f629a9a9bc4230a0' });
+  render(<DocumentSurface projectId="fixture" fileName="report.html" title="Report" fallback={<div>Original viewer</div>} onSaved={() => {}} />);
+  expect(await screen.findByText('Rich editor')).toBeInTheDocument();
+  expect(screen.queryByText('Original viewer')).toBeNull();
+});
+
+it.each(['<ins>unmarked</ins>', '<del>unmarked</del>', '<ins data-eve-suggestion="1" data-eve-suggestion-id="invalid" data-eve-suggestion-operation="insert">invalid</ins>'])('keeps unsupported suggestion markup in the original viewer: %s', async markup => {
+  const html = savedSuggestion.replace(/<ins[^>]*>[\s\S]*?<\/ins>/, markup);
+  read.mockResolvedValue({ html, sha256: 'unsupported' });
+  render(<DocumentSurface projectId="fixture" fileName="report.html" title="Report" fallback={<div>Original viewer</div>} onSaved={() => {}} />);
+  expect(await screen.findByText('Original viewer')).toBeInTheDocument();
+  expect(screen.queryByText('Rich editor')).toBeNull();
 });

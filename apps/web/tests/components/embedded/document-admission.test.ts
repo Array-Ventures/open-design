@@ -189,3 +189,28 @@ it.each([
 ])('refuses noncanonical or authored whitespace presentation: %s', body => {
   expect(supportedDocument(documentHtml('Whitespace', body), 'report.html')).toBe(false);
 });
+
+it('admits saved suggestions under observed Chrome 155 implicit border-image reset expansion', async () => {
+  const { readFileSync } = await import('node:fs');
+  const raw = readFileSync(`${process.cwd()}/tests/components/embedded/fixtures/suggestion135-saved.html`, 'utf8');
+  const defaults: Record<string, string> = { 'border-image-source': 'none', 'border-image-slice': '100%', 'border-image-width': '1', 'border-image-outset': '0', 'border-image-repeat': 'stretch' };
+  const parse = DOMParser.prototype.parseFromString;
+  let expanded = 0;
+  // DOMParser creates styles in a different jsdom realm: patch the actual parsed
+  // declarations, not the global prototype. Values were captured in Chrome 155.
+  const parser = vi.spyOn(DOMParser.prototype, 'parseFromString').mockImplementation(function (this: DOMParser, source, type) {
+    const parsed = parse.call(this, source, type);
+    for (const cell of parsed.querySelectorAll<HTMLElement>('td,th')) {
+      if (!cell.getAttribute('style')?.includes('border: 1px solid black')) continue;
+      const style = cell.style;
+      const get = style.getPropertyValue.bind(style);
+      const names = [...Array.from(style), ...Object.keys(defaults)];
+      style.getPropertyValue = name => defaults[name] ?? get(name);
+      Object.defineProperty(style, Symbol.iterator, { value: function* () { yield* names; } });
+      expanded++;
+    }
+    return parsed;
+  });
+  try { expect(supportedDocument(raw, 'report.html')).toBe(true); expect(expanded).toBeGreaterThan(0); }
+  finally { parser.mockRestore(); }
+});

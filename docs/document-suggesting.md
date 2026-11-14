@@ -160,3 +160,45 @@ Full workspace types, guard, frozen install and diff checks exit 0. Logs are
 `/tmp/document-suggestion-barriers-{red,green,focused,types,guard}.log`.
 The original checkpoint and its earlier proofs remain frozen. No browser,
 Worker, renderer or runtime qualification is implied by this correction.
+
+
+## Actual 135 acceptance and reopen correction
+
+Local immutable 135/78 from `8fa699e6` passed its 335 joined web cases, nine
+daemon cases, two actual RPC cases, types and guard. Those source results did
+not qualify the new Suggesting interaction. Actual browser input inserted six
+characters as one proposal, retained focus and autosaved its valid INS metadata.
+Normal reload then fell back to the original HTML viewer instead of the
+structured review surface. The captured source is retained byte exact in
+`apps/web/tests/components/embedded/fixtures/suggestion135-saved.html`.
+
+The exact source passed JSDOM admission and the real DocumentSurface component
+route. A separate real Chrome source-module probe on an empty local page
+reproduced admission refusal at a generated TH border: Chrome enumerated
+`border-image-source:none`, slice `100%`, width `1`, outset `0`, repeat `stretch`,
+where the existing owner allowed only `initial`. The new controlled CSSOM case
+also failed before the correction. This was a generated table-border admission
+problem, not evidence of lost proposal metadata. The fix accepts only those
+individual reset values when the existing exact canonical cell border owns
+them. Raw authored border-image declarations still pass through their separate
+strict declaration guard; unsupported INS/DEL still retains the original viewer.
+
+The real source-module Chrome probe now admits the unchanged saved bytes. It
+uses no app/runtime overlay and does not qualify a packaged reload. Matching
+component/admission cases exercise this fixture and unsupported INS/DEL. Actual
+135 source download/export refusal, browser closure and four exact absent
+sessions are recorded privately in
+`/tmp/artifact135-document-ui/qualification-in-progress.json`. The actual
+review-card screenshot also showed default blue controls; separate follow-up
+`941fec12` reuses neutral BoardUI secondary/document icon styles. Both fixes
+require a new immutable pair and actual reload/review/visual acceptance; 135 is
+unchanged. Suggestions remain unqualified as a complete user workflow.
+
+Correction author checks: 136 cases across four component/admission files,
+follow-up 29 surface cases after changing only the fixture-loading mechanism,
+web and full-workspace types, guard, frozen install and diff check exited 0.
+The initial typecheck failure was the test's undeclared `?raw` HTML import;
+using the existing `readFileSync` fixture pattern corrected it without changing
+production or admission policy. Private logs use
+`/tmp/document-suggestion-reopen-*`; the exact source fixture SHA-256 remains
+`25a04473b1a6a8921af377d2300c665af7b17eb09662a037f629a9a9bc4230a0`.
