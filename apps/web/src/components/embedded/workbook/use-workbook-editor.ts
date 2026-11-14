@@ -1,4 +1,5 @@
-import { canonicalWorkbookJsonValue } from '@open-design/contracts/runtime/workbook-sheet-baseline';
+import type { WorkbookMembershipWriterLease } from './membership-writer-lease';
+import { canonicalWorkbookJsonValue, canonicalWorkbookSourceModel } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import type { WorkbookKernelAcknowledgement } from './kernel-acknowledgement';
 import { checkedWorkbookSaveAcknowledgement, type WorkbookSaveAcknowledgement } from './save-provenance';
 import { workbookGridPlan, workbookPlanHasChanges } from './grid-plan';
@@ -33,6 +34,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
   const suspended = useRef<ReturnType<WorkbookWriter['checkpoint']> | null>(null);
   const paused = useRef(false), pausedSnapshot = useRef<IWorkbookData | null>(null);
   const discardTask = useRef<Promise<PreparedWorkbookDiscard> | null>(null);
+  const membershipLease = useRef<WorkbookMembershipWriterLease | null>(null);
   const writer = useRef<WorkbookWriter | null>(null), running = useRef<AbortController | null>(null);
   const stateRef = useRef(state); stateRef.current = state;
   const controllerId = useRef(crypto.randomUUID()).current;
@@ -40,6 +42,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
   const generation = useRef(0);
   const closeWriter = useCallback((preserveHandoff = false) => {
     if (!preserveHandoff) handoff.current = null;
+    membershipLease.current = null;
     generation.current += 1;
     running.current?.abort();
     const owned = writer.current; writer.current = null; writerScope.current = null;
@@ -68,6 +71,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     const attempts = new Map<string, { save: ReturnType<typeof newWorkbookSaveAttempt>; previewId: string }>();
     let acknowledged: { source: Preview; snapshot: IWorkbookData; acknowledgement: WorkbookSaveAcknowledgement } | null = null;
     let publishedSource = source;
+    let previousPublishedSource: Preview | null = null;
     let historyContinuity = Boolean(scope.journal);
     const ownedJournal = scope.journal;
     const matching = (candidate: WriterHandoff | null | undefined) => {
@@ -93,7 +97,22 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     resume.current = null;
     if (ownedJournal) restored.current.add(ownedJournal);
     writerScope.current = scope;
+    let calculationWasBound = false;
+    let calculationBinding: { wait(signal: AbortSignal): Promise<void> } | null = null;
+    let ownedLease: WorkbookMembershipWriterLease | null = null;
+    const sourceSupportsMembership = source.model.worksheetMembershipEditable === true && source.model.sourceFormat !== 'csv';
+    let membershipQualified = sourceSupportsMembership;
+    if (recovery) {
+      try { membershipQualified &&= recovery.source.sourceSha256 === source.sourceSha256 && canonicalWorkbookSourceModel(recovery.source.model) === canonicalWorkbookSourceModel(source.model); }
+      catch { membershipQualified = false; }
+    }
     writer.current = new WorkbookWriter(source, initial, async (intent, checkpoint) => {
+      if (calculationWasBound) {
+        const binding = calculationBinding;
+        if (!binding || !ownedLease?.isOwned()) throw Error('Worksheet calculation is not ready for saving.');
+        await binding.wait(controller.signal);
+        if (calculationBinding !== binding || !ownedLease.isOwned() || controller.signal.aborted) throw Error('Worksheet calculation ownership changed before saving.');
+      }
       let attempt = attempts.get(intent.id);
       if (!attempt) { attempt = { save: { ...newWorkbookSaveAttempt(projectId, fileName, intent.plan), operationId: intent.id, preparationId: intent.preparationId, renderId: intent.renderId }, previewId: intent.previewId }; attempts.set(intent.id, attempt); }
       const currentAttempt = attempt;
@@ -116,9 +135,45 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
         const ticket = historyContinuity && saved.acknowledgement.kind === 'history' && ownedJournal && generation.current === owner
           && current.current.journal === ownedJournal && current.current.source === publishedSource
           ? { previous: publishedSource, target: saved.source, snapshot: saved.snapshot, acknowledgement: saved.acknowledgement, controllerId, journal: ownedJournal } : undefined;
-        current.current.onAcknowledged(saved.source, ticket); publishedSource = saved.source;
+        previousPublishedSource = publishedSource; publishedSource = saved.source;
+        current.current.onAcknowledged(saved.source, ticket);
       }
-    }, (source, snapshot, acknowledgement) => { historyContinuity &&= acknowledgement.kind === 'history'; acknowledged = { source, snapshot, acknowledgement }; }, ownedJournal ? { save: ownedJournal.save, ...(ownedJournal.scope ? { scope: ownedJournal.scope } : {}), ...(ownedJournal.validate ? { validate: ownedJournal.validate } : {}), ...(ownedJournal.isCurrent ? { isCurrent: ownedJournal.isCurrent } : {}), restored: recovery } : undefined);
+    }, (source, snapshot, acknowledgement) => { membershipQualified = source.model.worksheetMembershipEditable === true && source.model.sourceFormat !== 'csv' && acknowledgement.kind === 'history'; historyContinuity &&= acknowledgement.kind === 'history'; acknowledged = { source, snapshot, acknowledgement }; }, ownedJournal ? { save: ownedJournal.save, ...(ownedJournal.scope ? { scope: ownedJournal.scope } : {}), ...(ownedJournal.validate ? { validate: ownedJournal.validate } : {}), ...(ownedJournal.isCurrent ? { isCurrent: ownedJournal.isCurrent } : {}), restored: recovery } : undefined);
+    const owned = writer.current;
+    if (ownedJournal?.scope && ownedJournal.isCurrent && sourceSupportsMembership) {
+      const lease: WorkbookMembershipWriterLease = {
+        writer: owned, scope: ownedJournal.scope, generation: crypto.randomUUID(),
+        isOwned: () => {
+          const currentSource = current.current.source;
+          if (currentSource === publishedSource) previousPublishedSource = null;
+          return membershipLease.current === lease && writer.current === owned && generation.current === owner
+            && current.current.projectId === projectId && current.current.fileName === fileName
+            && (currentSource === publishedSource || currentSource === previousPublishedSource)
+            && current.current.journal === ownedJournal && ownedJournal.isCurrent!();
+        },
+        isCurrent: () => lease.isOwned() && membershipQualified && owned.allowsProtectedSheetActions()
+          && !paused.current && !discardTask.current && !current.current.discarding && !current.current.history?.blocked,
+        bindCalculation: wait => {
+          if (!lease.isOwned() || calculationBinding) throw Error('Worksheet calculation binding is not current.');
+          const binding = { wait }; calculationBinding = binding; calculationWasBound = true;
+          return () => { if (calculationBinding === binding) calculationBinding = null; };
+        },
+        withdraw: () => {
+          if (membershipLease.current !== lease) return;
+          const protectedCopy = owned.checkpoint(); suspended.current = protectedCopy;
+          const drained = closeWriter(), retiredOwner = generation.current;
+          void drained.then(() => {
+            // A render/preparation identity checkpoint can finish after abort.
+            // Publish its exact final pending identity only into this same
+            // withdrawn generation, never a newer editor's recovery branch.
+            if (generation.current === retiredOwner && suspended.current === protectedCopy && writer.current === null) suspended.current = owned.checkpoint();
+          }).catch(() => { /* Keep the earlier protected copy and recovery fence. */ });
+          const next = { dirty: true, saving: false, error: 'Worksheet calculation stopped. Keep a recovery copy before reopening this draft.' };
+          stateRef.current = next; setState(next); current.current.onDirtyChange?.(true);
+        },
+      };
+      membershipLease.current = lease; ownedLease = lease;
+    }
     const next = writer.current.state(); stateRef.current = next; setState(next); current.current.onDirtyChange?.(next.dirty);
   }, [projectId, fileName, sourceIdentity, journal, closeWriter]);
   useEffect(() => {
@@ -221,5 +276,5 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     const previous = pausedSnapshot.current; pausedSnapshot.current = null; paused.current = false;
     if (!accepted && previous) await ready(previous);
   }, [ready]);
-  return { controllerId, state, stateRef, ready, snapshot, close, checkpoint, discarding, pause, resumeClean };
+  return { controllerId, state, stateRef, ready, snapshot, close, checkpoint, membershipLease: () => membershipLease.current, discarding, pause, resumeClean };
 }

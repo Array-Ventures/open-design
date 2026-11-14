@@ -1,3 +1,5 @@
+import { WORKBOOK_MEMBERSHIP_OPTION, protectedFormulaInputNormalization, membershipMutationIds, workbookMembershipConfigurationSchema, type WorkbookMembershipPermit, workbookMembershipReplica } from './sheet-calculation-permit';
+import { workbookCalculationInputSha256 } from './formula-input-provenance';
 import { assertWorkbookStructureIdentity } from './grid-structure-identity';
 // Worker-safe pinned APIs only: no browser UI preset, application fetches,
 // project paths, credentials, workspace writes or XLSX serialization.
@@ -22,6 +24,19 @@ try {
   const injector = univer.__getInjector(), units = injector.get(IUniverInstanceService), commands = injector.get(ICommandService);
   const books = () => units.getAllUnitsForType<Workbook>(UniverInstanceType.UNIVER_SHEET).map(book => book.getSnapshot());
   const api = FUniver.newAPI(univer), provenance = workbookWorkerInputProvenance();
+  const permitted = new WeakMap<object, WorkbookMembershipPermit>();
+  let membershipConfiguration: ReturnType<typeof workbookMembershipConfigurationSchema.parse> | null = null;
+  let authoredRange: unknown = null;
+  let membership: ReturnType<typeof workbookMembershipReplica> | null = null;
+  self.addEventListener('message', (event: MessageEvent) => {
+    if (event.data?.type !== 'studio:workbook-membership-configure') return;
+    try {
+      if (membership) fail();
+      const configuration = workbookMembershipConfigurationSchema.parse(event.data.configuration);
+      membership = workbookMembershipReplica(configuration); membershipConfiguration = configuration;
+      self.postMessage({ type: 'studio:workbook-calculation-worker', kind: 'membership-ready', configuration });
+    } catch { fail(); }
+  });
   const derivedSources = new WeakMap<object, ReturnType<typeof provenance.tag>>();
   const runtime = { sequenceNodesBuilder: (value: string) => api.getFormula().sequenceNodesBuilder(value), deserializeRangeWithSheet: engine.deserializeRangeWithSheet, sequenceNodeType: engine.sequenceNodeType, rangeType: RANGE_TYPE };
   // Register guards before any remote unit or formula controller can run.
@@ -29,9 +44,15 @@ try {
   commands.beforeCommandExecuted((command, options) => {
     if (unavailable) fail();
     try {
-      if (options?.fromFormula && isWorkbookCalculationStructuralMutation(command.id)) fail();
-      assertWorkbookCalculationMutation(command, books(), SetRangeValuesMutation.id);
-      if (!options?.fromFormula && (isWorkbookCalculationStructuralMutation(command.id) || command.id === SetRangeValuesMutation.id && workbookCalculationChangesInputs(command.params))) provenance.changed(Number(options?.[WORKBOOK_INPUT_EPOCH_OPTION]));
+      if (options?.fromFormula && (isWorkbookCalculationStructuralMutation(command.id) || membershipMutationIds.has(command.id))) fail();
+      const current = books();
+      const proof = options?.[WORKBOOK_MEMBERSHIP_OPTION];
+      const permit = proof === undefined ? undefined : membership?.admit(proof, command, Number(options?.[WORKBOOK_INPUT_EPOCH_OPTION]), workbookCalculationInputSha256(current[0]!));
+      if (proof !== undefined && !permit || membershipMutationIds.has(command.id) && !permit) fail();
+      assertWorkbookCalculationMutation(command, current, SetRangeValuesMutation.id, permit);
+      if (permit && command.params && typeof command.params === 'object') permitted.set(command.params, permit);
+      if (permit && command.id === SetRangeValuesMutation.id) authoredRange = command.params;
+      if (!options?.fromFormula && (membershipMutationIds.has(command.id) || isWorkbookCalculationStructuralMutation(command.id) || command.id === SetRangeValuesMutation.id && workbookCalculationChangesInputs(command.params))) provenance.changed(Number(options?.[WORKBOOK_INPUT_EPOCH_OPTION]));
       if ([engine.SetFormulaCalculationResultMutation.id, engine.SetFormulaDependencyCalculationResultMutation.id, engine.SetArrayFormulaDataMutation.id].includes(command.id)) {
         const book = books()[0];
         if (book && command.params && typeof command.params === 'object') {
@@ -50,7 +71,7 @@ try {
         const params = command.params as { sourceFormulaData?: object; cellValue: object; workbookCalculation?: unknown };
         const tag = params.sourceFormulaData && derivedSources.get(params.sourceFormulaData);
         if (tag) params.workbookCalculation = tag;
-        else params.cellValue = {};
+        else if (!protectedFormulaInputNormalization(params, authoredRange)) params.cellValue = {};
       }
       if (command.id === engine.SetFormulaCalculationStartMutation.id) {
         if (options?.[WORKBOOK_INPUT_EPOCH_OPTION] !== provenance.epoch()) fail();
@@ -61,7 +82,19 @@ try {
       }
     } catch { fail(); }
   });
-  commands.onCommandExecuted(command => { try { const current = books(); assertWorkbookCalculationBudget(current); if (isWorkbookCalculationStructuralMutation(command.id)) for (const book of current) assertWorkbookStructureIdentity(book); } catch { fail(); } });
+  commands.onCommandExecuted((command, options) => {
+    if (command.id === SetRangeValuesMutation.id && !options?.fromFormula) authoredRange = null;
+    try {
+      const current = books(); assertWorkbookCalculationBudget(current);
+      if (membershipMutationIds.has(command.id) || isWorkbookCalculationStructuralMutation(command.id)) for (const book of current) assertWorkbookStructureIdentity(book);
+      const permit = command.params && typeof command.params === 'object' ? permitted.get(command.params) : undefined;
+      if (permit) {
+        permitted.delete(command.params as object);
+        if (permit.index + 1 === permit.count) self.postMessage({ type: 'studio:workbook-calculation-worker', kind: 'membership-applied', configuration: membershipConfiguration,
+          sequence: permit.sequence, inputEpoch: permit.inputEpoch, inputSha256: workbookCalculationInputSha256(current[0]!) });
+      }
+    } catch { fail(); }
+  });
   const preset = UniverSheetsCoreWorkerPreset({ formula: { function: qualifiedWorkbookFunctionOverrides(engine) } });
   for (const entry of preset.plugins) {
     const [plugin, options] = Array.isArray(entry) ? entry : [entry];

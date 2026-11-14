@@ -1,5 +1,9 @@
 'use client';
 
+import type { WorkbookMembershipWriterLease } from './membership-writer-lease';
+import { WorkbookSheetHistoryController } from './sheet-history-controller';
+
+import { disposeWorkbookCalculationKernel } from './calculation-kernel-disposal';
 import { workbookSaveAcknowledgementSchema } from './save-provenance';
 import type { WorkbookKernelAcknowledgement } from './kernel-acknowledgement';
 
@@ -44,6 +48,7 @@ export interface WorkbookGridProps {
   exportScope?: WorkbookExportScope;
   structureSource?: () => WorkbookStructureSource | null;
   structureBlocked?: boolean;
+  membershipLease?: () => WorkbookMembershipWriterLease | null;
   onSnapshot?(snapshot: IWorkbookData): void;
   onReady?(snapshot: IWorkbookData): void | Promise<void>;
   onDisplayGaps?(gaps: WorkbookDisplayGap[]): void;
@@ -53,14 +58,14 @@ export interface WorkbookGridProps {
  * its durable edit controller before edits are enabled. Refresh/theme changes
  * do not recreate the grid. Only a protected scalar own-ACK can rebase source
  * authority within one generation; external replacements retire its history. */
-export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration, acknowledgement, onKernelReset, initialSnapshot, onSnapshot, onReady, onDisplayGaps, formatScope, exportScope, structureSource, structureBlocked = true }: WorkbookGridProps) {
+export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration, acknowledgement, onKernelReset, initialSnapshot, onSnapshot, onReady, membershipLease, onDisplayGaps, formatScope, exportScope, structureSource, structureBlocked = true }: WorkbookGridProps) {
   const structure = useRef({ source: structureSource, blocked: structureBlocked }); structure.current = { source: structureSource, blocked: structureBlocked };
   const structureOwner = useRef<WorkbookStructureController | null>(null);
   const structureMenu = useRef(liveWorkbookStructureMenu(() => structureOwner.current));
-  const container = useRef<HTMLDivElement>(null), callbacks = useRef({ id, model, sourceSha256, title, onSnapshot, onReady, onDisplayGaps, onKernelReset });
+  const container = useRef<HTMLDivElement>(null), callbacks = useRef({ id, model, sourceSha256, title, onSnapshot, onReady, membershipLease, onDisplayGaps, onKernelReset });
   const views = useRef<WorkbookViewLayers | null>(null);
   const viewScope = useRef(id);
-  callbacks.current = { id, model, sourceSha256, title, onSnapshot, onReady, onDisplayGaps, onKernelReset };
+  callbacks.current = { id, model, sourceSha256, title, onSnapshot, onReady, membershipLease, onDisplayGaps, onKernelReset };
   const view = useRef<{ id: string; sourceFormat: WorkbookDocument['sourceFormat']; sheetId: string; snapshot: IWorkbookData; range?: IRange } | null>(null);
   const restored = useRef(initialSnapshot);
   const format = useRef(formatScope); format.current = formatScope;
@@ -139,6 +144,8 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
       const original = structuredClone(prepared.data) as IWorkbookData;
       let calculationOwner: ReturnType<typeof ownWorkbookCalculationWorker> | null = null;
       let readyForInput = false;
+      let membershipWriter: WorkbookMembershipWriterLease | null = null;
+      let disableMembershipGrid = () => {};
       let arrayOwner: ReturnType<typeof ownArrayProjectionWorker> | null = null;
       let arrayInput: ReturnType<typeof ownArrayInputNormalization> | null = null;
       const stopArrayInput = () => { const owned = arrayInput; arrayInput = null; owned?.dispose(); };
@@ -149,6 +156,13 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
       const fallback = () => {
         if (!current()) return;
         stored.current = model;
+        if (membershipWriter) {
+          readyForInput = false;
+          disableMembershipGrid();
+          membershipWriter.withdraw();
+          setError('Worksheet calculation stopped. Keep a recovery copy before reopening this draft.');
+          return;
+        }
         if (readSnapshot) {
           const snapshot = readSnapshot();
           callbacks.current.onSnapshot?.(snapshot);
@@ -157,7 +171,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
         }
       };
       // Own every instance before an asynchronous startup or plugin setup.
-      layer.own(() => { try { stopArrayInput(); } finally { try { stopCalculation(); } finally { univer.dispose(); } } });
+      layer.own(() => disposeWorkbookCalculationKernel(univer, () => { try { stopArrayInput(); } finally { stopCalculation(); } }));
       const structural = model.worksheetStructureEditable && sourceSha256 ? ownWorkbookAxisIdentity(univer, () => readSnapshot?.(), () => {
         const scope = format.current, snapshot = readSnapshot?.();
         return Boolean(current() && readyForInput && editable && calculationOwner?.ready && scope && !scope.blocked && !scope.saving && !structure.current.blocked && structure.current.source?.() && snapshot && hasWorkbookStructureIdentity(snapshot) && univerAPI.getActiveWorkbook()?.getWorkbookPermission().canEdit());
@@ -209,8 +223,12 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
       const workbook = univerAPI.createWorkbook(seed ? structuredClone(seed) : arraySeed ?? prepared.data);
       workbook.setActiveSheet(previous && prepared.data.sheets?.[previous.sheetId] ? previous.sheetId : seed?.sheetOrder[0] ?? prepared.activeSheetId); workbook.setEditable(false);
       readSnapshot = () => workbook.save();
+      disableMembershipGrid = () => workbook.setEditable(false);
+      const membershipCurrent = () => Boolean(current() && readyForInput && editable && calculationOwner?.ready && membershipWriter?.isCurrent()
+        && model.worksheetMembershipEditable === true && !format.current?.blocked && workbook.getWorkbookPermission().canEdit()
+        && !univer.__getInjector().get(kernel.IEditorBridgeService).isVisible().visible);
       const calculationChanged = (value: WorkbookCalculationState) => { if (current()) { calculationState.current = value; publish.current(); } };
-      const scalarCalculation = arraySeed ? null : attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, calculationChanged);
+      const scalarCalculation = arraySeed ? null : attachWorkbookCalculation(univer, univerAPI, model, original, workbook.save(), readSnapshot, calculationOwner, calculationChanged, membershipCurrent);
       const calculation = scalarCalculation ?? attachWorkbookArrayCalculation(univer, univerAPI, model, original, workbook.save(), sourceSha256!, readSnapshot, arrayOwner, calculationChanged, { ready: univer.__getInjector().get(LifecycleService).onStage(LifecycleStages.Rendered), available: () => Boolean(univer.__getInjector().get(IRenderManagerService).getRenderUnitById(id)) }, guardedArrayInput!);
       dispose = () => {
         try { const sheet = workbook.getActiveSheet(); view.current = { id, sourceFormat: model.sourceFormat, sheetId: sheet.getSheetId(), snapshot: workbook.save(), range: sheet.getSelection()?.getActiveRange()?.getRange() }; }
@@ -224,6 +242,16 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
       // writer. An unmounted/revoked surface must never become editable later.
       await callbacks.current.onReady?.(workbook.save());
       if (!current()) return;
+      const lease = callbacks.current.membershipLease?.();
+      if (lease?.isOwned() && model.worksheetMembershipEditable === true && scalarCalculation && calculationOwner?.ready && sourceSha256) {
+        membershipWriter = lease;
+        await calculationOwner.configureMembership({ version: 1, unitId: id, kernelGeneration: lease.generation, sourceCapability: sourceSha256 });
+        if (!current() || !lease.isOwned()) return;
+        const releaseCalculation = lease.bindCalculation(signal => scalarCalculation.awaitMembership(signal));
+        layer.own(releaseCalculation);
+        const controller = new WorkbookSheetHistoryController(univer, lease.writer, lease.scope, readSnapshot, membershipCurrent, scalarCalculation.runProtectedSequence);
+        layer.own(() => controller.dispose());
+      }
       // This pinned version uses disableAutoFocus for all editor focus, not
       // just startup. Enable it only after a person enters this grid so opening
       // an artifact cannot steal the chat composer's keyboard focus.
@@ -259,6 +287,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
         if (!active || ticket.previous.model !== model || ticket.previous.sourceSha256 !== sourceSha256 || ticket.target.model !== callbacks.current.model
           || ticket.target.sourceSha256 !== callbacks.current.sourceSha256 || !scope || ticket.controllerId !== scope.controllerId || ticket.snapshot.id !== id
           || !calculationOwner?.ready || arraySeed || !scalarCalculation || !readyForInput || ticket.target.model.sourceFormat === 'csv'
+          || membershipWriter && (!membershipWriter.isOwned() || ticket.target.model.worksheetMembershipEditable !== true)
           || ticket.target.model.worksheetStructureEditable !== model.worksheetStructureEditable || ticket.target.model.worksheetVisibilityEditable !== model.worksheetVisibilityEditable
           || !workbookLiveCalculationEligible(ticket.target.model, ticket.snapshot)) throw Error('The saved workbook requires a new kernel owner.');
         const fresh = gridWorkbook(ticket.target.model, id, callbacks.current.title, workbookGridTheme(root).gray[900]);

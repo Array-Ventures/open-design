@@ -71,6 +71,9 @@ export class WorkbookWriter {
       ? { scope: this.journal.scope, acknowledgement: this.sourceAcknowledgement, binding: this.sourceSnapshotBinding } : undefined;
   }
   private plan() { return workbookGridPlan(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired, { scope: this.journal?.scope, pending: this.pending, deletions: this.sheetDeletions, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() }); }
+  /** Local lifecycle fences only; live lease, source qualification and native
+   * issuance remain independent requirements of the installed controller. */
+  allowsProtectedSheetActions(): boolean { return this.active && !this.sheetActionConflict && !this.recoveryConflict; }
   state(): WorkbookWriteState {
     let dirty = Boolean(this.pending || this.running || this.protection || this.sheetActionConflict);
     try { const plan = this.plan(); dirty ||= workbookPlanHasChanges(plan); } catch { dirty = true; }
