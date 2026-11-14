@@ -370,3 +370,23 @@ it.each([
   expect(screen.queryByText('Read-only fallback')).toBeNull(); check();
   expect(editor().getEditorState().read(documentIdentityGroups)).toEqual(identities);
 });
+
+for (const [bodyFont, headingFont] of [['sans', 'sans'], ['serif', 'sans'], ['sans', 'serif']] as const) it(`preserves authored ${bodyFont} body and ${headingFont} heading fonts on unrelated text save and reopen`, async () => {
+  const html = documentHtml('Report', '<h1 data-od-id="title">Report</h1><p data-od-id="body">Ready</p>', bodyFont, headingFont);
+  const original = { html, sha256: 'original' };
+  save.mockImplementation(async (_project, _file, content) => ({ html: content, sha256: 'saved' }));
+  const view = render(<DocumentEditor projectId="fixture" fileName="report.html" title="Report" observed={original} onSaved={() => {}} />);
+  act(() => editor().update(() => {
+    $getRoot().getLastChildOrThrow().selectEnd(); const selection = $getSelection(); if ($isRangeSelection(selection)) selection.insertText(' reviewed');
+  }, { discrete: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save document' }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  const result = save.mock.calls[0]![2] as string;
+  const dom = new DOMParser().parseFromString(result, 'text/html');
+  expect(dom.documentElement.getAttribute('data-eve-document-font')).toBe(bodyFont);
+  expect(dom.documentElement.getAttribute('data-eve-document-heading-font')).toBe(headingFont);
+  expect(dom.querySelector('style')!.textContent).toBe(new DOMParser().parseFromString(html, 'text/html').querySelector('style')!.textContent);
+  view.unmount();
+  render(<DocumentEditor projectId="fixture" fileName="report.html" title="Report" observed={{ html: result, sha256: 'saved' }} onSaved={() => {}} />);
+  expect(screen.getByRole('textbox').style.getPropertyValue('--document-heading-font')).toBe(headingFont === 'sans' ? 'system-ui, sans-serif' : 'Georgia, serif');
+});
