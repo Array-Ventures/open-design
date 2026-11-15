@@ -1,0 +1,110 @@
+{
+  "scopedSource": "6aa452bd269128d55890c8cf58c82805a40f82f6",
+  "actual136Source": "9e35cf7e1acfc59d75e65549146c736a79d6c1dd",
+  "equalTrackedOwners": [
+    {
+      "path": "apps/web/src/components/embedded/artifact-entry.ts",
+      "blob": "06dac85c414122ecbd5727eedec11b0a049db718",
+      "equal": true
+    },
+    {
+      "path": "apps/web/src/components/embedded/useArtifactHostState.ts",
+      "blob": "6b1b6e98e96188144b1667334a3d72da51bf6c8c",
+      "equal": true
+    },
+    {
+      "path": "apps/web/src/components/embedded/ArtifactSurface.tsx",
+      "blob": "2118c67b68cfbb5d703a6ac4ef930a9d3f5d6ecc",
+      "equal": true
+    },
+    {
+      "path": "apps/web/src/components/embedded/useMotionTransport.ts",
+      "blob": "72069ace05a507d5818870b0c1ba48570d9e6b53",
+      "equal": true
+    },
+    {
+      "path": "apps/web/src/components/FileViewer.tsx",
+      "blob": "49ddd795f94776e884f95e2c251ae6db47b4bdf2",
+      "equal": true
+    },
+    {
+      "path": "apps/web/src/runtime/srcdoc.ts",
+      "blob": "60dd1231c937acc0cf2598bdecbef9a5fa89afd2",
+      "equal": true
+    },
+    {
+      "path": "packages/contracts/src/runtime/motion-source-player.ts",
+      "blob": "f5c76ab7f8ad81c40236c8afa17679532acd8d65",
+      "equal": true
+    },
+    {
+      "path": "apps/daemon/src/embedded-render/input.ts",
+      "blob": "a812fe3058fd8c58000ac9e09d654ab4001e877e",
+      "equal": true
+    },
+    {
+      "path": "apps/daemon/src/embedded-render/runner.ts",
+      "blob": "4ee78b35e4468887ab6dbc09955a3a5b9444a187",
+      "equal": true
+    },
+    {
+      "path": "apps/daemon/src/embedded-render/hyperframes.ts",
+      "blob": "a9fd511fe0beecba161a4e99adc02a1e315dabfa",
+      "equal": true
+    },
+    {
+      "path": "apps/daemon/src/media/hyperframes-frame-bridge.ts",
+      "blob": "b05036275f0995c3b4cd34bc3ac0b55922bcde53",
+      "equal": true
+    },
+    {
+      "path": "apps/daemon/src/media/hyperframes-audio.ts",
+      "blob": "3e528e966607544ee4b3644dd173ee4c78ea4954",
+      "equal": true
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "blob": "f32f6b5b20ff915bc2c6622c3fcfd3f9c63ea1fa",
+      "equal": true
+    }
+  ],
+  "changedRendererScopeFiles": [
+    "apps/daemon/src/embedded-render/documents.ts"
+  ],
+  "rendererScopeDifference": "Document-only resolve-suggestions export guard; no HyperFrame owner change. This is not whole-worker binary equivalence to 6aa.",
+  "nativeReviewedSource": "06794828a2e54c71fb358a0db741e02752aa7733",
+  "nativeActualSource": "45e7b550a168cc5cc8f89a9f71f31f901ee6233b",
+  "equalNativeExportOwners": [
+    {
+      "path": "apps/web/lib/client/studio-artifact.ts",
+      "blob": "b9cdc5699ca66e33e15fb1471ba098169c5e7a3b",
+      "equal": true
+    },
+    {
+      "path": "apps/web/components/studio/studio-export-options.tsx",
+      "blob": "82b9cea3d51246f86442474dd18d2d4433601bcf",
+      "equal": true
+    }
+  ],
+  "limit": "Actual 136/79 includes separate unmerged document work. No standalone build or complete acceptance is attributed to scopedSource.",
+  "actual135RendererInputComparison": {
+    "previousSource": "b6aad17f0e717e532411439c2c9a8cede2b3891c",
+    "source": "8fa699e656b315879241e51a7282996750157fbf",
+    "oldNormalizedCount": 2597,
+    "newNormalizedCount": 2597,
+    "changedByteInputs": [
+      "workspace:apps/daemon/src/embedded-render/documents.ts"
+    ],
+    "addedNormalizedKeys": [],
+    "removedNormalizedKeys": []
+  },
+  "actual136RendererInputComparison": {
+    "previousSource": "8fa699e656b315879241e51a7282996750157fbf",
+    "source": "9e35cf7e1acfc59d75e65549146c736a79d6c1dd",
+    "oldNormalizedCount": 2597,
+    "newNormalizedCount": 2597,
+    "changedByteInputs": [],
+    "addedNormalizedKeys": [],
+    "removedNormalizedKeys": []
+  }
+}

@@ -33,8 +33,9 @@ Author evidence: the original classification/publication tests failed in both
 places (two failures, 24 passing controls). The corrected focused lane passes
 26 cases across two files; full workspace types, guard and frozen install exit
 0. Logs: `/tmp/hyperframe-fork-{red,focused,types,guard,install}.log`.
-No package, runtime, conversion, browser or production change is qualified by
-these source tests. The next acceptance gate is a real UI export of the owned
-12-second composition, followed by independent MP4 frame/pose/audio metadata,
-download checksum and unchanged source/asset checks. The historical 133/134
-media playback records remain separate from composition export qualification.
+These source tests alone qualify no package or runtime. The subsequent
+[actual 136/79 composition-export check](hyperframe-mp4-136-qualification.md)
+exercised the owned 12-second composition through the UI, with independent MP4
+frame/pose/audio, checksum and source-asset checks. That combined pair included
+separate unmerged document work; it was not a standalone build of this scoped
+checkpoint. Historical 133/134 media playback records remain separate.
