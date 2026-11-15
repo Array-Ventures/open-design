@@ -202,3 +202,54 @@ using the existing `readFileSync` fixture pattern corrected it without changing
 production or admission policy. Private logs use
 `/tmp/document-suggestion-reopen-*`; the exact source fixture SHA-256 remains
 `25a04473b1a6a8921af377d2300c665af7b17eb09662a037f629a9a9bc4230a0`.
+
+
+## Review controls and reserved gutter follow-up
+
+Actual 136 revealed two review UI defects, retained privately in
+`/tmp/artifact136-document-ui/review-closed-narrow-light.png` and
+`markdown-expanded-wide-light.png`. At 390px the closed-card text trigger
+floated over the heading. At wide size, the card sat beside a short selected
+phrase and covered another paragraph while the reserved end gutter was empty.
+
+The reopen affordance is now a neutral existing BoardUI icon button in the
+already-present document status/mode header. A normal React portal targets an
+owned header slot; selection, review state and close/reopen focus remain in
+DocumentSuggestions. The empty slot consumes no layout space, the mode control
+does not shrink, and the status can truncate instead of displacing controls.
+The icon retains the existing translated accessible name and tooltip. There is
+no new row, floating text button, permission or host message mechanism.
+
+Suggestions pass their exact scroll ref to the existing passive placement
+hook. Only when a real logical-end gap fits the card does it use that measured
+gutter; it observes that scroll owner's resize as opening review reserves space.
+A scoped document-direction observer also remeasures when the locale changes
+logical sides without changing scroll width. The card remains inside its measured
+canvas, uses the existing anchored vertical
+position, and keeps the bounded narrow overlay fallback when no gutter fits.
+LTR/RTL use the actual scroll direction. Comments omit the optional scroll ref
+and retain their existing placement path. Neither source nor model/native
+selection is changed by measurement.
+
+The original header containment assertion failed before the portal correction.
+The three original gutter/scroll-observation cases failed before the hook change.
+Source component cases retain French/Arabic Escape, focus return, icon reopen
+and inline-proposal click behavior; geometry cases cover both directions,
+inside-canvas/nonoverlap, reserved-scroll resize and the narrow fallback.
+An isolated Chrome check used header HTML captured from the actual mounted
+source component plus its actual compiled BoardUI stylesheet: all 12 combinations
+of English/French/Arabic, 390/1440 widths and Light/Dark fit the existing row,
+with a 32px trigger above the following heading. Representative French Light
+and Arabic Dark captures were personally viewed. Private receipt:
+`/tmp/document-review-header-proof/proof.json`. That is a source-header layout
+check, not packaged full-editor acceptance. New immutable-pair Light/Dark,
+wide/narrow card geometry and keyboard acceptance remain required; 136 is
+unchanged.
+
+Final author checks: 92 cases across four component/placement files passed;
+the five geometry cases passed again after correcting only the fixture's
+CSSProperties typing. Web and full-workspace types, guard, frozen install and
+diff check exited 0. The initial test-only custom-properties style type failure
+is retained separately. Logs use `/tmp/document-review-header-*` and
+`/tmp/document-review-placement-*`. No app build, runtime overlay, preview change
+or publication was used.

@@ -93,6 +93,8 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
   const [mode, setMode] = useState<DocumentMode>('editing');
   const [pendingSuggestions, setPendingSuggestions] = useState(0);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [reviewTriggerHost, setReviewTriggerHost] = useState<HTMLSpanElement | null>(null);
+  const reviewScroll = useRef<HTMLDivElement>(null);
   const modeLabel = mode === 'editing' ? t('documentSuggestions.editing') : mode === 'suggesting' ? t('documentSuggestions.mode') : t('documentSuggestions.viewing');
   const [commentsOpen, setCommentsOpen] = useState(false);
   const writer = useRef<DocumentWriter | null>(null);
@@ -142,10 +144,11 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
   return <>
     <div className="flex shrink-0 items-center justify-end gap-2 px-3 py-2 text-caption-1-regular text-text-tertiary" >
       <DocumentOutline />
-      <span role="status">{status}</span>
+      <span role="status" className="min-w-0 truncate">{status}</span>
+      <span ref={setReviewTriggerHost} className="flex shrink-0 empty:hidden" />
       {writeState.dirty ? <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiSaveLine} aria-label="Save document" title="Save" disabled={writeState.saving || !writeState.dirty} onClick={() => { void writer.current?.flush(); }} /> : null}
       <Dropdown>
-        <DropdownTrigger aria-label={t('documentSuggestions.modeAria', { mode: modeLabel })} className="box-border flex h-8 items-center gap-1 rounded-xl border-0 bg-background-secondary-default px-2 py-0 text-body-2-medium text-text-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiPencilLine className="size-4 shrink-0" aria-hidden />{modeLabel}<RiArrowDownSLine className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
+        <DropdownTrigger aria-label={t('documentSuggestions.modeAria', { mode: modeLabel })} className="box-border flex h-8 shrink-0 items-center gap-1 rounded-xl border-0 bg-background-secondary-default px-2 py-0 text-body-2-medium text-text-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiPencilLine className="size-4 shrink-0" aria-hidden />{modeLabel}<RiArrowDownSLine className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
         <DropdownPopover aria-label="Document mode" placement="bottom end">
           <DropdownItem onSelect={() => { editor.setEditable(true); setMode('editing'); }}>{t('documentSuggestions.editing')}</DropdownItem>
           <DropdownItem onSelect={() => { editor.setEditable(true); setMode('suggesting'); }}>{t('documentSuggestions.mode')}</DropdownItem>
@@ -156,13 +159,13 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
     {writeState.error && !onWriteError ? <div role="alert" className="px-4 py-2 text-body-2-regular text-text-error-primary">{writeState.error}</div> : null}
     {imageStatus ? <div role="status" className="px-4 py-2 text-body-2-regular text-text-secondary">{imageStatus}</div> : null}
     <div className={cx('relative min-h-0 flex-1', suggestionsOpen && styles.reviewing)}>
-    <div className={styles.scroll} onScroll={fade.onScroll}>
+    <div ref={reviewScroll} className={styles.scroll} onScroll={fade.onScroll}>
       <div className={styles.page}>
         <DocumentTableActions enabled={mode === 'editing' && !pendingSuggestions && !commentsOpen}><RichTextPlugin contentEditable={<ContentEditable aria-label={title} lang={rootAttributes.lang ?? undefined} dir={rootAttributes.dir ?? undefined} className={styles.content} style={{ fontFamily: documentFontFamily(font), '--document-heading-font': documentFontFamily(headingFont) } as CSSProperties} />}
           placeholder={<div className={styles.placeholder}>Start writing…</div>} ErrorBoundary={LexicalErrorBoundary} /></DocumentTableActions>
       </div>
     </div>
-    <DocumentSuggestions mode={mode} suspended={commentsOpen} onPending={setPendingSuggestions} onOpenChange={setSuggestionsOpen} />
+    <DocumentSuggestions scroll={reviewScroll} triggerHost={reviewTriggerHost} mode={mode} suspended={commentsOpen} onPending={setPendingSuggestions} onOpenChange={setSuggestionsOpen} />
     {feedback ? <DocumentComments onOpenChange={setCommentsOpen} onDirtyChange={onCommentDirtyChange} projectId={projectId} fileName={fileName} feedback={feedback} /> : null}
     <ScrollFade progress={fade.progress} surfaceClassName="from-background-primary-default" />
     </div>
