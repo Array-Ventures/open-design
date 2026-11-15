@@ -1,6 +1,8 @@
 import type { Dict } from '../types';
 
 export const ja: Dict = {
+  "documentLayout.wide": "ページ幅を広げる",
+  "documentLayout.standardWidth": "標準のページ幅を使用",
   "documentSuggestions.modeAria": "{mode}モード",
   "documentSuggestions.mode": "提案",
   "documentSuggestions.editing": "編集",

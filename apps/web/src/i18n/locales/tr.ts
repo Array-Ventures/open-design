@@ -1,6 +1,8 @@
 import type { Dict } from '../types';
 
 export const tr: Dict = {
+  "documentLayout.wide": "Sayfayı genişlet",
+  "documentLayout.standardWidth": "Standart sayfa genişliğini kullan",
   "documentSuggestions.modeAria": "{mode} modu",
   "documentSuggestions.mode": "Öneri",
   "documentSuggestions.editing": "Düzenleme",

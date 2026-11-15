@@ -1,6 +1,8 @@
 import type { Dict } from '../types';
 
 export const fa: Dict = {
+  "documentLayout.wide": "عریض کردن صفحه",
+  "documentLayout.standardWidth": "استفاده از عرض استاندارد صفحه",
   "documentSuggestions.modeAria": "حالت {mode}",
   "documentSuggestions.mode": "پیشنهاد",
   "documentSuggestions.editing": "ویرایش",

@@ -1,6 +1,7 @@
 .editor { display: flex; flex: 1; flex-direction: column; min-height: 0; background: var(--color-background-primary-default); color: var(--color-text-primary); }
 .scroll { height: 100%; overflow: auto; min-height: 0; flex: 1; }
 .page { position: relative; box-sizing: border-box; max-width: 824px; margin-inline: auto; padding: 16px 52px 80px; }
+.widePage { max-width: none; }
 .content { outline: none; min-height: 50vh; font-size: var(--text-headline-regular); line-height: 1.5; font-weight: var(--text-headline-regular--font-weight); letter-spacing: var(--text-headline-regular--letter-spacing); overflow-wrap: anywhere; }
 .content p { margin: 0 0 16px; }
 .content hr { color: var(--color-border-button-default); border: 0; border-block-start: 1px solid currentColor; margin-block: 24px; }

@@ -1,6 +1,8 @@
 import type { Dict } from '../types';
 
 export const th: Dict = {
+  "documentLayout.wide": "ขยายความกว้างหน้า",
+  "documentLayout.standardWidth": "ใช้ความกว้างหน้ามาตรฐาน",
   "documentSuggestions.modeAria": "โหมด{mode}",
   "documentSuggestions.mode": "เสนอแนะ",
   "documentSuggestions.editing": "แก้ไข",

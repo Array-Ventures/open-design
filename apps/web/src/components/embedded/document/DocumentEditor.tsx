@@ -6,6 +6,8 @@ import { DocumentSuggestionInputError } from './document-suggestion-policy';
 import { validDocumentSuggestions } from './document-suggestion-schema';
 import { DocumentSuggestions } from './DocumentSuggestions';
 import type { DocumentMode } from './document-suggestion-input';
+import { useDocumentPageWidth } from './useDocumentPageWidth';
+import { useEmbeddedViewer } from '../host-viewer';
 import { DocumentSuggestionNode } from './DocumentSuggestionNode';
 
 import { DocumentComments } from './DocumentComments';
@@ -84,6 +86,8 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
   onCommentDirtyChange?(dirty: boolean): void; feedback?: ArtifactFeedbackProps; projectId: string; fileName: string; title: string; observed: DocumentFile; owners: Map<string, string>; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void; onWriteError?(error: string | null): void;
 }) {
   const [editor] = useLexicalComposerContext(), t = useT();
+  const viewer = useEmbeddedViewer();
+  const pageWidth = useDocumentPageWidth(viewer?.memberId, projectId, fileName);
   const rootAttributes = useMemo(() => documentRootAttributes(observed.html), [observed.html]);
   const fade = useScrollFade();
   const [writeState, setWriteState] = useState<DocumentWriteState>({ dirty: false, saving: false, error: null });
@@ -160,7 +164,7 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
     {imageStatus ? <div role="status" className="px-4 py-2 text-body-2-regular text-text-secondary">{imageStatus}</div> : null}
     <div className={cx('relative min-h-0 flex-1', suggestionsOpen && styles.reviewing)}>
     <div ref={reviewScroll} className={styles.scroll} onScroll={fade.onScroll}>
-      <div className={styles.page}>
+      <div className={cx(styles.page, pageWidth.wide && styles.widePage)}>
         <DocumentTableActions enabled={mode === 'editing' && !pendingSuggestions && !commentsOpen}><RichTextPlugin contentEditable={<ContentEditable aria-label={title} lang={rootAttributes.lang ?? undefined} dir={rootAttributes.dir ?? undefined} className={styles.content} style={{ fontFamily: documentFontFamily(font), '--document-heading-font': documentFontFamily(headingFont) } as CSSProperties} />}
           placeholder={<div className={styles.placeholder}>Start writing…</div>} ErrorBoundary={LexicalErrorBoundary} /></DocumentTableActions>
       </div>
@@ -169,6 +173,6 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
     {feedback ? <DocumentComments onOpenChange={setCommentsOpen} onDirtyChange={onCommentDirtyChange} projectId={projectId} fileName={fileName} feedback={feedback} /> : null}
     <ScrollFade progress={fade.progress} surfaceClassName="from-background-primary-default" />
     </div>
-    {mode === 'editing' && !pendingSuggestions ? <DocumentToolbar commentsAvailable={Boolean(feedback)} hidden={commentsOpen} font={font} headingFont={headingFont} onImageStatus={setImageStatus} /> : null}
+    {mode === 'editing' && !pendingSuggestions ? <DocumentToolbar pageWide={pageWidth.wide} onTogglePageWidth={pageWidth.toggle} commentsAvailable={Boolean(feedback)} hidden={commentsOpen} font={font} headingFont={headingFont} onImageStatus={setImageStatus} /> : null}
   </>;
 }

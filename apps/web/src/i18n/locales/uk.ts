@@ -1,6 +1,8 @@
 import type { Dict } from '../types';
 
 export const uk: Dict = {
+  "documentLayout.wide": "Розширити сторінку",
+  "documentLayout.standardWidth": "Використати стандартну ширину сторінки",
   "documentSuggestions.modeAria": "Режим: {mode}",
   "documentSuggestions.mode": "Пропозиції",
   "documentSuggestions.editing": "Редагування",

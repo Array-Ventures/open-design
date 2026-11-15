@@ -1,6 +1,8 @@
 import type { Dict } from "../types";
 
 export const zhTW: Dict = {
+  "documentLayout.wide": "加寬頁面",
+  "documentLayout.standardWidth": "使用標準頁面寬度",
   "documentSuggestions.modeAria": "{mode}模式",
   "documentSuggestions.mode": "建議",
   "documentSuggestions.editing": "編輯",
