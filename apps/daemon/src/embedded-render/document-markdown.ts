@@ -1,3 +1,4 @@
+import { documentSourceDates } from './document-date-export.js';
 import { load } from 'cheerio';
 import { normalizeDocumentCode } from './document-markdown-code.js';
 import { randomUUID } from 'node:crypto';
@@ -59,6 +60,10 @@ export function documentMarkdownInput(html: string): { html: string; rawSpans: M
     if (rawSpans.has(id) || rawBlocks.has(id)) throw new Error('The document duplicated a generated HTML owner.');
     rawSpans.set(id, $.html(node)); protectedNodes.add(node); $(node).attr('id', id);
   });
+  for (const { element } of documentSourceDates($)) {
+    if ($(element).parents('span,div').toArray().some(parent => protectedNodes.has(parent))) continue;
+    const wrapper = owner($.html(element), false); $(element).replaceWith(wrapper); wrapper.append(element);
+  }
   $('code').each((_index, node) => {
     if (nativeCode.has(node) || $(node).parents('pre').length || $(node).parents('span,div').toArray().some(parent => protectedNodes.has(parent))) return;
     const wrapper = owner($.html(node), false); $(node).replaceWith(wrapper); wrapper.append(node);

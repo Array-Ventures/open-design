@@ -1,6 +1,10 @@
 import type { Dict } from "../types";
 
 export const zhCN: Dict = {
+  "documentDate.label": "日期",
+  "documentDate.choose": "选择日期",
+  "documentDate.blocked": "更改日期前，请先处理此建议或选择可编辑的段落。",
+
   "documentLayout.wide": "加宽页面",
   "documentLayout.standardWidth": "使用标准页面宽度",
   "documentSuggestions.modeAria": "{mode}模式",

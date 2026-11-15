@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const ar: Dict = {
+  "documentDate.label": "التاريخ",
+  "documentDate.choose": "اختيار التاريخ",
+  "documentDate.blocked": "عالج هذا الاقتراح أو اختر فقرة قابلة للتحرير قبل تغيير تاريخها.",
+
   "documentLayout.wide": "توسيع الصفحة",
   "documentLayout.standardWidth": "استخدام عرض الصفحة القياسي",
   "documentSuggestions.modeAria": "وضع {mode}",

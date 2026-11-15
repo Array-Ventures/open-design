@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const tr: Dict = {
+  "documentDate.label": "Tarih",
+  "documentDate.choose": "Tarih seç",
+  "documentDate.blocked": "Tarihi değiştirmeden önce bu öneriyi çözümleyin veya düzenlenebilir bir paragraf seçin.",
+
   "documentLayout.wide": "Sayfayı genişlet",
   "documentLayout.standardWidth": "Standart sayfa genişliğini kullan",
   "documentSuggestions.modeAria": "{mode} modu",

@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const hu: Dict = {
+  "documentDate.label": "Dátum",
+  "documentDate.choose": "Dátum kiválasztása",
+  "documentDate.blocked": "A dátum módosítása előtt fogadd el vagy utasítsd el a javaslatot, vagy válassz szerkeszthető bekezdést.",
+
   "documentLayout.wide": "Oldal szélesítése",
   "documentLayout.standardWidth": "Normál oldalszélesség használata",
   "documentSuggestions.modeAria": "{mode} mód",
