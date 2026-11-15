@@ -1,8 +1,10 @@
 # Bounded document suggestions
 
 This source checkpoint introduces genuine proposed text insertion, deletion and
-replacement. It is not comment storage or Viewing mode, and it has no packaged
-browser, release or production qualification yet. It follows the observed
+replacement. It is not comment storage or Viewing mode. Packaged browser
+acceptance and its remaining gaps are recorded in
+[artifact137-acceptance.md](artifact137-acceptance.md); this is not release or
+production qualification. It follows the observed
 Editing/Suggesting distinction in the native document reference record; that
 observation does not define every review, reply or export behavior.
 
@@ -75,7 +77,8 @@ The existing placement hook measures the actual proposal DOM range without
 changing native/editor selection. Wide views reserve a side gutter; narrow
 views use the bounded overlay. Automatic opening does not steal typing focus;
 explicit close/open focus stays with its owning controls. There is no permanent
-export-guidance row. Actual geometry/visual acceptance remains pending.
+export-guidance row. Actual wide gutter and narrow header acceptance is recorded
+in [artifact137-acceptance.md](artifact137-acceptance.md).
 
 New controls/notices and the touched mode labels use the existing `useT`
 context, with 20 typed catalog keys across all 19 supported locales. French and
