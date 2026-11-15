@@ -3,7 +3,7 @@ import { CellValueType, WorksheetHiddenState, type ICellData, type IWorkbookData
 import { workbookEditPlanSchema, type WorkbookCell, type WorkbookDimensionEdit, type WorkbookDocument, type WorkbookStyleEdit, type WorkbookVisibilityEdit } from '@open-design/contracts/runtime/workbook';
 
 import { workbookRichText } from './grid-rich-text';
-import { gridHorizontalAlignment, type WorkbookAlignmentProvenance } from './grid-horizontal-alignment';
+import { gridHorizontalAlignment, type WorkbookAlignmentProjection } from './grid-horizontal-alignment';
 import { gridDimensionEdits } from './grid-dimensions';
 
 export class WorkbookEditError extends Error {}
@@ -106,7 +106,7 @@ function scalar(cell: ICellData, original: WorkbookCell | undefined, row: number
  * never serialize Univer as XLSX. Unchanged formula caches/rich runs remain in
  * the source package. Unsupported mutations block the whole save, not just the
  * unsupported cells, so a successful save cannot silently discard an edit. */
-export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string, initial: IWorkbookData, current: IWorkbookData, alignment?: WorkbookAlignmentProvenance) {
+export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string, initial: IWorkbookData, current: IWorkbookData, alignment?: WorkbookAlignmentProjection) {
   const projected = gridStructuralBaseline(model, sourceSha256, initial, current);
   model = projected.model; initial = projected.before; current = projected.after;
   const beforeAlignment = alignment?.snapshot(initial), afterAlignment = alignment?.snapshot(current);

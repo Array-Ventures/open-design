@@ -147,3 +147,49 @@ Redo lifecycle still require a matching immutable pair and actual UI checks.
 Final full workspace types (serial workspace scheduling plus scripts types) and
 repository guard exited 0. No app/image build, runtime activation, pin change
 or publication was performed for this source checkpoint.
+
+## Actual 139 journal failure and durable presentation data
+
+Actual immutable pair 139 passed the Right cycle, but Fill → General Save →
+native Undo → Fill Save stopped before the second HTTP write: the journal
+reported that the draft could not be protected. The private live planner knew
+the omitted source Fill property; the checkpoint decoder independently derived
+the frozen pending plan without that information and correctly refused it.
+The prior legacy-ACK-only fixture did not exercise this real journal boundary.
+The failed UI evidence remains under
+`/tmp/workbook-alignment-pair139-first-ui-results/` and
+`/tmp/workbook-alignment-native-pair139-ui.log`; pair 139 is unchanged.
+
+The follow-up adds optional versioned `alignmentData` to the existing checkpoint:
+unit ID, captured composition priority, and initial style IDs with their exact
+captured SDK definitions plus optional eight-value authored horizontal property.
+It includes partial styles needed for inheritance, not just advanced alignments.
+This is bounded authored presentation data, not authentication of a historical
+source: Fill and Center Across Selection have the same omitted native property.
+Self-consistent edited data still faces the ordinary authenticated content-save,
+current-source, CAS and server style checks. It never reconstructs a live
+registry, native entry issuer, worksheet grant or historical asset authority.
+
+The pure decoder requires the same workbook identity, unique bounded style IDs,
+finite horizontal enum and exact definition equality in every protected snapshot.
+It uses the existing bounded canonical JSON domain and full draft byte limit.
+Explicit native horizontal values take precedence. The pending typed plan must
+still equal the independently derived plan exactly; no journal or equality check
+is skipped. Old checkpoints without the optional field retain their existing
+path; an old unprovable advanced restoration remains refused, not guessed.
+
+A genuine real SDK + Writer + actual draft-store/IndexedDB regression reproduced
+the protection failure before the corrective code. The corrected source cases
+cover Fill and Center Across Selection through General Save, native Undo Save
+and Redo Save, including Normal's host presentation color. Pending recovery
+retries the exact frozen intent using data only. Wrong unit/style IDs, duplicate
+IDs, changed definitions, data/intent mismatch and missing required data refuse
+without replacing the already protected draft. These are source IDB checks with
+explicit legacy receipt fixtures, not new packaged/HTTP or real-browser success.
+
+The final affected source group passed 125 cases across eight files. Full
+workspace types (serial scheduling plus scripts types), repository guard and
+frozen install exited 0. Logs are
+`/tmp/workbook-alignment-durable-{red,final-boundaries,types,guard}.log`.
+No new image, runtime switch, source mutation in the failing fixture, pin
+change or publication is included in this corrective source checkpoint.

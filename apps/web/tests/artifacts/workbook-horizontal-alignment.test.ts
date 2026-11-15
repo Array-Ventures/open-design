@@ -1,3 +1,7 @@
+import { decodeWorkbookDraft, encodeWorkbookDraft } from '../../src/components/embedded/workbook/workbook-checkpoint';
+import { workbookAlignmentDataProjection } from '../../src/components/embedded/workbook/grid-horizontal-alignment';
+import { IDBFactory } from 'fake-indexeddb';
+import { readWorkbookDraft, saveWorkbookDraft, serializeWorkbookDraft } from '../../src/components/embedded/workbook/draft-store';
 import { legacyWorkbookWrite } from '../fixtures/workbook-write-result';
 import { WorkbookWriter, type WorkbookWriteIntent } from '../../src/components/embedded/workbook/workbook-writer';
 import { createRequire } from 'node:module';
@@ -16,7 +20,7 @@ const sheets = require('@univerjs/sheets') as typeof import('@univerjs/preset-sh
 require('@univerjs/sheets/facade');
 const closers: (() => void)[] = [];
 afterEach(() => { closers.splice(0).reverse().forEach(close => close()); vi.unstubAllGlobals(); });
-function fixture(mixed = false, rich = false, inherited = false, horizontal: NonNullable<WorkbookStyle['alignment']>['horizontal'] = 'left', configure?: (model: WorkbookDocument) => void, rowPriority = false) {
+function fixture(mixed = false, rich = false, inherited = false, horizontal: NonNullable<WorkbookStyle['alignment']>['horizontal'] = 'left', configure?: (model: WorkbookDocument) => void, rowPriority = false, unitId = 'alignment-test', defaultTextColor?: string) {
   const English = require('@univerjs/preset-sheets-core/locales/en-US');
   const univer = new core.Univer({ locale: core.LocaleType.EN_US, locales: { [core.LocaleType.EN_US]: English.default ?? English } });
   closers.push(() => univer.dispose()); univer.registerPlugin(sheets.UniverSheetsPlugin);
@@ -30,7 +34,7 @@ function fixture(mixed = false, rich = false, inherited = false, horizontal: Non
       merges: [], rowDimensions: inherited ? [{ index: 1, style: 2 }] : [], columnDimensions: [], frozenRows: 0, frozenColumns: 0 }],
   };
   configure?.(model);
-  const prepared = gridWorkbook(model, 'alignment-test', 'Alignment').data;
+  const prepared = gridWorkbook(model, unitId, 'Alignment', defaultTextColor).data;
   const book = api.createWorkbook(prepared);
   // Rendered SheetSkeleton defaults to column precedence; Node has no skeleton.
   book.getActiveSheet().getSheet().setIsRowStylePrecedeColumnStyle(rowPriority);
@@ -235,4 +239,93 @@ it('keeps native Redo when Automatic is already proven, but resets an unrepresen
   expect(f.state().horizontalAlignment).toBe('general');
   f.message('general'); await f.api.redo();
   expect(f.origins.snapshot(f.book.save())('s', 1, 1)).toBe('right');
+});
+
+it.each(['fill', 'centerContinuous'] as const)('protects actual native %s Undo after General acknowledgement through the real draft journal', async original => {
+  vi.stubGlobal('indexedDB', new IDBFactory());
+  const scope = { viewerId: 'alignment-viewer', projectId: '11111111-1111-4111-8111-111111111111', fileName: 'Alignment.xlsx', draftId: crypto.randomUUID() };
+  const f = fixture(false, false, false, original, undefined, false, `${scope.projectId}:${scope.fileName}`, 'rgb(245, 245, 245)');
+  const intents: WorkbookWriteIntent[] = [];
+  const source = { sourceSha256: 'a'.repeat(64), model: structuredClone(f.model) };
+  const journal = { scope, validate: (checkpoint: Parameters<typeof serializeWorkbookDraft>[1]) => { serializeWorkbookDraft(scope, checkpoint); }, save: (checkpoint: Parameters<typeof saveWorkbookDraft>[1]) => saveWorkbookDraft(scope, checkpoint) };
+  const writer = new WorkbookWriter(source, f.initial, async intent => {
+    intents.push(structuredClone(intent));
+    const model = structuredClone(f.model);
+    model.styles[0]!.alignment!.horizontal = intent.plan.styles![0]!.horizontalAlignment;
+    return legacyWorkbookWrite({ sourceSha256: String(intents.length).repeat(64), model });
+  }, () => {}, undefined, journal, f.origins);
+  try {
+    f.message('general'); writer.update(f.book.save()); await writer.flush();
+    expect(writer.state()).toEqual({ dirty: false, saving: false, error: null });
+    await f.api.undo(); writer.update(f.book.save()); await writer.flush();
+    expect(writer.state()).toEqual({ dirty: false, saving: false, error: null });
+    expect(intents.map(intent => intent.plan.styles?.[0]?.horizontalAlignment)).toEqual(['general', original]);
+    await f.api.redo(); writer.update(f.book.save()); await writer.flush();
+    expect(intents.map(intent => intent.plan.styles?.[0]?.horizontalAlignment)).toEqual(['general', original, 'general']);
+    expect(await readWorkbookDraft(scope)).toBeNull();
+  } finally { await writer.close(); }
+});
+
+it('keeps pending alignment intent exact through IDB/recovery and rejects mismatched representation data', async () => {
+  vi.stubGlobal('indexedDB', new IDBFactory());
+  const scope = { viewerId: 'alignment-viewer', projectId: '11111111-1111-4111-8111-111111111111', fileName: 'Alignment.xlsx', draftId: crypto.randomUUID() };
+  const f = fixture(false, false, false, 'fill', undefined, false, `${scope.projectId}:${scope.fileName}`);
+  const source = { sourceSha256: 'a'.repeat(64), model: f.model };
+  const journal = { scope, save: (checkpoint: Parameters<typeof saveWorkbookDraft>[1]) => saveWorkbookDraft(scope, checkpoint) };
+  const transport = vi.fn(async (_intent: WorkbookWriteIntent) => {
+    if (transport.mock.calls.length > 1) throw Error('Response lost');
+    const model = structuredClone(f.model); model.styles[0]!.alignment!.horizontal = 'general';
+    return legacyWorkbookWrite({ sourceSha256: 'b'.repeat(64), model });
+  });
+  const writer = new WorkbookWriter(source, f.initial, transport, () => {}, undefined, journal, f.origins);
+  try {
+    f.message('general'); writer.update(f.book.save()); await writer.flush();
+    await f.api.undo(); writer.update(f.book.save()); await writer.flush();
+    expect(transport).toHaveBeenCalledTimes(2);
+    const pending = (await readWorkbookDraft(scope))!;
+    expect(pending.pending?.intent.plan.styles?.[0]?.horizontalAlignment).toBe('fill');
+    expect(decodeWorkbookDraft(encodeWorkbookDraft(scope, pending), scope)).toEqual(pending);
+    const malformed: Array<(checkpoint: typeof pending) => void> = [
+      checkpoint => { checkpoint.alignmentData!.unitId = 'foreign'; },
+      checkpoint => { Object.assign(checkpoint.alignmentData!, { version: 2 }); },
+      checkpoint => { Object.assign(checkpoint.alignmentData!.styles[0]!, { horizontal: 'diagonal' }); },
+      checkpoint => { checkpoint.desired.styles['0']!.fs = 99; },
+      checkpoint => { checkpoint.alignmentData!.styles[0]!.id = '19999'; },
+      checkpoint => { checkpoint.alignmentData!.styles.push(structuredClone(checkpoint.alignmentData!.styles[0]!)); },
+      checkpoint => { checkpoint.alignmentData!.styles[0]!.definition.fs = 99; },
+      checkpoint => { checkpoint.alignmentData!.styles[0]!.horizontal = 'centerContinuous'; },
+      checkpoint => { delete checkpoint.alignmentData; },
+      checkpoint => { checkpoint.pending!.intent.plan.styles![0]!.horizontalAlignment = 'centerContinuous'; },
+    ];
+    for (const mutate of malformed) {
+      const changed = structuredClone(pending); mutate(changed);
+      expect(() => serializeWorkbookDraft(scope, changed)).toThrow();
+      await expect(saveWorkbookDraft(scope, changed)).rejects.toThrow();
+      expect(await readWorkbookDraft(scope)).toEqual(pending);
+    }
+    // Valid presentation data does not implement a live bridge or native issuer.
+    expect(workbookAlignmentDataProjection(pending.alignmentData!)).not.toHaveProperty('live');
+    await writer.close();
+    const retried = vi.fn(async (_intent: WorkbookWriteIntent) => { throw Error('Still unavailable'); });
+    const recovered = new WorkbookWriter(pending.source, pending.acknowledged, retried, () => {}, undefined, { ...journal, restored: pending });
+    try {
+      await recovered.flush();
+      expect(retried).toHaveBeenCalledOnce();
+      expect(retried.mock.calls[0]![0]).toEqual(pending.pending!.intent);
+    } finally { await recovered.close(); }
+  } finally { await writer.close(); }
+});
+
+it('does not replace a retired live registry with stored presentation data to admit a new save', async () => {
+  const f = fixture(false, false, false, 'fill');
+  const source = { sourceSha256: 'a'.repeat(64), model: f.model };
+  const transport = vi.fn(async (_intent: WorkbookWriteIntent) => legacyWorkbookWrite({ ...source, sourceSha256: 'b'.repeat(64) }));
+  const writer = new WorkbookWriter(source, f.initial, transport, () => {}, undefined, undefined, f.origins);
+  try {
+    f.message('general'); writer.update(f.book.save()); await writer.flush();
+    await f.api.undo(); f.origins.dispose(); writer.update(f.book.save()); await writer.flush();
+    expect(transport).toHaveBeenCalledOnce();
+    expect(writer.state()).toMatchObject({ dirty: true, error: expect.stringContaining('horizontal alignment') });
+    expect(writer.checkpoint().desired).toEqual(f.book.save());
+  } finally { await writer.close(); }
 });
