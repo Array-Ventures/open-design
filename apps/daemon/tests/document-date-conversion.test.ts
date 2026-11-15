@@ -35,3 +35,13 @@ it('leaves legacy unmarked HTML TIME on its existing converter path without a ne
   expect(documentDocxSourcePresentation(source).html).toContain('<time datetime="2024-02-29">');
   const markdown = documentMarkdownInput(source); expect(markdown.html).toContain(legacy); expect(markdown.rawSpans.size).toBe(0);
 });
+it('preserves formatted Date ancestors independently of the narrower editable atom model', () => {
+  const formatted = documentHtml('Formatted Date', `<p><strong><span style="color:red">${date}</span></strong></p>`);
+  const word = documentDocxSourcePresentation(formatted).html;
+  const document = new JSDOM(word).window.document;
+  expect(document.querySelector('time')).toBeNull();
+  expect(document.querySelector('strong span[style="color:red"]')?.textContent).toBe('Persisted leap day');
+  const markdown = documentMarkdownInput(formatted);
+  expect([...markdown.rawSpans.values()]).toContain(`<span style="color:red">${date}</span>`);
+  expect(markdown.html).toContain('<strong>'); expect(formatted).toContain(date);
+});

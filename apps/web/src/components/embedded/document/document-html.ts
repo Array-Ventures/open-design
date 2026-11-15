@@ -1,4 +1,5 @@
-import { documentDateAttributes, readDocumentDateElement } from './document-date-source';
+import { documentDateAttributes } from './document-date-source';
+import { readEditableDocumentDateElement } from './document-date-context';
 import { suggestionAttributes, validDocumentSuggestions } from './document-suggestion-schema';
 import { documentImportStyles } from './document-styles';
 import { localDocumentImageSource, dataDocumentImageSource, documentImageCssDimension } from './document-image-source';
@@ -16,7 +17,7 @@ export function isDocumentLinkSupported(href: string): boolean {
 /** Import semantic document content into the editor, never an authored application runtime. */
 export function documentImport(html: string): Document {
   const sourceDates = new DOMParser().parseFromString(html, 'text/html').querySelectorAll('time,[data-eve-document-date],[data-eve-date-locale]');
-  if ([...sourceDates].some(element => !readDocumentDateElement(element))) throw Error('Document dates could not be preserved.');
+  if ([...sourceDates].some(element => !readEditableDocumentDateElement(element))) throw Error('Document dates could not be preserved.');
   if (!validDocumentSuggestions(new DOMParser().parseFromString(html, 'text/html').body)) throw Error('Document suggestions could not be preserved.');
   const fragment = DOMPurify.sanitize(html, {
     ALLOWED_TAGS: tags, ALLOWED_ATTR: [...documentDateAttributes, ...suggestionAttributes, 'href', 'title', 'colspan', 'rowspan', 'start', 'style', 'data-od-id', 'data-language', 'data-highlight-language', '__lexicallisttype', 'aria-checked', 'src', 'alt', 'width', 'height', 'dir', 'value', 'data-eve-document-image'],

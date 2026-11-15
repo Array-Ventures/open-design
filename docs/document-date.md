@@ -123,3 +123,36 @@ Earlier development type/harness failures remain separate; they are not claimed
 as product regressions. No application stack, renderer image, immutable pair,
 preview activation, hosted CI or browser visual run was started for this source
 checkpoint.
+
+## Formatted-ancestor admission correction
+
+The first Date checkpoint admitted a valid TIME inside bold, italic, ink and
+font-size wrappers, but the Decorator has no TextNode presentation payload.
+Actual Lexical import/export dropped those wrappers; an unrelated mounted
+conditional-writer Save also dropped the Date's bold ancestor. The genuine
+baseline is five failed cases in `/tmp/document-date-formatting-red.log`.
+
+This correction keeps the Date model bounded rather than silently claiming
+arbitrary rich Date formatting. Editable admission, Date DOM conversion and the
+pre-sanitizer import check refuse semantic text-format ancestors, inherited
+authored text/font presentation and non-retained ancestor classes. Original
+HTML/Markdown remains in its existing viewer, with no rich editor or source
+rewrite. The existing general admission already refused text/font styles on
+paragraphs, DIVs and headings; the Date preflight now refuses those contexts too.
+Unknown global CSS remains outside the existing canonical admission boundary.
+
+Semantic headings, retained block alignment/indent, table-cell background,
+plain links and regenerated checklist-state classes remain supported by actual
+import/export controls. Plain Dates, imported plain proposals, review/history
+and calendar ownership retain their existing paths. This limitation is an
+editor admission rule: conversion-only Word projection and Markdown raw owners
+still preserve valid formatted ancestors independently. Native consumer output
+and packaged presentation remain pending; no blanket TIME/style allowance,
+Date formatting model or source sanitizer expansion is introduced.
+
+The formatted-context follow-up passed 94 web cases across six files (including
+actual Surface fallback and the existing Date source/calendar/review/lifecycle
+cases), 11 Date adapter cases across two files, web types and repository guard.
+The new worktree's frozen install also passed. Logs are
+`/tmp/document-date-formatting-{red,final-web,daemon,webtypes,guard,install}.log`.
+These checks do not add packaged, native-consumer or manual visual claims.
