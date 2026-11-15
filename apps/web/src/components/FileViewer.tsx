@@ -12456,6 +12456,14 @@ function HtmlViewer({
   const urlFrameSrc = selectedUrlFrameSrc === 'about:blank'
     ? selectedUrlFrameSrc
     : appendResourceQuery(selectedUrlFrameSrc, 'odMotionPreview=1');
+  // Presentation has additional base/storage inputs beyond the parked preview
+  // transport. Keep its key bounded while replacing the frame on actual source
+  // or URL changes, without exposing content or URL query data in React keys.
+  const presentationFrameSource = effectiveDeck || !useUrlLoadPreview ? presentationSrcDoc : urlFrameSrc;
+  const presentationFrameGeneration = useMemo(
+    () => nextPreviewTransportGeneration(),
+    [previewStateKey, presentationFrameSource],
+  );
   const urlFrameSandbox = usePoweredPreview
     ? POWERED_PREVIEW_SANDBOX
     : HTML_PREVIEW_SANDBOX;
@@ -19092,7 +19100,7 @@ function HtmlViewer({
         >
           {effectiveDeck || !useUrlLoadPreview ? (
             <iframe
-              key={`${previewStateKey}:${presentationSrcDoc}`}
+              key={presentationFrameGeneration}
               title="present"
               onLoad={(event) => focusLoadedPresentationFrame(event.currentTarget)}
               sandbox={HTML_PREVIEW_SANDBOX}
@@ -19101,7 +19109,7 @@ function HtmlViewer({
             />
           ) : (
             <iframe
-              key={`${previewStateKey}:${urlFrameSrc}`}
+              key={presentationFrameGeneration}
               title="present"
               onLoad={(event) => focusLoadedPresentationFrame(event.currentTarget)}
               sandbox={urlFrameSandbox}

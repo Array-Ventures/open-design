@@ -256,6 +256,10 @@ describe('embedded deck presentation intents', () => {
     const menu = await screen.findByRole('dialog', { name: 'Present' });
     fireEvent.click(within(menu).getByRole('button', { name: withNotes ? 'Present with speaker notes' : 'Present' }));
     await waitFor(() => expect(overlay()).not.toBeNull());
+    const frame = overlay()!.querySelector('iframe')!;
+    expect(frame.getAttribute('data-od-render-mode')).toBe('srcdoc');
+    fireEvent.load(frame);
+    expect(document.activeElement).toBe(frame);
     expect(open).toHaveBeenCalledTimes(withNotes ? 1 : 0);
     fireEvent.click(overlay()!.querySelector('.present-exit-btn')!);
     await waitFor(() => expect(overlay()).toBeNull());
@@ -269,13 +273,17 @@ describe('presentation entry keyboard ownership', () => {
   it('focuses the loaded presentation once without a slide click, and fences retired frames', async () => {
     const projectId = 'proj-present-focus-entry';
     installFetchMock(projectId);
-    render(<Wrap><FileViewer projectId={projectId} projectKind="prototype" file={pageFile()} /></Wrap>);
+    const view = render(<Wrap><FileViewer projectId={projectId} projectKind="prototype" file={pageFile()} /></Wrap>);
     await waitFor(() => expect(document.querySelector('.present-trigger')).not.toBeNull());
     await enterPresentation();
     const frame = overlay()!.querySelector('iframe')!;
+    expect(frame.getAttribute('data-od-render-mode')).toBe('url-load');
     const focus = vi.spyOn(frame, 'focus');
     fireEvent.load(frame);
     expect(document.activeElement).toBe(frame);
+    expect(focus).toHaveBeenCalledTimes(1);
+    view.rerender(<Wrap><FileViewer projectId={projectId} projectKind="prototype" file={{ ...pageFile() }} /></Wrap>);
+    expect(overlay()!.querySelector('iframe')).toBe(frame);
     expect(focus).toHaveBeenCalledTimes(1);
     const exit = overlay()!.querySelector('button')!;
     exit.focus();
