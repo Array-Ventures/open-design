@@ -193,3 +193,35 @@ frozen install exited 0. Logs are
 `/tmp/workbook-alignment-durable-{red,final-boundaries,types,guard}.log`.
 No new image, runtime switch, source mutation in the failing fixture, pin
 change or publication is included in this corrective source checkpoint.
+
+### Fresh seeded recovery planning
+
+The first durable-data checkpoint was insufficient for desired-only recovery:
+a newly seeded SDK still supplies a live registry, but that registry deliberately
+cannot claim the old omitted Fill origin. Its presence shadowed the validated
+stored presentation data. A genuine fresh SDK, restored desired snapshot,
+`advanced=false` registry and real IndexedDB journal reproduced the refusal;
+the pending-intent retry control already passed. Actual pair 139 independently
+showed the dirty Fill draft → reload → Restore → Save refusal in
+`/tmp/workbook-alignment-native-pair139-recovery-valid-red.log` (the earlier
+wrong viewer-key setup attempt is separate, not a product failure).
+
+Pure recovery planning now uses the validated stored data when the supplied
+live registry's captured data differs or no registry is supplied. Representation-compatible live data retains the live planner and its retirement
+guard. Canonical data equality proves representation compatibility only;
+distinct kernels can have equal data. The existing private lease, kernel and
+native-history owners independently qualify a clean-resume handoff. Neither path hydrates native origins from stored data. Fresh seeded
+SDK tests assert desired-only Save and pending retry, exact typed Fill intent,
+empty native Undo/Redo history and an unqualified live registry after saving.
+A same-private-registry control still refuses after retirement.
+
+Compatibility is one-way: the new reader accepts old checkpoints without
+`alignmentData`; an older strict checkpoint reader rejects that new field even
+though the checkpoint version remains 1. An older companion may therefore
+refuse to interpret these retained drafts until upgraded. No bidirectional
+rollback compatibility or silent draft deletion is claimed.
+
+The fresh-kernel follow-up passed 79 affected cases across four files, web types
+and repository guard. Frozen install also exited 0. The first durable checkpoint's
+full workspace types/guard results remain separately scoped; this follow-up did
+not rerun unrelated daemon suites. Packaged recovery acceptance remains open.

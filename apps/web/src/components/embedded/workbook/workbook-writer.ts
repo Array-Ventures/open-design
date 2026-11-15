@@ -9,7 +9,7 @@ import type { WorkbookSheetActionDescriptor } from './sheet-action-descriptor';
 import { prepareWorkbookSheetBirth, type WorkbookSheetBirthState, type WorkbookSheetBirthEntry } from './sheet-birth-context';
 import { bindWorkbookSourceSnapshot, type WorkbookSourceSnapshotBinding } from './source-snapshot-binding';
 import type { WorkbookDraftScope } from './workbook-draft-schema';
-import { canonicalCommentJson } from '@open-design/contracts/runtime/workbook-sheet-baseline';
+import { canonicalCommentJson, canonicalWorkbookJsonValue } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import { associateWorkbookSourceDeletion, workbookSourceDeleteContextSchema, type WorkbookSourceDeleteContext } from './sheet-delete-context';
 import { assertDerivedWorkbookDeletion } from './sheet-delete-derived';
 import { workbookSaveAcknowledgementSchema, type WorkbookSaveAcknowledgement } from './save-provenance';
@@ -81,7 +81,13 @@ export class WorkbookWriter {
     if (journal?.restored) {
       const restored = structuredClone(journal.restored);
       this.alignmentData = restored.alignmentData ?? this.alignmentData;
-      if (this.alignmentData) this.recoveredAlignment = workbookAlignmentDataProjection(this.alignmentData);
+      // A seeded fresh kernel may supply an unqualified live registry. Stored
+      // presentation data still owns pure recovery planning, never live history.
+      // Equal data means representation compatibility, not kernel identity.
+      // Existing private lease/history owners still qualify clean resume.
+      if (this.alignmentData && (!alignment || canonicalWorkbookJsonValue(alignment.data) !== canonicalWorkbookJsonValue(this.alignmentData))) {
+        this.recoveredAlignment = workbookAlignmentDataProjection(this.alignmentData);
+      }
       this.source = restored.source; this.acknowledged = restored.acknowledged; this.desired = restored.desired; this.pending = restored.pending; this.sourceAcknowledgement = restored.sourceAcknowledgement; this.sheetDeletions = restored.sheetDeletions ?? []; this.sheetBirths = restored.sheetBirths; this.sheetActionConflict = restored.sheetActionConflict === true; this.sourceSnapshotBinding = restored.sourceSnapshotBinding;
       if (source.sourceSha256 !== restored.source.sourceSha256) {
         this.recoveryConflict = !restored.pending;
@@ -94,7 +100,7 @@ export class WorkbookWriter {
     return this.journal?.scope && this.sourceAcknowledgement && this.sourceSnapshotBinding
       ? { scope: this.journal.scope, acknowledgement: this.sourceAcknowledgement, binding: this.sourceSnapshotBinding } : undefined;
   }
-  private plan() { return workbookGridPlan(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired, { alignment: this.alignment ?? this.recoveredAlignment, scope: this.journal?.scope, pending: this.pending, deletions: this.sheetDeletions, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() }); }
+  private plan() { return workbookGridPlan(this.source.model, this.source.sourceSha256, this.acknowledged, this.desired, { alignment: this.recoveredAlignment ?? this.alignment, scope: this.journal?.scope, pending: this.pending, deletions: this.sheetDeletions, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() }); }
   /** Local lifecycle fences only; live lease, source qualification and native
    * issuance remain independent requirements of the installed controller. */
   allowsProtectedSheetActions(): boolean { return this.active && !this.sheetActionConflict && !this.recoveryConflict; }
@@ -154,7 +160,7 @@ export class WorkbookWriter {
       const candidate = this.prospectiveDeletionContexts(raw, retainedOrigin), source = this.source, revision = this.revision, pending = this.pending;
       const snapshot = structuredClone(prospective);
       if (snapshot.sheets[raw.descriptor.sheetId] || snapshot.sheetOrder.includes(raw.descriptor.sheetId)) throw Error('The prospective worksheet deletion changed.');
-      workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { alignment: this.alignment ?? this.recoveredAlignment, scope: this.journal?.scope, pending: this.pending, deletions: candidate, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() });
+      workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { alignment: this.recoveredAlignment ?? this.alignment, scope: this.journal?.scope, pending: this.pending, deletions: candidate, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() });
       const checkpoint = { ...this.checkpoint(), sheetDeletions: candidate };
       this.journal.validate({ ...checkpoint, desired: snapshot });
       // Validate the actual prospective state with its ORIGINAL pending root.
@@ -187,7 +193,7 @@ export class WorkbookWriter {
       const checkpoint = { ...this.checkpoint(), sheetBirths: prepared.state };
       this.journal.validate(checkpoint);
       this.journal.validate({ ...checkpoint, desired: prepared.snapshot });
-      workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, prepared.snapshot, { alignment: this.alignment ?? this.recoveredAlignment, scope: this.journal?.scope, pending: this.pending, deletions: this.sheetDeletions, births: prepared.state, sourceOwner: this.sheetProjectionOwner() });
+      workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, prepared.snapshot, { alignment: this.recoveredAlignment ?? this.alignment, scope: this.journal?.scope, pending: this.pending, deletions: this.sheetDeletions, births: prepared.state, sourceOwner: this.sheetProjectionOwner() });
       // Keep any original pending creation and all retained roots unchanged.
       // Future intent storage is admitted separately before its real transport.
       const durable = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
@@ -262,7 +268,7 @@ export class WorkbookWriter {
       } else if (canonicalCommentJson(this.desired.sheetOrder) !== canonicalCommentJson(prospective.sheetOrder)
         || canonicalCommentJson(Object.keys(this.desired.sheets).sort()) !== canonicalCommentJson(Object.keys(prospective.sheets).sort())) throw Error('Rename cannot change worksheet membership.');
       const snapshot = structuredClone(prospective);
-      workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { alignment: this.alignment ?? this.recoveredAlignment, scope: this.journal.scope,
+      workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { alignment: this.recoveredAlignment ?? this.alignment, scope: this.journal.scope,
         pending, deletions: this.sheetDeletions, births: this.sheetBirths, sourceOwner: this.sheetProjectionOwner() });
       this.journal.validate({ ...checkpoint, desired: snapshot });
       const durable = this.persistence.catch(() => {}).then(() => this.journal!.save(checkpoint));
@@ -295,7 +301,7 @@ export class WorkbookWriter {
       this.journal.validate(checkpoint);
       // Preserve the ORIGINAL pending root. A provisional target record depends
       // on that exact creation, never on an invented future operation.
-      workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { alignment: this.alignment ?? this.recoveredAlignment, scope: this.journal.scope,
+      workbookGridPlan(source.model, source.sourceSha256, this.acknowledged, snapshot, { alignment: this.recoveredAlignment ?? this.alignment, scope: this.journal.scope,
         pending, deletions: this.sheetDeletions, births: prepared.state, sourceOwner: this.sheetProjectionOwner() });
       this.journal.validate({ ...checkpoint, desired: snapshot });
       const durable = this.persistence.catch(() => {}).then(() => this.journal!.save(structuredClone(checkpoint)));

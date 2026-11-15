@@ -329,3 +329,65 @@ it('does not replace a retired live registry with stored presentation data to ad
     expect(writer.checkpoint().desired).toEqual(f.book.save());
   } finally { await writer.close(); }
 });
+
+it.each(['desired', 'pending'] as const)('saves restored %s Fill in a fresh seeded SDK with an unqualified new live registry', async mode => {
+  vi.stubGlobal('indexedDB', new IDBFactory());
+  const scope = { viewerId: 'alignment-viewer', projectId: '11111111-1111-4111-8111-111111111111', fileName: 'Alignment.xlsx', draftId: crypto.randomUUID() };
+  const f = fixture(false, false, false, 'fill', undefined, false, `${scope.projectId}:${scope.fileName}`);
+  const source = { sourceSha256: 'a'.repeat(64), model: structuredClone(f.model) };
+  const journal = { scope, save: (checkpoint: Parameters<typeof saveWorkbookDraft>[1]) => saveWorkbookDraft(scope, checkpoint) };
+  let calls = 0;
+  const writer = new WorkbookWriter(source, f.initial, async (_intent: WorkbookWriteIntent) => {
+    if (++calls > 1) throw Error('Response lost');
+    const model = structuredClone(f.model); model.styles[0]!.alignment!.horizontal = 'general';
+    return legacyWorkbookWrite({ sourceSha256: 'b'.repeat(64), model });
+  }, () => {}, undefined, journal, f.origins);
+  try {
+    f.message('general'); writer.update(f.book.save()); await writer.flush();
+    await f.api.undo(); writer.update(f.book.save());
+    if (mode === 'pending') await writer.flush();
+    await writer.close();
+    const restored = (await readWorkbookDraft(scope))!;
+    expect(restored.pending !== null).toBe(mode === 'pending');
+    const English = require('@univerjs/preset-sheets-core/locales/en-US');
+    const fresh = new core.Univer({ locale: core.LocaleType.EN_US, locales: { [core.LocaleType.EN_US]: English.default ?? English } });
+    closers.push(() => fresh.dispose()); fresh.registerPlugin(sheets.UniverSheetsPlugin);
+    const api = FUniver.newAPI(fresh), book = api.createWorkbook(structuredClone(restored.desired));
+    book.getActiveSheet().getSheet().setIsRowStylePrecedeColumnStyle(false);
+    fresh.__getInjector().get(core.IUniverInstanceService).focusUnit(book.getId());
+    const expected = gridWorkbook(restored.source.model, book.getId(), 'Alignment').data.styles!;
+    const live = workbookAlignmentProvenance(book, restored.source.model, expected, () => true, false, false);
+    closers.push(() => live.dispose());
+    expect(live.snapshot(book.save())('s', 1, 1)).toBeNull();
+    const beforeHistory = fresh.__getInjector().get(core.IUndoRedoService).getUndoRedoEntryIds(book.getId());
+    expect(beforeHistory.undos).toEqual([]); expect(beforeHistory.redos).toEqual([]);
+    const transport = vi.fn(async (_intent: WorkbookWriteIntent) => legacyWorkbookWrite({ sourceSha256: 'c'.repeat(64), model: f.model }));
+    const recovered = new WorkbookWriter(restored.source, book.save(), transport, () => {}, undefined, { ...journal, restored }, live);
+    try {
+      recovered.update(book.save()); await recovered.flush();
+      expect(recovered.state()).toEqual({ dirty: false, saving: false, error: null });
+      expect(transport).toHaveBeenCalledOnce();
+      expect(transport.mock.calls[0]![0].plan.styles).toEqual([{ sheetId: 's', row: 1, column: 1, horizontalAlignment: 'fill' }]);
+      if (restored.pending) expect(transport.mock.calls[0]![0]).toEqual(restored.pending.intent);
+      expect(fresh.__getInjector().get(core.IUndoRedoService).getUndoRedoEntryIds(book.getId())).toEqual(beforeHistory);
+      expect(live.snapshot(book.save())('s', 1, 1)).toBeNull();
+      expect(await readWorkbookDraft(scope)).toBeNull();
+    } finally { await recovered.close(); }
+  } finally { await writer.close(); }
+});
+
+it('retains retirement guards when clean resume supplies the same private registry', async () => {
+  const f = fixture(false, false, false, 'fill');
+  const source = { sourceSha256: 'a'.repeat(64), model: f.model };
+  const writer = new WorkbookWriter(source, f.initial, async () => legacyWorkbookWrite({ ...source, sourceSha256: 'b'.repeat(64) }), () => {}, undefined, undefined, f.origins);
+  let resumed: WorkbookWriter | undefined;
+  try {
+    f.message('general'); writer.update(f.book.save()); await writer.flush();
+    const restored = writer.checkpoint(); await writer.close();
+    const transport = vi.fn();
+    resumed = new WorkbookWriter(restored.source, f.book.save(), transport, () => {}, undefined, { save: async () => {}, restored }, f.origins);
+    await f.api.undo(); f.origins.dispose(); resumed.update(f.book.save()); await resumed.flush();
+    expect(resumed.state()).toMatchObject({ dirty: true, error: expect.stringContaining('horizontal alignment') });
+    expect(transport).not.toHaveBeenCalled();
+  } finally { await writer.close(); await resumed?.close(); }
+});
