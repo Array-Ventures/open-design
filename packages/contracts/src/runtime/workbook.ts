@@ -28,6 +28,9 @@ export const workbookFontSchema = z.object({
 export type WorkbookFont = z.infer<typeof workbookFontSchema>;
 const border = z.object({ style: z.enum(['thin', 'dotted', 'hair', 'medium', 'double', 'thick', 'dashDot', 'dashDotDot', 'slantDashDot', 'mediumDashed', 'mediumDashDotDot', 'mediumDashDot', 'dashed']), color: workbookColorSchema.optional() }).strict();
 const gradientStops = z.array(z.object({ position: z.number().min(0).max(1), color: workbookColorSchema }).strict()).min(2).max(64);
+/** Source-complete horizontal alignment used by preservation and restorative plans. */
+export const workbookSourceHorizontalAlignmentSchema = z.enum(['general', 'left', 'center', 'right', 'fill', 'justify', 'centerContinuous', 'distributed']);
+export type WorkbookSourceHorizontalAlignment = z.infer<typeof workbookSourceHorizontalAlignmentSchema>;
 export const workbookStyleSchema = z.object({
   font: workbookFontSchema.optional(), numberFormat: z.string().max(1024).optional(),
   fill: z.union([
@@ -35,7 +38,7 @@ export const workbookStyleSchema = z.object({
     z.object({ gradient: z.literal('angle'), degree: z.number().min(0).max(360), stops: gradientStops }).strict(),
     z.object({ gradient: z.literal('path'), center: z.object({ left: z.number().min(0).max(1), top: z.number().min(0).max(1) }).strict(), stops: gradientStops }).strict(),
   ]).optional(),
-  alignment: z.object({ horizontal: z.enum(['general', 'left', 'center', 'right', 'fill', 'justify', 'centerContinuous', 'distributed']).optional(),
+  alignment: z.object({ horizontal: workbookSourceHorizontalAlignmentSchema.optional(),
     vertical: z.enum(['top', 'middle', 'bottom', 'justify', 'distributed']).optional(), wrap: z.boolean().optional(), shrink: z.boolean().optional(),
     indent: z.number().int().min(0).max(250).optional(), rotation: z.union([z.number().int().min(-90).max(90), z.literal('vertical')]).optional(),
   }).strict().optional(),
@@ -71,7 +74,7 @@ export type WorkbookHorizontalAlignment = z.infer<typeof workbookHorizontalAlign
 export const workbookStyleEditSchema = z.object({ sheetId: id, row, column,
   bold: z.boolean().optional(), italic: z.boolean().optional(),
   fontSize: z.number().positive().max(512).optional(),
-  horizontalAlignment: workbookHorizontalAlignmentSchema.optional(),
+  horizontalAlignment: workbookSourceHorizontalAlignmentSchema.optional(),
   fontColor: z.string().regex(/^[A-Fa-f0-9]{8}$/).nullable().optional(),
   fillColor: z.string().regex(/^[A-Fa-f0-9]{8}$/).nullable().optional(),
 }).strict().refine(edit => edit.bold !== undefined || edit.italic !== undefined || edit.fontSize !== undefined || edit.fontColor !== undefined || edit.fillColor !== undefined || edit.horizontalAlignment !== undefined, 'Empty style edit.');

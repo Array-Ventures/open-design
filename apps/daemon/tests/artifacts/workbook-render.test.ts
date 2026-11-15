@@ -43,7 +43,7 @@ describe('isolated workbook render preparation', () => {
     expect(book.getWorksheet('Inputs')!.getCell('B1').value).toEqual({ formula: 'A1*2', result: 4 });
     const retry = path.join(directory, 'alignment-retry'); await mkdir(retry);
     await expect(renderWorkbook(retry, input, async name => name === 'edits.json' ? body : saved)).rejects.toThrow('changed after');
-    for (const extra of [{ verticalAlignment: 'top' }, { horizontalAlignment: null }, { horizontalAlignment: 'justify' }]) {
+    for (const extra of [{ verticalAlignment: 'top' }, { horizontalAlignment: null }, { horizontalAlignment: 'diagonal' }]) {
       const bad = Buffer.from(JSON.stringify({ sourceSha256, edits: [], styles: [{ sheetId: '1', row: 0, column: 0, horizontalAlignment: 'center', ...extra }] }));
       await expect(renderWorkbook(retry, input, async name => name === 'edits.json' ? bad : bytes)).rejects.toThrow();
     }

@@ -1,8 +1,10 @@
 # Sparse horizontal alignment
 
-`WorkbookStyleEdit.horizontalAlignment` optionally carries `general`, `left`,
-`center` or `right`. Omission retains the source owner; null and all other
-alignment values refuse. General explicitly writes OOXML `horizontal="general"`
+`WorkbookStyleEdit.horizontalAlignment` optionally carries the source model’s
+eight values: `general`, `left`, `center`, `right`, `fill`, `justify`,
+`centerContinuous` or `distributed`. The public user-command schema remains
+limited to General, Left, Center and Right. Omission retains the source owner;
+null and genuinely invalid alignment values refuse. General explicitly writes OOXML `horizontal="general"`
 for automatic scalar display. It does not coerce the cell's value or number
 format. This additive field does not authorize arbitrary style-index assignment.
 
@@ -56,3 +58,33 @@ parent and dormant local records as well as the emitted effective alignment.
 OOXML vertical `center` continues to normalize to the pinned reader's `middle`;
 that test expectation was corrected to the existing public model vocabulary.
 No permission, current-source SHA, scalar style guard or package limit changed.
+
+
+## Restoring a source alignment after Save
+
+The initial four-value internal schema was too restrictive: saving General over
+an original Fill, Justify, Center Across Selection or Distributed alignment then
+Undoing must restore that exact source value. The sparse plan now reuses the
+same eight-value schema as the source model. This is a preservation capability,
+not a new user-facing command. The separate four-choice command schema is
+unchanged and explicitly tested to refuse the other four values.
+
+Four actual XLSX restoration cases failed against the initial schema while its
+12 existing controls passed. Each now saves General, reopens that saved result,
+then restores the original alignment through the same calculation/save adapter.
+They independently read the emitted alignment, compare the complete original XF,
+require retained original style records, reuse the existing original XF without
+another append, and preserve unrelated package parts. This models source
+restoration; live native Undo ownership remains the grid integration’s task.
+
+The earlier schema/render tests called Justify and Distributed invalid. Those
+expectations are replaced with genuinely invalid `diagonal`/`centre`, plus the
+stronger real-source restoration cases and explicit UI-only four-choice
+refusals. Unknown properties, null, empty edits and source-SHA/style guards still
+refuse; no assertion is removed merely to accept an unsupported mutation.
+
+This source-complete follow-up passed 80 affected daemon cases across six files,
+both schema cases, full workspace types and repository guard. The four-case
+failure log and final checks are retained as
+`/tmp/workbook-alignment-source-{restore-red,final-focused,types,guard}.log`.
+No browser, native Undo, new package or runtime qualification is implied.

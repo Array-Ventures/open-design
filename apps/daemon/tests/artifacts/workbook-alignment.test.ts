@@ -152,3 +152,21 @@ it('uses the actual custom-row alignment and refuses intersecting row/column own
   parts.set(part, Buffer.from(document.toString()));
   await expect(patchWorkbookStyles({ ...source, parts }, [{ sheetId: '1', row: 0, column: 3, horizontalAlignment: 'left' }])).rejects.toMatchObject({ code: 'WORKBOOK_UNSUPPORTED' });
 });
+
+it.each(['fill', 'justify', 'centerContinuous', 'distributed'] as const)('restores original %s after an acknowledged General save without dropping other formatting', async horizontalAlignment => {
+  const source = await fixture(), styles = xmlPart(source.parts, 'xl/styles.xml');
+  const id = xfs(source).findIndex(x => x.toString() === cellXf(source).toString());
+  child(children(child(styles.documentElement!, 'cellXfs')!, 'xf')[id]!, 'alignment')!.setAttribute('horizontal', horizontalAlignment);
+  const parts = new Map(source.parts); parts.set('xl/styles.xml', Buffer.from(styles.toString()));
+  const { writeWorkbookPackage } = await import('../../src/artifacts/workbook/package.js');
+  const original = await readXlsxWorkbook(await writeWorkbookPackage(parts));
+  const general = await readXlsxWorkbook((await calculateWorkbookCellEdits(original, [], [], [{ sheetId: '1', row: 0, column: 0, horizontalAlignment: 'general' }])).bytes);
+  expect(child(cellXf(general), 'alignment')!.getAttribute('horizontal')).toBe('general');
+  const restored = await readXlsxWorkbook((await calculateWorkbookCellEdits(general, [], [], [{ sheetId: '1', row: 0, column: 0, horizontalAlignment }])).bytes);
+  expect(cellXf(restored).toString()).toBe(cellXf(original).toString());
+  expect(xfs(restored).map(x => x.toString())).toEqual(xfs(general).map(x => x.toString()));
+  const independent = new ExcelJS.Workbook();
+  await independent.xlsx.load(Uint8Array.from(await writeWorkbookPackage(restored.parts)).buffer);
+  expect(independent.worksheets[0]!.getCell('A1').alignment).toMatchObject({ horizontal: horizontalAlignment, vertical: 'top', wrapText: true, textRotation: 30, indent: 2, shrinkToFit: true });
+  for (const [part, bytes] of original.parts) if (!['xl/styles.xml', 'xl/worksheets/sheet1.xml'].includes(part)) expect(restored.parts.get(part), part).toEqual(bytes);
+});
