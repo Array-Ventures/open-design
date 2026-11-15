@@ -43,6 +43,13 @@ export function markdownSource(source: string): { body: string; fonts: { text: F
   return { body: source, fonts: { text: 'sans', headings: 'serif' } };
 }
 
+function assertResolvedDocumentSuggestions(html: string): void {
+  const $ = load(html);
+  if ($('[data-eve-suggestion],[data-eve-suggestion-id],[data-eve-suggestion-operation]').length) {
+    throw Error('Resolve document suggestions before converting this document. Download the original source to preserve pending changes.');
+  }
+}
+
 /** Refuse application runtimes rather than flattening them into misleading documents. */
 export async function prepareDocument(content: string, fileName: string, title: string): Promise<string | null> {
   if (Buffer.byteLength(content) > MAX_DOCUMENT_BYTES) {
@@ -59,6 +66,7 @@ export async function prepareDocument(content: string, fileName: string, title: 
   }
   const $ = load(html);
   if ($('html').attr('data-eve-document') !== '1') return null;
+  assertResolvedDocumentSuggestions(html);
   $('ul.task-list input[type="checkbox"]').attr('disabled', '');
   $('li[aria-checked]').each((_index, item) => {
     const li = $(item); li.parent('ul').addClass('task-list');
@@ -113,6 +121,7 @@ export async function documentReference(bytes: Buffer, fonts: { text: Font; head
 }
 
 export async function exportDocument(html: string, original: string, fileName: string, format: 'docx' | 'markdown', title: string, readAsset: (name: string) => Promise<{ buffer: Buffer; size: number; mime: string } | null>): Promise<{ body: Buffer; file: string; mime: string }> {
+  assertResolvedDocumentSuggestions(html);
   if (format === 'markdown') {
     let body: Buffer;
     if (markdownFile(fileName)) body = Buffer.from(markdownSource(original).body);

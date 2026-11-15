@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $createParagraphNode, $insertNodes, $getRoot, $getSelection, $getState, $isRangeSelection, $setState, FORMAT_TEXT_COMMAND, UNDO_COMMAND, REDO_COMMAND } from 'lexical';
+import { $createParagraphNode, $insertNodes, $getRoot, $getSelection, $getState, $isRangeSelection, $setState, FORMAT_TEXT_COMMAND, UNDO_COMMAND, REDO_COMMAND, HISTORY_PUSH_TAG } from 'lexical';
 import { $createCodeNode } from '@lexical/code';
 import { $createHeadingNode, $createQuoteNode } from '@lexical/rich-text';
 import { $setBlocksType } from '@lexical/selection';
@@ -56,7 +56,12 @@ export function DocumentToolbar({ font, headingFont, onImageStatus, hidden = fal
             {([{ label: 'Headings', state: documentHeadingFont, value: headingFont }, { label: 'Text', state: documentFont, value: font }] as const).map((group, index) => <div key={group.label} role="group" aria-label={group.label}>
               {index ? <DropdownDivider /> : null}
               <DropdownGroup label={group.label}>
-                {(['serif', 'sans'] as const).map(choice => <DropdownItem key={choice} selected={group.value === choice} onSelect={() => editor.update(() => $setState($getRoot(), group.state, choice))}>
+                {(['serif', 'sans'] as const).map(choice => <DropdownItem key={choice} selected={group.value === choice} onSelect={() => {
+                  // Commit pending editor normalization before this
+                  // distinct source-format transaction enters native history.
+                  const previous = editor.read(() => $getState($getRoot(), group.state));
+                  if (previous !== choice) editor.update(() => $setState($getRoot(), group.state, choice), { tag: HISTORY_PUSH_TAG });
+                }}>
                   <span>{choice === 'serif' ? 'Serif' : 'Sans'}</span>{group.value === choice ? <RiCheckLine className="ms-auto size-4 shrink-0 text-accent-600" aria-hidden /> : null}
                 </DropdownItem>)}
               </DropdownGroup>

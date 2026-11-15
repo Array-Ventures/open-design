@@ -1,5 +1,13 @@
 'use client';
 
+import { useT } from '../../../i18n';
+import { cx } from '../boardui/cx';
+import { DocumentSuggestionInputError } from './document-suggestion-policy';
+import { validDocumentSuggestions } from './document-suggestion-schema';
+import { DocumentSuggestions } from './DocumentSuggestions';
+import type { DocumentMode } from './document-suggestion-input';
+import { DocumentSuggestionNode } from './DocumentSuggestionNode';
+
 import { DocumentComments } from './DocumentComments';
 import { DocumentTableActions } from './DocumentTableActions';
 import type { ArtifactFeedbackProps } from '../LiveArtifactFeedbackPreview';
@@ -40,7 +48,7 @@ import { RiSaveLine, RiPencilLine, RiArrowDownSLine } from '@remixicon/react';
 import { ScrollFade, useScrollFade } from '../boardui/scroll-fade';
 import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem } from '../boardui/dropdown';
 
-export const documentNodes = [HeadingNode, QuoteNode, ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, LinkNode, CodeNode, CodeHighlightNode, DocumentImageNode, DocumentDividerNode, documentDividerReplacement];
+export const documentNodes = [DocumentSuggestionNode, HeadingNode, QuoteNode, ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, LinkNode, CodeNode, CodeHighlightNode, DocumentImageNode, DocumentDividerNode, documentDividerReplacement];
 
 export function DocumentEditor({ feedback, onCommentDirtyChange, projectId, fileName, title, observed, onSaved, onDirtyChange, onWriteError }: {
   onCommentDirtyChange?(dirty: boolean): void; feedback?: ArtifactFeedbackProps; projectId: string; fileName: string; title: string; observed: DocumentFile; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void; onWriteError?(error: string | null): void;
@@ -50,7 +58,7 @@ export function DocumentEditor({ feedback, onCommentDirtyChange, projectId, file
   const [failure, setFailure] = useState<string | null>(null);
   const initialConfig = useMemo(() => ({
     namespace: `document:${projectId}:${fileName}`, theme: { hrSelected: styles.dividerSelected, tableScrollableWrapper: styles.tableScroll, code: styles.code, text: { code: styles.inlineCode, underline: styles.underline, strikethrough: styles.strikethrough, underlineStrikethrough: styles.underlineStrikethrough }, list: { checklist: styles.checklist, listitemChecked: styles.checked, listitemUnchecked: styles.unchecked } }, nodes: documentNodes, html: documentHtmlConfig(),
-    onError: (error: Error) => { setFailure(error.message); },
+    onError: (error: Error) => { if (!(error instanceof DocumentSuggestionInputError)) setFailure(error.message); },
     editorState: (editor: import('lexical').LexicalEditor) => {
       const root = $getRoot(); root.select(); $insertNodes($generateNodesFromDOM(editor, documentImport(observed.html))); $setSelection(null);
       const attributes = new DOMParser().parseFromString(observed.html, 'text/html').documentElement;
@@ -75,14 +83,19 @@ export function DocumentEditor({ feedback, onCommentDirtyChange, projectId, file
 function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, title, observed, owners, onSaved, onDirtyChange, onWriteError }: {
   onCommentDirtyChange?(dirty: boolean): void; feedback?: ArtifactFeedbackProps; projectId: string; fileName: string; title: string; observed: DocumentFile; owners: Map<string, string>; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void; onWriteError?(error: string | null): void;
 }) {
-  const [editor] = useLexicalComposerContext();
+  const [editor] = useLexicalComposerContext(), t = useT();
   const rootAttributes = useMemo(() => documentRootAttributes(observed.html), [observed.html]);
   const fade = useScrollFade();
   const [writeState, setWriteState] = useState<DocumentWriteState>({ dirty: false, saving: false, error: null });
   const [font, setFont] = useState<'sans' | 'serif'>('sans');
   const [headingFont, setHeadingFont] = useState<'sans' | 'serif'>('serif');
   const [imageStatus, setImageStatus] = useState<string | null>(null);
-  const [editing, setEditing] = useState(true);
+  const [mode, setMode] = useState<DocumentMode>('editing');
+  const [pendingSuggestions, setPendingSuggestions] = useState(0);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [reviewTriggerHost, setReviewTriggerHost] = useState<HTMLSpanElement | null>(null);
+  const reviewScroll = useRef<HTMLDivElement>(null);
+  const modeLabel = mode === 'editing' ? t('documentSuggestions.editing') : mode === 'suggesting' ? t('documentSuggestions.mode') : t('documentSuggestions.viewing');
   const [commentsOpen, setCommentsOpen] = useState(false);
   const writer = useRef<DocumentWriter | null>(null);
   const controllerId = useRef(crypto.randomUUID()).current;
@@ -104,7 +117,12 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
   const dirtyChanged = useRef(onDirtyChange); dirtyChanged.current = onDirtyChange;
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const serialize = () => observed.format === 'markdown' ? serializeMarkdownDocument(editor) : preserveDocumentRootAttributes(documentHtml(title, $generateHtmlFromNodes(editor), $getState($getRoot(), documentFont), $getState($getRoot(), documentHeadingFont)), rootAttributes);
+    const serialize = () => {
+      if (observed.format === 'markdown') return serializeMarkdownDocument(editor);
+      const html = $generateHtmlFromNodes(editor);
+      if (!validDocumentSuggestions(new DOMParser().parseFromString(html, 'text/html').body)) throw Error('Document suggestions could not be preserved.');
+      return preserveDocumentRootAttributes(documentHtml(title, html, $getState($getRoot(), documentFont), $getState($getRoot(), documentHeadingFont)), rootAttributes);
+    };
     const initial = editor.getEditorState().read(serialize);
     const current = writer.current ??= new DocumentWriter(observed, initial, async (html, base) => {
       const result = await saveDocumentFile(projectId, fileName, html, base); saved.current(result); return result;
@@ -126,28 +144,31 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
   return <>
     <div className="flex shrink-0 items-center justify-end gap-2 px-3 py-2 text-caption-1-regular text-text-tertiary" >
       <DocumentOutline />
-      <span role="status">{status}</span>
+      <span role="status" className="min-w-0 truncate">{status}</span>
+      <span ref={setReviewTriggerHost} className="flex shrink-0 empty:hidden" />
       {writeState.dirty ? <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiSaveLine} aria-label="Save document" title="Save" disabled={writeState.saving || !writeState.dirty} onClick={() => { void writer.current?.flush(); }} /> : null}
       <Dropdown>
-        <DropdownTrigger aria-label={`${editing ? 'Editing' : 'Viewing'}, mode`} className="box-border flex h-8 items-center gap-1 rounded-xl border-0 bg-background-secondary-default px-2 py-0 text-body-2-medium text-text-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiPencilLine className="size-4 shrink-0" aria-hidden />{editing ? 'Editing' : 'Viewing'}<RiArrowDownSLine className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
+        <DropdownTrigger aria-label={t('documentSuggestions.modeAria', { mode: modeLabel })} className="box-border flex h-8 shrink-0 items-center gap-1 rounded-xl border-0 bg-background-secondary-default px-2 py-0 text-body-2-medium text-text-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiPencilLine className="size-4 shrink-0" aria-hidden />{modeLabel}<RiArrowDownSLine className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
         <DropdownPopover aria-label="Document mode" placement="bottom end">
-          <DropdownItem onSelect={() => { editor.setEditable(true); setEditing(true); }}>Editing</DropdownItem>
-          <DropdownItem onSelect={() => { editor.setEditable(false); setEditing(false); setImageStatus(null); }}>Viewing</DropdownItem>
+          <DropdownItem onSelect={() => { editor.setEditable(true); setMode('editing'); }}>{t('documentSuggestions.editing')}</DropdownItem>
+          <DropdownItem onSelect={() => { editor.setEditable(true); setMode('suggesting'); }}>{t('documentSuggestions.mode')}</DropdownItem>
+          <DropdownItem onSelect={() => { editor.setEditable(false); setMode('viewing'); setImageStatus(null); }}>{t('documentSuggestions.viewing')}</DropdownItem>
         </DropdownPopover>
       </Dropdown>
     </div>
     {writeState.error && !onWriteError ? <div role="alert" className="px-4 py-2 text-body-2-regular text-text-error-primary">{writeState.error}</div> : null}
     {imageStatus ? <div role="status" className="px-4 py-2 text-body-2-regular text-text-secondary">{imageStatus}</div> : null}
-    <div className="relative min-h-0 flex-1">
-    <div className={styles.scroll} onScroll={fade.onScroll}>
+    <div className={cx('relative min-h-0 flex-1', suggestionsOpen && styles.reviewing)}>
+    <div ref={reviewScroll} className={styles.scroll} onScroll={fade.onScroll}>
       <div className={styles.page}>
-        <DocumentTableActions enabled={editing && !commentsOpen}><RichTextPlugin contentEditable={<ContentEditable aria-label={title} lang={rootAttributes.lang ?? undefined} dir={rootAttributes.dir ?? undefined} className={styles.content} style={{ fontFamily: documentFontFamily(font), '--document-heading-font': documentFontFamily(headingFont) } as CSSProperties} />}
+        <DocumentTableActions enabled={mode === 'editing' && !pendingSuggestions && !commentsOpen}><RichTextPlugin contentEditable={<ContentEditable aria-label={title} lang={rootAttributes.lang ?? undefined} dir={rootAttributes.dir ?? undefined} className={styles.content} style={{ fontFamily: documentFontFamily(font), '--document-heading-font': documentFontFamily(headingFont) } as CSSProperties} />}
           placeholder={<div className={styles.placeholder}>Start writing…</div>} ErrorBoundary={LexicalErrorBoundary} /></DocumentTableActions>
       </div>
     </div>
+    <DocumentSuggestions scroll={reviewScroll} triggerHost={reviewTriggerHost} mode={mode} suspended={commentsOpen} onPending={setPendingSuggestions} onOpenChange={setSuggestionsOpen} />
     {feedback ? <DocumentComments onOpenChange={setCommentsOpen} onDirtyChange={onCommentDirtyChange} projectId={projectId} fileName={fileName} feedback={feedback} /> : null}
     <ScrollFade progress={fade.progress} surfaceClassName="from-background-primary-default" />
     </div>
-    {editing ? <DocumentToolbar commentsAvailable={Boolean(feedback)} hidden={commentsOpen} font={font} headingFont={headingFont} onImageStatus={setImageStatus} /> : null}
+    {mode === 'editing' && !pendingSuggestions ? <DocumentToolbar commentsAvailable={Boolean(feedback)} hidden={commentsOpen} font={font} headingFont={headingFont} onImageStatus={setImageStatus} /> : null}
   </>;
 }

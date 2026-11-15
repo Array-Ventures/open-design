@@ -1,10 +1,14 @@
+import { readDocumentSuggestion, validDocumentSuggestions } from './document-suggestion-schema';
 import { documentHtml, isEditableDocument, isDocumentLinkSupported, supportedDocumentLanguage } from './document-html';
 import { supportedDocumentImageElement, documentImageCssDimension } from './document-image-source';
 import { documentImportStyles, documentTextStyles } from './document-styles';
 import styles from './DocumentEditor.module.css';
 
 const tags = new Set(['main', 'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'table', 'colgroup', 'col', 'thead', 'tbody', 'tr', 'td', 'th', 'a', 'br', 'span', 'code', 'pre', 'img', 'hr']);
-const canonicalBorderImageDefaults = new Set(['border-image-source', 'border-image-slice', 'border-image-width', 'border-image-outset', 'border-image-repeat']);
+const canonicalBorderImageDefaults = new Map([
+  ['border-image-source', 'none'], ['border-image-slice', '100%'],
+  ['border-image-width', '1'], ['border-image-outset', '0'], ['border-image-repeat', 'stretch'],
+]);
 const inline = new Set(['span', 'strong', 'b', 'em', 'i', 'u', 's', 'code']);
 const attributes: Record<string, string[]> = {
   a: ['href', 'title', 'target', 'rel'], img: ['src', 'alt', 'title', 'width', 'height'],
@@ -15,6 +19,7 @@ const attributes: Record<string, string[]> = {
 const editorClasses = new Set(Object.values(styles).flatMap(value => value.split(/\s+/)));
 function supportedElement(element: HTMLElement): boolean {
   const tag = element.tagName.toLowerCase();
+  if (tag === 'ins' || tag === 'del') return readDocumentSuggestion(element) !== null;
   if (!tags.has(tag)) return false;
   for (const attribute of Array.from(element.attributes)) {
     if (attribute.name === 'class' && attribute.value.split(/\s+/).every(value => editorClasses.has(value))) continue;
@@ -79,7 +84,7 @@ function supportedElement(element: HTMLElement): boolean {
     if (canonicalCellBorder && name === 'border-image' && value === 'none') continue;
     // Chromium expands Lexical's border shorthand into these exact reset
     // longhands. Admit only regenerated initial defaults, never authored images.
-    if (canonicalCellBorder && canonicalBorderImageDefaults.has(name) && value === 'initial') continue;
+    if (canonicalCellBorder && canonicalBorderImageDefaults.has(name) && (value === 'initial' || value === canonicalBorderImageDefaults.get(name))) continue;
     if (canonicalCellBorder && /^border(?:-(?:top|right|bottom|left))?(?:-(?:width|style|color))?$/.test(name)) continue;
     // Flattening text wrappers cannot retain contextual CSS-wide values or currentColor.
     if (documentTextStyles.has(name) && /^(?:inherit|initial|unset|revert|revert-layer|currentcolor)$/i.test(value)) return false;
@@ -112,6 +117,7 @@ function supportedElement(element: HTMLElement): boolean {
 export function supportedDocument(html: string, fileName: string): boolean {
   if (!isEditableDocument(html)) return false;
   const parsed = new DOMParser().parseFromString(html, 'text/html');
+  if (!validDocumentSuggestions(parsed.body)) return false;
   const root = parsed.documentElement;
   if (Array.from(root.attributes).some(attr => !['data-eve-document', 'data-eve-document-font', 'data-eve-document-heading-font', 'lang', 'dir'].includes(attr.name))) return false;
   if (root.hasAttribute('lang') && !supportedDocumentLanguage(root.getAttribute('lang')!)) return false;
