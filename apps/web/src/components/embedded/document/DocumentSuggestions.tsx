@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { $hasUpdateTag, HISTORY_PUSH_TAG } from 'lexical';
-import { RiArrowLeftSLine, RiArrowRightSLine, RiCloseLine } from '@remixicon/react';
+import { RiArrowLeftSLine, RiArrowRightSLine, RiCloseLine, RiChatCheckLine } from '@remixicon/react';
 import { useT } from '../../../i18n';
 import type { Dict } from '../../../i18n/types';
 import { Button } from '../boardui/button';
@@ -19,7 +20,7 @@ const noticeKeys: Record<SuggestionNotice, keyof Dict> = {
   blocked: 'documentSuggestions.blocked', stale: 'documentSuggestions.stale',
 };
 /** Passive current-proposal UI; source review uses the existing conditional writer. */
-export function DocumentSuggestions({ mode, suspended, onPending, onOpenChange }: { mode: DocumentMode; suspended: boolean; onPending(count: number): void; onOpenChange(open: boolean): void }) {
+export function DocumentSuggestions({ mode, suspended, onPending, onOpenChange, triggerHost, scroll }: { scroll: RefObject<HTMLElement | null>; triggerHost: HTMLElement | null; mode: DocumentMode; suspended: boolean; onPending(count: number): void; onOpenChange(open: boolean): void }) {
   const [editor] = useLexicalComposerContext(), t = useT();
   const currentMode = useRef(mode); currentMode.current = mode;
   const [changes, setChanges] = useState<Review[]>([]), [notice, setNotice] = useState<SuggestionNotice | null>(null);
@@ -35,7 +36,7 @@ export function DocumentSuggestions({ mode, suspended, onPending, onOpenChange }
     if (!element?.isConnected) return null;
     const measured = element.ownerDocument.createRange(); measured.selectNodeContents(element); return measured;
   }), [editor, current?.id]);
-  const placement = useDocumentCommentPlacement(editor, null, active, revision, 320, range);
+  const placement = useDocumentCommentPlacement(editor, null, active, revision, 320, range, scroll);
   useLayoutEffect(() => attachDocumentSuggestionInput(editor, () => currentMode.current, setNotice), [editor]);
   useEffect(() => {
     const publish = () => editor.getEditorState().read(() => {
@@ -77,7 +78,7 @@ export function DocumentSuggestions({ mode, suspended, onPending, onOpenChange }
   };
   return <>
     {notice && !suspended ? <div role="status" className="absolute bottom-3 end-3 z-30 max-w-[calc(100%_-24px)] rounded-xl border border-border-button-default bg-background-primary-default px-3 py-2 text-body-2-regular text-text-secondary">{t(noticeKeys[notice])}</div> : null}
-    {current && !open && !suspended ? <Button ref={trigger} variant="secondary" size="small" className="absolute end-3 top-3 z-30 bg-background-primary-default" onClick={() => { focusCard.current = true; setOpen(true); }}>{t('documentSuggestions.review')}</Button> : null}
+    {current && !open && !suspended && triggerHost ? createPortal(<Button ref={trigger} variant="ghost" size="small" iconOnly leadingIcon={RiChatCheckLine} className={DOCUMENT_ICON_BUTTON} aria-label={t('documentSuggestions.review')} title={t('documentSuggestions.review')} onClick={() => { focusCard.current = true; setOpen(true); }} />, triggerHost) : null}
     {current && open && !suspended ? <aside ref={placement.card} tabIndex={-1} role="dialog" aria-label={t('documentSuggestions.review')} onKeyDown={event => { if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); close(); } }} className={cx('absolute z-30 flex w-80 max-w-[calc(100%_-24px)] flex-col overflow-hidden rounded-2xl border border-border-button-default bg-background-primary-default shadow-lg focus-visible:ring-2 focus-visible:ring-border-focus-ring', placement.style ? 'left-[var(--document-comment-left)] right-auto top-[var(--document-comment-top)] max-h-[var(--document-comment-max-height)]' : 'end-3 top-3 max-h-[calc(100%_-24px)]')} style={{ width: 320, ...placement.style }}>
       <header className="flex shrink-0 items-center gap-1 border-b border-separator-border px-3 py-2">
         <span className="min-w-0 flex-1 text-caption-1-regular text-text-secondary">{t('documentSuggestions.count', { current: index + 1, count: changes.length })}</span>

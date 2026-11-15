@@ -159,6 +159,18 @@ it.each([
   expect(screen.getByRole('button', { name: labels.accept })).toBeEnabled();
   expect(screen.getByRole('button', { name: labels.reject })).toBeEnabled();
   expect(screen.queryByText(/Pending suggestions are saved/)).toBeNull();
+  const card = screen.getByRole('dialog', { name: labels.title });
+  card.focus(); fireEvent.keyDown(card, { key: 'Escape' });
+  const trigger = await screen.findByRole('button', { name: labels.title });
+  expect(trigger).toHaveFocus(); expect(trigger).toHaveAttribute('title', labels.title);
+  expect(trigger).not.toHaveTextContent(labels.title);
+  expect(trigger.parentElement?.parentElement?.querySelector('[role="status"]')).not.toBeNull();
+  fireEvent.click(trigger);
+  expect(await screen.findByRole('dialog', { name: labels.title })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole('dialog', { name: labels.title }), { key: 'Escape' });
+  fireEvent.click(screen.getByRole('textbox', { name: 'Review' }).querySelector('ins')!);
+  expect(await screen.findByRole('dialog', { name: labels.title })).toBeInTheDocument();
+
 });
 it('rolls back an unexpected post-insert failure before history and source writing', async () => {
   render(<DocumentEditor projectId="fixture" fileName="review.html" title="Review" observed={original} onSaved={() => {}} />);
@@ -190,6 +202,8 @@ it('shows only the current anchored card, navigates proposals without source edi
   expect(screen.getByText('Suggestion 2 of 2')).toBeInTheDocument();
   const close = screen.getByRole('button', { name: 'Close' }); close.focus(); fireEvent.click(close);
   const trigger = await screen.findByRole('button', { name: 'Review suggestions' }); expect(trigger).toHaveFocus();
+  expect(screen.getByRole('button', { name: 'Editing, mode' }).parentElement).toContainElement(trigger);
+  expect(trigger).not.toHaveTextContent('Review suggestions');
   fireEvent.click(trigger); expect(await screen.findByRole('dialog', { name: 'Review suggestions' })).toHaveFocus();
   fireEvent.click(screen.getByRole('button', { name: 'Previous suggestion' }));
   expect(screen.getByText('Suggestion 1 of 2')).toBeInTheDocument();
