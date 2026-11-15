@@ -1,3 +1,4 @@
+import { workbookAlignmentResolver, setWorkbookAlignment } from './alignment.js';
 import type { Document, Element, Node as XmlNode } from '@xmldom/xmldom';
 import { workbookStyleEditSchema, WORKBOOK_MODEL_LIMITS, type WorkbookStyleEdit } from '@open-design/contracts/runtime/workbook';
 import { WorkbookFormatError, writeWorkbookPackage, WORKBOOK_PACKAGE_LIMITS } from './package.js';
@@ -106,6 +107,8 @@ export async function patchWorkbookStyles(source: ReadWorkbook, edits: readonly 
     const format = unsigned(xf.getAttribute('numFmtId'), 0); if (format >= 164 && !formatIds.has(format)) throw new WorkbookFormatError('Workbook number format is missing.');
     if (xf.hasAttribute('xfId')) parents.at(unsigned(xf.getAttribute('xfId')));
   }
+  const resolveAlignment = workbookAlignmentResolver(root);
+  for (const xf of xfs.entries) resolveAlignment(xf);
   const originalStyles = xfs.entries.length, documents = new Map<string, SheetIndex>(), seen = new Set<string>();
   for (const input of edits) {
     const edit = workbookStyleEditSchema.parse(input), key = `${edit.sheetId}:${edit.row}:${edit.column}`;
@@ -131,6 +134,12 @@ export async function patchWorkbookStyles(source: ReadWorkbook, edits: readonly 
       const fill = create(doc, root, 'fill'), pattern = create(doc, fill, 'patternFill'); pattern.setAttribute('patternType', edit.fillColor === null ? 'none' : 'solid'); fill.appendChild(pattern);
       if (edit.fillColor !== null) { const foreground = create(doc, pattern, 'fgColor'); foreground.setAttribute('rgb', edit.fillColor.toUpperCase()); pattern.appendChild(foreground); }
       xf.setAttribute('fillId', String(fills.intern(fill))); xf.setAttribute('applyFill', '1');
+    }
+    if (edit.horizontalAlignment !== undefined) {
+      const alignment = (resolveAlignment(base)?.cloneNode(true) as Element | undefined) ?? create(doc, xf, 'alignment');
+      alignment.setAttribute('horizontal', edit.horizontalAlignment);
+      setWorkbookAlignment(xf, alignment);
+      xf.setAttribute('applyAlignment', '1');
     }
     const styleId = xfs.intern(xf);
     if (!row) { row = create(document, data, 'row'); row.setAttribute('r', String(edit.row + 1)); data.appendChild(row); rows.set(edit.row, row); }

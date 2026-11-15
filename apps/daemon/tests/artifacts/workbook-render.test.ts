@@ -34,6 +34,21 @@ describe('isolated workbook render preparation', () => {
     expect(book.getWorksheet('Inputs')!.getCell('B1').value).toEqual({ formula: 'A1*2', result: 16 });
     expect(bytes).toEqual(before);
   });
+  it('applies source-bound horizontal alignment through the actual render plan and rejects unsupported formatting', async () => {
+    const before = Buffer.from(bytes), input = { fileName: 'book.xlsx', dataFile: 'edits.json', format: 'xlsx' as const };
+    const body = Buffer.from(JSON.stringify({ sourceSha256, edits: [], styles: [{ sheetId: '1', row: 0, column: 0, horizontalAlignment: 'center' }] }));
+    await renderWorkbook(directory, input, async name => name === 'edits.json' ? body : bytes);
+    const saved = await readFile(path.join(directory, 'artifact.xlsx')), book = new ExcelJS.Workbook(); await book.xlsx.load(Uint8Array.from(saved).buffer);
+    expect(book.getWorksheet('Inputs')!.getCell('A1').alignment.horizontal).toBe('center');
+    expect(book.getWorksheet('Inputs')!.getCell('B1').value).toEqual({ formula: 'A1*2', result: 4 });
+    const retry = path.join(directory, 'alignment-retry'); await mkdir(retry);
+    await expect(renderWorkbook(retry, input, async name => name === 'edits.json' ? body : saved)).rejects.toThrow('changed after');
+    for (const extra of [{ verticalAlignment: 'top' }, { horizontalAlignment: null }, { horizontalAlignment: 'justify' }]) {
+      const bad = Buffer.from(JSON.stringify({ sourceSha256, edits: [], styles: [{ sheetId: '1', row: 0, column: 0, horizontalAlignment: 'center', ...extra }] }));
+      await expect(renderWorkbook(retry, input, async name => name === 'edits.json' ? bad : bytes)).rejects.toThrow();
+    }
+    expect(await readdir(retry)).toEqual([]); expect(bytes).toEqual(before);
+  });
   it('refuses a stale edit plan before producing any output', async () => {
     await expect(renderWorkbook(directory, { fileName: 'book.xlsx', dataFile: 'edits.json', format: 'xlsx' }, async name => name === 'edits.json' ? plan('0'.repeat(64)) : bytes)).rejects.toThrow('changed after');
     expect(await readdir(directory)).toEqual([]);
