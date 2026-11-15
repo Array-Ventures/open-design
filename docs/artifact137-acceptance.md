@@ -70,10 +70,11 @@ The desktop Dark presenter popup showed the second slide, its note, and previous
 and next slide previews after Left. Escape closed that popup normally. This does
 not claim every notes action was repeated in every size/theme.
 
-In the comment composer, typing `@Ch` showed Chief while Send to chat remained
+In the comment composer, typing `@Ch` showed Chief while Add to chat remained
 unchecked. Selecting Chief through the real suggestion control inserted the
-mention and checked Send to chat. Composer body and chat draft survived Expand
-and Restore with the same nodes. The draft was discarded without submission.
+mention and checked Add to chat. Composer body and chat draft survived Expand
+and Restore with the same nodes. The comment was discarded and the chat draft
+cleared without submission.
 
 A previously saved workbook was reopened without editing. After resizing from
 390px back to desktop, the visible canvas measured 980×532px inside the 980px
