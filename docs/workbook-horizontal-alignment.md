@@ -88,3 +88,62 @@ both schema cases, full workspace types and repository guard. The four-case
 failure log and final checks are retained as
 `/tmp/workbook-alignment-source-{restore-red,final-focused,types,guard}.log`.
 No browser, native Undo, new package or runtime qualification is implied.
+
+## Native grid commands and live source provenance
+
+The grid now accepts the four-choice horizontal-alignment action and emits an
+optional four-choice-or-null state. Automatic uses the pinned public
+`SetHorizontalTextAlignCommand` with `HorizontalAlign.UNSPECIFIED` (0), rather
+than forcing Left. Mixed or unrepresentable ranges report null. Selection,
+parent/origin, controller, editable/saving, rich-cell and existing 100,000-cell
+bounds still apply. A proven unchanged choice preserves native Redo; an
+unrepresented source alignment is not treated as a no-op.
+
+The pinned facade maps several unsupported alignments to General. A private
+kernel registry instead binds each initial source style ID to the exact SDK
+style object and source horizontal property. State and sparse planning share
+that registry and compose current raw default/row/column/cell owners. The
+rendered SheetSkeleton's configured row priority is captured once; its default
+is column precedence (default → row → column → cell), whereas a Node-only
+Worksheet initially uses row precedence. Actual SDK overlap tests explicitly
+set both configurations and compare the real composed result. Derived theme or
+interceptor horizontal overrides cannot establish authored no-op provenance.
+Unknown or changed objects stay unknown. Moved cells retain their style IDs;
+new reader/ACK style ordinals never rename a live SDK origin.
+
+The registry travels privately from Grid readiness to the exact installed
+Writer and its planning contexts. A hook-local WeakMap retains it for that
+Writer's qualified clean-resume handoff; rejected/stale readiness calls cannot
+replace the current Writer's registry. It is never serialized into checkpoints
+or files and retires with the kernel. A recovered/new kernel without proof
+cannot reconstruct old style authority. An unprovable alignment removal blocks
+Save and retains the draft instead of silently writing General.
+
+The original SDK/state/delta cases genuinely failed before implementation.
+Additional retained failures exposed partial-row inheritance, false General
+for Fill/Center Across Selection, and a rejected-ready handoff race. The latter
+regression fails against the intermediate ambient-ref implementation and passes
+with exact Writer-keyed ownership. The final affected group passed 108 cases
+across seven files, including real SDK commands/native Undo/Redo, row insertion,
+both composition priorities, the full selection bound, Writer acknowledgements
+with re-compacted reader ordinals, hook handoff, and retained unknown drafts.
+The Writer acknowledgement fixtures use explicit legacy receipts; they do not
+qualify historical receipt or HTTP authority. Earlier mock API/type/setup
+failures remain separately recorded in `/tmp/workbook-alignment-*` logs.
+
+A separate source-integration harness exercised actual SDK commands and native
+history against actual XLSX reader/calculation/save adapters: original Right,
+Fill and Center Across Selection each changed to General, saved, restored the
+original through native Undo and saved, then Redid General and saved. Fresh
+ExcelJS readback and independent XML checks verify all nine alignments plus
+vertical alignment, wrap, shrink, rotation and indent. Font/number format,
+untouched cells and unrelated ZIP parts remain unchanged. Receipts are
+`/tmp/workbook-alignment-provenance-{right,fill,centerContinuous}-receipt.json`
+and `/tmp/workbook-alignment-provenance-independent-xml.json`. These are actual
+source-adapter proofs, not packaged worker, browser, HTTP, lease or transport
+qualification. The paired native controls and General → Save → Undo → Save →
+Redo lifecycle still require a matching immutable pair and actual UI checks.
+
+Final full workspace types (serial workspace scheduling plus scripts types) and
+repository guard exited 0. No app/image build, runtime activation, pin change
+or publication was performed for this source checkpoint.

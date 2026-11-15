@@ -23,6 +23,7 @@ export interface WorkbookSheetProjectionOwner {
 }
 
 export interface WorkbookPlanContext {
+  alignment?: import('./grid-horizontal-alignment').WorkbookAlignmentProvenance | undefined;
   scope?: WorkbookDraftScope | undefined;
   pending?: WorkbookCheckpoint['pending'] | undefined;
   deletions?: readonly WorkbookSourceDeleteContext[] | undefined;

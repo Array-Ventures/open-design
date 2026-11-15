@@ -3,6 +3,7 @@ import { issueWorkbookMembershipWriterLease, type WorkbookMembershipWriterLease 
 import { canonicalWorkbookJsonValue, canonicalWorkbookSourceModel } from '@open-design/contracts/runtime/workbook-sheet-baseline';
 import type { WorkbookKernelAcknowledgement } from './kernel-acknowledgement';
 import { checkedWorkbookSaveAcknowledgement, type WorkbookSaveAcknowledgement } from './save-provenance';
+import type { WorkbookAlignmentProvenance } from './grid-horizontal-alignment';
 import { workbookGridPlan, workbookPlanHasChanges } from './grid-plan';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { IWorkbookData } from '@univerjs/presets';
@@ -33,7 +34,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
   const writerScope = useRef<WriterScope | null>(null);
   const handoff = useRef<Promise<WriterHandoff> | null>(null);
   const suspended = useRef<ReturnType<WorkbookWriter['checkpoint']> | null>(null);
-  const cleanResume = useRef<{ source: Preview; journal: WorkbookJournal; identity: WorkbookCleanPauseIdentity; checkpoint: WorkbookCheckpoint; resume(next: WorkbookMembershipWriterLease): Promise<void> } | null>(null);
+  const cleanResume = useRef<{ source: Preview; journal: WorkbookJournal; identity: WorkbookCleanPauseIdentity; checkpoint: WorkbookCheckpoint; alignment?: WorkbookAlignmentProvenance; resume(next: WorkbookMembershipWriterLease): Promise<void> } | null>(null);
   const paused = useRef(false), pausedSnapshot = useRef<IWorkbookData | null>(null);
   const discardTask = useRef<Promise<PreparedWorkbookDiscard> | null>(null);
   const membershipLease = useRef<WorkbookMembershipWriterLease | null>(null);
@@ -47,14 +48,16 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     membershipLease.current = null;
     generation.current += 1;
     running.current?.abort();
-    const owned = writer.current; writer.current = null; writerScope.current = null;
+    const owned = writer.current;
+    writer.current = null; writerScope.current = null;
     // Preserve drains even when a source-loss effect or another cleanup has
     // already detached the writer before the lease owner calls close().
     retired.current = Promise.all([retired.current, owned?.close()]).then(() => {});
     return retired.current;
   }, []);
   const sourceIdentity = source?.sourceSha256;
-  const ready = useCallback(async (initial: IWorkbookData) => {
+  const alignmentOwners = useRef(new WeakMap<WorkbookWriter, WorkbookAlignmentProvenance>());
+  const ready = useCallback(async (initial: IWorkbookData, alignment?: WorkbookAlignmentProvenance) => {
     const opened = current.current, source = opened.source;
     if (!source || opened.projectId !== projectId || opened.fileName !== fileName || source.sourceSha256 !== sourceIdentity || opened.journal !== journal) return;
     const scope: WriterScope = { projectId, fileName, journal: opened.journal };
@@ -142,8 +145,9 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
         previousPublishedSource = publishedSource; publishedSource = saved.source;
         current.current.onAcknowledged(saved.source, ticket);
       }
-    }, (source, snapshot, acknowledgement) => { membershipQualified = source.model.worksheetMembershipEditable === true && source.model.sourceFormat !== 'csv' && acknowledgement.kind === 'history'; historyContinuity &&= acknowledgement.kind === 'history'; acknowledged = { source, snapshot, acknowledgement }; }, ownedJournal ? { save: ownedJournal.save, ...(ownedJournal.saveGuarded ? { saveGuarded: ownedJournal.saveGuarded } : {}), ...(ownedJournal.scope ? { scope: ownedJournal.scope } : {}), ...(ownedJournal.validate ? { validate: ownedJournal.validate } : {}), ...(ownedJournal.isCurrent ? { isCurrent: ownedJournal.isCurrent } : {}), restored: recovery } : undefined);
+    }, (source, snapshot, acknowledgement) => { membershipQualified = source.model.worksheetMembershipEditable === true && source.model.sourceFormat !== 'csv' && acknowledgement.kind === 'history'; historyContinuity &&= acknowledgement.kind === 'history'; acknowledged = { source, snapshot, acknowledgement }; }, ownedJournal ? { save: ownedJournal.save, ...(ownedJournal.saveGuarded ? { saveGuarded: ownedJournal.saveGuarded } : {}), ...(ownedJournal.scope ? { scope: ownedJournal.scope } : {}), ...(ownedJournal.validate ? { validate: ownedJournal.validate } : {}), ...(ownedJournal.isCurrent ? { isCurrent: ownedJournal.isCurrent } : {}), restored: recovery } : undefined, alignment);
     const owned = writer.current;
+    if (alignment) alignmentOwners.current.set(owned, alignment);
     if (ownedJournal?.scope && ownedJournal.isCurrent && sourceSupportsMembership) {
       const lease: WorkbookMembershipWriterLease = issueWorkbookMembershipWriterLease({
         writer: owned, scope: ownedJournal.scope, generation: crypto.randomUUID(),
@@ -312,7 +316,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
       }
     }
     if (owned && resumeOwner && opened.source && opened.journal) cleanResume.current = {
-      source: opened.source, journal: opened.journal, identity: Object.freeze({ ...identity! }), checkpoint: owned.checkpoint(), resume: resumeOwner,
+      source: opened.source, journal: opened.journal, identity: Object.freeze({ ...identity! }), checkpoint: owned.checkpoint(), alignment: alignmentOwners.current.get(owned), resume: resumeOwner,
     };
     paused.current = true; pausedSnapshot.current = owned?.checkpoint().desired ?? null;
     await closeWriter(); return true;
@@ -333,7 +337,7 @@ export function useWorkbookEditor(projectId: string, fileName: string, source: P
     pausedSnapshot.current = null; cleanResume.current = null; paused.current = false;
     if (!accepted && previous) {
       if (same) resume.current = { scope: { projectId, fileName, journal: retained.journal }, checkpoint: retained.checkpoint, cleanResume: true };
-      await ready(previous);
+      await ready(previous, same ? retained.alignment : undefined);
       if (same) {
         const next = membershipLease.current;
         if (!next?.isQualified()) throw Error('The worksheet resume owner is no longer current.');
