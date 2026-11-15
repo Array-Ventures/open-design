@@ -65,11 +65,13 @@ export const workbookDimensionEditSchema = z.discriminatedUnion('axis', [
   z.object({ sheetId: id, axis: z.literal('column'), index: column, size: z.number().min(0).max(255).optional(), hidden: z.boolean().optional() }).strict(),
 ]).refine(edit => edit.size !== undefined || edit.hidden !== undefined, 'A dimension edit must change size or visibility.');
 export type WorkbookDimensionEdit = z.infer<typeof workbookDimensionEditSchema>;
+export const workbookHorizontalAlignmentSchema = z.enum(['general', 'left', 'center', 'right']);
+export type WorkbookHorizontalAlignment = z.infer<typeof workbookHorizontalAlignmentSchema>;
 /** Sparse authored formatting changes; omitted properties retain source XML. */
 export const workbookStyleEditSchema = z.object({ sheetId: id, row, column,
   bold: z.boolean().optional(), italic: z.boolean().optional(),
   fontSize: z.number().positive().max(512).optional(),
-  horizontalAlignment: z.enum(['general', 'left', 'center', 'right']).optional(),
+  horizontalAlignment: workbookHorizontalAlignmentSchema.optional(),
   fontColor: z.string().regex(/^[A-Fa-f0-9]{8}$/).nullable().optional(),
   fillColor: z.string().regex(/^[A-Fa-f0-9]{8}$/).nullable().optional(),
 }).strict().refine(edit => edit.bold !== undefined || edit.italic !== undefined || edit.fontSize !== undefined || edit.fontColor !== undefined || edit.fillColor !== undefined || edit.horizontalAlignment !== undefined, 'Empty style edit.');
