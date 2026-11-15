@@ -1,6 +1,8 @@
 import type { Dict } from '../types';
 
 export const ko: Dict = {
+  "documentLayout.wide": "페이지 너비 늘리기",
+  "documentLayout.standardWidth": "표준 페이지 너비 사용",
   "documentSuggestions.modeAria": "{mode} 모드",
   "documentSuggestions.mode": "제안",
   "documentSuggestions.editing": "편집",

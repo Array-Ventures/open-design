@@ -1,6 +1,8 @@
 import type { Dict } from '../types';
 
 export const ptBR: Dict = {
+  "documentLayout.wide": "Ampliar página",
+  "documentLayout.standardWidth": "Usar largura de página padrão",
   "documentSuggestions.modeAria": "Modo {mode}",
   "documentSuggestions.mode": "Sugestões",
   "documentSuggestions.editing": "Edição",

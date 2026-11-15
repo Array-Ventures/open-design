@@ -1,6 +1,8 @@
 import type { Dict } from '../types';
 
 export const pl: Dict = {
+  "documentLayout.wide": "Poszerz stronę",
+  "documentLayout.standardWidth": "Użyj standardowej szerokości strony",
   "documentSuggestions.modeAria": "Tryb: {mode}",
   "documentSuggestions.mode": "Sugerowanie",
   "documentSuggestions.editing": "Edycja",

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useT } from '../../../i18n';
 import { createPortal } from 'react-dom';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { $createParagraphNode, $insertNodes, $getRoot, $getSelection, $getState, $isRangeSelection, $setState, FORMAT_TEXT_COMMAND, UNDO_COMMAND, REDO_COMMAND, HISTORY_PUSH_TAG } from 'lexical';
@@ -8,7 +9,7 @@ import { $setBlocksType } from '@lexical/selection';
 import { INSERT_CHECK_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND } from '@lexical/list';
 import { INSERT_TABLE_COMMAND } from '@lexical/table';
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
-import { RiChatNewLine, RiBold, RiItalic, RiUnderline, RiStrikethrough, RiCodeLine, RiListOrdered, RiListUnordered, RiTableLine, RiArrowGoBackLine, RiArrowGoForwardLine, RiFontSize, RiMoreLine, RiCheckLine, RiCheckboxLine, RiDoubleQuotesL, RiArrowDownSLine, RiSeparator } from '@remixicon/react';
+import { RiChatNewLine, RiBold, RiItalic, RiUnderline, RiStrikethrough, RiCodeLine, RiListOrdered, RiListUnordered, RiTableLine, RiArrowGoBackLine, RiArrowGoForwardLine, RiFontSize, RiMoreLine, RiCheckLine, RiCheckboxLine, RiDoubleQuotesL, RiArrowDownSLine, RiSeparator, RiExpandWidthLine } from '@remixicon/react';
 import { Button } from '../boardui/button';
 import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem, DropdownGroup, DropdownDivider } from '../boardui/dropdown';
 import { cx } from '../boardui/cx';
@@ -20,8 +21,9 @@ import { documentFont, documentHeadingFont } from './document-identity';
 
 type SelectionState = { x: number; y: number; bold: boolean; italic: boolean; underline: boolean; strikethrough: boolean; code: boolean };
 /** Separate insertion and selected-text controls, following the observed document surfaces. */
-export function DocumentToolbar({ font, headingFont, onImageStatus, hidden = false, commentsAvailable = false }: { commentsAvailable?: boolean; hidden?: boolean; font: 'sans' | 'serif'; headingFont: 'sans' | 'serif'; onImageStatus?(message: string | null): void }) {
+export function DocumentToolbar({ font, headingFont, onImageStatus, hidden = false, commentsAvailable = false, pageWide = false, onTogglePageWidth }: { pageWide?: boolean; onTogglePageWidth?(): void; commentsAvailable?: boolean; hidden?: boolean; font: 'sans' | 'serif'; headingFont: 'sans' | 'serif'; onImageStatus?(message: string | null): void }) {
   const [editor] = useLexicalComposerContext();
+  const t = useT();
   const viewer = useEmbeddedViewer();
   const [menu, setMenu] = useState<string | null>(null);
   useEffect(() => { if (hidden) setMenu(null); }, [hidden]);
@@ -80,6 +82,7 @@ export function DocumentToolbar({ font, headingFont, onImageStatus, hidden = fal
             <DropdownItem onSelect={() => editor.update(() => { const selection = $getSelection(); if ($isRangeSelection(selection)) $setBlocksType(selection, () => $createQuoteNode()); })}><RiDoubleQuotesL className="size-4 shrink-0" aria-hidden />Quote</DropdownItem>
             <DropdownItem onSelect={() => editor.update(() => { const selection = $getSelection(); if ($isRangeSelection(selection)) $insertNodes([$createCodeNode()]); })}><RiCodeLine className="size-4 shrink-0" aria-hidden />Code block</DropdownItem>
             <DropdownItem onSelect={() => editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined)}><RiSeparator className="size-4 shrink-0" aria-hidden />Divider</DropdownItem>
+            {onTogglePageWidth ? <DropdownItem onSelect={onTogglePageWidth}><RiExpandWidthLine className="size-4 shrink-0" aria-hidden />{t(pageWide ? 'documentLayout.standardWidth' : 'documentLayout.wide')}</DropdownItem> : null}
             <DropdownDivider />
             <DropdownItem onSelect={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}><RiArrowGoBackLine className="size-4 shrink-0" aria-hidden />Undo</DropdownItem>
             <DropdownItem onSelect={() => editor.dispatchCommand(REDO_COMMAND, undefined)}><RiArrowGoForwardLine className="size-4 shrink-0" aria-hidden />Redo</DropdownItem>

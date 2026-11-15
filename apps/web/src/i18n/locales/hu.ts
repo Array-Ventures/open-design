@@ -1,6 +1,8 @@
 import type { Dict } from '../types';
 
 export const hu: Dict = {
+  "documentLayout.wide": "Oldal szélesítése",
+  "documentLayout.standardWidth": "Normál oldalszélesség használata",
   "documentSuggestions.modeAria": "{mode} mód",
   "documentSuggestions.mode": "Javaslatok",
   "documentSuggestions.editing": "Szerkesztés",

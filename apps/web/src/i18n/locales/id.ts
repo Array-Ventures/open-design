@@ -1,6 +1,8 @@
 import type { Dict } from '../types';
 
 export const id: Dict = {
+  "documentLayout.wide": "Perlebar halaman",
+  "documentLayout.standardWidth": "Gunakan lebar halaman standar",
   "documentSuggestions.modeAria": "Mode {mode}",
   "documentSuggestions.mode": "Saran",
   "documentSuggestions.editing": "Pengeditan",
