@@ -69,9 +69,10 @@ export type WorkbookDimensionEdit = z.infer<typeof workbookDimensionEditSchema>;
 export const workbookStyleEditSchema = z.object({ sheetId: id, row, column,
   bold: z.boolean().optional(), italic: z.boolean().optional(),
   fontSize: z.number().positive().max(512).optional(),
+  horizontalAlignment: z.enum(['general', 'left', 'center', 'right']).optional(),
   fontColor: z.string().regex(/^[A-Fa-f0-9]{8}$/).nullable().optional(),
   fillColor: z.string().regex(/^[A-Fa-f0-9]{8}$/).nullable().optional(),
-}).strict().refine(edit => edit.bold !== undefined || edit.italic !== undefined || edit.fontSize !== undefined || edit.fontColor !== undefined || edit.fillColor !== undefined, 'Empty style edit.');
+}).strict().refine(edit => edit.bold !== undefined || edit.italic !== undefined || edit.fontSize !== undefined || edit.fontColor !== undefined || edit.fillColor !== undefined || edit.horizontalAlignment !== undefined, 'Empty style edit.');
 export type WorkbookStyleEdit = z.infer<typeof workbookStyleEditSchema>;
 /** Worksheet visibility is independent of name/order/geometry. veryHidden is source-owned. */
 export const workbookVisibilityEditSchema = z.object({ sheetId: id, visibility: z.enum(['visible', 'hidden']) }).strict();
