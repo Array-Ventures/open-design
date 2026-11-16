@@ -75,7 +75,7 @@ function isForbiddenWeight(weight: number): boolean {
 function ladderViolations(file: string): string[] {
   const violations: string[] = [];
   const css = withoutFontFaces(readFileSync(file, 'utf8'));
-  for (const match of css.matchAll(/(?:^|[;{])\s*font-weight\s*:\s*(\d+)\b/g)) {
+  for (const match of css.matchAll(/(?:^|[;{}])\s*font-weight\s*:\s*(\d+)\b/g)) {
     const weight = Number(match[1]);
     if (isForbiddenWeight(weight)) {
       violations.push(`${relative(repoRoot, file)}: ${weight}`);
@@ -159,6 +159,7 @@ describe('product UI font-weight normalization', () => {
     expect(ladderViolations(file)).toEqual([
       'apps/web/tests/fixtures/styles/font-weight-metadata.css: 400',
       'apps/web/tests/fixtures/styles/font-weight-metadata.css: 550',
+      'apps/web/tests/fixtures/styles/font-weight-metadata.css: 400',
       'apps/web/tests/fixtures/styles/font-weight-metadata.css: font shorthand 400',
     ]);
   });

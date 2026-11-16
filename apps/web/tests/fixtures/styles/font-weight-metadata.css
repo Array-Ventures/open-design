@@ -6,3 +6,4 @@
 .real-regular { font-weight: 400; }
 .real-intermediate { font-weight: 550; }
 .real-shorthand { font: 400 1rem Arial; }
+.nested-rule { & .child { color: red; } font-weight: 400; }
