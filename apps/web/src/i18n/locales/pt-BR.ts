@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const ptBR: Dict = {
+  "documentDate.label": "Data",
+  "documentDate.choose": "Escolher data",
+  "documentDate.blocked": "Resolva esta sugestão ou escolha um parágrafo editável antes de alterar a data.",
+
   "documentLayout.wide": "Ampliar página",
   "documentLayout.standardWidth": "Usar largura de página padrão",
   "documentSuggestions.modeAria": "Modo {mode}",

@@ -90,3 +90,10 @@ with relative imports and React Aria locale direction. Labels belong to callers.
 Its optional capture mode admits canvas context/keyboard gestures before an
 embedded SDK can consume bubbling events; pointer placement, long press, menus,
 arrow/typeahead navigation, dismissal and focus return remain BoardUI/React Aria.
+
+The inline date calendar and its shared month/day primitives are adapted from
+the FREE BoardUI `date-calendar` registry component (not the Pro full-calendar
+product), retrieved from https://www.boardui.com/r/date-calendar.json. Relative
+imports keep the existing embedded boundary. React Aria owns calendar keyboard
+navigation, localization and Gregorian dates; the document owns persisted source
+labels, popup lifetime and immediate day commits. See `NOTICE.md` here.

@@ -1,3 +1,4 @@
+import { readEditableDocumentDateElement } from './document-date-context';
 import { readDocumentSuggestion, validDocumentSuggestions } from './document-suggestion-schema';
 import { documentHtml, isEditableDocument, isDocumentLinkSupported, supportedDocumentLanguage } from './document-html';
 import { supportedDocumentImageElement, documentImageCssDimension } from './document-image-source';
@@ -19,6 +20,7 @@ const attributes: Record<string, string[]> = {
 const editorClasses = new Set(Object.values(styles).flatMap(value => value.split(/\s+/)));
 function supportedElement(element: HTMLElement): boolean {
   const tag = element.tagName.toLowerCase();
+  if (tag === 'time') return readEditableDocumentDateElement(element) !== null;
   if (tag === 'ins' || tag === 'del') return readDocumentSuggestion(element) !== null;
   if (!tags.has(tag)) return false;
   for (const attribute of Array.from(element.attributes)) {

@@ -42,3 +42,8 @@
 @source "../RootCommentRecovery.tsx";
 
 @source "../comment-button-style.ts";
+
+@source "./date-calendar.tsx";
+@source "./date-calendar-shared.tsx";
+@source "../document/DocumentDates.tsx";
+@source "../document/DocumentDateNode.tsx";

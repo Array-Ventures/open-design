@@ -18,6 +18,10 @@ vi.mock('../../../src/components/embedded/document/DocumentEditor', async () => 
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); state.mounts = 0; state.editor = null; actor.id = 'person-a'; });
 it.each([
+  '<html data-eve-document="1"><body><p><strong><time data-eve-document-date="1" datetime="2024-02-29" data-eve-date-locale="en-US">Date</time></strong></p></body></html>',
+  '<html data-eve-document="1"><body><p><em><time data-eve-document-date="1" datetime="2024-02-29" data-eve-date-locale="en-US">Date</time></em></p></body></html>',
+  '<html data-eve-document="1"><body><p><span style="color:red"><time data-eve-document-date="1" datetime="2024-02-29" data-eve-date-locale="en-US">Date</time></span></p></body></html>',
+  '<html data-eve-document="1"><body><p><span style="font-size:24px"><time data-eve-document-date="1" datetime="2024-02-29" data-eve-date-locale="en-US">Date</time></span></p></body></html>',
   '<html data-eve-document="1"><head><style>p{color:red}</style></head><body><p>Authored styling</p></body></html>',
   '<html data-eve-document="1"><body style="background:red"><p>Authored body</p></body></html>',
   '<html data-eve-document="1"><body><p class="custom">Authored class</p></body></html>',

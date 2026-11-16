@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const uk: Dict = {
+  "documentDate.label": "Дата",
+  "documentDate.choose": "Вибрати дату",
+  "documentDate.blocked": "Прийміть чи відхиліть пропозицію або виберіть доступний для редагування абзац перед зміною дати.",
+
   "documentLayout.wide": "Розширити сторінку",
   "documentLayout.standardWidth": "Використати стандартну ширину сторінки",
   "documentSuggestions.modeAria": "Режим: {mode}",

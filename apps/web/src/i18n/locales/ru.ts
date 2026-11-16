@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const ru: Dict = {
+  "documentDate.label": "Дата",
+  "documentDate.choose": "Выбрать дату",
+  "documentDate.blocked": "Примите или отклоните предложение либо выберите редактируемый абзац перед изменением даты.",
+
   "documentLayout.wide": "Расширить страницу",
   "documentLayout.standardWidth": "Использовать стандартную ширину страницы",
   "documentSuggestions.modeAria": "Режим: {mode}",
