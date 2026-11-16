@@ -1,0 +1,198 @@
+{
+  "version": 1,
+  "qualifiedSource": "fea282b53c9d3097a49490f679148397d38c56a3",
+  "base": "bd23b85d3f1706d0b234037e387df99110805ae0",
+  "previousImageSource": "364121f4",
+  "scope": "Image-only source isolated from unmerged Date ancestry; clean conflict-free cherry-picks",
+  "checks": {
+    "daemon": {
+      "cases": 68,
+      "files": 3
+    },
+    "contracts": {
+      "cases": 33,
+      "files": 2
+    },
+    "host": {
+      "cases": 15,
+      "files": 1
+    },
+    "runtimePackaging": 0,
+    "architectureCases": 8,
+    "workspaceTypes": 0,
+    "guard": 0
+  },
+  "lockBaselineDifference": "Only removal of the three-line Date @internationalized/date web importer; image Sharp addition unchanged.",
+  "sourceProof": [
+    {
+      "path": "apps/daemon/package.json",
+      "category": "production",
+      "sha256": "a62598b322e63907ecb4c20ac07f0c3bb2dd6db91179fbf8544b8dd13a6771a6",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "apps/daemon/src/embedded-render/images.ts",
+      "category": "production",
+      "sha256": "13d0fe39ef4ac00b21a6df12375525c4136db6a1db71e25838c9e2f8e5fc1aa2",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "apps/daemon/src/embedded-render/input.ts",
+      "category": "production",
+      "sha256": "09f7cb5d9b2ded406018a2cb9d5553c02459a808a88e4d5dfa45e17b2ff3611d",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "apps/daemon/src/embedded-render/runner.ts",
+      "category": "production",
+      "sha256": "06944f9567e6a0c6f4305921f33b6b15692d42a25ace638f52aeb4cd0ad6b60f",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "apps/daemon/tests/binary-image-export.test.ts",
+      "category": "test-harness",
+      "sha256": "1d230fc983557315280b977e6286412cc05b6eea90de5dbed2bfb5545b435b7e",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "apps/web/src/components/embedded/useArtifactHostState.ts",
+      "category": "production",
+      "sha256": "a5b914b4193c5d64688a287dd9d412ec46e80fb57c43d9e8e4a56f485358828d",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "apps/web/tests/components/embedded/artifact-availability.test.tsx",
+      "category": "test-harness",
+      "sha256": "3e890d1f2f7cf57185a91ef6a13a1718a72469d79591aa7c423f11c06fdd732b",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "deploy/Dockerfile.embedded-render",
+      "category": "production",
+      "sha256": "c19ab303922cfd8fce61fd6ea66dd6653f1290003f3e72c35171896637178c94",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "docs/binary-image-architecture-evidence.json",
+      "category": "documentation",
+      "sha256": "6b52a9cbbfce7ff80eb726defb835cd0e8d4c7cc25d5cc8b96a4f1af2deca4ab",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "docs/binary-image-artifact-conversion.md",
+      "category": "documentation",
+      "sha256": "24ee3fc7dcd0a23f6d8060b571a84f2b4df5b5a4cdabaff463f53e1311e41849",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "docs/binary-image-artifact-evidence.json",
+      "category": "documentation",
+      "sha256": "d481c3fe81092a9998b4207a7530b25236f80db2332adf3879ea764c544c4cb2",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "docs/media-artifact-exports.md",
+      "category": "documentation",
+      "sha256": "be6c253172be15f692ab751ac6fdb2bb22645c8e9cf121adfd799b81c3fce795",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "category": "production",
+      "sha256": "f41fddb29b73e358b7b2ba226d392b21e8833d91beba1ffc2691aae9b83944d0",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "packages/contracts/src/runtime/image-export.ts",
+      "category": "production",
+      "sha256": "28e32bed55c8ade7a83687a028b71aaee50e1af4b9037b7e45252aed8b01b7f1",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "packages/contracts/tests/image-export.test.ts",
+      "category": "test-harness",
+      "sha256": "afc6cd287dda9bf16e301a92d98bd4bc03128a88cd14f06b198feeb38ec7153a",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "category": "lock-baseline",
+      "sha256": "79c0286fe314bd59206c239db7b58489691ac5afd4844d1b3523be4aaef21035",
+      "byteEqualPreviousImage": false
+    },
+    {
+      "path": "scripts/build-embedded-render.ts",
+      "category": "production",
+      "sha256": "755f56d6ae1e58eeb217264f9538db842505d8cd0ca773d86af3273331ca3543",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "scripts/lib/renderer-raster-runtime.ts",
+      "category": "production",
+      "sha256": "44be9711a36dd1cb8fd5010cf80093b1ae3542f5cd5d25240020ee3034d94fab",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "scripts/test-binary-image-render.ts",
+      "category": "test-harness",
+      "sha256": "e8ad78da24ab8856bc0a6e1462d54acff9fb4794a5d29f24055358159be756cf",
+      "byteEqualPreviousImage": false
+    },
+    {
+      "path": "scripts/test-renderer-raster-architecture.ts",
+      "category": "test-harness",
+      "sha256": "2081a79ab3b842a61df4ad7f675280229be887123a9f6fc067c803315b2dab5a",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "scripts/test-renderer-raster-image.ts",
+      "category": "test-harness",
+      "sha256": "be271ff14243c44f5762d93ddedb1a189f78c3fbbfcf35d7f20886a65dacf357",
+      "byteEqualPreviousImage": false
+    },
+    {
+      "path": "scripts/test-renderer-raster-runtime.ts",
+      "category": "test-harness",
+      "sha256": "178d386e3758663ff267c1bde4a8cf4dafce461c322386a9266ca3cd90673c09",
+      "byteEqualPreviousImage": true
+    }
+  ],
+  "references": [
+    {
+      "path": "/tmp/binary-image-main-install.log",
+      "sha256": "5f8c655334fcbabe8426cf4043217f6f8750430173bd745f56936b7ff81bd91e"
+    },
+    {
+      "path": "/tmp/binary-image-main-dependencies.log",
+      "sha256": "3e8173483793254768dce04cad343bbb4aebb3549001955499d50a73ca76afc8"
+    },
+    {
+      "path": "/tmp/binary-image-main-daemon.log",
+      "sha256": "5aa9d8c8f57954a36e15a8cef461dd1b696fc50a22ecf488b97a7f777952aa80"
+    },
+    {
+      "path": "/tmp/binary-image-main-contracts.log",
+      "sha256": "eedcc075f72de8532786cc2329bda299c785cdd9a72a446e73a5a651557bd4c8"
+    },
+    {
+      "path": "/tmp/binary-image-main-host.log",
+      "sha256": "3fa87c4a28d3219276de603482647c0fabff07d989c0fe18222b7c8b207fc6e0"
+    },
+    {
+      "path": "/tmp/binary-image-main-runtime.log",
+      "sha256": "9483b726b3bd6283ce04c79b53694fef0960fd55f5f9d1a750597574d5eaf26f"
+    },
+    {
+      "path": "/tmp/binary-image-main-architecture.log",
+      "sha256": "0b2a509b19d3f2d9ce669938028b04b123a0b351924185e050c143f0e8f383a3"
+    },
+    {
+      "path": "/tmp/binary-image-main-types.log",
+      "sha256": "e7f1e82f1dba7d2ea361318b0ca0476820d86a6002e316dd91e43a230cf54682"
+    },
+    {
+      "path": "/tmp/binary-image-main-guard.log",
+      "sha256": "a8ef3cd631e9e61350a5e12845b4a71477c763d613ed1cccc29b3640d54e64dd"
+    }
+  ]
+}
