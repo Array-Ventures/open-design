@@ -76,6 +76,7 @@
     "pptxgenjs": "4.0.1",
     "prom-client": "15.1.3",
     "saxes": "6.0.0",
+    "sharp": "0.35.3",
     "tar": "7.5.22",
     "undici": "7.29.0",
     "yauzl": "3.4.0",
