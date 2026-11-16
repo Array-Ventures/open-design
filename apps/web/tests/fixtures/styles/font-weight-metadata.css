@@ -1,0 +1,8 @@
+/* First-party scanner fixture: tokens are metadata; real declarations obey the ladder. */
+@theme {
+  --text-example-regular--font-weight: 400;
+  --text-example-medium--font-weight: 500;
+}
+.real-regular { font-weight: 400; }
+.real-intermediate { font-weight: 550; }
+.real-shorthand { font: 400 1rem Arial; }

@@ -16,7 +16,7 @@ vi.mock('../../src/components/BoardComposerPopover', async importOriginal => {
     <button data-testid="probe-remove-image" onClick={() => props.onRemoveImage(0)}>Remove image</button>
     <input data-testid="probe-draft" value={props.draft} onChange={event => props.onDraft(event.target.value)} />
     <button data-testid="probe-send" onClick={props.onSendBatch}>Send</button>
-    <button data-testid="probe-save" onClick={props.onSaveComment}>Save</button>
+    <button data-testid="probe-save" onClick={() => props.onSaveComment()}>Save</button>
   </div> };
 });
 const uuid = '12345678-1234-4234-8234-123456789abc';
