@@ -1,5 +1,9 @@
 # Readable Date export boundaries
 
+The later [PDF policy correction](document-date-print-policy.md) records an
+independently found color/divider regression and its source-bound Date fix.
+The initial spacing evidence below does not qualify that policy boundary.
+
 Source `224ba23f`, based on Date/focus `ed417056`, fixes conversion presentation
 without changing the editor or saved document. The actual accepted fixture has
 `Date QA baseline.` immediately followed by two canonical TIME atoms. The editor
