@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "sourceCommit": "64cb01355285861f52b2813248aba68799f9c7fa",
+  "previousSource": "760a7e2d",
+  "scope": "Actual Dockerfile architecture-guard shell contract, not x86 codec execution or an image build",
+  "failure": "Docker TARGETARCH amd64 did not equal the copied Node/Sharp linux-x64 attestation",
+  "mapping": {
+    "arm64": "arm64",
+    "amd64": "x64"
+  },
+  "controls": {
+    "cases": 8,
+    "passed": 8,
+    "nativeArmClosure": 0,
+    "scriptsTypes": 0,
+    "guard": 0
+  },
+  "references": [
+    {
+      "path": "/tmp/binary-image-architecture-red.log",
+      "sha256": "0b2376dd47e87e28687efdf1695bfe19073f2c0cfd0db45af1549b30acf980f6"
+    },
+    {
+      "path": "/tmp/binary-image-architecture-green.log",
+      "sha256": "0b2a509b19d3f2d9ce669938028b04b123a0b351924185e050c143f0e8f383a3"
+    },
+    {
+      "path": "/tmp/binary-image-architecture-runtime.log",
+      "sha256": "9483b726b3bd6283ce04c79b53694fef0960fd55f5f9d1a750597574d5eaf26f"
+    },
+    {
+      "path": "/tmp/binary-image-architecture-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/binary-image-architecture-guard.log",
+      "sha256": "ef6b94ed0a4238ebab40ed8947697e0c48e09f2f4aaf09980f9ba493e7dae4c1"
+    }
+  ]
+}
