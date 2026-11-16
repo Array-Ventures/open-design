@@ -2,6 +2,7 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath, URL as NodeURL } from 'node:url';
 import { Worker as NodeWorker } from 'node:worker_threads';
 import { WORKBOOK_INPUT_EPOCH_OPTION } from '../../src/components/embedded/workbook/formula-input-provenance';
+import { acquireCompiledWorkbookProductionWorker } from './compiled-workbook-worker';
 const packageRoot = realpathSync(fileURLToPath(new NodeURL('../../node_modules/@univerjs/preset-sheets-core/package.json', import.meta.url)));
 export class NodeWorkbookWorker {
   readonly thread: NodeWorker;
@@ -10,7 +11,13 @@ export class NodeWorkbookWorker {
   acceptIncoming?: (data: unknown) => boolean;
   private listeners = new Map<EventListener, (data: unknown) => void>();
   constructor(budget = false, execution = false, stall = false, production = false) {
-    this.thread = new NodeWorker(new NodeURL('../fixtures/workbook-formula-rpc-worker.ts', import.meta.url), { workerData: { packageRoot, stall, productionEntry: production ? fileURLToPath(new NodeURL('../../src/components/embedded/workbook/workbook-formula.worker.ts', import.meta.url)) : undefined, executionModule: execution ? fileURLToPath(new NodeURL('../../src/components/embedded/workbook/formula-execution-policy.ts', import.meta.url)) : undefined, budgetModule: budget ? fileURLToPath(new NodeURL('../../src/components/embedded/workbook/formula-worker-budget.ts', import.meta.url)) : undefined }, execArgv: ['--experimental-transform-types', '--no-warnings'], resourceLimits: { maxOldGenerationSizeMb: 192, maxYoungGenerationSizeMb: 32 } });
+    // The app builds its worker before launching it. Keep that same boundary
+    // here; the unchanged runtime owner still times the actual worker startup.
+    const compiled = production ? acquireCompiledWorkbookProductionWorker() : undefined;
+    try {
+      this.thread = new NodeWorker(new NodeURL('../fixtures/workbook-formula-rpc-worker.ts', import.meta.url), { workerData: { packageRoot, stall, productionEntry: compiled?.entry, executionModule: execution ? fileURLToPath(new NodeURL('../../src/components/embedded/workbook/formula-execution-policy.ts', import.meta.url)) : undefined, budgetModule: budget ? fileURLToPath(new NodeURL('../../src/components/embedded/workbook/formula-worker-budget.ts', import.meta.url)) : undefined }, execArgv: ['--experimental-transform-types', '--no-warnings'], resourceLimits: { maxOldGenerationSizeMb: 192, maxYoungGenerationSizeMb: 32 } });
+    } catch (error) { compiled?.release(); throw error; }
+    this.thread.once('exit', () => compiled?.release());
   }
   terminate() { void this.thread.terminate(); }
   postMessage(data: unknown) {
