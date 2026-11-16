@@ -69,3 +69,38 @@ DOM-converter typography readback, worker output/consumer readback and the
 Electron carrier must be independently qualified before extending readiness.
 No browser, model, runtime, image, publication, release or installer pin action
 was performed for this checkpoint.
+
+## Later current-main worker and consumer inspection
+
+The same production patch was isolated onto merged Date main as `1f16042d`.
+Frozen install, full serial workspace/scripts types and guard passed. The first
+focused command selected two real files (28 cases); two requested names did not
+exist. A second command ran the two correct remaining files (14 cases). These
+42 cases in four files are source checks, not an export-content visual pass.
+
+The official renderer builder and Docker build exited 0. Four jobs then used
+the new immutable image's normal entrypoint with only source/job/output mounts.
+Editable Fade and None retain native text, Georgia/Arial font declarations and
+speaker notes; screenshot Push retains its transition node; Magic Move refuses
+explicitly. Three actual output files opened through independently owned
+LibreOffice profiles and produced two-page PDFs. Original source hashes remain
+exact. No companion or native browser integration was run for this image.
+
+**Visual inspection found a genuine screenshot capture failure.** The Push
+PPTX's embedded PNG is 800×450, but content lies outside the capture: only a
+240×135 white corner remains and the rest is black. The canonical stage's
+default 1920×1080 canvas is centered inside a smaller requested viewport after
+`noscale`, so ancestor clipping hides the authored content. Valid dimensions,
+successful conversion and correct transition XML did not catch this. The
+worker harness's terminal success is therefore not a visual-acceptance pass.
+A bounded geometry correction and real pixel/content regression are required
+before this slice is ready. The [readback evidence](pptx-transition-main-evidence.json)
+retains exact outputs and logs, including the wrong selector attempt.
+
+![Editable Fade through LibreOffice](images/pptx-transition-main/editable-fade.png)
+
+![Failed screenshot Push through LibreOffice](images/pptx-transition-main/screenshot-push-clipped.png)
+
+This is static LibreOffice consumer evidence, not Microsoft PowerPoint animation
+or installed-font equivalence. No preview, installer pin, production service,
+publication or hosted CI changed.
