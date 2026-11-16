@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "sourceCommit": "e0e665ec54f10efce9d3791dc7f754d93171cb14",
+  "sourceScope": "Retain focused-Date history capture across a preparatory update until the captured control disconnects",
+  "sourceChecks": {
+    "focusedWebExit": 0,
+    "cases": 154,
+    "files": 10,
+    "workspaceTypesExit": 0,
+    "scriptsTypesExit": 0,
+    "guardExit": 0,
+    "independentSourceRead": "Approved without rerunning tests"
+  },
+  "previousEd417Actual": {
+    "reviewLastAcceptRejectImmediateKeyboardHistory": "Passed",
+    "calendarVisible16pxGlyphsIn32pxTargetsBothThemesAndWidths": "Passed",
+    "DateImmediateUndoRedo": "Failed; first preparatory update consumed capture before chip removal",
+    "passiveLogpoints": "225 captured target connected,226 restore refused connected target,227 target removed with capture already empty; all logpoints removed"
+  },
+  "controlledRegression": {
+    "simplePreparatoryRead": "Passed unchanged ed417; not a reproducing RED",
+    "deferredHistoricReplacement": "Failed unchanged ed417, passed corrected source; public-editor controlled timing, not a replacement history implementation in production",
+    "setupFailure": "First attempted test had no dependencies in the new worktree; the preceding install ran in the old worktree. Correct new-worktree frozen offline install then succeeded; no product failure claimed."
+  },
+  "newImmutablePair": {
+    "buildId": "b8003d69143581dd0a77fe945b69c29db0cb7db8c890af68612b37ca5d4f9a95",
+    "rendererImage": "sha256:35cd5df7e928f4b3a3e5c5c3316509a2c0c32fec1302b07691f30898af7ef031",
+    "builderChildrenExit": 0,
+    "strictVerifierExit": 0,
+    "allFiveRendererPayloadsAndNormalizedInputsUnchangedFromEd417": true
+  },
+  "actualNarrowAcceptance": {
+    "status": "Passed",
+    "sequence": [
+      "Inserted Date button focused;3 dates",
+      "Undo editable textbox focused;2 dates",
+      "Immediate Redo without click;3 dates/editor focused",
+      "Final Undo;original2 dates/editor focused"
+    ],
+    "bothSourcesRestoredExactly": true,
+    "sameFakeAuthSessionRetained": true,
+    "saved": true,
+    "saveVisible": false,
+    "calendarOpen": false,
+    "observersAndLogpointsRemoved": true,
+    "reviewAndGlyphCasesNotRepeated": "Already passed ed417 and unchanged component source; this case covers only corrected Date lifetime",
+    "context": "Requested/author-tool-reported context label only; cross-agent context continuity was not independently established"
+  },
+  "pending": [
+    "Final corrected Date PDF style/element ownership qualification and joined immutable pair",
+    "Broader touch/conflict/cross-type acceptance",
+    "Publication/installer pins remain separate and unchanged"
+  ],
+  "references": [
+    {
+      "path": "/tmp/date-history-followup-newtree-install.log",
+      "sha256": "31d6a81c2a00ead9c49e02a68fe1ea2f1516829f4d5fc8257a268066c84e5823"
+    },
+    {
+      "path": "/tmp/date-history-followup-before-install-error.log",
+      "sha256": "ac7769e49cff7155ca4e16d30090900d3f67be22ac8f01c6144b2e31b301bb45"
+    },
+    {
+      "path": "/tmp/date-history-followup-red.log",
+      "sha256": "146424038f3394c79ae8953cd04f63e46da318c00c508c57c3f09376f85178ac"
+    },
+    {
+      "path": "/tmp/date-history-followup-deferred-red.log",
+      "sha256": "80d251ea2f1c71e2edffec8a664ea4a6d13487570f1e7b1290f23d04297a5f9d"
+    },
+    {
+      "path": "/tmp/date-history-followup-final-web.log",
+      "sha256": "c8679423002414a1232ef5b0f9cc3dec11e9b7266a5bd7cb564224ab3ec046ce"
+    },
+    {
+      "path": "/tmp/date-history-followup-types.log",
+      "sha256": "f7e20c25e9c1cecb6bed92960c5d6f7fa58691b59001ed1aa6c292b8945615fa"
+    },
+    {
+      "path": "/tmp/date-history-followup-guard.log",
+      "sha256": "0bb9732d32ef0e9b68df9689af761447effbf11e25955faec08a47dc437bdb00"
+    },
+    {
+      "path": "/tmp/date-wb-acceptance-ui/fixed-browser-checkpoint.json",
+      "sha256": "884cfc9afb4f249035924346a1c752d74283f29a9fc119cb695f2f6ab0e2a2d6"
+    },
+    {
+      "path": "/tmp/date-wb-acceptance-ui/logpoint-console.json",
+      "sha256": "4ad90c3c7e3ea549a44cd4c37fb2ec7fb885f7bb5af6463b3159045810a68dc2"
+    },
+    {
+      "path": "/tmp/date-wb-acceptance-ui/followup-browser-checkpoint.json",
+      "sha256": "99e4632e6560384a7f963cbadb1ac1cc327c2ba88dcade63120fef163ec4bef8"
+    },
+    {
+      "path": "/tmp/date-followup-e0e665ec-pair-receipt.json",
+      "sha256": "e1e1457e3fd0927d40cbadd1099985b5edb0c360fd5d29e7c9c74278cb7b16dd"
+    }
+  ],
+  "manualReferenceCount": 15
+}
