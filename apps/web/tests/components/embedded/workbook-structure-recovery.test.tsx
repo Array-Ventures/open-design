@@ -35,6 +35,14 @@ function kernel(source: { model: WorkbookDocument; sourceSha256: string }) {
   univer.__getInjector().get(IUniverInstanceService).focusUnit(book.getId());
   return { book, sheet: book.getActiveSheet(), initial: book.save() };
 }
+// The mocked host still returns the complete checked wire identity. Legacy
+// history fields intentionally remain null: this fixture claims ordinary ACK only.
+function receipt(attempt: WorkbookSaveAttempt, targetSha256: string) {
+  return { id: attempt.operationId, projectId: attempt.projectId, fileName: attempt.fileName,
+    renderId: attempt.renderId ?? crypto.randomUUID(), state: 'applied',
+    sourceSha256: attempt.plan.sourceSha256, targetSha256, actualSha256: targetSha256,
+    sourceVersionId: null, versionId: `saved-${targetSha256[0]}` };
+}
 function save(controllerId: string) {
   window.dispatchEvent(new MessageEvent('message', { source: window, origin: window.location.origin, data: { type: 'studio:workbook-control', projectId, controllerId, action: 'save' } }));
 }
@@ -67,7 +75,7 @@ for (const admitted of [false, true]) it(`round-trips structural birth identitie
   expect(restored!.desired.sheets.s!.columnData![1]!.custom).toEqual(bornColumn);
   const applied = { model: model(2, 2), sourceSha256: savedSha }, later = { model: model(2, 2, 36), sourceSha256: laterSha };
   const attempts: WorkbookSaveAttempt[] = [];
-  host.save.mockImplementation(async (attempt: WorkbookSaveAttempt) => { attempts.push(structuredClone(attempt)); return { targetSha256: attempts.length === 1 ? savedSha : laterSha }; });
+  host.save.mockImplementation(async (attempt: WorkbookSaveAttempt) => { attempts.push(structuredClone(attempt)); return receipt(attempt, attempts.length === 1 ? savedSha : laterSha); });
   host.load.mockResolvedValueOnce(applied).mockResolvedValueOnce(later);
   const acknowledged = vi.fn(), fresh = kernel(applied);
   const restoredJournal = { ...journal, restored: restored! };
@@ -82,7 +90,7 @@ for (const admitted of [false, true]) it(`round-trips structural birth identitie
   expect(attempts[1]!.plan.structure).toBeUndefined(); // Never apply the insertion a second time.
   expect(attempts[1]!.plan.edits).toEqual([{ sheetId: 's', cell: { row: 2, column: 2, kind: 'number', value: 36 } }]);
   expect(await readWorkbookDraft(scope)).toBeNull();
-  expect(acknowledged).toHaveBeenLastCalledWith(later);
+  expect(acknowledged).toHaveBeenLastCalledWith(later, undefined);
 });
 
 it('starts a second structural operation from the fresh post-ACK kernel, not retired axis identities', async () => {
@@ -90,18 +98,18 @@ it('starts a second structural operation from the fresh post-ACK kernel, not ret
   const firstGrid = kernel(source), acknowledged = vi.fn(), journal = { save: vi.fn(async () => {}) };
   const view = renderHook(() => useWorkbookEditor(projectId, fileName, source, acknowledged, undefined, journal));
   const applied = { model: model(2, 1), sourceSha256: savedSha };
-  host.save.mockResolvedValue({ targetSha256: savedSha }); host.load.mockResolvedValue(applied);
+  host.save.mockImplementation(async (attempt: WorkbookSaveAttempt) => receipt(attempt, savedSha)); host.load.mockResolvedValue(applied);
   await act(async () => { await view.result.current.ready(firstGrid.initial); });
   firstGrid.sheet.insertRowsBefore(1, 1); act(() => view.result.current.snapshot(firstGrid.book.save()));
   await act(async () => save(view.result.current.controllerId));
   await waitFor(() => expect(view.result.current.state.dirty).toBe(false));
-  expect(acknowledged).toHaveBeenLastCalledWith(applied);
+  expect(acknowledged).toHaveBeenLastCalledWith(applied, undefined);
   source = applied; view.rerender(); const secondGrid = kernel(source);
   await act(async () => { await view.result.current.ready(secondGrid.initial); });
   expect(view.result.current.checkpoint()!.acknowledged.custom).toEqual(secondGrid.initial.custom);
   secondGrid.sheet.insertColumnsBefore(1, 1); act(() => view.result.current.snapshot(secondGrid.book.save()));
   host.save.mockClear(); const next = { model: model(2, 2), sourceSha256: laterSha };
-  host.save.mockResolvedValue({ targetSha256: laterSha }); host.load.mockResolvedValue(next);
+  host.save.mockImplementation(async (attempt: WorkbookSaveAttempt) => receipt(attempt, laterSha)); host.load.mockResolvedValue(next);
   await act(async () => save(view.result.current.controllerId));
   await waitFor(() => expect(view.result.current.state.dirty).toBe(false));
   const attempt = host.save.mock.calls[0]![0] as WorkbookSaveAttempt;

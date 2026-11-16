@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "base": "87e63fa852061b47880064078b02f27a08d0620a",
+  "sourceFiles": [
+    {
+      "path": "apps/web/src/components/FileViewer.tsx",
+      "sha256": "24e67c58d14e7ecaf490fb9f434fe855aef3ec94c1285de78661283646ca0a95"
+    },
+    {
+      "path": "apps/web/tests/artifacts/workbook-recovery-lifecycle.test.tsx",
+      "sha256": "a252d82db7fc2151e982cae37efa26ed04561a14815a2db9f248fdfd17c8109a"
+    },
+    {
+      "path": "apps/web/tests/artifacts/workbook-sheet-birth-source.test.ts",
+      "sha256": "14cee3e9b507f99bfe270c6f294fa258a6b60a2c1059cd6cec8d34fd263f1ef8"
+    },
+    {
+      "path": "apps/web/tests/components/FileViewer.manual-edit.test.tsx",
+      "sha256": "d227c2016cb1244d4d6576d06f02bf2525ce63b08391eae8e6a8dbaf04452980"
+    },
+    {
+      "path": "apps/web/tests/components/embedded/WorkbookSurface.test.tsx",
+      "sha256": "5ab3954f1785b8091ea91d132401fef770cc1c6a276bf3c617573b8ee5406d13"
+    },
+    {
+      "path": "apps/web/tests/components/embedded/workbook-structure-recovery.test.tsx",
+      "sha256": "442a8b22a182deddf720468a37572a0e468d75f3ded3aeae06e3ed90b6e1efe3"
+    }
+  ],
+  "results": {
+    "manualEdit": {
+      "files": 1,
+      "passed": 33,
+      "exit": 0
+    },
+    "workbookFixtures": {
+      "files": 4,
+      "passed": 41,
+      "exit": 0
+    },
+    "authorityNeighbors": {
+      "files": 4,
+      "passed": 53,
+      "exit": 0
+    },
+    "distinctFocusedCases": 127,
+    "distinctFiles": 9,
+    "workspaceTypesExit": 0,
+    "scriptsTypesExit": 0,
+    "guardExit": 0
+  },
+  "retainedFailures": {
+    "manualStrongerReentryRed": {
+      "failed": 1,
+      "passed": 1,
+      "exit": 1
+    },
+    "initialFixtureCorrections": {
+      "failed": 3,
+      "passed": 35,
+      "exit": 1,
+      "cause": "Exact callback assertion also needs its current second undefined history-ticket argument."
+    },
+    "workerSerialDiagnostic": {
+      "failed": 1,
+      "passed": 17,
+      "exit": 1,
+      "cause": "Five-second startup refusal; root cause unproven. Same unchanged case subsequently passed in the authority-neighbor lane; no timeout or bootstrap change."
+    }
+  },
+  "scope": "Focused author qualification only. No full-suite rerun, browser, packaged pair, native service, or preview activation. Temporary payload-free source diagnostics were restored before final source qualification.",
+  "references": [
+    {
+      "path": "/tmp/workbook-baseline-repair-install.log",
+      "sha256": "3372b3f72bd2a723120f873a9b3469f3366373968e54d878304baf1895235c03"
+    },
+    {
+      "path": "/tmp/workbook-manual-retained-entry-red.log",
+      "sha256": "b260224cb76cbda3e206c84d29e6aca0c70c6611494e70b7d28d21bfc9a10f44"
+    },
+    {
+      "path": "/tmp/workbook-manual-latch-diagnostic.log",
+      "sha256": "5ea8795a31191fcaac52ab2bc201499a5966d561e5c362bdd3cca6adbe81635c"
+    },
+    {
+      "path": "/tmp/workbook-manual-proof-diagnostic.log",
+      "sha256": "4466a1bd6a5d70988dc81b880a2b203460b64710d43a7703176a5c8424ac58a1"
+    },
+    {
+      "path": "/tmp/workbook-manual-invalidation-diagnostic.log",
+      "sha256": "eafea38586917bee52fd7d6ca378cbfb5644897dae6603ce44e5a340f6ca54fa"
+    },
+    {
+      "path": "/tmp/workbook-manual-retained-green.log",
+      "sha256": "d1a49560c876b241b0651df0578700f9cfc13e9df22e3c8350819f75c817d9a7"
+    },
+    {
+      "path": "/tmp/workbook-baseline-fixtures-first.log",
+      "sha256": "922e848a8a8d66511ad11bacc95f448f8969631c75af85fd4aefb26c780af4f5"
+    },
+    {
+      "path": "/tmp/workbook-baseline-fixtures-second.log",
+      "sha256": "4c9879cb521b71d4f83602480e20849e0335cfabcf69a677c80eaf3f6a8e17e5"
+    },
+    {
+      "path": "/tmp/workbook-baseline-writer-readiness.log",
+      "sha256": "530053a105f4083655adfbc804777c9586530e7a5724ebccbbe4bfcd1f0a59d6"
+    },
+    {
+      "path": "/tmp/workbook-baseline-authority-neighbors.log",
+      "sha256": "c122fa5870b756dbf34b3a68b2811ff4061ca96754b2b149eb176dadf56786d7"
+    },
+    {
+      "path": "/tmp/workbook-baseline-workspace-types.log",
+      "sha256": "510a8f33ee352a5336ba5a2c565e74e5fd86d66aa340d1d586d13c25b6702a56"
+    },
+    {
+      "path": "/tmp/workbook-baseline-scripts-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/workbook-baseline-guard.log",
+      "sha256": "c2c794f85d9ec67cfd8ca98f8b9d681d162806cc3fa392d94a904942a75fb7dc"
+    },
+    {
+      "path": "/tmp/workbook-baseline-static-exits.json",
+      "sha256": "181a047e2ac6999e788203b8b0ef0a563f116f2a0a297820f274f734d4da308f"
+    },
+    {
+      "path": "/tmp/comment-keyboard-compare.json",
+      "sha256": "3361c84688b77b57dcbb61922388510d41275045e9a4ea51ed2d374ba5580de6"
+    },
+    {
+      "path": "/tmp/comment-keyboard-compare-baseline.log",
+      "sha256": "cd363af21efcb7fde3da5dfce4a780f000e585a2a48d2e3057c2c6bfb12e646b"
+    }
+  ]
+}

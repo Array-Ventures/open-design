@@ -828,6 +828,7 @@ describe('FileViewer manual edit regressions', () => {
     }
     expect(frame.srcdoc).toBe(before);
     await enterManualEditMode(); await selectManualEditTarget();
+    expect(frame.srcdoc).toBe(before); // Re-entry must preserve the confirmed live document.
     holdPaint = true;
     fireEvent.change(await findStyleInput(FONT_SIZE_ROW), { target: { value: '36px' } });
     let finishing!: Promise<boolean>;

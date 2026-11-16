@@ -99,7 +99,7 @@ it('refuses changed blank content, generation, scope and imported markers as a p
 });
 
 
-it('durably protects the exact birth before native insertion and drops only clean unacknowledged storage after Undo', async () => {
+it('durably protects the exact birth before native insertion and retains protected storage while native Redo still owns the birth after Undo', async () => {
   const f = fixture();
   let release!: () => void, started!: () => void;
   const durable = new Promise<void>(done => { release = done; });
@@ -136,7 +136,8 @@ it('durably protects the exact birth before native insertion and drops only clea
     await f.api.undo();
     writer.update(f.book.save());
     await writer.close();
-    expect(records.at(-1)).toBeNull();
+    expect(records.at(-1)?.sheetBirths).toEqual(writer.checkpoint().sheetBirths);
+    expect(decodeWorkbookDraft(JSON.parse(serializeWorkbookDraft(scope, records.at(-1)!)), scope).sheetBirths?.entries[0]).toEqual(entry);
     expect(writer.checkpoint().sheetBirths?.highWaterId).toBe(2);
     expect(writer.checkpoint().sheetBirths?.entries[0]).toEqual(entry);
     await f.api.redo();

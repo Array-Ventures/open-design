@@ -92,7 +92,7 @@ it.each(['unsaved', 'pending', 'quarantined'] as const)('still offers the actual
 });
 
 function sdkWorkbook() {
-  const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: '1', styles: [{}], worksheetStructureEditable: true, calculationMetadata: 'verified', features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
+  const model: WorkbookDocument = { version: 1, date1904: false, activeSheetId: '1', styles: [{}], worksheetMembershipEditable: true, worksheetStructureEditable: true, calculationMetadata: 'verified', features: { charts: 0, drawings: 0, externalLinks: 0, macros: false, signed: false },
     sheets: ['1','2'].map(id => ({ id, name: `Sheet ${id}`, visibility: 'visible', rowCount: 100, columnCount: 26, cells: [{ row: 0, column: 0, kind: 'number', value: 12, style: 0 }], merges: [], rowDimensions: [], columnDimensions: [], frozenRows: 0, frozenColumns: 0, arrayFormulas: [] })) };
   const source = { sourceSha256: 'a'.repeat(64), model }, data = seedWorkbookStructureIdentity(gridWorkbook(model, `${scope.projectId}:${scope.fileName}`, 'Workbook').data as IWorkbookData, source.sourceSha256);
   const univer = new Univer({ locale: LocaleType.EN_US, locales: { [LocaleType.EN_US]: English } }); univer.registerPlugin(UniverSheetsPlugin);
@@ -214,4 +214,16 @@ it('fences a cleanup release failure through existing retirement before explicit
   expect(reopened.result.current.session).toBeNull();
   await act(async () => { await reopened.result.current.continueCurrent(); });
   expect(reopened.result.current.session).not.toBeNull(); expect(reopened.result.current.session!.scope.draftId).not.toBe(session.scope.draftId);
+});
+
+it('refuses deletion capture when the otherwise qualified recovery source loses membership permission', async () => {
+  const f = sdkWorkbook();
+  const writer = new WorkbookWriter(f.source, f.data, async () => { throw Error('No remote write'); }, () => {});
+  try {
+    const checkpoint = writer.checkpoint();
+    checkpoint.source.model.worksheetMembershipEditable = false;
+    expect(() => captureWorkbookSourceDeletion({ ...scope, draftId: crypto.randomUUID() }, checkpoint, '2')).toThrow('ready qualified scalar baseline');
+    expect(f.book.getSheetBySheetId('2')).not.toBeNull();
+    expect(writer.state().dirty).toBe(false);
+  } finally { await writer.close(); f.univer.dispose(); }
 });
