@@ -1,0 +1,225 @@
+{
+  "version": 1,
+  "qualifiedSource": "d095f1374be456bd47e767658015604f36c20ec2",
+  "parents": [
+    "cad142a2569f3cdacecb129856777ffd5a6c2481",
+    "bb057884b5aec02267b59dab8f1aeb687255805b"
+  ],
+  "imageOnlySource": "cad142a2569f3cdacecb129856777ffd5a6c2481",
+  "joinedMain": "bb057884b5aec02267b59dab8f1aeb687255805b",
+  "merge": "Normal merge; no conflicts. Lockfile automatically retains both Sharp daemon dependency and Date web/shared imports.",
+  "checks": {
+    "daemon": {
+      "cases": 188,
+      "files": 11,
+      "exit": 0
+    },
+    "contracts": {
+      "cases": 58,
+      "files": 3,
+      "exit": 0
+    },
+    "host": {
+      "cases": 15,
+      "files": 1,
+      "exit": 0
+    },
+    "sharedPolicy": {
+      "cases": 99,
+      "files": 8,
+      "exit": 0
+    },
+    "frozenInstall": 0,
+    "dependencyRefresh": 0,
+    "workspaceTypes": 0,
+    "guard": 0
+  },
+  "imageProductionProof": [
+    {
+      "path": "apps/daemon/package.json",
+      "sha256": "a62598b322e63907ecb4c20ac07f0c3bb2dd6db91179fbf8544b8dd13a6771a6",
+      "byteEqualImageOnly": true
+    },
+    {
+      "path": "apps/daemon/src/embedded-render/images.ts",
+      "sha256": "13d0fe39ef4ac00b21a6df12375525c4136db6a1db71e25838c9e2f8e5fc1aa2",
+      "byteEqualImageOnly": true
+    },
+    {
+      "path": "apps/daemon/src/embedded-render/input.ts",
+      "sha256": "09f7cb5d9b2ded406018a2cb9d5553c02459a808a88e4d5dfa45e17b2ff3611d",
+      "byteEqualImageOnly": true
+    },
+    {
+      "path": "apps/daemon/src/embedded-render/runner.ts",
+      "sha256": "06944f9567e6a0c6f4305921f33b6b15692d42a25ace638f52aeb4cd0ad6b60f",
+      "byteEqualImageOnly": true
+    },
+    {
+      "path": "apps/web/src/components/embedded/useArtifactHostState.ts",
+      "sha256": "a5b914b4193c5d64688a287dd9d412ec46e80fb57c43d9e8e4a56f485358828d",
+      "byteEqualImageOnly": true
+    },
+    {
+      "path": "deploy/Dockerfile.embedded-render",
+      "sha256": "c19ab303922cfd8fce61fd6ea66dd6653f1290003f3e72c35171896637178c94",
+      "byteEqualImageOnly": true
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "sha256": "f41fddb29b73e358b7b2ba226d392b21e8833d91beba1ffc2691aae9b83944d0",
+      "byteEqualImageOnly": true
+    },
+    {
+      "path": "packages/contracts/src/runtime/image-export.ts",
+      "sha256": "28e32bed55c8ade7a83687a028b71aaee50e1af4b9037b7e45252aed8b01b7f1",
+      "byteEqualImageOnly": true
+    },
+    {
+      "path": "scripts/build-embedded-render.ts",
+      "sha256": "755f56d6ae1e58eeb217264f9538db842505d8cd0ca773d86af3273331ca3543",
+      "byteEqualImageOnly": true
+    },
+    {
+      "path": "scripts/lib/renderer-raster-runtime.ts",
+      "sha256": "44be9711a36dd1cb8fd5010cf80093b1ae3542f5cd5d25240020ee3034d94fab",
+      "byteEqualImageOnly": true
+    }
+  ],
+  "incomingNonLockPathsByteEqualMain": [
+    "apps/daemon/src/embedded-render/document-color-normalize.ts",
+    "apps/daemon/src/embedded-render/document-date-export.ts",
+    "apps/daemon/src/embedded-render/document-docx-source-colors.ts",
+    "apps/daemon/src/embedded-render/document-markdown.ts",
+    "apps/daemon/src/embedded-render/documents.ts",
+    "apps/daemon/tests/document-date-conversion.test.ts",
+    "apps/daemon/tests/document-date-export.test.ts",
+    "apps/daemon/tests/document-date-spacing.test.ts",
+    "apps/web/package.json",
+    "apps/web/src/components/embedded/boardui/NOTICE.md",
+    "apps/web/src/components/embedded/boardui/README.md",
+    "apps/web/src/components/embedded/boardui/date-calendar-shared.tsx",
+    "apps/web/src/components/embedded/boardui/date-calendar.tsx",
+    "apps/web/src/components/embedded/boardui/styles.css",
+    "apps/web/src/components/embedded/document/DocumentDateNode.tsx",
+    "apps/web/src/components/embedded/document/DocumentDates.tsx",
+    "apps/web/src/components/embedded/document/DocumentEditor.tsx",
+    "apps/web/src/components/embedded/document/DocumentSuggestions.tsx",
+    "apps/web/src/components/embedded/document/DocumentToolbar.tsx",
+    "apps/web/src/components/embedded/document/document-admission.ts",
+    "apps/web/src/components/embedded/document/document-control-focus.ts",
+    "apps/web/src/components/embedded/document/document-date-commands.ts",
+    "apps/web/src/components/embedded/document/document-date-context.ts",
+    "apps/web/src/components/embedded/document/document-date-controller.ts",
+    "apps/web/src/components/embedded/document/document-date-source.ts",
+    "apps/web/src/components/embedded/document/document-html.ts",
+    "apps/web/src/components/embedded/document/document-suggestion-commands.ts",
+    "apps/web/src/components/embedded/document/document-suggestion-schema.ts",
+    "apps/web/src/components/embedded/document/markdown-serialization.ts",
+    "apps/web/src/i18n/locales/ar.ts",
+    "apps/web/src/i18n/locales/de.ts",
+    "apps/web/src/i18n/locales/en.ts",
+    "apps/web/src/i18n/locales/es-ES.ts",
+    "apps/web/src/i18n/locales/fa.ts",
+    "apps/web/src/i18n/locales/fr.ts",
+    "apps/web/src/i18n/locales/hu.ts",
+    "apps/web/src/i18n/locales/id.ts",
+    "apps/web/src/i18n/locales/it.ts",
+    "apps/web/src/i18n/locales/ja.ts",
+    "apps/web/src/i18n/locales/ko.ts",
+    "apps/web/src/i18n/locales/pl.ts",
+    "apps/web/src/i18n/locales/pt-BR.ts",
+    "apps/web/src/i18n/locales/ru.ts",
+    "apps/web/src/i18n/locales/th.ts",
+    "apps/web/src/i18n/locales/tr.ts",
+    "apps/web/src/i18n/locales/uk.ts",
+    "apps/web/src/i18n/locales/zh-CN.ts",
+    "apps/web/src/i18n/locales/zh-TW.ts",
+    "apps/web/src/i18n/types.ts",
+    "apps/web/tests/components/embedded/DocumentSurface.test.tsx",
+    "apps/web/tests/components/embedded/document-date-controller.test.ts",
+    "apps/web/tests/components/embedded/document-date-formatting.test.tsx",
+    "apps/web/tests/components/embedded/document-date-local.test.ts",
+    "apps/web/tests/components/embedded/document-date-source.test.ts",
+    "apps/web/tests/components/embedded/document-date-ui.test.tsx",
+    "docs/document-date-export-spacing-evidence.json",
+    "docs/document-date-export-spacing.md",
+    "docs/document-date-final-evidence.json",
+    "docs/document-date-final.md",
+    "docs/document-date-focus-evidence.json",
+    "docs/document-date-focus.md",
+    "docs/document-date-history-order-evidence.json",
+    "docs/document-date-history-order.md",
+    "docs/document-date-print-policy-evidence.json",
+    "docs/document-date-print-policy.md",
+    "docs/document-date-workbook-integration-evidence.json",
+    "docs/document-date-workbook-integration.md",
+    "docs/document-date.md",
+    "docs/images/document-date-export-spacing/context-pdf.png",
+    "docs/images/document-date-export-spacing/context-word.png",
+    "docs/images/document-date-export-spacing/pdf.png",
+    "docs/images/document-date-export-spacing/word.png",
+    "docs/images/document-date-final/no-date.png",
+    "docs/images/document-date-final/pdf.png",
+    "docs/images/document-date-final/with-date.png",
+    "docs/images/document-date-final/word.png",
+    "docs/images/document-date-print-policy/legacy-time.png",
+    "docs/images/document-date-print-policy/no-date.png",
+    "docs/images/document-date-print-policy/unknown-authored-css.png",
+    "docs/images/document-date-print-policy/with-date.png",
+    "docs/images/document-date/dark-wide.png",
+    "docs/images/document-date/light-phone.png",
+    "packages/contracts/esbuild.config.mjs",
+    "packages/contracts/package.json",
+    "packages/contracts/src/runtime/document-date.ts",
+    "packages/contracts/src/runtime/document.ts",
+    "packages/contracts/tests/document-date.test.ts",
+    "packages/document-style/package.json",
+    "packages/document-style/src/browser.ts",
+    "packages/document-style/tests/date-atoms.test.ts",
+    "scripts/test-document-date-print-policy.ts",
+    "scripts/test-document-date-spacing.ts"
+  ],
+  "incomingNonLockPathCount": 92,
+  "limitations": [
+    "No new companion, renderer or Docker build for combined source.",
+    "Existing702 companion/6ea8 image qualify image-only35b46 source, not this combined runtime.",
+    "No full web/daemon suite, browser, native UI, activation, pin, publication or model/provider calls.",
+    "Original image-only worktree and immutable artifacts preserved."
+  ],
+  "references": [
+    {
+      "path": "/tmp/binary-image-date-install.log",
+      "sha256": "1aade600ecab8a0e69fcc7e274338bb1fc776d8e568bd0c591de50f55d0430ad"
+    },
+    {
+      "path": "/tmp/binary-image-date-dependencies.log",
+      "sha256": "7b38cf3769dc5214627d313091de9384251c69069f9c2a5fc06865a2278dee27"
+    },
+    {
+      "path": "/tmp/binary-image-date-daemon.log",
+      "sha256": "cd077462fe129ac720f90a6aaded2f867e4d9230a7ee556e48e0df5d975aecda"
+    },
+    {
+      "path": "/tmp/binary-image-date-contracts.log",
+      "sha256": "db875185106310d5c1d2ac392e17cc840a96e4cb425617b210dc80f9bde5f570"
+    },
+    {
+      "path": "/tmp/binary-image-date-host.log",
+      "sha256": "ea3c0bb140b681c71d2dd7e76e89ae57f50810f181efc41f5e984a10b6187e59"
+    },
+    {
+      "path": "/tmp/binary-image-date-shared.log",
+      "sha256": "d4bcd6bc984c07ae3d1524dc910a78d7787e5805cbe707879880116e8f1f330a"
+    },
+    {
+      "path": "/tmp/binary-image-date-types.log",
+      "sha256": "70bedf8840ac9a5b2cdfd454ffd4a0d17815a836df430fbb79b39ec736756d58"
+    },
+    {
+      "path": "/tmp/binary-image-date-guard.log",
+      "sha256": "c3b5a2c61fcf923c7608cba989ec97200e54f0f1eafdeb591f480e51b3a5db90"
+    }
+  ],
+  "canonicalSha256": "dcfbcd16158f5cb5d821c578c961cd505a64e9fb58c8f0ff896e6108c7bdaea3"
+}

@@ -1,0 +1,486 @@
+{
+  "version": 1,
+  "scope": "Image-only fork main source; official local ARM64 companion/render/image and immutable worker qualification. No native browser pairing, activation, publication or x86 codec claim.",
+  "qualifiedSource": "35b46ad0c416a1e70578dc830abbdb906d79602d",
+  "base": "bd23b85d3f1706d0b234037e387df99110805ae0",
+  "sourceTreeSha256": "e6024a3ed510e8c6711d6b3781715d939d95e979357b52a8601a83e42a60bac6",
+  "dirty": false,
+  "companion": {
+    "buildId": "702041ebe6097ade217fbcb663dbe1d86396d352a07dfc41229b9de211b7bad9",
+    "sourceCommit": "35b46ad0c416a1e70578dc830abbdb906d79602d",
+    "sourceTreeSha256": "e6024a3ed510e8c6711d6b3781715d939d95e979357b52a8601a83e42a60bac6",
+    "dirty": false,
+    "files": 34596
+  },
+  "image": "sha256:6ea8ae567e7810bed59bd40195be2f6128efb106a69b887456904c3a730e3c9c",
+  "imagePlatform": "linux/arm64",
+  "imageUser": "node",
+  "imageEntrypoint": [
+    "node",
+    "/opt/render/worker.mjs"
+  ],
+  "raster": {
+    "sharp": "0.35.3",
+    "platform": "linux-arm64",
+    "addonSha256": "ca16f6b4af700f2eb8fb43e9f32103b50c39a16fe882bb1282d3d76c975069ac",
+    "libvipsSha256": "56f7e7c98d134371c07990a318e41178cf0b6a956b8d5cd73779881c17deaaab"
+  },
+  "actualRuntimeInventoryFiles": 586,
+  "immutableCases": [
+    {
+      "name": "png-intrinsic",
+      "status": 0,
+      "result": {
+        "ok": true,
+        "file": "artifact.png",
+        "mime": "image/png",
+        "pages": 1
+      }
+    },
+    {
+      "name": "jpeg-orientation",
+      "status": 0,
+      "result": {
+        "ok": true,
+        "file": "artifact.png",
+        "mime": "image/png",
+        "pages": 1
+      }
+    },
+    {
+      "name": "webp-icc",
+      "status": 0,
+      "result": {
+        "ok": true,
+        "file": "artifact.png",
+        "mime": "image/png",
+        "pages": 1
+      }
+    },
+    {
+      "name": "white-jpeg",
+      "status": 0,
+      "result": {
+        "ok": true,
+        "file": "artifact.jpg",
+        "mime": "image/jpeg",
+        "pages": 1
+      }
+    },
+    {
+      "name": "fake-png-refused",
+      "status": 1,
+      "result": {
+        "ok": false,
+        "error": "Choose a complete static PNG, JPEG or WebP image. Animation and mixed image containers are not supported."
+      }
+    },
+    {
+      "name": "svg-refused",
+      "status": 1,
+      "result": {
+        "ok": false,
+        "error": "Prepared image conversion supports static PNG, JPEG and WebP sources. Download other images in their original format."
+      }
+    },
+    {
+      "name": "animation-refused",
+      "status": 1,
+      "result": {
+        "ok": false,
+        "error": "Choose a complete static PNG, JPEG or WebP image. Animation and mixed image containers are not supported."
+      }
+    },
+    {
+      "name": "ordinary-html-capture",
+      "status": 0,
+      "result": {
+        "ok": true,
+        "file": "artifact.png",
+        "mime": "image/png",
+        "pages": 1
+      }
+    },
+    {
+      "name": "ordinary-pdf",
+      "status": 0,
+      "result": {
+        "ok": true,
+        "file": "artifact.pdf",
+        "mime": "application/pdf",
+        "pages": 1
+      }
+    },
+    {
+      "name": "ordinary-html-export",
+      "status": 0,
+      "result": {
+        "ok": true,
+        "file": "artifact.html",
+        "mime": "text/html",
+        "externalDependencies": []
+      }
+    }
+  ],
+  "actualLoadedRuntime": {
+    "sharp": "0.35.3",
+    "vips": "8.18.3",
+    "loaded": [
+      "/opt/render/node_modules/@img/sharp-linux-arm64/lib/sharp-linux-arm64-0.35.3.node",
+      "/opt/render/node_modules/@img/sharp-libvips-linux-arm64/lib/libvips-cpp.so.8.18.3"
+    ],
+    "width": 2,
+    "height": 2
+  },
+  "independentOutputReadback": {
+    "decoder": "Independent Pillow readback; converter uses Sharp",
+    "png": {
+      "size": [
+        2,
+        2
+      ],
+      "rgba": [
+        [
+          255,
+          0,
+          0,
+          255
+        ],
+        [
+          0,
+          255,
+          0,
+          128
+        ],
+        [
+          0,
+          0,
+          255,
+          255
+        ],
+        [
+          255,
+          255,
+          255,
+          0
+        ]
+      ]
+    },
+    "orientation": {
+      "sourceExif": 6,
+      "outputSize": [
+        3,
+        2
+      ],
+      "maximumRgbDelta": 0
+    },
+    "icc": {
+      "bytes": 480,
+      "sha256": "231752984cd4a5278e1b8d2390fe496767d4511fc81f54e1a5c69ae9ab4c42b5"
+    },
+    "jpegWhite": {
+      "size": [
+        3,
+        2
+      ],
+      "allRgbWhite": true
+    }
+  },
+  "productionImageByteProof": [
+    {
+      "path": "apps/daemon/package.json",
+      "category": "production",
+      "sha256": "a62598b322e63907ecb4c20ac07f0c3bb2dd6db91179fbf8544b8dd13a6771a6",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "apps/daemon/src/embedded-render/images.ts",
+      "category": "production",
+      "sha256": "13d0fe39ef4ac00b21a6df12375525c4136db6a1db71e25838c9e2f8e5fc1aa2",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "apps/daemon/src/embedded-render/input.ts",
+      "category": "production",
+      "sha256": "09f7cb5d9b2ded406018a2cb9d5553c02459a808a88e4d5dfa45e17b2ff3611d",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "apps/daemon/src/embedded-render/runner.ts",
+      "category": "production",
+      "sha256": "06944f9567e6a0c6f4305921f33b6b15692d42a25ace638f52aeb4cd0ad6b60f",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "apps/web/src/components/embedded/useArtifactHostState.ts",
+      "category": "production",
+      "sha256": "a5b914b4193c5d64688a287dd9d412ec46e80fb57c43d9e8e4a56f485358828d",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "deploy/Dockerfile.embedded-render",
+      "category": "production",
+      "sha256": "c19ab303922cfd8fce61fd6ea66dd6653f1290003f3e72c35171896637178c94",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "category": "production",
+      "sha256": "f41fddb29b73e358b7b2ba226d392b21e8833d91beba1ffc2691aae9b83944d0",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "packages/contracts/src/runtime/image-export.ts",
+      "category": "production",
+      "sha256": "28e32bed55c8ade7a83687a028b71aaee50e1af4b9037b7e45252aed8b01b7f1",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "scripts/build-embedded-render.ts",
+      "category": "production",
+      "sha256": "755f56d6ae1e58eeb217264f9538db842505d8cd0ca773d86af3273331ca3543",
+      "byteEqualPreviousImage": true
+    },
+    {
+      "path": "scripts/lib/renderer-raster-runtime.ts",
+      "category": "production",
+      "sha256": "44be9711a36dd1cb8fd5010cf80093b1ae3542f5cd5d25240020ee3034d94fab",
+      "byteEqualPreviousImage": true
+    }
+  ],
+  "cleanup": {
+    "containersByOwnedLabel": {
+      "od.binary-image-test=true": [],
+      "od.raster-inspection=true": [],
+      "od.raster-native-load=true": []
+    },
+    "ownedBuildOrTestProcesses": [],
+    "postgresStarted": false,
+    "retained": "Official local image, companion, render context, immutable output and inspection scratch retained; no stack or preview activation."
+  },
+  "retainedFailures": [
+    {
+      "path": "/tmp/binary-image-main-package-verification.log",
+      "reason": "Strict verifier finished; reporting code incorrectly accessed result.identity. Corrected complete strict invocation exited zero."
+    },
+    {
+      "path": "/tmp/binary-image-main-native-load-probe.log",
+      "reason": "Supplemental Node eval syntax error from escaped newline; no decoder executed. Corrected supplemental probe exited zero."
+    }
+  ],
+  "references": [
+    {
+      "path": "/tmp/binary-image-main-architecture.log",
+      "sha256": "0b2a509b19d3f2d9ce669938028b04b123a0b351924185e050c143f0e8f383a3"
+    },
+    {
+      "path": "/tmp/binary-image-main-companion-build.log",
+      "sha256": "349daa7399e1ba833a15717a2fb37b073cd30c4dee456124b9c0c90bac875dff"
+    },
+    {
+      "path": "/tmp/binary-image-main-contracts.log",
+      "sha256": "eedcc075f72de8532786cc2329bda299c785cdd9a72a446e73a5a651557bd4c8"
+    },
+    {
+      "path": "/tmp/binary-image-main-daemon.log",
+      "sha256": "5aa9d8c8f57954a36e15a8cef461dd1b696fc50a22ecf488b97a7f777952aa80"
+    },
+    {
+      "path": "/tmp/binary-image-main-dependencies.log",
+      "sha256": "3e8173483793254768dce04cad343bbb4aebb3549001955499d50a73ca76afc8"
+    },
+    {
+      "path": "/tmp/binary-image-main-docker-build.log",
+      "sha256": "4241b0701d634c2c476f08c73c8e3935995af5c7a0e18d013394e588bab16f39"
+    },
+    {
+      "path": "/tmp/binary-image-main-guard.log",
+      "sha256": "a8ef3cd631e9e61350a5e12845b4a71477c763d613ed1cccc29b3640d54e64dd"
+    },
+    {
+      "path": "/tmp/binary-image-main-host.log",
+      "sha256": "3fa87c4a28d3219276de603482647c0fabff07d989c0fe18222b7c8b207fc6e0"
+    },
+    {
+      "path": "/tmp/binary-image-main-image-inventory.log",
+      "sha256": "c411f78f27880fac1eef3092a5a6b2c69dad5a11ff2afe45bf52ef35b85b8759"
+    },
+    {
+      "path": "/tmp/binary-image-main-immutable.log",
+      "sha256": "82c96ac905d580491afec667b0ceb7aa6e6be689761a364ef54994adff191dcf"
+    },
+    {
+      "path": "/tmp/binary-image-main-install.log",
+      "sha256": "5f8c655334fcbabe8426cf4043217f6f8750430173bd745f56936b7ff81bd91e"
+    },
+    {
+      "path": "/tmp/binary-image-main-native-image-verification.log",
+      "sha256": "94666d956d1fc8eccbcb707ffffd3c6255658154741428b0785d4eb48d4210be"
+    },
+    {
+      "path": "/tmp/binary-image-main-native-load-probe-fixed.log",
+      "sha256": "f76776e2d479a0be2fae837c2b7c24a7326043aa65f65a593d8cf9aa8da8c345"
+    },
+    {
+      "path": "/tmp/binary-image-main-native-load-probe.log",
+      "sha256": "82569ee3165efc30b7d1807bbb19e8b33d65462de76a07a035428a70ebc360c7"
+    },
+    {
+      "path": "/tmp/binary-image-main-package-verification-corrected.log",
+      "sha256": "bbf731341d9318f93aee574cc1e5e16fbb19d2df9c710ba567bb0d9927c4d96e"
+    },
+    {
+      "path": "/tmp/binary-image-main-package-verification.log",
+      "sha256": "df9a555cbec83a59633d621d6dc4c17b472038cdaf9f83608fae4474921254a0"
+    },
+    {
+      "path": "/tmp/binary-image-main-renderer-build.log",
+      "sha256": "efe5b3990a3f2c9a79e2256173a17d5daa45966c994f0713e512a53a37c5bbe9"
+    },
+    {
+      "path": "/tmp/binary-image-main-runtime.log",
+      "sha256": "9483b726b3bd6283ce04c79b53694fef0960fd55f5f9d1a750597574d5eaf26f"
+    },
+    {
+      "path": "/tmp/binary-image-main-source-binding.log",
+      "sha256": "4e292a69b3896be7ef57e1eef2bcafcc45263a882f5ec915549205ae479c8371"
+    },
+    {
+      "path": "/tmp/binary-image-main-types.log",
+      "sha256": "e7f1e82f1dba7d2ea361318b0ca0476820d86a6002e316dd91e43a230cf54682"
+    },
+    {
+      "path": "/tmp/binary-image-main-package-verification.json",
+      "sha256": "4d6465b9770ff29d6cc2c770022eac27b00ca0926d3c93d3b410d3d575277dbb"
+    },
+    {
+      "path": "/tmp/binary-image-main-native-image-verification.json",
+      "sha256": "722b413beee7011278d6148fd5930e48f7cd46248aec0d64488aecf3bb02d837"
+    },
+    {
+      "path": "/tmp/binary-image-main-source-binding.json",
+      "sha256": "760b08a9c583bb30f9c92addfac3149000f1e9d3ec130334c8f21d3fd8e7cafb"
+    },
+    {
+      "path": "/tmp/binary-image-main-loaded-runtime.json",
+      "sha256": "f76776e2d479a0be2fae837c2b7c24a7326043aa65f65a593d8cf9aa8da8c345"
+    },
+    {
+      "path": "/tmp/binary-image-main-independent-readback.json",
+      "sha256": "3089527ae947eb83c0efd606c5f2639f058a73e9e5efbc839cdd074371ecc1fe"
+    },
+    {
+      "path": "/tmp/binary-image-main-cleanup.json",
+      "sha256": "219e62cfc043fcd69ff6553cd3c95a63ddac20e9db376366084424957698de5f"
+    },
+    {
+      "path": "/tmp/od-raster-image-inventory-x25Zzy/report.json",
+      "sha256": "9350378cee6d03ad0cea510c35a474e865ed9c003afad00e74972a4740b0b1d0"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/receipt.json",
+      "sha256": "dcd4ea441573e718fcaa9dc28212ab7876426958138c42b00a93ef4acb2a8829"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/animation-refused/output/result.json",
+      "sha256": "f8f47dc33897e0c3902960aa4fa03ffdd20a34351544fe1251e95dec890bd77c"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/fake-png-refused/output/result.json",
+      "sha256": "f8f47dc33897e0c3902960aa4fa03ffdd20a34351544fe1251e95dec890bd77c"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/jpeg-orientation/output/artifact.png",
+      "sha256": "a886b58df3a5e600a34943dd65ff6e60ce95af371e13121ad071bfdc5a894429"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/jpeg-orientation/output/result.json",
+      "sha256": "6b58d412ca078ccf8e0b19a6e4dbebd9ebd0475e166cefc3db0b490ec95bfdaf"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/ordinary-html-capture/output/artifact.png",
+      "sha256": "6e1834129312053960c002bb2c9d916f023343b4332ac5e71e34d2c43a55712e"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/ordinary-html-capture/output/result.json",
+      "sha256": "6b58d412ca078ccf8e0b19a6e4dbebd9ebd0475e166cefc3db0b490ec95bfdaf"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/ordinary-html-export/output/artifact.html",
+      "sha256": "ceeb56ab3bdcb96504300a61c82aeacae806eaca33e5898445846b92203e0c1d"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/ordinary-html-export/output/result.json",
+      "sha256": "20326eef3a1a01ee7489a38f4114f561458a1ba5fe6fddd78d7ebdb60eaffd1f"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/ordinary-pdf/output/artifact.pdf",
+      "sha256": "dd4597503b42a95344d7f1f1c9fa8b2c33de15d1ceedcc388cf731fbb4c7da48"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/ordinary-pdf/output/result.json",
+      "sha256": "87c5adcecc98b6ccd98dc821a96343c0f4c4561681bea79faa22d94de5bb5545"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/png-intrinsic/output/artifact.png",
+      "sha256": "9b7385628973587db5befed37963eaa159cedee456447749f9d2e8a9bb8f9e47"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/png-intrinsic/output/result.json",
+      "sha256": "6b58d412ca078ccf8e0b19a6e4dbebd9ebd0475e166cefc3db0b490ec95bfdaf"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/source/animation.webp",
+      "sha256": "30cb2e516f8c953b1a97ab5b6d4b79e7b9e83a1ee17efd1dcdb7908cc19d46a5"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/source/fake.png",
+      "sha256": "b1f3f8b4c2a64d63dc45390f95532a8c1f7fd9f253ce51fc580d0d327b05bd23"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/source/ordinary.html",
+      "sha256": "ceeb56ab3bdcb96504300a61c82aeacae806eaca33e5898445846b92203e0c1d"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/source/oriented.jpg",
+      "sha256": "096dab6a2cfbb3813e21a457988606609f3aef8922f2e5269d0cb5ab2d88d125"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/source/picture.png",
+      "sha256": "9b7385628973587db5befed37963eaa159cedee456447749f9d2e8a9bb8f9e47"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/source/profile.webp",
+      "sha256": "c8075820a2cf3f5790e30643f7ad8192fc373a702b72a027c6dd29ac0e5c0e58"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/source/remote.svg",
+      "sha256": "b1f3f8b4c2a64d63dc45390f95532a8c1f7fd9f253ce51fc580d0d327b05bd23"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/source/transparent.png",
+      "sha256": "1830bab88481e59953b0c7ea50212b127edf1bbd1c5f216ddbb68d626d0aa9a1"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/svg-refused/output/result.json",
+      "sha256": "dab43968e964ebc3c6a6296393cf7879e10006186327fae5b37c0e1261e9ba75"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/webp-icc/output/artifact.png",
+      "sha256": "ca8aa85de7c1a05eab816149e67fe7b834565f6290e6ef52d86201b6a8484e63"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/webp-icc/output/result.json",
+      "sha256": "6b58d412ca078ccf8e0b19a6e4dbebd9ebd0475e166cefc3db0b490ec95bfdaf"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/white-jpeg/output/artifact.jpg",
+      "sha256": "1434989283f2de04e6ba73dfe33fb50efa73541fa951e5d4011c313757901f96"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-iEevzV/white-jpeg/output/result.json",
+      "sha256": "b02d94edf09ca9b9523de0cad0c09dac2f93bdc5d079c2cb82d139f228a27822"
+    }
+  ],
+  "canonicalSha256": "57775613ef48db863f4e21d0166b98ee7e4e30282b88152bff3e8db8baf3e30a"
+}

@@ -1,4 +1,5 @@
 import { captureBuildSource, assertBuildSourceUnchanged } from './lib/build-source.js';
+import { copyRendererRasterRuntime } from './lib/renderer-raster-runtime.js';
 import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -16,7 +17,7 @@ await mkdir(output);
 // Worker imports resolve shared package exports, so refresh their compiled
 // dependency closure before bundling the isolated runtime.
 execFileSync('corepack', ['pnpm', '--filter', '@open-design/daemon^...', '--workspace-concurrency=1', 'run', '--if-present', 'build'], { cwd: root, stdio: 'inherit' });
-execFileSync('corepack', ['pnpm', '--filter', '@open-design/daemon', 'exec', 'esbuild', 'src/embedded-render/main.ts', '--bundle', '--platform=node', '--format=esm', '--target=node24', '--external:playwright-core', '--banner:js=import { createRequire as __odWorkerCreateRequire } from "node:module"; const require = __odWorkerCreateRequire(import.meta.url);', `--metafile=${path.join(output, 'bundle-inputs.json')}`, `--outfile=${path.join(output, 'worker.mjs')}`], { cwd: root, stdio: 'inherit' });
+execFileSync('corepack', ['pnpm', '--filter', '@open-design/daemon', 'exec', 'esbuild', 'src/embedded-render/main.ts', '--bundle', '--platform=node', '--format=esm', '--target=node24', '--external:playwright-core', '--external:sharp', '--banner:js=import { createRequire as __odWorkerCreateRequire } from "node:module"; const require = __odWorkerCreateRequire(import.meta.url);', `--metafile=${path.join(output, 'bundle-inputs.json')}`, `--outfile=${path.join(output, 'worker.mjs')}`], { cwd: root, stdio: 'inherit' });
 // Validate the final banner+bundle before producing an executable image.
 execFileSync(process.execPath, ['--check', path.join(output, 'worker.mjs')], { cwd: root, stdio: 'inherit' });
 // Bundle the shared converter as one browser closure: serialized functions must
@@ -37,7 +38,8 @@ await cp(path.join(root, 'LICENSE'), path.join(licenses, 'open-design-LICENSE'))
 await cp(path.join(pptxVendor, 'LICENSE'), path.join(licenses, 'dom-to-pptx-LICENSE'));
 await cp(path.join(pptxVendor, 'README.md'), path.join(licenses, 'dom-to-pptx-README.md'));
 const metadata = JSON.parse(await readFile(path.join(output, 'bundle-inputs.json'), 'utf8')) as { inputs: Record<string, unknown> };
-const packages = new Set<string>([playwright, hyperframes]);
+const raster = await copyRendererRasterRuntime(root, output);
+const packages = new Set<string>([playwright, hyperframes, ...raster.packages]);
 for (const input of Object.keys(metadata.inputs)) {
   const resolved = path.resolve(root, 'apps/daemon', input);
   const match = /^(.*\/node_modules\/(?:@[^/]+\/)?[^/]+)\//.exec(resolved);
@@ -49,10 +51,13 @@ for (const directory of packages) {
   await mkdir(destination, { recursive: true });
   await writeFile(path.join(destination, 'package.json'), JSON.stringify({ name: manifest.name, version: manifest.version, license: manifest.license }, null, 2));
   for (const name of await readdir(directory)) if (/^(?:LICENSE|LICENCE|COPYING|NOTICE)(?:[.-]|$)/i.test(name)) await cp(path.join(directory, name), path.join(destination, name), { recursive: true });
+  // Native libvips publishes its component licences/source links in README and
+  // exact dependency versions separately; retain both alongside the package.
+  if (raster.packages.includes(directory)) for (const name of await readdir(directory)) if (/^(?:README\.md|versions\.json)$/.test(name)) await cp(path.join(directory, name), path.join(destination, name));
 }
 const worker = await readFile(path.join(output, 'worker.mjs'));
 const sha256 = createHash('sha256').update(worker).digest('hex');
 await assertBuildSourceUnchanged(root, sourceIdentity);
 const { sourceCommit, sourceTreeSha256, dirty } = sourceIdentity;
-await writeFile(path.join(output, 'provenance.json'), JSON.stringify({ schemaVersion: 1, sourceCommit, sourceTreeSha256, dirty, workerSha256: sha256, documentColorSha256: createHash('sha256').update(await readFile(path.join(output, 'document-color.iife.js'))).digest('hex'), editablePptx: { version: '2.0.1', vendorSha256: createHash('sha256').update(pptxBundle).digest('hex'), converterSha256: createHash('sha256').update(await readFile(path.join(output, 'deck-export.iife.js'))).digest('hex') }, playwright: JSON.parse(await readFile(path.join(playwright, 'package.json'), 'utf8')).version, hyperframes: { version: JSON.parse(await readFile(path.join(hyperframes, 'package.json'), 'utf8')).version, runtimeSha256: createHash('sha256').update(await readFile(path.join(output, 'hyperframe.runtime.iife.js'))).digest('hex') }, formats: ['html', 'pdf', 'image', 'pptx', 'mp4', 'webm', 'mp3', 'wav', 'hyperframes', 'docx', 'markdown', 'workbook', 'xlsx', 'csv'] }, null, 2) + '\n');
+await writeFile(path.join(output, 'provenance.json'), JSON.stringify({ schemaVersion: 1, sourceCommit, sourceTreeSha256, dirty, workerSha256: sha256, documentColorSha256: createHash('sha256').update(await readFile(path.join(output, 'document-color.iife.js'))).digest('hex'), editablePptx: { version: '2.0.1', vendorSha256: createHash('sha256').update(pptxBundle).digest('hex'), converterSha256: createHash('sha256').update(await readFile(path.join(output, 'deck-export.iife.js'))).digest('hex') }, raster: raster.provenance, playwright: JSON.parse(await readFile(path.join(playwright, 'package.json'), 'utf8')).version, hyperframes: { version: JSON.parse(await readFile(path.join(hyperframes, 'package.json'), 'utf8')).version, runtimeSha256: createHash('sha256').update(await readFile(path.join(output, 'hyperframe.runtime.iife.js'))).digest('hex') }, formats: ['html', 'pdf', 'image', 'pptx', 'mp4', 'webm', 'mp3', 'wav', 'hyperframes', 'docx', 'markdown', 'workbook', 'xlsx', 'csv'] }, null, 2) + '\n');
 process.stdout.write(`Render bundle: ${output}\nWorker SHA256: ${sha256}\n`);

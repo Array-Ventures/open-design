@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "sourceCommit": "760a7e2db3686295061dcf91608506fec49e6a13",
+  "baseCommit": "8a9be42c",
+  "scope": "Bounded static binary image conversion; source/real-decoder/readonly-worker-overlay qualification only",
+  "checks": {
+    "daemon": {
+      "passed": 68,
+      "files": 3,
+      "newImageCases": 37
+    },
+    "contracts": {
+      "passed": 33,
+      "files": 2
+    },
+    "hostCapabilityHook": {
+      "passed": 15,
+      "files": 1
+    },
+    "copiedNativeRuntime": "PASS",
+    "workspaceTypes": 0,
+    "guard": 0
+  },
+  "container": {
+    "baseImage": "sha256:5b09118f6152593188eefc6a7d9e2081ea406b595202ce54b43dd9a6864726d3",
+    "currentOverlayCases": 7,
+    "runtimeSourceDirtyAtCapture": true,
+    "raster": {
+      "sharp": "0.35.3",
+      "platform": "linux-arm64",
+      "addonSha256": "ca16f6b4af700f2eb8fb43e9f32103b50c39a16fe882bb1282d3d76c975069ac",
+      "libvipsSha256": "56f7e7c98d134371c07990a318e41178cf0b6a956b8d5cd73779881c17deaaab"
+    },
+    "baselineWrongDimensions": [
+      1440,
+      900
+    ],
+    "expectedIntrinsicDimensions": [
+      2,
+      2
+    ]
+  },
+  "limits": [
+    "No new immutable renderer or companion built",
+    "No actual native modal/browser acceptance; native counterpart independently under development",
+    "No installer pins/preview/data/model/provider/release/Actions changes",
+    "No new access/cancellation/durability qualification; existing native pipeline reused",
+    "Actual native closure/container qualification Linux arm64 only",
+    "Retained malformed fixture, lockfile editing and test-rootDir failures are not product failures"
+  ],
+  "references": [
+    {
+      "path": "/tmp/binary-image-red.log",
+      "sha256": "c35a1c02c6c1d5aac8472b3c48ff7b7630351768101037fbd2c916acff7101ef"
+    },
+    {
+      "path": "/tmp/binary-image-first-green.log",
+      "sha256": "42b94f4ab3464487f5ece6aedc4f24b0a73d695084e2fbc0637d3c63ce8eb79f"
+    },
+    {
+      "path": "/tmp/binary-image-expanded.log",
+      "sha256": "79f31474205d449fcdddd343f39a554789555197611eb510936c6dfa18d83bd0"
+    },
+    {
+      "path": "/tmp/binary-image-focused.log",
+      "sha256": "ae67191c2ad20f6fff969b461f746498858bfcc5e98e8f4c9055b06ec4b069cc"
+    },
+    {
+      "path": "/tmp/binary-image-types.log",
+      "sha256": "3bdc073787622edc87c5ba2b6dd1240d31e1a735ad87793bbb6615c5be77bb18"
+    },
+    {
+      "path": "/tmp/binary-image-guard.log",
+      "sha256": "4c09cbb29d51c65c0498203e358249771738628fd6ffd253dc6118939dd721ac"
+    },
+    {
+      "path": "/tmp/binary-image-refrozen-install.log",
+      "sha256": "d3e3eb659779ecf03b15075bd34010d561dde3fd7381ea51757ef3e335e061b2"
+    },
+    {
+      "path": "/tmp/binary-image-refrozen-install2.log",
+      "sha256": "a415370750e2f827f712915dd29fac8e64ad61747c5ae9bd159a1f0886230e4a"
+    },
+    {
+      "path": "/tmp/binary-image-container-baseline.log",
+      "sha256": "45eb5edcb322199dec597c69713328a43bc86f01460cb4fa2a13c044f7866b11"
+    },
+    {
+      "path": "/tmp/binary-image-container-final.log",
+      "sha256": "36c2b1a11459a080c7e26058e8c90c0a28087b7a081e9f9ac68da623828799b9"
+    },
+    {
+      "path": "/tmp/binary-image-author-final.log",
+      "sha256": "67014edd5f45d9e2caff32104b95dc63ddee3d33c6b0f77507590dcd3acd2d77"
+    },
+    {
+      "path": "/tmp/binary-image-contract-tests.log",
+      "sha256": "fc0529203678f28293851c50a3cbec0eb5a867a429eb11a502960e65b35dfdc5"
+    },
+    {
+      "path": "/tmp/binary-image-web-focused.log",
+      "sha256": "f9846e049369ff48419ae3cdf2f907985bb53402bf7e1cc068d2d05ab2de0f6c"
+    },
+    {
+      "path": "/tmp/binary-image-packaging-test.log",
+      "sha256": "9483b726b3bd6283ce04c79b53694fef0960fd55f5f9d1a750597574d5eaf26f"
+    },
+    {
+      "path": "/tmp/binary-image-final-types.log",
+      "sha256": "a8ae5e2279ff33e285576d5707cdad9114b8d37c2884082890320a7923cffe4d"
+    },
+    {
+      "path": "/tmp/binary-image-final-guard.log",
+      "sha256": "4c09cbb29d51c65c0498203e358249771738628fd6ffd253dc6118939dd721ac"
+    },
+    {
+      "path": "/tmp/binary-image-scripts-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/binary-image-native-container-probe.log",
+      "sha256": "52a464150e55b9b0557ed48581d9b8413e8f3b17140eb5b14f59734589ddf8d5"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-q4VxPz/receipt.json",
+      "sha256": "383226c6ef10d7147aece3e3092e9c83401428d27cdf0cae0650a3ada44da943"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-q4VxPz/png-intrinsic/output/artifact.png",
+      "sha256": "49db963005ebd5e72316f718e885b2211427190e10e470f021f776aac4711708"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-UPfLqk/receipt.json",
+      "sha256": "02c4cfd2b407c10a8c722689ba077dcf2479b8d2da27969adcae3ca88a45e8de"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-UPfLqk/runtime/worker.mjs",
+      "sha256": "1f4feac104a55cc9addb3dbbabdf92132f6d5051a005ddb29fde496d0cfefe40"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-UPfLqk/animation-refused/output/result.json",
+      "sha256": "f8f47dc33897e0c3902960aa4fa03ffdd20a34351544fe1251e95dec890bd77c"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-UPfLqk/fake-png-refused/output/result.json",
+      "sha256": "f8f47dc33897e0c3902960aa4fa03ffdd20a34351544fe1251e95dec890bd77c"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-UPfLqk/webp-icc/output/result.json",
+      "sha256": "6b58d412ca078ccf8e0b19a6e4dbebd9ebd0475e166cefc3db0b490ec95bfdaf"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-UPfLqk/svg-refused/output/result.json",
+      "sha256": "dab43968e964ebc3c6a6296393cf7879e10006186327fae5b37c0e1261e9ba75"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-UPfLqk/jpeg-orientation/output/result.json",
+      "sha256": "6b58d412ca078ccf8e0b19a6e4dbebd9ebd0475e166cefc3db0b490ec95bfdaf"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-UPfLqk/png-intrinsic/output/result.json",
+      "sha256": "6b58d412ca078ccf8e0b19a6e4dbebd9ebd0475e166cefc3db0b490ec95bfdaf"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-UPfLqk/white-jpeg/output/result.json",
+      "sha256": "b02d94edf09ca9b9523de0cad0c09dac2f93bdc5d079c2cb82d139f228a27822"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-UPfLqk/png-intrinsic/output/artifact.png",
+      "sha256": "9b7385628973587db5befed37963eaa159cedee456447749f9d2e8a9bb8f9e47"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-UPfLqk/jpeg-orientation/output/artifact.png",
+      "sha256": "a886b58df3a5e600a34943dd65ff6e60ce95af371e13121ad071bfdc5a894429"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-UPfLqk/webp-icc/output/artifact.png",
+      "sha256": "ca8aa85de7c1a05eab816149e67fe7b834565f6290e6ef52d86201b6a8484e63"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-UPfLqk/white-jpeg/output/artifact.jpg",
+      "sha256": "1434989283f2de04e6ba73dfe33fb50efa73541fa951e5d4011c313757901f96"
+    },
+    {
+      "path": "/tmp/binary-image-cleanup.json",
+      "sha256": "85fed082f4aca05418ed7da4bfb0d0a465cfe2396982d2382f2a1dfe21c6de22"
+    }
+  ]
+}

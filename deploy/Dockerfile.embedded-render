@@ -15,7 +15,10 @@ LABEL org.evebot.document-converter="pandoc-3.13" org.evebot.document-converter-
 WORKDIR /opt/render
 COPY worker.mjs provenance.json hyperframe.runtime.iife.js deck-export.iife.js document-color.iife.js dom-to-pptx.bundle.js ./
 COPY licenses ./licenses
-COPY node_modules/playwright-core ./node_modules/playwright-core
+COPY node_modules ./node_modules
+COPY raster-platform ./raster-platform
+ARG TARGETARCH
+RUN case "${TARGETARCH}" in arm64) raster_arch=arm64;; amd64) raster_arch=x64;; *) exit 1;; esac && test "$(cat raster-platform)" = "linux-${raster_arch}"
 ENV HOME=/tmp XDG_CACHE_HOME=/tmp
 USER node
 ENTRYPOINT ["node", "/opt/render/worker.mjs"]
