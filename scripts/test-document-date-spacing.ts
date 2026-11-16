@@ -17,14 +17,18 @@ await mkdir(source);
 const original = await readFile(sourcePath), sourceSha256 = createHash('sha256').update(original).digest('hex');
 assert.ok(original.includes(Buffer.from('data-eve-document-date="1"')), 'Use a Date fixture, not arbitrary content.');
 await writeFile(path.join(source, 'date.html'), original);
-if (!baseline) await exec('corepack', ['pnpm', '--filter', '@open-design/daemon', 'exec', 'esbuild', 'src/embedded-render/main.ts', '--bundle', '--platform=node', '--format=esm', '--target=node24', '--external:playwright-core', '--banner:js=import {createRequire as __dateRequire} from "node:module"; const require=__dateRequire(import.meta.url);', `--outfile=${worker}`], { cwd: root });
+const color = path.join(scratch, 'document-color.iife.js');
+if (!baseline) {
+  await exec('corepack', ['pnpm', '--filter', '@open-design/daemon', 'exec', 'esbuild', 'src/embedded-render/main.ts', '--bundle', '--platform=node', '--format=esm', '--target=node24', '--external:playwright-core', '--banner:js=import {createRequire as __dateRequire} from "node:module"; const require=__dateRequire(import.meta.url);', `--outfile=${worker}`], { cwd: root });
+  await exec('corepack', ['pnpm', '--filter', '@open-design/daemon', 'exec', 'esbuild', '../../packages/document-style/src/browser.ts', '--bundle', '--platform=browser', '--format=iife', '--global-name=odDocumentColor', '--target=chrome130', `--outfile=${color}`], { cwd: root });
+}
 const actor = userInfo(), receipts: object[] = [];
 async function render(name: string, fileName: string, format: string, ok = true) {
   const output = path.join(scratch, name), job = path.join(scratch, `${name}-job`), container = `od-date-spacing-${randomUUID()}`;
   await mkdir(output); await mkdir(job);
   await writeFile(path.join(job, 'input.json'), JSON.stringify({ fileName, format }));
   const mounts = ['--mount', `type=bind,src=${source},dst=/source,readonly`, '--mount', `type=bind,src=${job},dst=/job,readonly`, '--mount', `type=bind,src=${output},dst=/output`];
-  if (!baseline) mounts.push('--mount', `type=bind,src=${worker},dst=/opt/render/worker.mjs,readonly`);
+  if (!baseline) mounts.push('--mount', `type=bind,src=${worker},dst=/opt/render/worker.mjs,readonly`, '--mount', `type=bind,src=${color},dst=/opt/render/document-color.iife.js,readonly`);
   try {
     let status = 0;
     try { await exec('docker', ['run', '--pull', 'never', '--name', container, '--label', 'od.date-spacing-test=true', '--network', 'none', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', '256', '--memory', '1g', '--cpus', '1', '--shm-size', '128m', '--tmpfs', '/tmp:rw,nosuid,nodev,size=256m', '--user', `${actor.uid}:${actor.gid}`, ...mounts, image!], { timeout: 90_000, maxBuffer: 128 * 1024 }); }
