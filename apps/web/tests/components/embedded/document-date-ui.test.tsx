@@ -2,7 +2,7 @@
 import { StrictMode } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { $getRoot, $isElementNode, CONTROLLED_TEXT_INSERTION_COMMAND, UNDO_COMMAND, REDO_COMMAND, type LexicalEditor } from 'lexical';
+import { $getRoot, $isElementNode, COMMAND_PRIORITY_NORMAL, HISTORIC_TAG, CONTROLLED_TEXT_INSERTION_COMMAND, UNDO_COMMAND, REDO_COMMAND, type LexicalEditor } from 'lexical';
 import { I18nProvider, useI18n } from '../../../src/i18n';
 import { DocumentEditor } from '../../../src/components/embedded/document/DocumentEditor';
 import { documentHtml } from '../../../src/components/embedded/document/document-html';
@@ -41,6 +41,26 @@ it('keeps keyboard history in the editor when Undo removes its focused Date chip
   await waitFor(() => expect(document.activeElement, JSON.stringify({ documentFocused: document.hasFocus(), chipConnected: chip.isConnected, rootConnected: root.isConnected })).toBe(root));
   fireEvent.keyDown(root, { key: 'z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
   await waitFor(() => expect(active.read(() => $getRoot().getTextContent())).toMatch(/^Original.+\d{4}$/));
+});
+it('retains history focus through a preparatory commit before deferred historic Date removal', async () => {
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  mount(); const active = editor(), root = active.getRootElement()!, original = active.getEditorState();
+  fireEvent.click(screen.getByRole('button', { name: 'More document actions' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Date' }));
+  fireEvent.keyDown(await screen.findByRole('dialog', { name: 'Choose date' }), { key: 'Escape' });
+  await waitFor(() => expect(document.activeElement?.getAttribute('aria-roledescription')).toBe('Date'));
+  // Model the observed two-commit ordering through public editor operations:
+  // publish the still-connected control, then apply the historical state later.
+  const release = active.registerCommand(UNDO_COMMAND, () => {
+    active.read(() => {});
+    queueMicrotask(() => active.setEditorState(original, { tag: HISTORIC_TAG }));
+    return true;
+  }, COMMAND_PRIORITY_NORMAL);
+  try {
+    fireEvent.keyDown(document.activeElement!, { key: 'z', code: 'KeyZ', ctrlKey: true });
+    await waitFor(() => expect(active.read(() => $getRoot().getTextContent())).toBe('Original'));
+    await waitFor(() => expect(document.activeElement).toBe(root));
+  } finally { release(); }
 });
 it.each(['Accept', 'Reject'] as const)('keeps keyboard history when the last %s control disappears', async action => {
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);

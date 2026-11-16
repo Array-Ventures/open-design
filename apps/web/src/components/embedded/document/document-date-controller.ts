@@ -83,8 +83,13 @@ export function createDocumentDateController(editor: LexicalEditor, options: {
   const root = editor.registerRootListener((_root, previous) => { if (previous) { historyFocus = null; if (current) dismiss(current); } });
   const editable = editor.registerEditableListener(value => { if (!value) { historyFocus = null; if (current) dismiss(current); } });
   const stop = editor.registerUpdateListener(({ editorState }) => {
-    const focus = historyFocus; historyFocus = null;
-    if (focus) queueMicrotask(() => { if (active) restoreDocumentControlFocus(editor, focus); });
+    const focus = historyFocus;
+    // History can publish selection state before it removes the focused chip.
+    // Keep the same short-lived capture until that control actually disappears.
+    if (focus && !focus.focused.isConnected) {
+      historyFocus = null;
+      queueMicrotask(() => { if (active) restoreDocumentControlFocus(editor, focus); });
+    }
     if (!current) return;
     const owner = current;
     const valid = editorState.read(() => { const node = $getNodeByKey(owner.key); return $isDocumentDateNode(node) && $canChangeDate(node, owned) && JSON.stringify(node.getDate()) === JSON.stringify(owner.value); });
