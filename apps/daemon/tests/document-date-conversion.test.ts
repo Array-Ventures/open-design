@@ -12,7 +12,9 @@ it('makes the canonical Date visible-label projection qualify for the existing s
   const document = new JSDOM(source.html).window.document;
   expect(documentColorLayoutQualified(document, Array.from(document.querySelectorAll('style') as ArrayLike<{ textContent: string | null }>).map(node => node.textContent ?? ''))).toBe(true);
   expect(document.querySelector('time')).toBeNull();
-  expect(document.body.textContent).toBe('Before Persisted leap day after.');
+  // The old bare-label projection concatenated dates and neighboring words in
+  // actual Word/PDF consumers. Only the Word copy now gains chip separation.
+  expect(document.body.textContent).toBe('Before \u2005Persisted leap day\u2005 after.');
   expect(html).toContain(date);
 });
 it('retains exact semantic TIME through the existing Markdown RawInline owner path', () => {
@@ -40,7 +42,7 @@ it('preserves formatted Date ancestors independently of the narrower editable at
   const word = documentDocxSourcePresentation(formatted).html;
   const document = new JSDOM(word).window.document;
   expect(document.querySelector('time')).toBeNull();
-  expect(document.querySelector('strong span[style="color:red"]')?.textContent).toBe('Persisted leap day');
+  expect(document.querySelector('strong span[style="color:red"]')?.textContent).toBe('\u2005Persisted leap day\u2005');
   const markdown = documentMarkdownInput(formatted);
   expect([...markdown.rawSpans.values()]).toContain(`<span style="color:red">${date}</span>`);
   expect(markdown.html).toContain('<strong>'); expect(formatted).toContain(date);

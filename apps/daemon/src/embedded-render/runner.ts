@@ -19,6 +19,7 @@ import { buildScreenshotPdf, buildScreenshotPptx, type SlideImage } from '../dec
 import { repairDocumentPdfColors } from './document-color-normalize.js';
 import { prepareDocument, exportDocument, documentPrintCss, documentPrintOptions } from './documents.js';
 import { RenderInput } from './input.js';
+import { documentDatePrintCss } from './document-date-export.js';
 import { renderWorkbook } from './workbooks.js';
 
 const MIME: Record<string, string> = { '.html': 'text/html', '.htm': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mp3': 'audio/mpeg', '.wav': 'audio/wav' };
@@ -124,6 +125,7 @@ export async function renderSnapshot(source: string, output: string, value: unkn
     if (unavailable.size) throw new Error('Required resources are unavailable. Bundle remote fonts, scripts and assets into the project before exporting.');
     if (document && input.format === 'pdf') {
       await page.addStyleTag({ content: documentPrintCss });
+      await page.addStyleTag({ content: `@media print{${documentDatePrintCss}}` });
       await repairDocumentPdfColors(page, html, [documentPrintCss, stillStyle]);
       if (unavailable.size) throw new Error('Required print resources are unavailable. Bundle document fonts and images locally before exporting.');
     }
