@@ -11,7 +11,8 @@ import { copyRendererRasterRuntime } from './lib/renderer-raster-runtime.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url)), image = process.argv[2];
 if (!image || !/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error('Pass an existing local renderer image digest.');
-const baseline = process.argv.includes('--baseline'), exec = promisify(execFile);
+const baseline = process.argv.includes('--baseline'), immutable = process.argv.includes('--immutable'), exec = promisify(execFile);
+if (baseline && immutable) throw new Error('Choose baseline or immutable qualification, not both.');
 const require = createRequire(path.join(root, 'apps/daemon/package.json'));
 const sharp = (await import(require.resolve('sharp'))).default;
 const scratch = await mkdtemp(path.join(tmpdir(), 'od-binary-image-render-')), runtime = path.join(scratch, 'runtime'), source = path.join(scratch, 'source');
@@ -22,14 +23,14 @@ const pixels = Buffer.from([255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 255, 255,
 const png = await sharp(pixels, { raw: { width: 2, height: 2, channels: 4 } }).png().toBuffer();
 await writeFile(path.join(source, 'picture.png'), png);
 let raster: Awaited<ReturnType<typeof copyRendererRasterRuntime>> | undefined;
-if (!baseline) {
+if (!baseline && !immutable) {
   raster = await copyRendererRasterRuntime(root, runtime);
   await exec('corepack', ['pnpm', '--filter', '@open-design/daemon', 'exec', 'esbuild', 'src/embedded-render/main.ts', '--bundle', '--platform=node', '--format=esm', '--target=node24', '--external:playwright-core', '--external:sharp', '--banner:js=import {createRequire as __createRequire} from "node:module"; const require=__createRequire(import.meta.url);', `--outfile=${path.join(runtime, 'worker.mjs')}`], { cwd: root });
 }
-async function run(name: string, fileName: string, imageFormat = 'png', ok = true) {
+async function run(name: string, fileName: string, imageFormat = 'png', ok = true, format = 'image') {
   const container = `od-image-test-${randomUUID()}`, directory = path.join(scratch, name), output = path.join(directory, 'output'), job = path.join(directory, 'job');
   await mkdir(output, { recursive: true }); await mkdir(job);
-  await writeFile(path.join(job, 'input.json'), JSON.stringify({ fileName, format: 'image', imageFormat }));
+  await writeFile(path.join(job, 'input.json'), JSON.stringify({ fileName, format, imageFormat }));
   const mounts = ['--mount', `type=bind,src=${source},dst=/source,readonly`, '--mount', `type=bind,src=${output},dst=/output`, '--mount', `type=bind,src=${job},dst=/job,readonly`];
   if (raster) {
     mounts.push('--mount', `type=bind,src=${runtime}/worker.mjs,dst=/opt/render/worker.mjs,readonly`);
@@ -72,8 +73,16 @@ try {
     assert.equal((await sharp(animated, { animated: true }).metadata()).pages, 2);
     await writeFile(path.join(source, 'animation.webp'), animated); await run('animation-refused', 'animation.webp', 'png', false);
   }
-  process.stdout.write(JSON.stringify({ ok: true, scratch, cases: receipts.length, baseline }) + '\n');
+  if (immutable) {
+    await writeFile(path.join(source, 'ordinary.html'), '<!doctype html><html><head><title>Ordinary HTML startup</title></head><body><h1>Ordinary HTML startup</h1></body></html>');
+    const capture = await run('ordinary-html-capture', 'ordinary.html');
+    const dimensions = await sharp(capture).metadata(); assert.deepEqual([dimensions.width, dimensions.height], [1440, 900]);
+    const pdf = await run('ordinary-pdf', 'ordinary.html', 'png', true, 'pdf'); assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+    const text = (await exec('/usr/bin/pdftotext', [path.join(scratch, 'ordinary-pdf/output/artifact.pdf'), '-'])).stdout; assert.match(text, /Ordinary HTML startup/);
+    const html = await run('ordinary-html-export', 'ordinary.html', 'png', true, 'html'); assert.match(html.toString(), /<h1>Ordinary HTML startup<\/h1>/);
+  }
+  process.stdout.write(JSON.stringify({ ok: true, scratch, cases: receipts.length, baseline, immutable }) + '\n');
 } finally {
-  await writeFile(path.join(scratch, 'receipt.json'), JSON.stringify({ baseline, sourceCommit: (await exec('git', ['rev-parse', 'HEAD'], { cwd: root })).stdout.trim(), sourceDirty: Boolean((await exec('git', ['status', '--porcelain'], { cwd: root })).stdout.trim()), image, sourceSha256: hash(png), raster: raster?.provenance, receipts }, null, 2));
+  await writeFile(path.join(scratch, 'receipt.json'), JSON.stringify({ baseline, immutable, sourceCommit: (await exec('git', ['rev-parse', 'HEAD'], { cwd: root })).stdout.trim(), sourceDirty: Boolean((await exec('git', ['status', '--porcelain'], { cwd: root })).stdout.trim()), image, sourceSha256: hash(png), raster: raster?.provenance, receipts }, null, 2));
   process.stdout.write(`Retained image conversion evidence: ${scratch}\n`);
 }
