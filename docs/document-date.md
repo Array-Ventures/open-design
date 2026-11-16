@@ -1,8 +1,10 @@
 # Atomic document dates
 
-This source checkpoint adds an inline Date atom to the document editor. It is
-not yet an immutable packaged or manually qualified feature. Preview, release
-pins, publication and production remain unchanged.
+This adds an inline Date atom to the document editor. The later
+[joined immutable-pair qualification](document-date-final.md) covers actual
+native editing/history and converted output. The earlier source checkpoints
+below keep their original scopes. Release pins, publication and production
+remain unchanged.
 
 The reversible, authorized document-reference audit established an immediate
 calendar after Date insertion, browser-local today, a noneditable date chip,
