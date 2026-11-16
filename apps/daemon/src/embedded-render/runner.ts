@@ -1,3 +1,4 @@
+import { deckCaptureGeometry, deckCaptureViewport } from './deck-capture-viewport.js';
 import { withPptxDeckTransition } from './pptx-transitions.js';
 import { prepareDeckSourceCapture, checkedDeckRuntimeIndex, deckSourcePptxTransition } from './deck-source.js';
 import { extractSpeakerNotesFromHtml } from '@open-design/contracts/runtime/speaker-notes';
@@ -130,14 +131,20 @@ export async function renderSnapshot(source: string, output: string, value: unkn
     }
     const images: SlideImage[] = [];
     if (deck) {
-      // The live preview scales a logical deck to its panel. An export captures
-      // the authored slide size rather than that transient panel transform.
-      await page.evaluate("document.querySelectorAll('deck-stage').forEach(stage=>stage.setAttribute('noscale',''))");
-      await page.evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
       const slides = page.locator(realSlideSelector);
       // Filter out presenter clones by ancestors, matching the shared host convention.
       const count = await slides.count();
       if (typeof count !== 'number' || count < 1 || count > 200) throw new Error('A deck must contain between 1 and 200 slides.');
+      // An unscaled logical canvas must fit its host viewport; otherwise a
+      // smaller requested viewport clips the centered slide through its ancestor.
+      if (!(input.format === 'pptx' && input.editable)) {
+        const viewport = page.viewportSize();
+        if (!viewport) throw new Error('Deck capture requires a bounded viewport.');
+        const fitted = deckCaptureViewport(viewport, await page.evaluate(deckCaptureGeometry(realSlideSelector)));
+        if (fitted.width !== viewport.width || fitted.height !== viewport.height) await page.setViewportSize(fitted);
+      }
+      await page.evaluate("document.querySelectorAll('deck-stage').forEach(stage=>stage.setAttribute('noscale',''))");
+      await page.evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
       if (input.format === 'pptx' && input.editable) {
         const body = await withPptxSpeakerNotes(await withPptxDeckTransition(await editablePptx(page, realSlideSelector), deckSourcePptxTransition(html, count), count), extractSpeakerNotesFromHtml(html));
         if (unavailable.size) throw new Error('Bundle all editable deck resources locally before exporting.');
