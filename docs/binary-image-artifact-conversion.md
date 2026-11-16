@@ -86,3 +86,23 @@ counterpart must admit this capability and expose PNG/JPEG choices before a
 user-facing flow is claimed. No installer pin, Date/workbook source, running
 preview, persistent data, model, provider, release or hosted Actions was changed
 by this lane.
+
+## Docker architecture attestation correction
+
+Independent review found that source `760a7e2d` copied Node/Sharp's `linux-x64`
+attestation but compared it directly with Docker's `linux-amd64`, rejecting a
+legitimate x86 build. ARM-only native execution had not exercised that mapping.
+
+Corrective source `64cb0135` executes the actual Dockerfile guard in eight bounded
+shell cases. The unchanged guard genuinely failed x64/amd64 before the fix.
+Docker `amd64` now maps explicitly to Sharp/Node `x64`, and `arm64` stays `arm64`.
+Mismatched attestations, a wrongly named `linux-amd64` Sharp attestation and
+unsupported Docker architectures all refuse. No mismatch guard was weakened.
+
+All eight controls, the actual copied ARM native-runtime check, scripts types
+and guard pass; the [five log receipts](binary-image-architecture-evidence.json)
+retain the RED and GREEN. This tests the architecture contract without emulating
+an x86 codec. No x86 image/native execution, new immutable build, source merge,
+preview change, pin or publication is claimed. Raster provenance continues to
+use Node/Sharp architecture names; final image verification must compare them
+with Docker's canonical platform through the same explicit mapping.
