@@ -22,6 +22,7 @@ await build({
     "./src/runtime/motion-source-player.ts",
     "./src/runtime/deck-protocol.ts",
     "./src/runtime/deck-source.ts",
+    "./src/runtime/deck-morph.ts",
     "./src/runtime/document.ts",
     "./src/runtime/document-date.ts",
     "./src/runtime/workbook.ts",

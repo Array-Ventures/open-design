@@ -1,9 +1,12 @@
+import { canonicalDeckMorphCandidates } from './deck-morph.js';
+
 export const DECK_TRANSITIONS = ['none', 'fade', 'push', 'magic-move'] as const;
 export type DeckTransition = typeof DECK_TRANSITIONS[number];
 
 // Kept self-contained inside the artifact document. Native snapshots avoid
 // cloning interactive content or exposing the surrounding host/chat surface.
 export const DECK_TRANSITION_RUNTIME = `
+  var canonicalDeckMorphCandidates = ${canonicalDeckMorphCandidates.toString()};
   function runDeckTransition(stage, previous, next, update) {
     stage._cancelTransition();
     var generation = stage._transitionGeneration;
@@ -27,17 +30,12 @@ export const DECK_TRANSITION_RUNTIME = `
       element.style.setProperty('view-transition-name', value);
     }
     function candidates(slide) {
-      var result = new Map();
-      slide.querySelectorAll('[data-od-morph-id],[data-od-id],img,svg,h1,h2,h3,h4,h5,h6,p').forEach(function(element) {
-        var explicit = element.getAttribute('data-od-morph-id');
-        var semantic = element.getAttribute('aria-label') || (element.localName === 'img' ? element.getAttribute('src') : (element.textContent || '').trim());
-        var identity = explicit || semantic || element.getAttribute('data-od-id') || element.id;
-        if (!identity) return;
-        var key = explicit ? 'explicit:' + explicit : element.localName + ':' + identity;
-        // Repeated labels are ambiguous; never morph an arbitrary duplicate.
-        result.set(key, result.has(key) ? null : element);
+      return canonicalDeckMorphCandidates(slide, {
+        tag: function(element) { return element.localName; },
+        children: function(element) { return Array.from(element.children); },
+        attribute: function(element, name) { return element.getAttribute(name); },
+        text: function(element) { return element.textContent || ''; }
       });
-      return result;
     }
     var pairs = [];
     if (mode === 'magic-move') {
