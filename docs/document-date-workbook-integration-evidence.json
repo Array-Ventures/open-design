@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "sourceCommit": "70d74d54244eab55f6654dd79d987239280c7b1e",
+  "parents": {
+    "main": "bd23b85d3f1706d0b234037e387df99110805ae0",
+    "date": "cc816228"
+  },
+  "scope": "Source integration only; no application/browser/image/runtime qualification",
+  "checks": {
+    "install": {
+      "exitCode": 0
+    },
+    "web": {
+      "exitCode": 0,
+      "files": 12,
+      "cases": 233
+    },
+    "daemon": {
+      "exitCode": 0,
+      "files": 5,
+      "cases": 49
+    },
+    "contracts": {
+      "exitCode": 0,
+      "files": 1,
+      "cases": 25
+    },
+    "workspaceTypes": {
+      "exitCode": 0,
+      "scheduling": "serial workspace typecheck plus scripts tsc"
+    },
+    "guard": {
+      "exitCode": 0
+    },
+    "i18n": {
+      "exitCode": 0
+    }
+  },
+  "sourceParity": {
+    "dateDocumentDirectoryVsCc816228": true,
+    "workbookDirectoriesAndContractVsMainBd23b85d": true
+  },
+  "references": [
+    {
+      "name": "install",
+      "path": "/tmp/date-workbook-install.log",
+      "sha256": "ebb76cfaab445b8ef2b1d97c681a17f6f5603f47aab7a8fd5ec73e7d6fdab6c2"
+    },
+    {
+      "name": "web",
+      "path": "/tmp/date-workbook-web.log",
+      "sha256": "6234b8ceda873c1b58498c20fd727280f953b2c7865f86df57a64504c0cd945a"
+    },
+    {
+      "name": "daemon",
+      "path": "/tmp/date-workbook-daemon.log",
+      "sha256": "fac0eca2810d9b6f940fd81c0bdf6ad6d45fc8acc2cbd1313c6f34a621d26bcc"
+    },
+    {
+      "name": "contracts",
+      "path": "/tmp/date-workbook-contracts.log",
+      "sha256": "4adbb0cde8d2b3198815ca88d28a5a3abef809854f8e1c4ebdbe406b6b5458dd"
+    },
+    {
+      "name": "workspaceTypes",
+      "path": "/tmp/date-workbook-types.log",
+      "sha256": "b134757c64739e9bfcc7f3f4b45680dc323652b7754d1275189d4b53a36fe901"
+    },
+    {
+      "name": "guard",
+      "path": "/tmp/date-workbook-guard.log",
+      "sha256": "899709f97ab3e2da743c8ca92e89b3a48487add337e1cf984de7d2ab0e6264aa"
+    },
+    {
+      "name": "i18n",
+      "path": "/tmp/date-workbook-i18n.log",
+      "sha256": "6df375bea36ec5188955c634cf38719783606465875b2f326c6cec44b2d61ec9"
+    }
+  ]
+}
