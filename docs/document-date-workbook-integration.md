@@ -45,3 +45,36 @@ compatibility limits remain those documented by their owning feature notes.
 
 No browser, model, service, renderer build, package activation, publication or
 installer-pin action was performed in this integration qualification.
+
+## Later local build qualification
+
+The supported sequential build was subsequently authorized and executed at clean
+source `630dcc7809cb059b257a8a661302a150c991dc43` (qualification-doc additions
+only after implementation `70d74d54`). Companion, renderer and image children
+all exited 0 with no signal; strict independent inventory/source/image checks
+also exited 0. No builder failure occurred. Existing dependency peer warnings
+remain in the companion log; no dependency or guard was relaxed.
+
+The companion identity is
+`c7b86c3730ceb630e7772d521373490f5f794f2df11237fef04cfcc5f521456f`;
+the local arm64 image identity is
+`sha256:a524540f544ec123d1a449f50df65299e02b05d1105748d9bf323bd01698cf79`.
+The exact directories are those above. The strict verifier checked every
+companion inventory file, generated clean source digest, paired provenance,
+actual image provenance and all five extracted payload hashes, image platform,
+non-root user and entrypoint. Its short Docker commands used network-none,
+read-only containers with automatic removal; no render job or browser was run.
+
+Measured comparison to140: only `worker.mjs` changed; the four browser payloads
+are byte-identical. Inputs changed from 2,599 raw / 2,598 normalized to 2,600 /
+2,599. The only added input is `document-date-export.ts`; the three changed
+inputs are compiled document contracts, DOCX presentation and Markdown
+preparation. No input was removed. The adjacent JSON contains exact payload
+hashes, normalized input names, source identity and all 14 hashed scratch
+references. Generated package140/render83 remain untouched.
+
+This later build record supersedes the earlier proposed/not-executed status
+only for local compilation/materialization. It does not supply browser,
+Word/PDF consumer readback, runtime activation, source-write or release proof.
+Future activation requires an owner-coordinated supported Studio/backend refresh;
+no blind daemon overlay or native credential/environment replacement occurred.
