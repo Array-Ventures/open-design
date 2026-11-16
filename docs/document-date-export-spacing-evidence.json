@@ -1,0 +1,224 @@
+{
+  "version": 1,
+  "sourceCommit": "224ba23fa4d6080d52b9588c2b901b0c6232bf7c",
+  "baseCommit": "ed417056",
+  "scope": "Date export presentation only; actual network-disabled renderer source overlay and independent LibreOffice/PDF consumer, not a new immutable pair",
+  "sourceSha256": "1521481d61343b8fcf975d04cd1cb79c9d2084da5216b9fa294fb6433fb87c45",
+  "checks": {
+    "focusedDaemon": {
+      "passed": 64,
+      "files": 7,
+      "newSpacingCases": 11
+    },
+    "workspaceTypes": 0,
+    "guard": 0,
+    "actualWorkerJobs": 8,
+    "pendingRefusals": 3,
+    "personallyViewedFinalCaptures": 4
+  },
+  "projection": {
+    "word": "U+2005 outside each validated label in conversion copy only",
+    "pdf": "scoped four-pixel inline print margins; canonical print profile unchanged",
+    "markdown": "exact semantic TIME atoms and no new presentation whitespace"
+  },
+  "limits": [
+    "Existing Date renderer image with read-only worker overlay; no newly built immutable pair or authenticated native UI rerun",
+    "LibreOffice is the actual Word consumer; Microsoft Word and all fonts/locales are not qualified",
+    "Existing Pandoc HTML-to-Word conversion can collapse repeated ordinary whitespace; no global whitespace fidelity claim",
+    "No owner Chrome, preview, original source, Date frontend, workbook, model, provider, release, pins or Actions changes"
+  ],
+  "references": [
+    {
+      "path": "/tmp/date-export-spacing-install.log",
+      "sha256": "95e45a8844877c6f2b27076fdcefd07d689259c4d21c10acf2b5ebbcd9b26fa9"
+    },
+    {
+      "path": "/tmp/date-export-spacing-red.log",
+      "sha256": "7c5c583630d9b7548b19898343c7f9bda340ff4491d2e83cb14c9f418ac1856f"
+    },
+    {
+      "path": "/tmp/date-export-spacing-red-corrected.log",
+      "sha256": "c0e8d9ff79857680b8f2cfc089c994fa8ea404e28451b22a25c915bcce1f4767"
+    },
+    {
+      "path": "/tmp/date-export-spacing-first-green.log",
+      "sha256": "e6df10991061c4f698ed4453bc5fc5ca7524e2feeef3c0d12736e7b50cc3d79d"
+    },
+    {
+      "path": "/tmp/date-export-spacing-focused-green.log",
+      "sha256": "e8be032182fe5fb819ca490d02b444c0a1e408a5f2c7081374504e1d158b5e2d"
+    },
+    {
+      "path": "/tmp/date-export-spacing-regressions.log",
+      "sha256": "4bff38b09c3dd276688df07b61d33857d63f27a9b925c4e6fccee33694a1c3f9"
+    },
+    {
+      "path": "/tmp/date-export-spacing-final-focused.log",
+      "sha256": "53e118cb19f7507decf5920264ce0ed155951bdc6384049ee736ecfd72c9587c"
+    },
+    {
+      "path": "/tmp/date-export-spacing-types.log",
+      "sha256": "93a12d79ff0237dfdb8d18a81850f7e8813451ebe19ed1e35f50f375fff400ef"
+    },
+    {
+      "path": "/tmp/date-export-spacing-final-types.log",
+      "sha256": "ce16a7e5de262f5dd9f635c1eae2cfda633586d252e30c3458b5c417640e9448"
+    },
+    {
+      "path": "/tmp/date-export-spacing-guard.log",
+      "sha256": "d1963a999b4d4731e3984657a7d3eb7c4e85fd7cce3f256475dc9ecdf0699388"
+    },
+    {
+      "path": "/tmp/date-export-spacing-final-guard.log",
+      "sha256": "b896bd5e3852572eddc7f5a71bf875004ad0617f69035761fd7b16eedd40a207"
+    },
+    {
+      "path": "/tmp/date-export-spacing-consumer-red.log",
+      "sha256": "1059a237a3e93915fe8c84a59ab3917e9e00a840256ea9065247c24817965330"
+    },
+    {
+      "path": "/tmp/date-export-spacing-consumer-first-green.log",
+      "sha256": "6a9423875a86b9b2c4ee7060c3d2e22b7c570564b961a2d5b56b8492b9570b4f"
+    },
+    {
+      "path": "/tmp/date-export-spacing-consumer-controls.log",
+      "sha256": "c95108916b71a78eb38ee62663c1289ffeb754f2357465bd8540339bba74fc1f"
+    },
+    {
+      "path": "/tmp/date-export-spacing-consumer-final.log",
+      "sha256": "9a00909e6507758f25d8bd7be3eaf405b5add6fc16ff7365354cb00b1f93a7fb"
+    },
+    {
+      "path": "/tmp/date-export-spacing-cleanup.json",
+      "sha256": "4306c6ecbdce9d1ffc5d1734efc49f5ce457936d43533c5851812ad75c1dd3d2"
+    },
+    {
+      "path": "/tmp/date-wb-acceptance-ui/accepted-dates.html",
+      "sha256": "1521481d61343b8fcf975d04cd1cb79c9d2084da5216b9fa294fb6433fb87c45"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-jU7Z8j/receipt.json",
+      "sha256": "6e334770eb6d8bb043f6f8abe1e1364a357522c03f47dcc01fe6b608f05bf94f"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-jU7Z8j/word/artifact.docx",
+      "sha256": "2aaf2bb4c0733ef64c595b564a433e9c857b47f3f0c5f2b5391e2804ac6a23fc"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-jU7Z8j/office/artifact.pdf",
+      "sha256": "28a0c26c0dd51b48c592717eb054f1c7a1fc1f15cf67ae70e4b951a17e25b791"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-jU7Z8j/word-text.txt",
+      "sha256": "5f51efb89162a672d3c83afbbf230f679755cc71fdfa467acd52f93f47f5f93a"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-jU7Z8j/pdf-text.txt",
+      "sha256": "0295f976a26f9a5ab81365da63754b1c616ce2773281623a1945164f3fa4036b"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/receipt.json",
+      "sha256": "7565f03ff203c4057b6cd68da136c7a14180f8085893d6ae7af2525fb1793758"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/worker.mjs",
+      "sha256": "9688e03a52def71bd2636b836c0378b8fdac50cfb96a29a5b475c969ff1bfeeb"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/pending-docx/result.json",
+      "sha256": "5fc43b9194f555af8530f01e288d81d7f9310a18d97b9afb420ce83212651397"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/pdf/result.json",
+      "sha256": "87c5adcecc98b6ccd98dc821a96343c0f4c4561681bea79faa22d94de5bb5545"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/markdown/result.json",
+      "sha256": "c6769a0d6f57ab3e2b2e54015128278d8c57d5a77649bec1eec39953c89208ed"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/pending-pdf/result.json",
+      "sha256": "5fc43b9194f555af8530f01e288d81d7f9310a18d97b9afb420ce83212651397"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/pending-markdown/result.json",
+      "sha256": "5fc43b9194f555af8530f01e288d81d7f9310a18d97b9afb420ce83212651397"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/context-pdf/result.json",
+      "sha256": "87c5adcecc98b6ccd98dc821a96343c0f4c4561681bea79faa22d94de5bb5545"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/word/result.json",
+      "sha256": "3233ed356442adac6128cc8f5818de27306a06c838a1836f97d556c70bec3354"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/context-word/result.json",
+      "sha256": "3233ed356442adac6128cc8f5818de27306a06c838a1836f97d556c70bec3354"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/word/artifact.docx",
+      "sha256": "cc1dfbef45f93c66fc1efe682b9d6ff60a77b5f147bd590c79625d1c983489b2"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/office/artifact.pdf",
+      "sha256": "981b5bc578be6217ad10f12c628cf08f414c6991b34000dc4c53c94b52f03f53"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/pdf/artifact.pdf",
+      "sha256": "d083b6f01af7699b10a1762bdc236fa8cf6e2a066cc98af49c3c67e76247e6bb"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/markdown/artifact.md",
+      "sha256": "8b367ba5c74dcdf8cfbd8c492fa1d2a5f0e7cfe3cb812e96434fee511a787a15"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/context-word/artifact.docx",
+      "sha256": "4378a9a1137fcd0363640b5045aa3acc90f2da7c4ac859ba20d633e84a3358ec"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/context-office/artifact.pdf",
+      "sha256": "f92836874c9cd757c5f7bd3e3eda3ffc44558377d971c4cac700eedc5074c240"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/context-pdf/artifact.pdf",
+      "sha256": "c6c98b8cc2c48a02b90423fcbe46ca697688ec1aff02cc6acde9f689dc6b3549"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/word.png",
+      "sha256": "c0710fad1d11d2802f18a8578169497f561460f3bc5d31b522192baa89275e38"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/pdf.png",
+      "sha256": "a65b576e2f11b43d4cce93dfe212d1c5fa23dd38958ee273960196cec476a04a"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/context-word.png",
+      "sha256": "b1f4b0ca055311fa1ad42222ca5c4450fb52d20c35afceeb774c10188ab5e187"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/context-pdf.png",
+      "sha256": "e383c8448ce3ca5230fd9a248f71c9f5577e7356d243175f4b54fe4924bb38ae"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/word-text.txt",
+      "sha256": "4ab6b91f75370711f50dc041049baf0d5e934341271e448ce0f7507ee88c0e40"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/pdf-text.txt",
+      "sha256": "da3d8718c29967b016e58717ca3c84dcb15e0422a6af20d5c140b10e5af81521"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/context-word-text.txt",
+      "sha256": "6244eb80c46995f460c0a3195c62827bccbcab3764d3ceacd168387d4227bb40"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/context-pdf-text.txt",
+      "sha256": "f808f7388e71191ab648377d865eda8d9f071b076c458aded8ad83b7f035fd0d"
+    },
+    {
+      "path": "/tmp/od-date-export-spacing-Hv7Xed/word-document.xml",
+      "sha256": "ef2ae6b884f4fe3091f687cca1af313fd2ffe4fe194e0ed6b38fc1b0754ee493"
+    }
+  ]
+}

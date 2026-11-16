@@ -64,6 +64,11 @@ Existing conditional writer and source CAS protections remain authoritative.
 
 ## Conversion boundary
 
+The later [readable export-boundary correction](document-date-export-spacing.md)
+records real adjacent-Date Word/PDF consumer failures and the bounded
+presentation-only fix. The initial bare-label projection below was insufficient
+for chip separation; semantic Markdown and original source remain unchanged.
+
 A genuine adapter regression showed that the existing strict Word normalizer
 refuses TIME. The conversion copy therefore projects only a fully validated Date
 to its persisted visible label in a neutral span before existing presentation
