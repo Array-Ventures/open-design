@@ -32,9 +32,11 @@ Unknown or over-budget inputs fail instead of producing partial exports.
 Video-to-audio extraction remains available through existing tools but is not
 added to this modal in this slice.
 
-Binary images have original-file download only. The generic PNG/JPEG renderer
-still treats its entry as HTML/UTF-8; it is not advertised as a binary image
-converter. Existing HTML screenshot PNG and document/workbook/CSV exports,
+At this checkpoint binary images had original-file download only; the generic
+PNG/JPEG renderer treated its entry as HTML/UTF-8. The later
+[bounded raster conversion](binary-image-artifact-conversion.md) adds a separate
+static PNG/JPEG/WebP decoder path, with its native UI and final immutable-pair
+acceptance still pending. Existing HTML screenshot PNG and document/workbook/CSV exports,
 selected worksheet identity, native frame fencing and narrow-dialog tooltip
 behavior are retained.
 
