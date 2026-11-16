@@ -18,7 +18,12 @@ Exit now uses the current saved source, applying the existing deck visual
 normalization, for its structural-retention fallback. It cannot overwrite a
 newer paint proof merely because the old render described the old document.
 Paint verification, failed-proof reload, external-source invalidation, explicit
-reload and scoped transport identity remain unchanged. All 33 manual-edit cases
+reload and scoped transport identity remain unchanged. Ordinary private relative
+assets use the stable raw-file base and do not require inlining. Shared assets
+and root-relative normalization can produce resolved visual bytes different
+from the saved raw source; existing raw-fingerprint retention can conservatively
+refuse retention there. That pre-existing limitation is not fixed or qualified
+by this checkpoint and requires a separate targeted regression. All 33 manual-edit cases
 pass, including failed paint, watcher echo and later external replacement.
 
 ## Fixture contracts corrected
