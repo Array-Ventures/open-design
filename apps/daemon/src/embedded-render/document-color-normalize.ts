@@ -5,6 +5,7 @@ import { chromium, type Page } from 'playwright-core';
 import { load } from 'cheerio';
 import { MAX_STANDALONE_OUTPUT_BYTES } from '../artifacts/standalone-html.js';
 import { documentHtml } from '@open-design/contracts/runtime/document';
+import { documentDatePrintCss, documentSourceDates } from './document-date-export.js';
 import type { DocumentPresentationRequest, NormalizedDocumentPresentation } from '@open-design/document-style';
 
 const browserScript = '/opt/render/document-color.iife.js';
@@ -118,10 +119,16 @@ export async function repairDocumentPdfColors(page: Page, html: string, printSty
   // This conversion-only rule matches the editor's border-only divider. Apply
   // it only after the original DOM/styles pass the shared bounded policy.
   const styles = [...ownedStyles(html), ...printStyles];
-  const qualified = await page.evaluate(`globalThis.odDocumentColor.documentColorLayoutQualified(document,${JSON.stringify(styles)})`);
+  const dates = documentSourceDates(load(html)).map(value => value.date);
+  if (dates.length) {
+    const dateStyle = `@media print{${documentDatePrintCss}}`;
+    await page.addStyleTag({ content: dateStyle }); styles.push(dateStyle);
+  }
+  const dateAtoms = `globalThis.odDocumentColor.validatedDocumentDateAtoms(document,${JSON.stringify(dates)})`;
+  const qualified = await page.evaluate(`globalThis.odDocumentColor.documentColorLayoutQualified(document,${JSON.stringify(styles)},${dateAtoms})`);
   if (qualified === true) { await page.addStyleTag({ content: documentDividerPrintCss }); styles.push(documentDividerPrintCss); }
   // Unknown authored selectors decline correction; PDF keeps that exact layout.
-  await page.evaluate(`globalThis.odDocumentColor.repairDocumentPrintInk(document,${JSON.stringify(styles)})`);
+  await page.evaluate(`globalThis.odDocumentColor.repairDocumentPrintInk(document,${JSON.stringify(styles)},undefined,${dateAtoms})`);
 }
 
 export const normalizeDocumentDocxColors = normalizeDocumentDocxPresentation;

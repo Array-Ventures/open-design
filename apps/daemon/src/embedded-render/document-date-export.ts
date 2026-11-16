@@ -12,7 +12,15 @@ export function documentSourceDates($: CheerioAPI): Array<{ element: ReturnType<
     return { element: $(element), date };
   });
 }
-/** Word receives the persisted visible label as ordinary text, never a fake date field. */
+/** Print-only TIME margins retain the semantic source atom and its label. */
+export const documentDatePrintCss = 'time[data-eve-document-date="1"]{margin-inline:4px}';
+/** Word has no inline-chip margin. Its presentation copy receives ordinary
+ * label text with quarter-em boundary spaces outside the validated label.
+ * This approximates the editor's 4px chip separation at 16px, not every font's
+ * exact geometry. Original HTML and Markdown retain the unchanged TIME atom. */
 export function projectDocumentDatesForWord($: CheerioAPI): void {
-  for (const { element, date } of documentSourceDates($)) $(element).replaceWith($('<span></span>').text(date.label));
+  for (const { element, date } of documentSourceDates($)) {
+    $(element).before('\u2005').after('\u2005');
+    $(element).replaceWith($('<span></span>').text(date.label));
+  }
 }

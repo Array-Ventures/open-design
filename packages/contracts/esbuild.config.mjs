@@ -23,6 +23,7 @@ await build({
     "./src/runtime/deck-protocol.ts",
     "./src/runtime/deck-source.ts",
     "./src/runtime/document.ts",
+    "./src/runtime/document-date.ts",
     "./src/runtime/workbook.ts",
     "./src/runtime/workbook-sheet-baseline.ts",
     "./src/runtime/workbook-structure.ts",
