@@ -17,13 +17,18 @@ import { useEmbeddedViewer } from '../host-viewer';
 import { COMMENT_DOCUMENT_SELECTION } from './useDocumentCommentSelection';
 import { DocumentImageInsertion } from './DocumentImageInsertion';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
+import { useDocumentDateInsertion } from './DocumentDates';
+import { $dateBlock } from './document-date-commands';
 import { documentFont, documentHeadingFont } from './document-identity';
 
 type SelectionState = { x: number; y: number; bold: boolean; italic: boolean; underline: boolean; strikethrough: boolean; code: boolean };
 /** Separate insertion and selected-text controls, following the observed document surfaces. */
-export function DocumentToolbar({ font, headingFont, onImageStatus, hidden = false, commentsAvailable = false, pageWide = false, onTogglePageWidth }: { pageWide?: boolean; onTogglePageWidth?(): void; commentsAvailable?: boolean; hidden?: boolean; font: 'sans' | 'serif'; headingFont: 'sans' | 'serif'; onImageStatus?(message: string | null): void }) {
+export function DocumentToolbar({ font, headingFont, onImageStatus, hidden = false, commentsAvailable = false, pageWide = false, onTogglePageWidth, dateOnly = false }: { dateOnly?: boolean; pageWide?: boolean; onTogglePageWidth?(): void; commentsAvailable?: boolean; hidden?: boolean; font: 'sans' | 'serif'; headingFont: 'sans' | 'serif'; onImageStatus?(message: string | null): void }) {
   const [editor] = useLexicalComposerContext();
   const t = useT();
+  const insertDate = useDocumentDateInsertion();
+  const [dateAvailable, setDateAvailable] = useState(true);
+  useEffect(() => editor.registerUpdateListener(({ editorState }) => editorState.read(() => { const selection = $getSelection(); setDateAvailable(!selection || $isRangeSelection(selection) && [selection.anchor.getNode(), selection.focus.getNode()].every($dateBlock)); })), [editor]);
   const viewer = useEmbeddedViewer();
   const [menu, setMenu] = useState<string | null>(null);
   useEffect(() => { if (hidden) setMenu(null); }, [hidden]);
@@ -52,7 +57,7 @@ export function DocumentToolbar({ font, headingFont, onImageStatus, hidden = fal
   return <>
     <div hidden={hidden} className={cx(hidden ? 'hidden' : 'flex', 'shrink-0 justify-center px-3 pb-3 pt-2')}>
       <div className="flex max-w-full items-center gap-1 rounded-2xl border border-border-button-default bg-background-secondary-default p-1 shadow-sm" role="toolbar" aria-label="Document insertion">
-        <Dropdown isOpen={!hidden && menu === 'font'} onOpenChange={open => setMenu(open ? 'font' : null)}>
+        {!dateOnly ? <><Dropdown isOpen={!hidden && menu === 'font'} onOpenChange={open => setMenu(open ? 'font' : null)}>
           <DropdownTrigger aria-label="Font" className="box-border flex size-8 shrink-0 items-center justify-center rounded-lg border-0 p-0 text-foreground-icon-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiFontSize className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
           <DropdownPopover aria-label="Font" placement="top start" className="w-40">
             {([{ label: 'Headings', state: documentHeadingFont, value: headingFont }, { label: 'Text', state: documentFont, value: font }] as const).map((group, index) => <div key={group.label} role="group" aria-label={group.label}>
@@ -73,15 +78,18 @@ export function DocumentToolbar({ font, headingFont, onImageStatus, hidden = fal
         <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiTableLine} aria-label="Insert table" title="Insert 3 × 3 table" onMouseDown={event => event.preventDefault()} onClick={() => editor.dispatchCommand(INSERT_TABLE_COMMAND, { columns: '3', rows: '3', includeHeaders: true })} />
         <DocumentImageInsertion onStatus={onImageStatus} />
         <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiCheckboxLine} aria-label="Checklist" title="Checklist" onMouseDown={event => event.preventDefault()} onClick={() => editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined)} />
+        </> : null}
         <Dropdown isOpen={!hidden && menu === 'more'} onOpenChange={open => setMenu(open ? 'more' : null)}>
           <DropdownTrigger aria-label="More document actions" className="box-border flex size-8 shrink-0 items-center justify-center rounded-lg border-0 p-0 text-foreground-icon-secondary hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"><RiMoreLine className="size-4 shrink-0" aria-hidden /></DropdownTrigger>
           <DropdownPopover aria-label="Document actions" placement="top end">
-            <DropdownItem onSelect={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}><RiListUnordered className="size-4 shrink-0" aria-hidden />Bulleted list</DropdownItem>
+            {dateAvailable && insertDate ? <DropdownItem onSelect={insertDate}>{t('documentDate.label')}</DropdownItem> : null}
+            {!dateOnly ? <><DropdownItem onSelect={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}><RiListUnordered className="size-4 shrink-0" aria-hidden />Bulleted list</DropdownItem>
             <DropdownItem onSelect={() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)}><RiListOrdered className="size-4 shrink-0" aria-hidden />Numbered list</DropdownItem>
             <DropdownDivider />
             <DropdownItem onSelect={() => editor.update(() => { const selection = $getSelection(); if ($isRangeSelection(selection)) $setBlocksType(selection, () => $createQuoteNode()); })}><RiDoubleQuotesL className="size-4 shrink-0" aria-hidden />Quote</DropdownItem>
             <DropdownItem onSelect={() => editor.update(() => { const selection = $getSelection(); if ($isRangeSelection(selection)) $insertNodes([$createCodeNode()]); })}><RiCodeLine className="size-4 shrink-0" aria-hidden />Code block</DropdownItem>
             <DropdownItem onSelect={() => editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined)}><RiSeparator className="size-4 shrink-0" aria-hidden />Divider</DropdownItem>
+            </> : null}
             {onTogglePageWidth ? <DropdownItem onSelect={onTogglePageWidth}><RiExpandWidthLine className="size-4 shrink-0" aria-hidden />{t(pageWide ? 'documentLayout.standardWidth' : 'documentLayout.wide')}</DropdownItem> : null}
             <DropdownDivider />
             <DropdownItem onSelect={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}><RiArrowGoBackLine className="size-4 shrink-0" aria-hidden />Undo</DropdownItem>
@@ -90,7 +98,7 @@ export function DocumentToolbar({ font, headingFont, onImageStatus, hidden = fal
         </Dropdown>
       </div>
     </div>
-    {!hidden && selected ? createPortal(<div role="toolbar" aria-label="Selected text formatting" style={{ position: 'fixed', left: selected.x, top: selected.y }} className="z-30 flex max-w-[calc(100vw-24px)] items-center gap-1 rounded-xl border border-border-button-default bg-background-secondary-default p-1 shadow-lg">
+    {!hidden && !dateOnly && selected ? createPortal(<div role="toolbar" aria-label="Selected text formatting" style={{ position: 'fixed', left: selected.x, top: selected.y }} className="z-30 flex max-w-[calc(100vw-24px)] items-center gap-1 rounded-xl border border-border-button-default bg-background-secondary-default p-1 shadow-lg">
       {commentsAvailable && viewer ? <Button variant="ghost" size="small" iconOnly className={DOCUMENT_ICON_BUTTON} leadingIcon={RiChatNewLine} aria-label="Comment on selected text" onMouseDown={event => event.preventDefault()} onClick={() => editor.dispatchCommand(COMMENT_DOCUMENT_SELECTION, undefined)} /> : null}
       <Dropdown isOpen={!hidden && menu === 'text'} onOpenChange={open => setMenu(open ? 'text' : null)}>
         <DropdownTrigger aria-label="Text style" className="box-border flex h-8 shrink-0 items-center gap-1 rounded-lg border-0 px-2 py-0 text-body-2-medium text-text-secondary hover:bg-background-secondary-hover">Text<RiArrowDownSLine className="size-4 shrink-0" aria-hidden /></DropdownTrigger>

@@ -1,6 +1,7 @@
+import { type DocumentDateNode } from './DocumentDateNode';
 import { $documentCharacterDeletionRange } from './document-suggestion-deletion';
 import { DOCUMENT_SUGGESTION_UPDATE_TAG } from './document-suggestion-policy';
-import { $addUpdateTag, $copyNode, $createRangeSelection, $setSelection, $createTextNode, $getRoot, $getSelection, $isElementNode, $isRangeSelection, $isTextNode, type ElementNode, type LexicalNode, type TextNode } from 'lexical';
+import { $addUpdateTag, $copyNode, $createRangeSelection, $setSelection, $createTextNode, $getRoot, $getSelection, $isElementNode, $isRangeSelection, $isTextNode, type ElementNode, type LexicalNode, type TextNode, type RangeSelection } from 'lexical';
 import { $isLinkNode } from '@lexical/link';
 import { $createDocumentSuggestionNode, $isDocumentSuggestionNode, type DocumentSuggestionNode } from './DocumentSuggestionNode';
 
@@ -73,7 +74,10 @@ export function $suggestDocumentText(text: string, id: string, appendTo?: string
   if ($isLinkNode(parent) && selection.focus.getNode().getParent() === parent) {
     const link = $copyNode(parent); link.append(leaf); inserted.append(link);
   } else inserted.append(leaf);
-  if (replacement) {
+  return insertSuggestedInline(selection, inserted, id);
+}
+function insertSuggestedInline(selection: RangeSelection, inserted: DocumentSuggestionNode, id: string): string {
+  if (!selection.isCollapsed()) {
     const original = selection.extract().filter($isTextNode);
     if (!original.length) throw Error('Select text to replace.');
     const removed = $createDocumentSuggestionNode({ id, kind: 'delete', operation: 'replace' });
@@ -83,6 +87,15 @@ export function $suggestDocumentText(text: string, id: string, appendTo?: string
   inserted.selectNext(0, 0);
   return id;
 }
+/** Date insertion shares the existing qualified text/replacement boundary. */
+export function $suggestDocumentDate(date: DocumentDateNode, id: string): string {
+  const selection = qualified();
+  if ($documentSuggestions().some(node => node.suggestion().id === id)) throw Error('Suggestion identity is already in use.');
+  const inserted = $createDocumentSuggestionNode({ id, kind: 'insert', operation: selection.isCollapsed() ? 'insert' : 'replace' });
+  inserted.append(date);
+  return insertSuggestedInline(selection, inserted, id);
+}
+
 export function $suggestDocumentDeletion(id: string): void {
   if ($documentSuggestions().some(node => node.suggestion().id === id)) throw Error('Suggestion identity is already in use.');
   const selection = qualified();
@@ -107,6 +120,7 @@ export function $resolveDocumentSuggestion(id: string, accept: boolean): void {
     // Native history must observe the changed proposal subtree, not only an
     // unchanged adjacent text leaf dirtied by detachment. No text is rewritten.
     node.getAllTextNodes().forEach(text => text.markDirty());
+    node.getChildren().forEach(child => child.markDirty());
     if ((node.suggestion().kind === 'insert') === accept) node.getChildren().forEach(child => node.insertBefore(child));
     node.remove();
   }

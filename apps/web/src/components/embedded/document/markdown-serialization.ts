@@ -1,3 +1,4 @@
+import { DocumentDateNode, $isDocumentDateNode } from './DocumentDateNode';
 import { validDocumentSuggestions } from './document-suggestion-schema';
 import { $isDocumentSuggestionNode } from './DocumentSuggestionNode';
 import { documentCodeNeedsHtml } from './document-code-paint';
@@ -45,6 +46,7 @@ export function serializeMarkdownDocument(editor: LexicalEditor): string {
     return element instanceof HTMLElement ? element.outerHTML : null;
   };
   const image: ElementTransformer = { type: 'element', dependencies: [DocumentImageNode], regExp: /a^/, replace: () => false, export: imageHtml };
+  const date: TextMatchTransformer = { type: 'text-match', dependencies: [DocumentDateNode], regExp: /a^/, export: node => $isDocumentDateNode(node) ? node.exportDOM().element.outerHTML : null };
   const nestedImage: TextMatchTransformer = { type: 'text-match', dependencies: [DocumentImageNode], regExp: /a^/, export: imageHtml };
   const table: ElementTransformer = {
     type: 'element', dependencies: [TableNode], regExp: /a^/, replace: () => false,
@@ -103,6 +105,6 @@ export function serializeMarkdownDocument(editor: LexicalEditor): string {
       return $getState(node, documentDividerStyle) ? htmlFor(node) : '---';
     },
   };
-  const body = $convertToMarkdownString([suggestedBlock, divider, image, code, table, alignedBlock, nestedImage, styledText, literalText, link, ...TRANSFORMERS]);
+  const body = $convertToMarkdownString([suggestedBlock, divider, image, code, table, alignedBlock, date, nestedImage, styledText, literalText, link, ...TRANSFORMERS]);
   return encodeMarkdownDocument(body, { version: 1, fonts: { text: $getState($getRoot(), documentFont), headings: $getState($getRoot(), documentHeadingFont) }, ids: documentIdentityGroups() });
 }

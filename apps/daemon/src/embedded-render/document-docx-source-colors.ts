@@ -1,3 +1,4 @@
+import { projectDocumentDatesForWord } from './document-date-export.js';
 import { documentSourceImageIdentity } from './document-image-assets.js';
 import { randomBytes } from 'node:crypto';
 import { load } from 'cheerio';
@@ -13,6 +14,7 @@ const fail = (): never => { throw new Error('The document converter could not pr
  * actual nested backgrounds without reproducing CSS ownership rules here. */
 export function documentDocxSourcePresentation(html: string): DocumentDocxPresentationSource {
   const $ = load(html), requests: DocumentPresentationRequest[] = [];
+  projectDocumentDatesForWord($);
   let attributeName: string;
   do { attributeName = `data-eve-docx-color-${randomBytes(8).toString('hex')}`; }
   while ($(`[${attributeName}],[${attributeName.slice(5)}],[${attributeName}-image],[${attributeName.slice(5)}-image]`).length);

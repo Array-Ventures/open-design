@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "sourceCommit": "a78a616f0d3ae9365fef5a7ab0f796f1da420e4c",
+  "companionBuildId": "e8e5ea87f46367aad9bfd1104478f488d970a7f1d900b57a0edcd21195943106",
+  "rendererImage": "sha256:d3f5fd8988b655d333eacdc01103eca70f429959382692c58df57d18e8501939",
+  "joinedChecks": {
+    "web": {
+      "cases": 154,
+      "files": 10,
+      "exit": 0
+    },
+    "daemon": {
+      "cases": 120,
+      "files": 8,
+      "exit": 0
+    },
+    "sharedPolicy": {
+      "cases": 99,
+      "files": 8,
+      "exit": 0
+    },
+    "dateContracts": {
+      "cases": 25,
+      "files": 1,
+      "exit": 0
+    },
+    "install": 0,
+    "dependencyBuild": 0,
+    "workspaceTypes": 0,
+    "scriptsTypes": 0,
+    "guard": 0
+  },
+  "immutablePair": {
+    "threeChildrenExit": 0,
+    "strictVerificationExit": 0,
+    "workerAndDocumentColorActuallyChanged": true,
+    "otherThreeBrowserPayloadsActuallyUnchanged": true
+  },
+  "nativeAcceptance": {
+    "jobs": 8,
+    "ready": 5,
+    "refused": 3,
+    "downloads200": 5,
+    "wordConsumer": "Actual LibreOffice output exists; labels and spacing inspected",
+    "pdfConsumer": "Native generated PDF and both print-policy PDFs personally inspected",
+    "markdown": "Both exact ISO/locale/labels retained; no Word-only U+2005",
+    "pending": "All3converted formats refused until review",
+    "focus": "Undo then immediate Redo without click; finalUndo restores original",
+    "originalSourcesUnchanged": true,
+    "newDisposablePrintPolicySourcesUnchanged": true,
+    "session": "Same made-up account/session retained across normal restart; no tokens stored here",
+    "context": "Requested/author-tool-reported label only; cross-agent context continuity not independently established"
+  },
+  "scopeLimits": [
+    "No new calendar/Review/source test reruns",
+    "No workbook regression claimed",
+    "No MicrosoftWord claim; LibreOffice consumer only",
+    "Stack deliberately retainedUP forrootfollowup, no logout/teardownclaim",
+    "Onlytwo disposable own print-policy projects added; existing2fixtures rawexact"
+  ],
+  "diagnostics": [
+    "Initial icon-onlylink text lookup failed before download; actualUID transport corrected200",
+    "Readonly SQL diagnostic columnname wrong; corrected error field, no writes"
+  ],
+  "referenceCount": 28,
+  "references": [
+    {
+      "path": "/tmp/date-final-joined-install.log",
+      "sha256": "7a208845fd93b810d1c00687cae1cd9f5a3d03a937bd8df497f449334ac1d176"
+    },
+    {
+      "path": "/tmp/date-final-joined-dependencies.log",
+      "sha256": "5e9342d6aca1321822773754bb47ea85f96f93c18c7dcb65aa730253018a25be"
+    },
+    {
+      "path": "/tmp/date-final-joined-web.log",
+      "sha256": "9e31b21223188537fda1301b1537271eba62599f6990f24a0bd9d48b2108ef8f"
+    },
+    {
+      "path": "/tmp/date-final-joined-daemon.log",
+      "sha256": "6bcc0e79f501a09ccb8566454af3870ebe7dfcd3a6ab6ba0bfcbae186c6ac756"
+    },
+    {
+      "path": "/tmp/date-final-joined-shared.log",
+      "sha256": "2da2d395d863487061c3e465a4495a768b2e6f3d804c6a6ade13b5fdef7ce388"
+    },
+    {
+      "path": "/tmp/date-final-joined-contracts.log",
+      "sha256": "8bba9cae24e7be2c74da315617fc1357714ce75643c98fdf93c77675323537cd"
+    },
+    {
+      "path": "/tmp/date-final-joined-types.log",
+      "sha256": "e477e575ebaa3fa10b3335cf6a0a9b73640d680a1473b3075cf6acdb15e1cb39"
+    },
+    {
+      "path": "/tmp/date-final-joined-guard.log",
+      "sha256": "1dc6cc2eac73b1addb01a464d557db738a5dd97485d9df32ee6ad5df8e028fd5"
+    },
+    {
+      "path": "/tmp/date-final-a78a616f-pair-receipt.json",
+      "sha256": "905992ccf19acc5236bbc8caca58eb96d8eb94b42ea4e005b7af55117be20768"
+    },
+    {
+      "path": "/tmp/date-wb-acceptance-ui/final-browser-checkpoint.json",
+      "sha256": "6b49291ae4b508a64e824275939e541883948b900fa0a12971237e4d72bacbe6"
+    }
+  ]
+}

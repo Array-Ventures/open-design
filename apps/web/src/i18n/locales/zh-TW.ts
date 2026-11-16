@@ -1,6 +1,10 @@
 import type { Dict } from "../types";
 
 export const zhTW: Dict = {
+  "documentDate.label": "日期",
+  "documentDate.choose": "選擇日期",
+  "documentDate.blocked": "變更日期前，請先處理此建議或選擇可編輯的段落。",
+
   "documentLayout.wide": "加寬頁面",
   "documentLayout.standardWidth": "使用標準頁面寬度",
   "documentSuggestions.modeAria": "{mode}模式",

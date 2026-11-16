@@ -1,0 +1,230 @@
+{
+  "version": 1,
+  "sourceCommit": "70d74d54244eab55f6654dd79d987239280c7b1e",
+  "parents": {
+    "main": "bd23b85d3f1706d0b234037e387df99110805ae0",
+    "date": "cc816228"
+  },
+  "scope": "Source integration only; no application/browser/image/runtime qualification",
+  "checks": {
+    "install": {
+      "exitCode": 0
+    },
+    "web": {
+      "exitCode": 0,
+      "files": 12,
+      "cases": 233
+    },
+    "daemon": {
+      "exitCode": 0,
+      "files": 5,
+      "cases": 49
+    },
+    "contracts": {
+      "exitCode": 0,
+      "files": 1,
+      "cases": 25
+    },
+    "workspaceTypes": {
+      "exitCode": 0,
+      "scheduling": "serial workspace typecheck plus scripts tsc"
+    },
+    "guard": {
+      "exitCode": 0
+    },
+    "i18n": {
+      "exitCode": 0
+    }
+  },
+  "sourceParity": {
+    "dateDocumentDirectoryVsCc816228": true,
+    "workbookDirectoriesAndContractVsMainBd23b85d": true
+  },
+  "references": [
+    {
+      "name": "install",
+      "path": "/tmp/date-workbook-install.log",
+      "sha256": "ebb76cfaab445b8ef2b1d97c681a17f6f5603f47aab7a8fd5ec73e7d6fdab6c2"
+    },
+    {
+      "name": "web",
+      "path": "/tmp/date-workbook-web.log",
+      "sha256": "6234b8ceda873c1b58498c20fd727280f953b2c7865f86df57a64504c0cd945a"
+    },
+    {
+      "name": "daemon",
+      "path": "/tmp/date-workbook-daemon.log",
+      "sha256": "fac0eca2810d9b6f940fd81c0bdf6ad6d45fc8acc2cbd1313c6f34a621d26bcc"
+    },
+    {
+      "name": "contracts",
+      "path": "/tmp/date-workbook-contracts.log",
+      "sha256": "4adbb0cde8d2b3198815ca88d28a5a3abef809854f8e1c4ebdbe406b6b5458dd"
+    },
+    {
+      "name": "workspaceTypes",
+      "path": "/tmp/date-workbook-types.log",
+      "sha256": "b134757c64739e9bfcc7f3f4b45680dc323652b7754d1275189d4b53a36fe901"
+    },
+    {
+      "name": "guard",
+      "path": "/tmp/date-workbook-guard.log",
+      "sha256": "899709f97ab3e2da743c8ca92e89b3a48487add337e1cf984de7d2ab0e6264aa"
+    },
+    {
+      "name": "i18n",
+      "path": "/tmp/date-workbook-i18n.log",
+      "sha256": "6df375bea36ec5188955c634cf38719783606465875b2f326c6cec44b2d61ec9"
+    },
+    {
+      "name": "builderTerminals",
+      "path": "/tmp/date-workbook-build-terminals.json",
+      "sha256": "a6496ddbc9d8b438f24f30d14cf873cbde2044a8d7734e03a1d08be00d1cfb88"
+    },
+    {
+      "name": "companionBuild",
+      "path": "/tmp/date-workbook-companion-build.log",
+      "sha256": "89e8655059b184bb36f84b166de47293f83361e666cb5870bb6196d12ae940fd"
+    },
+    {
+      "name": "rendererBuild",
+      "path": "/tmp/date-workbook-render-build.log",
+      "sha256": "95634cd402ffd6c82e131e5f050296010e5414b8628b6c9001de9ebc9fc4b4f0"
+    },
+    {
+      "name": "imageBuild",
+      "path": "/tmp/date-workbook-render-image.log",
+      "sha256": "33732c818aab7c9501406003dfe2063e1a64a9256949b90ba11d6af75e367ed7"
+    },
+    {
+      "name": "strictVerifier",
+      "path": "/tmp/date-workbook-verify.mjs",
+      "sha256": "f1c3a1525dfc45cd13365cb7444641e7314170f6ab7b8f45738d86bbbde3725e"
+    },
+    {
+      "name": "strictVerification",
+      "path": "/tmp/date-workbook-verify.log",
+      "sha256": "a19269de89300a0cf634d97cb3eb051c81390cdfd58ef6b01e3827f20aad15a9"
+    },
+    {
+      "name": "pairReceipt",
+      "path": "/tmp/date-workbook-pair-receipt.json",
+      "sha256": "a19269de89300a0cf634d97cb3eb051c81390cdfd58ef6b01e3827f20aad15a9"
+    }
+  ],
+  "localBuild": {
+    "source": {
+      "sourceCommit": "630dcc7809cb059b257a8a661302a150c991dc43",
+      "sourceTreeSha256": "948cbb6032b71d68e0205b6863017c674f7faf494b9667c0515f798f6142d0b5",
+      "dirty": false
+    },
+    "companion": {
+      "directory": "/tmp/od-artifact-package-date-wb-70d74d54",
+      "buildId": "c7b86c3730ceb630e7772d521373490f5f794f2df11237fef04cfcc5f521456f"
+    },
+    "renderer": {
+      "directory": "/tmp/od-artifact-render-date-wb-70d74d54",
+      "imageId": "sha256:a524540f544ec123d1a449f50df65299e02b05d1105748d9bf323bd01698cf79"
+    },
+    "terminals": [
+      {
+        "phase": "companion",
+        "command": [
+          "corepack",
+          "pnpm",
+          "exec",
+          "tsx",
+          "scripts/build-embedded-companion.ts",
+          "--out",
+          "/tmp/od-artifact-package-date-wb-70d74d54"
+        ],
+        "code": 0,
+        "signal": null,
+        "seconds": 57.67461800575256
+      },
+      {
+        "phase": "renderer",
+        "command": [
+          "corepack",
+          "pnpm",
+          "exec",
+          "tsx",
+          "scripts/build-embedded-render.ts",
+          "/tmp/od-artifact-render-date-wb-70d74d54"
+        ],
+        "code": 0,
+        "signal": null,
+        "seconds": 10.455731868743896
+      },
+      {
+        "phase": "image",
+        "command": [
+          "docker",
+          "build",
+          "--platform",
+          "linux/arm64",
+          "--iidfile",
+          "/tmp/date-workbook-render.iid",
+          "-t",
+          "evebot-artifact-render:date-wb-630dcc78",
+          "/tmp/od-artifact-render-date-wb-70d74d54"
+        ],
+        "code": 0,
+        "signal": null,
+        "seconds": 1.0900187492370605
+      }
+    ],
+    "comparisonTo140": {
+      "worker.mjs": {
+        "before": "8ffbd29bec5578b0d1c521f45a90d3c67568f8051c4fac45f85c48a6ea808117",
+        "after": "93a70e427c83ff02f8bb0f3e55fa7c6c21c5d2fff3412b77c8d5536f61eed491",
+        "unchanged": false
+      },
+      "document-color.iife.js": {
+        "before": "38b588a5748842f604db8df166f2a3a123ce141a19173329e0287b7c2624485f",
+        "after": "38b588a5748842f604db8df166f2a3a123ce141a19173329e0287b7c2624485f",
+        "unchanged": true
+      },
+      "deck-export.iife.js": {
+        "before": "9f308965b7c7f0a504add8d6d4dafe7199b4ce6c5b690da29f0292e71917c571",
+        "after": "9f308965b7c7f0a504add8d6d4dafe7199b4ce6c5b690da29f0292e71917c571",
+        "unchanged": true
+      },
+      "dom-to-pptx.bundle.js": {
+        "before": "0308535fd30c30fe78df78ed7d45f2d24e7393285bf09acbb2090189b4d50558",
+        "after": "0308535fd30c30fe78df78ed7d45f2d24e7393285bf09acbb2090189b4d50558",
+        "unchanged": true
+      },
+      "hyperframe.runtime.iife.js": {
+        "before": "f4b12edba0a97acc3f241189f8f3115cf7060b4a1c9d08a6c6ffe93e6a28244a",
+        "after": "f4b12edba0a97acc3f241189f8f3115cf7060b4a1c9d08a6c6ffe93e6a28244a",
+        "unchanged": true
+      }
+    },
+    "workerInputComparison": {
+      "oldInputCount": 2599,
+      "newInputCount": 2600,
+      "oldNormalizedCount": 2598,
+      "newNormalizedCount": 2599,
+      "added": [
+        "workspace:apps/daemon/src/embedded-render/document-date-export.ts"
+      ],
+      "removed": [],
+      "changed": [
+        "workspace:packages/contracts/dist/runtime/document.mjs",
+        "workspace:apps/daemon/src/embedded-render/document-docx-source-colors.ts",
+        "workspace:apps/daemon/src/embedded-render/document-markdown.ts"
+      ]
+    },
+    "checks": {
+      "fullInventory": true,
+      "cleanSourcePair": true,
+      "actualSourceIdentity": true,
+      "actualImagePayloads": true,
+      "actualImageProvenance": true,
+      "platformEntrypointUser": true,
+      "inputClosureCompared": true
+    },
+    "verificationExitCode": 0
+  }
+}

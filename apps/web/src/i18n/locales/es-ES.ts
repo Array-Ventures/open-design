@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const esES: Dict = {
+  "documentDate.label": "Fecha",
+  "documentDate.choose": "Elegir fecha",
+  "documentDate.blocked": "Resuelve esta sugerencia o elige un párrafo editable antes de cambiar su fecha.",
+
   "documentLayout.wide": "Ampliar página",
   "documentLayout.standardWidth": "Usar el ancho de página estándar",
   "documentSuggestions.modeAria": "Modo {mode}",

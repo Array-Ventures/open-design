@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const th: Dict = {
+  "documentDate.label": "วันที่",
+  "documentDate.choose": "เลือกวันที่",
+  "documentDate.blocked": "ยอมรับหรือปฏิเสธข้อเสนอนี้ หรือเลือกย่อหน้าที่แก้ไขได้ก่อนเปลี่ยนวันที่",
+
   "documentLayout.wide": "ขยายความกว้างหน้า",
   "documentLayout.standardWidth": "ใช้ความกว้างหน้ามาตรฐาน",
   "documentSuggestions.modeAria": "โหมด{mode}",

@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const ko: Dict = {
+  "documentDate.label": "날짜",
+  "documentDate.choose": "날짜 선택",
+  "documentDate.blocked": "날짜를 변경하기 전에 이 제안을 처리하거나 편집 가능한 단락을 선택하세요.",
+
   "documentLayout.wide": "페이지 너비 늘리기",
   "documentLayout.standardWidth": "표준 페이지 너비 사용",
   "documentSuggestions.modeAria": "{mode} 모드",

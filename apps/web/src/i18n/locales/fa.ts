@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const fa: Dict = {
+  "documentDate.label": "تاریخ",
+  "documentDate.choose": "انتخاب تاریخ",
+  "documentDate.blocked": "پیش از تغییر تاریخ، این پیشنهاد را بررسی کنید یا یک بند قابل ویرایش انتخاب کنید.",
+
   "documentLayout.wide": "عریض کردن صفحه",
   "documentLayout.standardWidth": "استفاده از عرض استاندارد صفحه",
   "documentSuggestions.modeAria": "حالت {mode}",
