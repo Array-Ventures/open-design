@@ -104,3 +104,9 @@ retains exact outputs and logs, including the wrong selector attempt.
 This is static LibreOffice consumer evidence, not Microsoft PowerPoint animation
 or installed-font equivalence. No preview, installer pin, production service,
 publication or hosted CI changed.
+
+The later [joined viewport/content correction](pptx-capture-viewport.md) preserves
+this metadata source and the original clipping failure. It adds bounded public
+capture geometry, decoded-pixel regressions and actual immutable/LibreOffice
+readback. Its named success does not close the Magic Move, desktop or font-
+equivalence gaps above.
