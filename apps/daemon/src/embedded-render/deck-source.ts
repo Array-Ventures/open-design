@@ -77,3 +77,14 @@ export function checkedDeckRuntimeIndex(value: unknown): number {
   if (typeof index !== 'number' || typeof count !== 'number' || !Number.isSafeInteger(index) || !Number.isSafeInteger(count) || count < 1 || count > 200 || index < 0 || index >= count) return fail();
   return index;
 }
+
+/** Read canonical saved source metadata, not browser-injected attributes. */
+export function deckSourcePptxTransition(html: string, count: number) {
+  const $ = load(html), stages = $('deck-stage');
+  if (!stages.length) return 'none' as const;
+  if (stages.length !== 1) throw Error('PowerPoint transition requires one canonical deck stage.');
+  const mode = stages.attr('transition') ?? 'none';
+  if (!['none', 'fade', 'push', 'magic-move'].includes(mode)) throw Error('Unsupported deck transition.');
+  if (mode !== 'none' && canonicalDeckSourceSlides($.root()[0]!, tree).length !== count) throw Error('Transition source and rendered slide counts differ.');
+  return mode as import('@open-design/contracts/runtime/deck-stage-fallback').DeckTransition;
+}

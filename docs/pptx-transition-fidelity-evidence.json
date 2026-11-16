@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "base": "8a9be42cdc122dadc807f7682c60bbb831849021",
+  "scope": "Source-only Fade/Push metadata in native screenshot generation and embedded worker editable/screenshot wiring",
+  "checks": {
+    "originalRed": {
+      "exitCode": 1,
+      "casesFailed": 2,
+      "cause": "Actual PptxGenJS output contains no transition metadata"
+    },
+    "firstGreen": {
+      "exitCode": 0,
+      "cases": 2
+    },
+    "finalFocused": {
+      "exitCode": 0,
+      "cases": 42,
+      "files": 4,
+      "newCases": 7
+    },
+    "initialTypes": {
+      "exitCode": 1,
+      "cause": "Authored fixture omitted required jpeg:false and used unsupported theme.lang; production types passed"
+    },
+    "finalWorkspaceAndScriptsTypes": {
+      "exitCode": 0
+    },
+    "guard": {
+      "exitCode": 0
+    },
+    "frozenInstall": {
+      "exitCode": 0
+    }
+  },
+  "authorMistakes": [
+    "Two shell authoring attempts used daemon cwd with root-relative file paths; failed before writing source, then repeated at correct root. One ensuing unchanged RED rerun was not a GREEN result."
+  ],
+  "limits": [
+    "No actual browser/dom-to-pptx or Office consumer execution for this new code",
+    "No packaged build or activation",
+    "Magic Move export explicitly refuses until native object-matching fidelity is qualified",
+    "Separate Electron editable converter remains unwired and retains an explicit gap",
+    "350ms p14 duration requires a consumer supporting that extension; legacy fast speed is not exact timing parity"
+  ],
+  "references": [
+    {
+      "path": "/tmp/pptx-transitions-install.log",
+      "sha256": "b6f34cdbd71b7b835b7cf1a9cdc7849f0113c77851e09c9c77e78d081e2c5731"
+    },
+    {
+      "path": "/tmp/pptx-transitions-red.log",
+      "sha256": "de5aebdb9452ad4e184c08d80d14d6bab94a5ae79f92ed919e4b0f4b1de6b979"
+    },
+    {
+      "path": "/tmp/pptx-transitions-first-green.log",
+      "sha256": "bc402ebe375cee76ce4166a47e66595354a88e1bb72e44a312a47792e134a559"
+    },
+    {
+      "path": "/tmp/pptx-transitions-focused.log",
+      "sha256": "aac0d11db3ac94eb7dce7d97391dc2a57572f3ba3f3f198bd814e6d515091c0c"
+    },
+    {
+      "path": "/tmp/pptx-transitions-final-focused.log",
+      "sha256": "91cc40dfa0ff5f68e57a076af0d303e42d1812d39d55e7f3fde5aa5f88cc5c16"
+    },
+    {
+      "path": "/tmp/pptx-transitions-types.log",
+      "sha256": "38b4c05ac3e3f8ece3e37a825e927b80cfad7056e0fb2adce40338af2d5c1573"
+    },
+    {
+      "path": "/tmp/pptx-transitions-types-final.log",
+      "sha256": "fadbd851dd58e670e482c0b2137fbc831147e14c3f470018cad858627f07428b"
+    },
+    {
+      "path": "/tmp/pptx-transitions-guard.log",
+      "sha256": "7ab2d23be4640f5e974fd6ab8ac0e9d0cada3bf70e1841be52143125aa01e8fa"
+    }
+  ]
+}

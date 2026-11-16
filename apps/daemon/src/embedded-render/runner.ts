@@ -1,4 +1,5 @@
-import { prepareDeckSourceCapture, checkedDeckRuntimeIndex } from './deck-source.js';
+import { withPptxDeckTransition } from './pptx-transitions.js';
+import { prepareDeckSourceCapture, checkedDeckRuntimeIndex, deckSourcePptxTransition } from './deck-source.js';
 import { extractSpeakerNotesFromHtml } from '@open-design/contracts/runtime/speaker-notes';
 import { withPptxSpeakerNotes } from './pptx-notes.js';
 import { editablePptx } from './editable-pptx.js';
@@ -138,7 +139,7 @@ export async function renderSnapshot(source: string, output: string, value: unkn
       const count = await slides.count();
       if (typeof count !== 'number' || count < 1 || count > 200) throw new Error('A deck must contain between 1 and 200 slides.');
       if (input.format === 'pptx' && input.editable) {
-        const body = await withPptxSpeakerNotes(await editablePptx(page, realSlideSelector), extractSpeakerNotesFromHtml(html));
+        const body = await withPptxSpeakerNotes(await withPptxDeckTransition(await editablePptx(page, realSlideSelector), deckSourcePptxTransition(html, count), count), extractSpeakerNotesFromHtml(html));
         if (unavailable.size) throw new Error('Bundle all editable deck resources locally before exporting.');
         if (body.length > 250 * 1024 * 1024) throw new Error('Export exceeds its byte limit.');
         await writeFile(path.join(output, 'artifact.pptx'), body, { flag: 'wx', mode: 0o600 });
@@ -181,7 +182,7 @@ export async function renderSnapshot(source: string, output: string, value: unkn
     }
     const extension = input.format === 'image' ? images[0]?.jpeg ? 'jpg' : 'png' : input.format;
     const file = `artifact.${extension}`;
-    const body = input.format === 'pptx' ? await withPptxSpeakerNotes(await buildScreenshotPptx(images, { title: input.title, aspect: (input.width ?? 1920) / (input.height ?? 1080) }), extractSpeakerNotesFromHtml(html))
+    const body = input.format === 'pptx' ? await withPptxSpeakerNotes(await buildScreenshotPptx(images, { title: input.title, aspect: (input.width ?? 1920) / (input.height ?? 1080), transition: deck ? deckSourcePptxTransition(html, images.length) : 'none' }), extractSpeakerNotesFromHtml(html))
       : input.format === 'pdf' ? deck ? await buildScreenshotPdf(images) : await page.pdf(document ? documentPrintOptions(input.title) : { printBackground: true, preferCSSPageSize: true, format: 'A4' })
       : images[0]!.buffer;
     if (body.length > 250 * 1024 * 1024) throw new Error('Export exceeds its byte limit.');

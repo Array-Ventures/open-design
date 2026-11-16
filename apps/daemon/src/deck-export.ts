@@ -1,3 +1,5 @@
+import { withPptxDeckTransition } from './embedded-render/pptx-transitions.js';
+import type { DeckTransition } from '@open-design/contracts/runtime/deck-stage-fallback';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -158,7 +160,7 @@ const PPTX_SLIDE_WIDTH_IN = 13.333;
  */
 export async function buildScreenshotPptx(
   images: SlideImage[],
-  opts: { title?: string; aspect?: number } = {},
+  opts: { title?: string; aspect?: number; transition?: DeckTransition } = {},
 ): Promise<Buffer> {
   if (images.length === 0) throw new Error('no slides to export');
   const pptx = new PptxGenJS();
@@ -184,7 +186,8 @@ export async function buildScreenshotPptx(
     });
   }
   const out = await pptx.write({ outputType: 'nodebuffer' });
-  return Buffer.isBuffer(out) ? out : Buffer.from(out as ArrayBuffer);
+  const bytes = Buffer.isBuffer(out) ? out : Buffer.from(out as ArrayBuffer);
+  return withPptxDeckTransition(bytes, opts.transition ?? 'none', images.length);
 }
 
 /**
