@@ -35,6 +35,8 @@ it('builds the actual production entry before its unchanged runtime owner and re
 it('retains one immutable bundle only while its test worker leases remain live', () => {
   const first = acquireCompiledWorkbookProductionWorker(), second = acquireCompiledWorkbookProductionWorker();
   try {
+    expect(Object.keys(first).sort()).toEqual(['entry', 'receipt', 'release']);
+    expect(first).not.toHaveProperty('dispose');
     expect(second.entry).toBe(first.entry);
     first.release(); first.release(); // Idempotent close cannot consume another lease.
     expect(existsSync(second.entry)).toBe(true);

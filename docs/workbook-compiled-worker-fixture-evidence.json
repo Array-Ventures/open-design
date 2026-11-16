@@ -17,7 +17,7 @@
     },
     {
       "path": "apps/web/tests/helpers/compiled-workbook-worker.ts",
-      "sha256": "59189f715e008794ad075d0d95913cdfd694b7a0e077535bf0cd3458e089507d"
+      "sha256": "c0e5ee64556c8e682ef6bdfdd0511c8f0e58c3d5606b5b26d665a1018ad523fc"
     },
     {
       "path": "apps/web/tests/helpers/workbook-node-worker.ts",
@@ -25,7 +25,11 @@
     },
     {
       "path": "apps/web/tests/artifacts/workbook-compiled-worker-fixture.test.ts",
-      "sha256": "6c16c6c79209cbfbd0b672a82a772c41119976660c487728de557740161ed629"
+      "sha256": "208d1d7c41026c589bf79858656c71824373714938e043edcca115f1cd5f307f"
+    },
+    {
+      "path": "apps/web/tests/artifacts/workbook-compiled-worker-failure.test.ts",
+      "sha256": "55254675a698d589e5913b3ac7275953762b5f502e6a11eba1071a3e8eed03c1"
     }
   ],
   "qualification": {
@@ -36,7 +40,8 @@
     "finalNewControlsExit": 0,
     "workspaceTypesExit": 0,
     "scriptsTypesExit": 0,
-    "guardExit": 0
+    "guardExit": 0,
+    "atCommit": "f9a7dfd1"
   },
   "diagnostics": {
     "rawSourceReadyMs": 5276.385113,
@@ -222,6 +227,101 @@
     {
       "path": "/tmp/workbook-next-worker-diagnostic-pi9b8b8h/final-owned-processes.json",
       "sha256": "bf20e1e3fdc1c42802104f9b31364f939ae11aabe61422cb96605e713ff0341e"
+    },
+    {
+      "path": "/tmp/workbook-compiled-review-fixes-focused-01.log",
+      "sha256": "dd5bffbe4227b41e41d3f70afbda523f443e5d0a165a6e4cdc6d4f389d900ab6"
+    },
+    {
+      "path": "/tmp/workbook-compiled-review-fixes-focused-02.log",
+      "sha256": "9b9653d31c189b9c67a4fb74830bcf1185db4563092812a646ba64a14f44eb22"
+    },
+    {
+      "path": "/tmp/workbook-compiled-review-fixes-webtypes-01.log",
+      "sha256": "c5cdd07516a11d50ecab1b7ab7747a82005b33c911897ea99bf0b4ad5323a2e5"
+    },
+    {
+      "path": "/tmp/workbook-compiled-review-fixes-guard-01.log",
+      "sha256": "731ca611c982030086b30599c2dbb4cfa24db34a046ac47d19feb9a3591eab14"
+    },
+    {
+      "path": "/tmp/workbook-compiled-review-fixes-static-exits-01.json",
+      "sha256": "1f9cb61a7f617b069f2bac721f6ed95f3a7b7f4f1b46fc07a6cbd95e82b6f392"
+    },
+    {
+      "path": "/tmp/workbook-compiled-review-fixes-webtypes-02.log",
+      "sha256": "c5cdd07516a11d50ecab1b7ab7747a82005b33c911897ea99bf0b4ad5323a2e5"
+    },
+    {
+      "path": "/tmp/workbook-compiled-review-fixes-guard-02.log",
+      "sha256": "e9bbc7804a51bd7175faa1dee93b12869c8dd17e616f9b7493866de0e571ec03"
+    },
+    {
+      "path": "/tmp/workbook-compiled-review-fixes-static-exits-02.json",
+      "sha256": "1f9cb61a7f617b069f2bac721f6ed95f3a7b7f4f1b46fc07a6cbd95e82b6f392"
+    },
+    {
+      "path": "/tmp/workbook-compiled-review-fixes-cleanup-01.json",
+      "sha256": "e7afc3694d2913489e273c814f1d4968ffa662b01f64851688a655977be97d50"
+    },
+    {
+      "path": "/tmp/workbook-review-dispose-red-0ng_xx8t/red.log",
+      "sha256": "1c57f4b5e5e06fc8c72058f25b24f78b7d9b78f80b5e9037a73de71a95ff42c4"
+    },
+    {
+      "path": "/tmp/workbook-review-dispose-red-0ng_xx8t/receipt.json",
+      "sha256": "209425eb0887020cb2c8c8fbb40f3c9084e1a7ff15f3ba810f718c03b3f60725"
+    },
+    {
+      "path": "/tmp/workbook-review-dispose-red-0ng_xx8t/old-helper.ts",
+      "sha256": "59189f715e008794ad075d0d95913cdfd694b7a0e077535bf0cd3458e089507d"
+    },
+    {
+      "path": "/tmp/workbook-review-dispose-red-0ng_xx8t/candidate-helper.ts",
+      "sha256": "c0e5ee64556c8e682ef6bdfdd0511c8f0e58c3d5606b5b26d665a1018ad523fc"
     }
-  ]
+  ],
+  "historicalSourceFilesAtF9a7dfd1": [
+    {
+      "path": "apps/web/package.json",
+      "sha256": "bf7ec43e1ffa5c375c37aeae2ecc3b75991fa3a372bb74cb4ea0135621619be3"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "2849266bf29a10b68a2b46f644067db8e3825ecb8c60a0d92e2880a686cc6d8b"
+    },
+    {
+      "path": "apps/web/tests/helpers/build-workbook-worker.ts",
+      "sha256": "61e0dcad17648693352161d3f2c6d94df1ae8a25365ca234a34b48cd506c8a9f"
+    },
+    {
+      "path": "apps/web/tests/helpers/compiled-workbook-worker.ts",
+      "sha256": "59189f715e008794ad075d0d95913cdfd694b7a0e077535bf0cd3458e089507d"
+    },
+    {
+      "path": "apps/web/tests/helpers/workbook-node-worker.ts",
+      "sha256": "d89c79ddbc97a51aa19136d5566d52ab7980a480ff06d589d2b7f2e95192b9bb"
+    },
+    {
+      "path": "apps/web/tests/artifacts/workbook-compiled-worker-fixture.test.ts",
+      "sha256": "6c16c6c79209cbfbd0b672a82a772c41119976660c487728de557740161ed629"
+    }
+  ],
+  "reviewFollowup": {
+    "focusedCases": 12,
+    "files": 3,
+    "exit": 0,
+    "webTypesExit": 0,
+    "guardExit": 0,
+    "oldSourceDisposeShapeRedExit": 1,
+    "sourceRestoredAfterComparison": true,
+    "compilerBounds": {
+      "timeoutMs": 15000,
+      "maxBufferBytes": 1048576,
+      "killSignal": "SIGKILL"
+    },
+    "timeoutControl": "Injected child failure and exact invocation-bound checks, not a real hung-process test",
+    "noProductionSourceDiff": true,
+    "remainingBundleRoots": 0
+  }
 }

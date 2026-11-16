@@ -58,7 +58,7 @@ no runtime deadline is extended and no warm retry changes a failure into a pass.
 
 ## Author qualification
 
-The final affected lane passed 39 cases across four files: the new compiled
+At source checkpoint `f9a7dfd1`, the affected lane passed 39 cases across four files: the new compiled
 fixture controls plus the existing real production RPC/Writer lease, epoch,
 budget, deliberate stall and owner-lifetime cases. The five new controls were
 then rerun after tightening their failure cleanup. They verify current source
@@ -81,3 +81,34 @@ Final inspection found zero owned Node/esbuild processes and zero fixture bundle
 roots. Diagnostic packages/logs remain retained. No full suite, Next rebuild,
 browser, provider, model, companion activation, reference fixture or production
 operation ran in this author cycle.
+
+
+## Independent-review hardening
+
+Review found that a shared lease also exposed the standalone artifact's
+`dispose()`. Leases now expose exactly entry, receipt and release; only the
+standalone compiler owns direct disposal. The real old-source comparison fails
+its lease-shape assertion against `f9a7dfd1`, then restores the candidate helper
+byte-for-byte. The candidate's two-lease/idempotent-release control passes.
+
+The native compiler child is explicitly bounded to fifteen seconds and one MiB
+of captured output, with SIGKILL on timeout. Its fatal error remains unchanged.
+This is a fixture build limit; the runtime owner's five seconds are unchanged.
+An injected child timeout checks the actual call options and exact-error cleanup;
+it is not a claim to have killed a genuinely hung compiler. A physical output
+change before the first lease proves that failed zero-user verification removes
+the artifact and clears that pool. Both the fixed production-source pool and
+isolated fault controls use the same lease algorithm; controls cannot replace
+the production pool's builder.
+
+The first attempted builtin-module fault controls did not induce their intended
+refusals and failed; those logs are retained. They were replaced with physical
+artifact corruption and an explicit compiler-runner fault. A forgotten lease
+from that failed control left one temporary bundle, which was positively checked
+and removed after all lanes were terminal.
+
+Final review-followup qualification passes twelve focused cases across three
+files, web types and guard. The earlier 39-case functional lane, workspace types
+and scripts types remain explicitly the `f9a7dfd1` checkpoint; they are not
+relabeled as a full rerun of this followup. No full suite or browser ran. No
+production source changed, and the final temporary bundle count is zero.
