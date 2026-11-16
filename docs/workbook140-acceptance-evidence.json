@@ -281,5 +281,30 @@
       "path": "/tmp/workbook140-acceptance-ui/upload.json",
       "sha256": "c33018b4040cc5ab1b56d95e8def7883b23c5dbc93bd2f29448a3be2e2f41bdb"
     }
+  ],
+  "finalSourceChecks": {
+    "source": "e263e58036326b3429ff9e8e6de1a73b4b7b0988",
+    "typecheckExitCode": 0,
+    "guardExitCode": 0,
+    "references": [
+      {
+        "path": "/tmp/workbook140-final-types.log",
+        "sha256": "3523a40fff735940494d6db0790492dd45ef1fbfa94f810929060211e48a4be8"
+      },
+      {
+        "path": "/tmp/workbook140-final-guard.log",
+        "sha256": "2a06ee3ad0aba8fbfd134ab2dfb78422e16d3620927a216792cf39dcf66b9a5c"
+      }
+    ]
+  },
+  "reviewImages": [
+    {
+      "path": "docs/assets/workbook140/entrypoint-dark.png",
+      "sha256": "f4c5d2e3e157d8daa27af21f74e78ec7b30b9801c4164552cff37dca09b6704a"
+    },
+    {
+      "path": "docs/assets/workbook140/formatting-dark.png",
+      "sha256": "8ca73463e3d9ed0475358b9b1b72f38e5fd8ec6b799697cb5539de86097bfc44"
+    }
   ]
 }

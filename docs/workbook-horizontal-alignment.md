@@ -279,3 +279,23 @@ references plus the original build/activation and failed-run receipts. It stores
 hashes and scope metadata, not unrelated chat text or private reference content.
 Source author checks above remain scoped to their original checkpoints; no
 unchanged suite was rerun for this documentation-only acceptance record.
+
+## Review screenshots and final source checks
+
+The actual packaged 140 entry point and formatting popover below were captured
+on the same disposable QA workbook without changing its contents. A direct raw
+read afterward retained SHA256 `454580aca992173f091b99316b38dc00043e8b8a60f4e082cc3296466845d0c6`.
+Only the newly opened capture tab was closed; the original tabs, theme and draft
+were preserved. These images include the known native idle worksheet-controls
+warning described above, which has a separate native fix; they do not hide it
+or imply that the entire management-control flow is qualified.
+
+![Packaged worksheet formatting entry point](assets/workbook140/entrypoint-dark.png)
+
+![Packaged horizontal alignment controls](assets/workbook140/formatting-dark.png)
+
+Before opening the source PR, the final `e263e580` implementation passed a fresh
+full workspace `corepack pnpm typecheck` and `corepack pnpm guard`, both exit 0.
+No full daemon or web test suite was rerun; the affected source tests above and
+actual manual acceptance retain their individual scopes. Documentation/images
+are the only changes after this source. No package, pin or publication changed.
