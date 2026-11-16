@@ -216,9 +216,9 @@ export function MonthPanel({
             {showPrev ? (
               <RACButton
                 slot="previous"
-                className="flex size-8 cursor-pointer items-center justify-center rounded-[3px] text-text-secondary outline-none transition-colors duration-150 ease hover:bg-background-secondary-hover"
+                className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-[3px] p-0 text-text-secondary outline-none transition-colors duration-150 ease hover:bg-background-secondary-hover"
               >
-                <ChevronLeft16 />
+                <ChevronLeft16 className="size-4 shrink-0" />
               </RACButton>
             ) : (
               <span className="size-4" aria-hidden />
@@ -227,9 +227,9 @@ export function MonthPanel({
             {showNext ? (
               <RACButton
                 slot="next"
-                className="flex size-8 cursor-pointer items-center justify-center rounded-[3px] text-text-secondary outline-none transition-colors duration-150 ease hover:bg-background-secondary-hover"
+                className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-[3px] p-0 text-text-secondary outline-none transition-colors duration-150 ease hover:bg-background-secondary-hover"
               >
-                <ChevronRight16 />
+                <ChevronRight16 className="size-4 shrink-0" />
               </RACButton>
             ) : (
               <span className="size-4" aria-hidden />

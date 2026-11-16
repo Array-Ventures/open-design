@@ -8,7 +8,7 @@ import { DocumentEditor } from '../../../src/components/embedded/document/Docume
 import { documentHtml } from '../../../src/components/embedded/document/document-html';
 const save = vi.hoisted(() => vi.fn(async (_project: string, _file: string, html: string) => ({ html, sha256: 'saved' })));
 vi.mock('../../../src/components/embedded/document/document-file', () => ({ saveDocumentFile: save }));
-afterEach(() => { cleanup(); vi.clearAllMocks(); document.querySelector('[aria-label="Unsent draft"]')?.remove(); });
+afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); document.querySelector('[aria-label="Unsent draft"]')?.remove(); });
 function mount(html = '<p data-od-id="body">Original</p>') {
   return render(<StrictMode><DocumentEditor projectId="date-fixture" fileName="date.html" title="Dates" observed={{ html: documentHtml('Dates', html), sha256: 'date-original' }} onSaved={() => {}} /></StrictMode>);
 }
@@ -24,6 +24,50 @@ it('opens the real calendar immediately from More without prior editor focus and
   await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Choose date' })).toBeNull());
   await act(async () => { active.dispatchCommand(UNDO_COMMAND, undefined); });
   expect(active.read(() => $getRoot().getTextContent())).toBe('Original');
+});
+it('keeps keyboard history in the editor when Undo removes its focused Date chip', async () => {
+  // jsdom loses its window-focus flag when a focused DOM node is removed.
+  // Keep this fixture's browser window active; real browser acceptance is separate.
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  mount(); const active = editor(), root = active.getRootElement()!;
+  fireEvent.click(screen.getByRole('button', { name: 'More document actions' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Date' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Choose date' });
+  fireEvent.keyDown(dialog, { key: 'Escape' });
+  await waitFor(() => expect(document.activeElement?.getAttribute('aria-roledescription')).toBe('Date'));
+  const chip = document.activeElement!;
+  fireEvent.keyDown(chip, { key: 'z', code: 'KeyZ', ctrlKey: true });
+  await waitFor(() => expect(active.read(() => $getRoot().getTextContent())).toBe('Original'));
+  await waitFor(() => expect(document.activeElement, JSON.stringify({ documentFocused: document.hasFocus(), chipConnected: chip.isConnected, rootConnected: root.isConnected })).toBe(root));
+  fireEvent.keyDown(root, { key: 'z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
+  await waitFor(() => expect(active.read(() => $getRoot().getTextContent())).toMatch(/^Original.+\d{4}$/));
+});
+it.each(['Accept', 'Reject'] as const)('keeps keyboard history when the last %s control disappears', async action => {
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  mount('<p data-od-id="body"><ins data-eve-suggestion="1" data-eve-suggestion-id="11111111-1111-4111-8111-111111111111" data-eve-suggestion-operation="insert"><time data-eve-document-date="1" datetime="2024-02-29" data-eve-date-locale="en-US">Draft date</time></ins></p>');
+  const active = editor(), root = active.getRootElement()!, before = active.getEditorState().toJSON();
+  const control = await screen.findByRole('button', { name: action });
+  control.focus(); fireEvent.click(control);
+  await waitFor(() => expect(screen.queryByRole('button', { name: action })).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(root));
+  fireEvent.keyDown(root, { key: 'z', code: 'KeyZ', ctrlKey: true });
+  await waitFor(() => expect(active.getEditorState().toJSON()).toEqual(before));
+});
+it.each(['another input', 'inactive window'] as const)('does not take Date history focus from %s', async destination => {
+  const focusedWindow = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  mount(); const active = editor();
+  fireEvent.click(screen.getByRole('button', { name: 'More document actions' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Date' }));
+  fireEvent.keyDown(await screen.findByRole('dialog', { name: 'Choose date' }), { key: 'Escape' });
+  await waitFor(() => expect(document.activeElement?.getAttribute('aria-roledescription')).toBe('Date'));
+  const chip = document.activeElement!, input = document.createElement('input');
+  input.setAttribute('aria-label', 'Unsent draft'); document.body.append(input);
+  await act(async () => {
+    fireEvent.keyDown(chip, { key: 'z', code: 'KeyZ', ctrlKey: true });
+    if (destination === 'another input') input.focus(); else focusedWindow.mockReturnValue(false);
+  });
+  expect(active.read(() => $getRoot().getTextContent())).toBe('Original');
+  expect(document.activeElement).toBe(destination === 'another input' ? input : document.body);
 });
 it('keeps persisted labels and refuses calendar editing in Viewing', async () => {
   mount('<p data-od-id="body"><time data-eve-document-date="1" datetime="2024-02-29" data-eve-date-locale="en-US">Frozen date label</time></p>');

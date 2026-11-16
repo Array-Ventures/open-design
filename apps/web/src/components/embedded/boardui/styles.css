@@ -11,6 +11,8 @@
 @source "./menu-styles.ts";
 
 @source "./dropdown.tsx";
+@source "./date-calendar.tsx";
+@source "./date-calendar-shared.tsx";
 
 /* Keep standalone global button rules out of portalled BoardUI menu rows. */
 :root[data-host-theme="boardui"] button[data-boardui-menu-item] {
