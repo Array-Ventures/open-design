@@ -13886,12 +13886,17 @@ function HtmlViewer({
     // fingerprint latch above retires on an actual external source change.
     if (!embedded || urlLoadPreviewSupportedWithoutManualEdit) {
       manualEditPersistedDocumentRef.current = null;
-    } else if (livePreviewSource !== null) {
-      // Structural edits already rebuild the frozen preview from saved bytes.
-      // Retain that exact revision on exit as well as bridge-painted styles;
-      // metadata-only watcher pulses must not replace it during navigation.
+    } else if (sourceRef.current !== null) {
+      // Flushing may have saved after this exit handler's render. Its captured
+      // livePreviewSource can still describe the pre-save document: using it
+      // here would overwrite the newer verified-paint latch with stale bytes.
+      // Structural edits may retain only the currently saved visual source.
       const rendered = committedSrcDocTransportRef.current;
-      const fingerprint = previewSourceFingerprint(livePreviewSource);
+      const currentSource = sourceRef.current;
+      const currentVisualSource = effectiveDeck
+        ? normalizeDeckVisualSource(removeSpeakerNotesFromHtml(currentSource))
+        : currentSource;
+      const fingerprint = previewSourceFingerprint(currentVisualSource);
       if (rendered.sourceFingerprint === fingerprint) {
         manualEditPersistedDocumentRef.current = {
           sourceFingerprint: fingerprint,

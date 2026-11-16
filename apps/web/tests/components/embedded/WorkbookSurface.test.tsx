@@ -34,7 +34,7 @@ vi.mock('../../../src/components/embedded/workbook/WorkbookGrid', async () => {
     }}>Edit fixture cell</button></div>;
   } };
 });
-it.each(['verified', 'conflict', 'mismatch'] as const)('clears a refresh-during-save error only after a verified ACK: %s', async outcome => {
+it.each(['verified', 'conflict', 'mismatch', 'incomplete-receipt', 'wrong-operation'] as const)('clears a refresh-during-save error only after a verified ACK: %s', async outcome => {
   const qualified: WorkbookDocument = { ...structuredClone(model), worksheetStructureEditable: true, calculationMetadata: 'verified' };
   const before = { sourceSha256: 'a'.repeat(64), model: qualified };
   const nextModel = structuredClone(qualified);
@@ -42,7 +42,7 @@ it.each(['verified', 'conflict', 'mismatch'] as const)('clears a refresh-during-
   const saved = { sourceSha256: 'b'.repeat(64), model: nextModel };
   source.load.mockResolvedValueOnce(before).mockResolvedValueOnce(saved)
     .mockResolvedValueOnce(outcome === 'mismatch' ? { ...saved, sourceSha256: 'c'.repeat(64) } : saved);
-  let finish!: (value: { targetSha256: string }) => void, reject!: (reason: Error) => void;
+  let finish!: (value: Record<string, unknown>) => void, reject!: (reason: Error) => void;
   source.save.mockImplementationOnce(() => new Promise((resolve, fail) => { finish = resolve; reject = fail; }));
   const published = vi.spyOn(window.parent, 'postMessage');
   const dirty = vi.fn(), onSaved = vi.fn();
@@ -64,7 +64,13 @@ it.each(['verified', 'conflict', 'mismatch'] as const)('clears a refresh-during-
   expect(screen.getByTestId('loaded-grid')).toHaveAttribute('data-structure-blocked', 'true');
   expect(screen.getByTestId('loaded-grid')).toHaveAttribute('data-structure-source', 'unavailable');
   if (outcome === 'conflict') await act(async () => reject(new WorkbookHostError('Source changed', 409)));
-  else await act(async () => finish({ targetSha256: saved.sourceSha256 }));
+  else await act(async () => {
+    const attempt = source.save.mock.calls[0]![0];
+    if (outcome === 'incomplete-receipt') { finish({ targetSha256: saved.sourceSha256 }); return; }
+    finish({ id: outcome === 'wrong-operation' ? crypto.randomUUID() : attempt.operationId, projectId: attempt.projectId, fileName: attempt.fileName,
+      renderId: attempt.renderId ?? crypto.randomUUID(), state: 'applied', sourceSha256: attempt.plan.sourceSha256,
+      targetSha256: saved.sourceSha256, actualSha256: saved.sourceSha256, sourceVersionId: null, versionId: 'saved-target' });
+  });
   await waitFor(() => {
     const latest = published.mock.calls.map(([message]) => message).reverse().find(message => message.type === 'studio:workbook-state');
     expect(latest.saving).toBe(false);
