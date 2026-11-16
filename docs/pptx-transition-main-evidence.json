@@ -1,0 +1,289 @@
+{
+  "version": 1,
+  "qualifiedSource": "1f16042d",
+  "image": "sha256:d4d4fe582b0128241cfbf2e761b9468958c42e4bad83c2f509982e85dc5986e6",
+  "scope": "Official immutable renderer source/build; four normal-entrypoint worker jobs; LibreOffice static readback. Screenshot Push content FAILED despite valid dimensions/metadata. No native UI, companion pair, animation or publication claim.",
+  "checks": {
+    "firstFocused": {
+      "cases": 28,
+      "files": 2,
+      "note": "Two additional requested file names did not exist; Vitest selected only the two real files. Not claimed as four-file coverage."
+    },
+    "additionalFocused": {
+      "cases": 14,
+      "files": 2
+    },
+    "install": 0,
+    "workspaceAndScriptsTypes": 0,
+    "guard": 0,
+    "renderBuilder": 0,
+    "dockerBuild": 0,
+    "workerHarness": 0,
+    "libreOffice": 0
+  },
+  "workerReceipt": {
+    "image": "sha256:d4d4fe582b0128241cfbf2e761b9468958c42e4bad83c2f509982e85dc5986e6",
+    "sourceHashes": {
+      "fade": "59019045817f9e0f7de4beb7b6e2be1acb721b7bfe703c0825574288e4f6ce96",
+      "push": "ade040ebc8f92f409537b4783176d47f74807f48c6827ad0992159183778ee03",
+      "none": "bd3c75b3c99049dc949a0a4f5bacd68913c88bf00bb4dcb4da0ccc0aa7762be3",
+      "magic-move": "7ce89bc3f0bca2477ca0808def343f59915101d970f27c583b378cefacc9807c"
+    },
+    "cases": [
+      {
+        "mode": "fade",
+        "editable": true,
+        "terminal": {
+          "code": 0,
+          "signal": null
+        },
+        "result": {
+          "ok": true,
+          "file": "artifact.pptx",
+          "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          "pages": 2
+        },
+        "bytes": 17280,
+        "sha256": "c0b1478028487edf6b38b15d6c74229d58d99ff8c26e22805d4c86c0e02fd18d",
+        "output": "/tmp/pptx-transition-consumer-A6Fh8D/fade/output/artifact.pptx",
+        "slides": [
+          {
+            "index": 1,
+            "text": "First retained title Ordinary native body one",
+            "fonts": [
+              "Georgia",
+              "Arial"
+            ],
+            "shapes": 4,
+            "pictures": 0
+          },
+          {
+            "index": 2,
+            "text": "Second retained title Ordinary native body two",
+            "fonts": [
+              "Georgia",
+              "Arial"
+            ],
+            "shapes": 4,
+            "pictures": 0
+          }
+        ]
+      },
+      {
+        "mode": "push",
+        "editable": false,
+        "terminal": {
+          "code": 0,
+          "signal": null
+        },
+        "result": {
+          "ok": true,
+          "file": "artifact.pptx",
+          "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          "pages": 2
+        },
+        "bytes": 18226,
+        "sha256": "5aa377e3bf79b94ddf57e8e5671d5d634c9a1b2add01af84a0157b93ab654056",
+        "output": "/tmp/pptx-transition-consumer-A6Fh8D/push/output/artifact.pptx",
+        "slides": [
+          {
+            "index": 1,
+            "text": "",
+            "fonts": [],
+            "shapes": 0,
+            "pictures": 1
+          },
+          {
+            "index": 2,
+            "text": "",
+            "fonts": [],
+            "shapes": 0,
+            "pictures": 1
+          }
+        ]
+      },
+      {
+        "mode": "none",
+        "editable": true,
+        "terminal": {
+          "code": 0,
+          "signal": null
+        },
+        "result": {
+          "ok": true,
+          "file": "artifact.pptx",
+          "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          "pages": 2
+        },
+        "bytes": 17077,
+        "sha256": "1f3e2b0f005e516e459c99c3d4f777206d5a5929d0052b1af4b87030e3c0c451",
+        "output": "/tmp/pptx-transition-consumer-A6Fh8D/none/output/artifact.pptx",
+        "slides": [
+          {
+            "index": 1,
+            "text": "First retained title Ordinary native body one",
+            "fonts": [
+              "Georgia",
+              "Arial"
+            ],
+            "shapes": 4,
+            "pictures": 0
+          },
+          {
+            "index": 2,
+            "text": "Second retained title Ordinary native body two",
+            "fonts": [
+              "Georgia",
+              "Arial"
+            ],
+            "shapes": 4,
+            "pictures": 0
+          }
+        ]
+      },
+      {
+        "mode": "magic-move",
+        "editable": true,
+        "terminal": {
+          "code": 1,
+          "signal": null
+        },
+        "result": {
+          "ok": false,
+          "error": "Magic Move object matching is not yet supported in PowerPoint export."
+        }
+      }
+    ]
+  },
+  "consumerReceipt": [
+    {
+      "mode": "fade",
+      "code": 0,
+      "stdout": "convert /tmp/pptx-transition-consumer-A6Fh8D/fade/output/artifact.pptx as a Impress document -> /tmp/pptx-transition-consumer-A6Fh8D/fade/consumer/artifact.pdf using filter : impress_pdf_Export\n",
+      "stderr": "",
+      "pdf": "/tmp/pptx-transition-consumer-A6Fh8D/fade/consumer/artifact.pdf",
+      "sha256": "d2066cd7562005d38ec8a461186ca3ed6af9eb3f15c4557f466f97c5fe23a2db",
+      "info": "Title:           PptxGenJS Presentation\nSubject:         PptxGenJS Presentation\nAuthor:          PptxGenJS\nCreator:         Impress\nProducer:        LibreOffice 24.2\nCreationDate:    Sun Nov 15 23:15:05 2026 PST\nCustom Metadata: no\nMetadata Stream: no\nTagged:          yes\nUserProperties:  no\nSuspects:        no\nForm:            none\nJavaScript:      no\nPages:           2\nEncrypted:       no\nPage size:       720 x 405.014 pts\nPage rot:        0\nFile size:       19969 bytes\nOptimized:       no\nPDF version:     1.7\n",
+      "text": "First retained title\nOrdinary native body one\n\n\fSecond retained title\nOrdinary native body two\n\n\f",
+      "screenshot": "/tmp/pptx-transition-consumer-A6Fh8D/fade/consumer/slide1.png"
+    },
+    {
+      "mode": "push",
+      "code": 0,
+      "stdout": "convert /tmp/pptx-transition-consumer-A6Fh8D/push/output/artifact.pptx as a Impress document -> /tmp/pptx-transition-consumer-A6Fh8D/push/consumer/artifact.pdf using filter : impress_pdf_Export\n",
+      "stderr": "",
+      "pdf": "/tmp/pptx-transition-consumer-A6Fh8D/push/consumer/artifact.pdf",
+      "sha256": "bf7ecbdf9c94ab909d87704e1c5a03d5214744e9814bb13c9da923e09cbe427b",
+      "info": "Title:           Artifact\nSubject:         Screenshot-based PPTX\nAuthor:          OpenDesign\nCreator:         Impress\nProducer:        LibreOffice 24.2\nCreationDate:    Sun Nov 15 23:15:06 2026 PST\nCustom Metadata: no\nMetadata Stream: no\nTagged:          yes\nUserProperties:  no\nSuspects:        no\nForm:            none\nJavaScript:      no\nPages:           2\nEncrypted:       no\nPage size:       720 x 405.014 pts\nPage rot:        0\nFile size:       9583 bytes\nOptimized:       no\nPDF version:     1.7\n",
+      "text": "\f\f",
+      "screenshot": "/tmp/pptx-transition-consumer-A6Fh8D/push/consumer/slide1.png"
+    },
+    {
+      "mode": "none",
+      "code": 0,
+      "stdout": "convert /tmp/pptx-transition-consumer-A6Fh8D/none/output/artifact.pptx as a Impress document -> /tmp/pptx-transition-consumer-A6Fh8D/none/consumer/artifact.pdf using filter : impress_pdf_Export\n",
+      "stderr": "",
+      "pdf": "/tmp/pptx-transition-consumer-A6Fh8D/none/consumer/artifact.pdf",
+      "sha256": "85c531b625a91ee4faf6107bccd062860a7707a7e9e334338790cdc6300bba14",
+      "info": "Title:           PptxGenJS Presentation\nSubject:         PptxGenJS Presentation\nAuthor:          PptxGenJS\nCreator:         Impress\nProducer:        LibreOffice 24.2\nCreationDate:    Sun Nov 15 23:15:07 2026 PST\nCustom Metadata: no\nMetadata Stream: no\nTagged:          yes\nUserProperties:  no\nSuspects:        no\nForm:            none\nJavaScript:      no\nPages:           2\nEncrypted:       no\nPage size:       720 x 405.014 pts\nPage rot:        0\nFile size:       19909 bytes\nOptimized:       no\nPDF version:     1.7\n",
+      "text": "First retained title\nOrdinary native body one\n\n\fSecond retained title\nOrdinary native body two\n\n\f",
+      "screenshot": "/tmp/pptx-transition-consumer-A6Fh8D/none/consumer/slide1.png"
+    }
+  ],
+  "visualOutcome": {
+    "editableFade": "Native text, Georgia/Arial XML and notes retained. LibreOffice still slide looks legible.",
+    "editableNone": "Native text and still slide retained.",
+    "screenshotPush": "FAIL: embedded 800x450 PNG clips offscreen content; only top-left240x135 white, remaining black. Stage default1920x1080 centered in800x450 capture viewport after noscale.",
+    "magicMove": "Expected explicit unsupported identity refusal."
+  },
+  "references": [
+    {
+      "path": "/tmp/pptx-transition-main-install.log",
+      "sha256": "7afcac1fe8724a56bf34297736d9f2603ed1e60b28aecd3e70120bc2071571a8"
+    },
+    {
+      "path": "/tmp/pptx-transition-main-focused.log",
+      "sha256": "c87a3c2d8c22c3b5b1077d8814ddafaf6f4c22e4b81e75213d483c61c1289874"
+    },
+    {
+      "path": "/tmp/pptx-transition-main-focused-additional.log",
+      "sha256": "cba6001d4ed0ed5d077cb0b9d6718ca298360a01a36587d67fd286c80b47a3f3"
+    },
+    {
+      "path": "/tmp/pptx-transition-main-render-build.log",
+      "sha256": "4302b80ab7f3f56b81c4dc092be74b9252706e7ed5c6168ca16fe7d8e7162cd6"
+    },
+    {
+      "path": "/tmp/pptx-transition-main-docker.log",
+      "sha256": "e099976bc7ac046a19e81a7b977d920e7e137eb93a473590bab5e4bbee031eac"
+    },
+    {
+      "path": "/tmp/pptx-transition-main-types.log",
+      "sha256": "a030498bbc2869298df26f3eb86532e49b510d6fa6f7ed4a58872cd2b4bda356"
+    },
+    {
+      "path": "/tmp/pptx-transition-main-guard.log",
+      "sha256": "44d7a15c13556ed420af482e86e2043e2eb0484b62c609d04ff3b5a2cb58f744"
+    },
+    {
+      "path": "/tmp/pptx-transition-main-image.id",
+      "sha256": "744561d4488b9e89e4e0ccf689bc9e00ae340280a3328d9f17dcda9e20307ec9"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer.mjs",
+      "sha256": "d50db738cd40cd2a286357e9b3a637888fda85bb29654efb4af0f351f04f145d"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer.log",
+      "sha256": "48234c99f8e8211b4ab9b68b84a55dbb56a14d7ad4fb705432fdd1a58200f256"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-A6Fh8D/receipt.json",
+      "sha256": "a64a057e6af0dff9bfa40bf637e73395117593a274ff929c0053581e73a0c6bf"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-A6Fh8D/consumer-receipt.json",
+      "sha256": "01d2f6ff697df01a346e3f6c21f6bd02f16e8d572af66b25adc460c7fb6f4deb"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-A6Fh8D/fade/output/artifact.pptx",
+      "sha256": "c0b1478028487edf6b38b15d6c74229d58d99ff8c26e22805d4c86c0e02fd18d"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-A6Fh8D/fade/consumer/artifact.pdf",
+      "sha256": "d2066cd7562005d38ec8a461186ca3ed6af9eb3f15c4557f466f97c5fe23a2db"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-A6Fh8D/fade/consumer/slide1.png",
+      "sha256": "b1e74defe54f6956c879c63d36948178bd980a5fe8871c87049566cabad8b066"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-A6Fh8D/push/output/artifact.pptx",
+      "sha256": "5aa377e3bf79b94ddf57e8e5671d5d634c9a1b2add01af84a0157b93ab654056"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-A6Fh8D/push/consumer/artifact.pdf",
+      "sha256": "bf7ecbdf9c94ab909d87704e1c5a03d5214744e9814bb13c9da923e09cbe427b"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-A6Fh8D/push/consumer/slide1.png",
+      "sha256": "8c7a6918c59e053342675c10a5d3a134f5e9f68e92a0e46248bfe3e72e783f91"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-A6Fh8D/none/output/artifact.pptx",
+      "sha256": "1f3e2b0f005e516e459c99c3d4f777206d5a5929d0052b1af4b87030e3c0c451"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-A6Fh8D/none/consumer/artifact.pdf",
+      "sha256": "85c531b625a91ee4faf6107bccd062860a7707a7e9e334338790cdc6300bba14"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-A6Fh8D/none/consumer/slide1.png",
+      "sha256": "b1e74defe54f6956c879c63d36948178bd980a5fe8871c87049566cabad8b066"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-A6Fh8D/push/consumer/image-1-1.png",
+      "sha256": "190b46aff8d65c9a34ff5ccb3cbee2646c8d296027a187eb20986e2b46cacb99"
+    }
+  ]
+}

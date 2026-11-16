@@ -1,0 +1,1000 @@
+{
+  "version": 1,
+  "sourceCommit": "23fd2051c2874a0d301cba4c15994d812a86b8f9",
+  "base": "1f16042d",
+  "captureSource": "c691b04dc557746a4f0cf22608a5eeb9063dfa3d",
+  "joinedMain": "9ee0aca2ccb9d1ec95807598046488ec2cd084ec",
+  "priorFailureDocs": "59b1a0b9",
+  "scope": "Bounded deck screenshot viewport/content correction plus joined Fade/Push metadata. No PowerPoint playback, Magic Move, desktop transition wiring, font-equivalence or fresh native browser claim.",
+  "checks": {
+    "captureFocused": {
+      "passed": 67,
+      "files": 6,
+      "exitCode": 0
+    },
+    "joinedDaemon": {
+      "passed": 221,
+      "files": 15,
+      "exitCode": 0
+    },
+    "joinedContracts": {
+      "passed": 58,
+      "files": 3,
+      "exitCode": 0
+    },
+    "joinedSharedPolicy": {
+      "passed": 99,
+      "files": 8,
+      "exitCode": 0
+    },
+    "frozenOfflineInstall": 0,
+    "workspaceAndScriptsTypes": 0,
+    "guard": 0
+  },
+  "build": {
+    "source": "23fd2051c2874a0d301cba4c15994d812a86b8f9",
+    "stages": [
+      {
+        "stage": "renderer",
+        "command": [
+          "corepack",
+          "pnpm",
+          "exec",
+          "tsx",
+          "scripts/build-embedded-render.ts",
+          "/tmp/od-render-pptx-capture-joined-23fd2051"
+        ],
+        "startedAt": 1794814723.3823245,
+        "endedAt": 1794814733.7881322,
+        "exitCode": 0,
+        "signal": null,
+        "log": "/tmp/pptx-capture-joined-render-build.log"
+      },
+      {
+        "stage": "image",
+        "command": [
+          "docker",
+          "build",
+          "--pull=false",
+          "-f",
+          "deploy/Dockerfile.embedded-render",
+          "-t",
+          "od-pptx-capture-joined:23fd2051",
+          "--iidfile",
+          "/tmp/pptx-capture-joined-image.id",
+          "/tmp/od-render-pptx-capture-joined-23fd2051"
+        ],
+        "startedAt": 1794814733.7886727,
+        "endedAt": 1794814735.8660278,
+        "exitCode": 0,
+        "signal": null,
+        "log": "/tmp/pptx-capture-joined-docker.log"
+      }
+    ]
+  },
+  "image": "sha256:f00f26f75189841f83c449c6972c89a87c5acefeedcc321aeae2d96ed96a0bfd",
+  "rendererContext": "/tmp/od-render-pptx-capture-joined-23fd2051",
+  "workerSha256": "5fec19b298c9c82114167e1b0ddffb45359c9a663851798a994a584ed5d4942e",
+  "raster": {
+    "sharp": "0.35.3",
+    "platform": "linux-arm64",
+    "addonSha256": "ca16f6b4af700f2eb8fb43e9f32103b50c39a16fe882bb1282d3d76c975069ac",
+    "libvipsSha256": "56f7e7c98d134371c07990a318e41178cf0b6a956b8d5cd73779881c17deaaab"
+  },
+  "actualRuntimeFiles": 586,
+  "immutableContentCases": [
+    {
+      "name": "default-stage",
+      "input": {
+        "fileName": "default-stage.html",
+        "format": "pptx",
+        "deck": true,
+        "width": 800,
+        "height": 450
+      },
+      "result": {
+        "ok": true,
+        "file": "artifact.pptx",
+        "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "pages": 2
+      },
+      "outputSha256": "6c5246408fc5d9bd3caa8acf925cddc302a60f2403663c0a9fdd752c59365edf",
+      "decoded": [
+        {
+          "dimensions": [
+            800,
+            450
+          ],
+          "corners": [
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ]
+          ],
+          "titleInkPixels": 5903
+        },
+        {
+          "dimensions": [
+            800,
+            450
+          ],
+          "corners": [
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ]
+          ],
+          "titleInkPixels": 6781
+        }
+      ]
+    },
+    {
+      "name": "explicit-stage",
+      "input": {
+        "fileName": "explicit-stage.html",
+        "format": "pptx",
+        "deck": true,
+        "width": 320,
+        "height": 240
+      },
+      "result": {
+        "ok": true,
+        "file": "artifact.pptx",
+        "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "pages": 2
+      },
+      "outputSha256": "c3c4cba293fc146affd7a56722aaf738470e373576f45ab1026b6f00e7dfff8d",
+      "decoded": [
+        {
+          "dimensions": [
+            800,
+            450
+          ],
+          "corners": [
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ]
+          ],
+          "titleInkPixels": 5903
+        },
+        {
+          "dimensions": [
+            800,
+            450
+          ],
+          "corners": [
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ]
+          ],
+          "titleInkPixels": 6781
+        }
+      ]
+    },
+    {
+      "name": "large-stage",
+      "input": {
+        "fileName": "large-stage.html",
+        "format": "pptx",
+        "deck": true,
+        "width": 800,
+        "height": 450
+      },
+      "result": {
+        "ok": true,
+        "file": "artifact.pptx",
+        "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "pages": 2
+      },
+      "outputSha256": "9f3646fcf1865c62fda9aca06aa5e0190606e4c3bc051fc1bb1b8d6c42a8c2c5",
+      "decoded": [
+        {
+          "dimensions": [
+            1600,
+            900
+          ],
+          "corners": [
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ]
+          ],
+          "titleInkPixels": 5903
+        },
+        {
+          "dimensions": [
+            1600,
+            900
+          ],
+          "corners": [
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ]
+          ],
+          "titleInkPixels": 6781
+        }
+      ]
+    },
+    {
+      "name": "custom-attributes",
+      "input": {
+        "fileName": "custom-attributes.html",
+        "format": "pptx",
+        "deck": true,
+        "width": 320,
+        "height": 240
+      },
+      "result": {
+        "ok": true,
+        "file": "artifact.pptx",
+        "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "pages": 2
+      },
+      "outputSha256": "63858111ceb739bd6fe6b20e1555cfb4b3a29a110f9740a9813abff38448187e",
+      "decoded": [
+        {
+          "dimensions": [
+            800,
+            450
+          ],
+          "corners": [
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ]
+          ],
+          "titleInkPixels": 5903
+        },
+        {
+          "dimensions": [
+            800,
+            450
+          ],
+          "corners": [
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ]
+          ],
+          "titleInkPixels": 6781
+        }
+      ]
+    },
+    {
+      "name": "custom-layout",
+      "input": {
+        "fileName": "custom-layout.html",
+        "format": "pptx",
+        "deck": true,
+        "width": 320,
+        "height": 240
+      },
+      "result": {
+        "ok": true,
+        "file": "artifact.pptx",
+        "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "pages": 2
+      },
+      "outputSha256": "ae5f62386937580464620a31b911805089b218c298b2830b52295e1deec936c7",
+      "decoded": [
+        {
+          "dimensions": [
+            1000,
+            600
+          ],
+          "corners": [
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ]
+          ],
+          "titleInkPixels": 5903
+        },
+        {
+          "dimensions": [
+            1000,
+            600
+          ],
+          "corners": [
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ]
+          ],
+          "titleInkPixels": 6781
+        }
+      ]
+    },
+    {
+      "name": "legacy",
+      "input": {
+        "fileName": "legacy.html",
+        "format": "pptx",
+        "deck": true,
+        "width": 800,
+        "height": 450
+      },
+      "result": {
+        "ok": true,
+        "file": "artifact.pptx",
+        "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "pages": 2
+      },
+      "outputSha256": "1f667f85e3d346720a37acdbd20bdc3f9e0fe26911cab217723f50869fd840aa",
+      "decoded": [
+        {
+          "dimensions": [
+            800,
+            450
+          ],
+          "corners": [
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ]
+          ],
+          "titleInkPixels": 5903
+        },
+        {
+          "dimensions": [
+            800,
+            450
+          ],
+          "corners": [
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ]
+          ],
+          "titleInkPixels": 6781
+        }
+      ]
+    },
+    {
+      "name": "source-owned-image",
+      "input": {
+        "fileName": "source-owned-image.html",
+        "format": "image",
+        "deck": true,
+        "width": 800,
+        "height": 450,
+        "index": 0,
+        "deckSourceSha256": "c3a5bb09d7b6fc0a34c730dc47755e97008f4d675973a1d7230db5cc493d5149",
+        "deckSourcePath": "path-0-0"
+      },
+      "result": {
+        "ok": true,
+        "file": "artifact.png",
+        "mime": "image/png",
+        "pages": 1
+      },
+      "outputSha256": "c35d1401188d9747696bc01632ad0d9a16160756f859e15ec083b0ba1efd7493",
+      "decoded": [
+        {
+          "dimensions": [
+            800,
+            450
+          ],
+          "corners": [
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ],
+            [
+              255,
+              255,
+              255,
+              255
+            ]
+          ],
+          "titleInkPixels": 5903
+        }
+      ]
+    },
+    {
+      "name": "unbounded-stage",
+      "input": {
+        "fileName": "unbounded-stage.html",
+        "format": "pptx",
+        "deck": true,
+        "width": 800,
+        "height": 450
+      },
+      "result": {
+        "ok": false,
+        "error": "Deck capture geometry exceeds the 3840 \u00d7 2160 export limit."
+      }
+    },
+    {
+      "name": "responsive-growth",
+      "input": {
+        "fileName": "responsive-growth.html",
+        "format": "pptx",
+        "deck": true,
+        "width": 800,
+        "height": 450
+      },
+      "result": {
+        "ok": false,
+        "error": "Deck capture geometry exceeds the 3840 \u00d7 2160 export limit."
+      }
+    }
+  ],
+  "additionalWorkerCases": {
+    "passed": 4,
+    "editableFade": true,
+    "screenshotPush": true,
+    "editableNone": true,
+    "magicMoveRefused": true
+  },
+  "libreOfficeConsumers": {
+    "passed": 3,
+    "modes": [
+      "fade",
+      "push",
+      "none"
+    ],
+    "screenshotPushHasTextLayer": false,
+    "editableXmlFontNamesRetained": [
+      "Georgia",
+      "Arial"
+    ],
+    "fontEquivalenceOrPowerPointPlaybackClaim": false
+  },
+  "actualBinaryImmutableCases": 10,
+  "sourcePreservation": {
+    "ownOldAndNewDefaultHash": "c3a5bb09d7b6fc0a34c730dc47755e97008f4d675973a1d7230db5cc493d5149",
+    "parentAllFourHashesByteEqual": true,
+    "allWorkerSourcesUnchanged": true
+  },
+  "retainedFailures": {
+    "oldImmutableContent": "Dimensions passed but corners/title pixels failed before the fix",
+    "earlySelectors": "Initial command selected three actual files/27 cases; a fourth named selector did not exist. Final six-file capture scope is stated separately.",
+    "networkNoneDocker": "An earlier 671 image attempt used network none and apt setup exited 100; final official normal-network build is separate and passes."
+  },
+  "sourceProof": {
+    "sourceCommit": "23fd2051c2874a0d301cba4c15994d812a86b8f9",
+    "captureSource": "c691b04dc557746a4f0cf22608a5eeb9063dfa3d",
+    "main": "9ee0aca2",
+    "parentFailureDocumentation": "59b1a0b9",
+    "priorFailureDocumentationCherry": "a5f74ba2",
+    "mergeNoConflicts": true,
+    "owningSourceTestHarnessFiles": [
+      {
+        "path": "apps/daemon/src/deck-export.ts",
+        "sha256": "c2b07ee5897e84ba54dd221a563423c47a1207d7638b02ad608b30e7d49f41ff"
+      },
+      {
+        "path": "apps/daemon/src/embedded-render/deck-capture-viewport.ts",
+        "sha256": "2e5cdd1b277741c1ad1f070a4f371f0ea750a9fbed4caf507f38ef78d9d56a53"
+      },
+      {
+        "path": "apps/daemon/src/embedded-render/deck-source.ts",
+        "sha256": "fd237c38e81b3f1aaec15bf52c93cb6c5b90f7c61f8123a76ee10d5d05ef66f8"
+      },
+      {
+        "path": "apps/daemon/src/embedded-render/pptx-transitions.ts",
+        "sha256": "e7da559c96d166bb50d8558ce49296ff90f5f2adac64b719d17c4d6cfb8675d7"
+      },
+      {
+        "path": "apps/daemon/src/embedded-render/runner.ts",
+        "sha256": "3703eaf61e9c6530b95554b5c429194785568ec0a4d65ceaa6dacfc339d4909e"
+      },
+      {
+        "path": "apps/daemon/tests/deck-capture-viewport.test.ts",
+        "sha256": "63ed5c7006d40028852e1d41cf0c040afec2e23d5cf8c3c1beb624dd9e7c4261"
+      },
+      {
+        "path": "apps/daemon/tests/pptx-transitions.test.ts",
+        "sha256": "da3557a4d52bc205b33d82d04b1304540da3340969eb36aae047f38435a5504a"
+      },
+      {
+        "path": "scripts/test-deck-capture-viewport.ts",
+        "sha256": "437522239e61149c7e2982b60e1e5a946cfa583e99b0fffdb2df1faf7d64b33a"
+      }
+    ],
+    "transitionProductionByteEqual1f": [
+      "apps/daemon/src/deck-export.ts",
+      "apps/daemon/src/embedded-render/deck-source.ts",
+      "apps/daemon/src/embedded-render/pptx-transitions.ts"
+    ],
+    "incomingMainNonRunnerPaths": [
+      "apps/daemon/package.json",
+      "apps/daemon/src/embedded-render/images.ts",
+      "apps/daemon/src/embedded-render/input.ts",
+      "apps/daemon/tests/binary-image-export.test.ts",
+      "apps/web/src/components/embedded/useArtifactHostState.ts",
+      "apps/web/tests/components/embedded/artifact-availability.test.tsx",
+      "deploy/Dockerfile.embedded-render",
+      "docs/binary-image-architecture-evidence.json",
+      "docs/binary-image-artifact-conversion.md",
+      "docs/binary-image-artifact-evidence.json",
+      "docs/binary-image-date-integration-evidence.json",
+      "docs/binary-image-date-integration.md",
+      "docs/binary-image-main-build-evidence.json",
+      "docs/binary-image-main-qualification.md",
+      "docs/binary-image-main-source-evidence.json",
+      "docs/media-artifact-exports.md",
+      "packages/contracts/src/index.ts",
+      "packages/contracts/src/runtime/image-export.ts",
+      "packages/contracts/tests/image-export.test.ts",
+      "pnpm-lock.yaml",
+      "scripts/build-embedded-render.ts",
+      "scripts/lib/renderer-raster-runtime.ts",
+      "scripts/test-binary-image-render.ts",
+      "scripts/test-renderer-raster-architecture.ts",
+      "scripts/test-renderer-raster-image.ts",
+      "scripts/test-renderer-raster-runtime.ts"
+    ],
+    "incomingMainNonRunnerPathsMissingOrUnequal": [],
+    "runnerChangeFromCaptureSource": "diff --git a/apps/daemon/src/embedded-render/runner.ts b/apps/daemon/src/embedded-render/runner.ts\nindex c8115433..6c4e628b 100644\n--- a/apps/daemon/src/embedded-render/runner.ts\n+++ b/apps/daemon/src/embedded-render/runner.ts\n@@ -11,6 +11,8 @@ import { hyperFramesCompositionMetrics, injectHyperFramesFrameBridge } from '../\n import { prepareHyperFramesAudio, type HyperFramesAudioTrack } from '../media/hyperframes-audio.js';\n import { injectMotionSourcePlayer } from '@open-design/contracts/runtime/motion-source-player';\n import { isMediaExport, renderMedia } from './media.js';\n+import { isImageSource } from '@open-design/contracts';\n+import { renderImage } from './images.js';\n import { createServer } from 'node:http';\n import { readFile, realpath, stat, writeFile } from 'node:fs/promises';\n import path from 'node:path';\n@@ -31,6 +33,10 @@ const realSlideSelector = `:is(${slideSelector}):not(.mini-slide *, .overview *,\n /** Runs ONLY in the host's disposable, network-disabled render container. */\n export async function renderSnapshot(source: string, output: string, value: unknown) {\n   const input = RenderInput.parse(value);\n+  if (isImageSource(input.fileName)) {\n+    if (input.format !== 'image') throw new Error('Choose PNG/JPEG conversion or download the original image.');\n+    return renderImage(source, output, input.fileName, input.imageFormat);\n+  }\n   if (isMediaExport(input.format)) return renderMedia(source, output, input.fileName, input.format);\n   const root = await realpath(source);\n   async function asset(name: string) {\n",
+    "dirty": false
+  },
+  "personallyViewed": {
+    "oldAndNewRawDefault": true,
+    "finalLibreOfficePushAndFade": true,
+    "scope": "Four named captures, not every artifact or playback"
+  },
+  "cleanup": {
+    "roots": [
+      "/tmp/open-design-pptx-capture-viewport",
+      "/tmp/open-design-pptx-capture-main"
+    ],
+    "remainingWorktreeProcesses": [],
+    "remainingOwnedLabeledContainers": [],
+    "postgresOrNativeStackStartedByLane": false,
+    "buildContextsImagesAndScratchRetainedForReview": true,
+    "previewsPinsAndRealInstallUntouchedByLane": true
+  },
+  "references": [
+    {
+      "path": "/tmp/pptx-capture-baseline-pixels.json",
+      "sha256": "647342990f391129462382b11b14c442412f701174f8e5cacc906d740d4051bf"
+    },
+    {
+      "path": "/tmp/pptx-capture-install.log",
+      "sha256": "0c7dc1c659260be8fe62df1d9e1fcc6b81c37e00ce7596da219004b9c005c903"
+    },
+    {
+      "path": "/tmp/pptx-capture-content-red.log",
+      "sha256": "2f43c13a11b685a0b05bf47550550b28f6ed2f89228306addb7f962f233e6798"
+    },
+    {
+      "path": "/tmp/od-deck-capture-tSlNJY/receipt.json",
+      "sha256": "94593d9622163b2550a2832a2da3c406db33531e60b8d4e84e6b238833250ed8"
+    },
+    {
+      "path": "/tmp/od-deck-capture-tSlNJY/default-stage/output/decoded-0.png",
+      "sha256": "190b46aff8d65c9a34ff5ccb3cbee2646c8d296027a187eb20986e2b46cacb99"
+    },
+    {
+      "path": "/tmp/pptx-capture-focused.log",
+      "sha256": "e9fdad62bf9846864568e4ce7c122791a8db52642597bba6325c14d20d2df90b"
+    },
+    {
+      "path": "/tmp/pptx-capture-all-focused.log",
+      "sha256": "7a44a06efb1e6082a193979c1dff0f2459eeab42566a5cbc4a965a04a1485919"
+    },
+    {
+      "path": "/tmp/pptx-capture-final-source-focused.log",
+      "sha256": "7723cb4c8833361d46165b5983d50bd2a58a883d2cbb4dde05e3861cb1aa923a"
+    },
+    {
+      "path": "/tmp/pptx-capture-final-source-types.log",
+      "sha256": "789d9f1673d1fbf7e93c0184f8ce140129f45e0afe266c3fc06cddb846e304f9"
+    },
+    {
+      "path": "/tmp/pptx-capture-final-source-guard.log",
+      "sha256": "4cb6e2af847de021d17221b35066b452f1686525d97498997e8b4becb7709164"
+    },
+    {
+      "path": "/tmp/pptx-capture-render-build.log",
+      "sha256": "45382c9ff24578c66d4601e41afb31ee62e547faf1b7515bc4e8be51e2bc9c3a"
+    },
+    {
+      "path": "/tmp/pptx-capture-671-docker.log",
+      "sha256": "1a6fc07072955dbc6a7322af159a320a378900f5471fe52420a55a62bf5c7036"
+    },
+    {
+      "path": "/tmp/pptx-capture-joined-install.log",
+      "sha256": "c66291d84426dc5cfa7c248fe4f084b259b58f05a02ee962fa86bb397e7437af"
+    },
+    {
+      "path": "/tmp/pptx-capture-joined-daemon.log",
+      "sha256": "4a4b9b7adf4eb71b77d36cb21c9a14e231bde43bb22a170b4a39f807f6c3362d"
+    },
+    {
+      "path": "/tmp/pptx-capture-joined-contracts.log",
+      "sha256": "a36d5cf1276e3557490ea439f033159462e16826eb897e098eaf9ec3c12dab6b"
+    },
+    {
+      "path": "/tmp/pptx-capture-joined-policy.log",
+      "sha256": "23a83b13034a1bbd34c98f5b5b77dbd3fa285a30d714507adfece7a22a2d2767"
+    },
+    {
+      "path": "/tmp/pptx-capture-joined-types.log",
+      "sha256": "a9649bbdb470976c29588d738096ff4bd0a4df091f6ba05806f90249b50aabe3"
+    },
+    {
+      "path": "/tmp/pptx-capture-joined-guard.log",
+      "sha256": "34a35a92b72e0b25ad6966004d8e126e9b4855a849114fe520e92e82c4be5e03"
+    },
+    {
+      "path": "/tmp/pptx-capture-joined-render-build.log",
+      "sha256": "0a37c35d9fd892c89ef152e369158a42ffc649eb95d811111b66b20d7f829cf1"
+    },
+    {
+      "path": "/tmp/pptx-capture-joined-docker.log",
+      "sha256": "b41c7a25b83dfbad078ec9891e3e679f32a280e51e58a82ab41fa0247f0ecfc5"
+    },
+    {
+      "path": "/tmp/pptx-capture-joined-build-terminal.json",
+      "sha256": "3b72a868c22bfee36d7236de4b222c8afa7b310aed08db20541ef51bcb1262df"
+    },
+    {
+      "path": "/tmp/pptx-capture-joined-image.id",
+      "sha256": "f9ddcc770b09f358192d8952e6f5e2bdb3ba4537f20851b3258a1e262d85d7d2"
+    },
+    {
+      "path": "/tmp/pptx-capture-joined-content.log",
+      "sha256": "af45ba64c08dcdc3f7508bde96e8e22280c351d92de077c6ca0ddce87ea33e5b"
+    },
+    {
+      "path": "/tmp/od-deck-capture-zt4WHr/receipt.json",
+      "sha256": "940b49464ff268843da9aba35cbadebceeb5c2259ae3e8ff24758d3cfcc089dc"
+    },
+    {
+      "path": "/tmp/od-deck-capture-zt4WHr/default-stage/output/decoded-0.png",
+      "sha256": "c35d1401188d9747696bc01632ad0d9a16160756f859e15ec083b0ba1efd7493"
+    },
+    {
+      "path": "/tmp/pptx-capture-joined-metadata.json",
+      "sha256": "f511154651d419ea4cfb846f014a16d8897731874f8c50357dc7fe8ea55928a1"
+    },
+    {
+      "path": "/tmp/pptx-capture-joined-metadata.log",
+      "sha256": "13a8dbaaae6ac93d7b4363c2ab574aaf236e0c58c5061794be4cd41af40c564f"
+    },
+    {
+      "path": "/tmp/pptx-capture-joined-source-proof.json",
+      "sha256": "55f9bf8a87ff957dfc816907a4fcfa705d805e0e5c82e805dcf753051e6cb69b"
+    },
+    {
+      "path": "/tmp/pptx-capture-parent-source-equality.json",
+      "sha256": "2447d9c0576e3caea4e913c90671fed31dec5a8db315167a7a109146b92777f4"
+    },
+    {
+      "path": "/tmp/pptx-capture-cleanup.json",
+      "sha256": "1c085c292006dba3c947d9ccc34b6c3e07ae45f7857baaf9fe65da668789a396"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-BcJKCg/receipt.json",
+      "sha256": "22b34917db0096bfa5979e1cda7fd4d3e41c719d4ba2627ffa9a19d11736a69d"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-BcJKCg/consumer-receipt.json",
+      "sha256": "5e54f5c59a2a950a43a02ae2ba2b5fbaf9dee5ff0e710ceef70a5ae0994ef9eb"
+    },
+    {
+      "path": "/tmp/pptx-transition-final-consumer.mjs",
+      "sha256": "fbc469d07ba43addd99364483c5c65f6728168df19c9ca30c396d2e4875bcb6b"
+    },
+    {
+      "path": "/tmp/pptx-final-consumer-readback.py",
+      "sha256": "0a6dfc2aa98d2c5afe42b20457caf2c209cdec74696ca75cb830a3fccb76aa5c"
+    },
+    {
+      "path": "/tmp/pptx-final-consumer-readback.log",
+      "sha256": "eb82a88abcb2790341c6fc6ec4a3d68e59cbef6c0becf9c5df22556173c0cefd"
+    },
+    {
+      "path": "/tmp/od-binary-image-render-RjwszE/receipt.json",
+      "sha256": "d86bcac31984920e94362775c09055bf715b9be639bc943c8c161ced1fe55101"
+    },
+    {
+      "path": "/tmp/pptx-joined-binary-immutable.log",
+      "sha256": "d778aa700964b03b869c8a975fcc7483a5aa07a31248aa1e1da6b5be88746916"
+    },
+    {
+      "path": "/tmp/od-raster-image-inventory-WxzZz7/report.json",
+      "sha256": "dc00c564fc4c8ec6ffa0517e70686760028e6aa164d1ea5c02640363bfbfc8ff"
+    },
+    {
+      "path": "/tmp/pptx-joined-raster-inventory.log",
+      "sha256": "340a26b3a6be415987fa2f560734edc98f071ae801fdddb405b0111557a60c79"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-BcJKCg/fade/output/artifact.pptx",
+      "sha256": "2cf4bf7c387e8dc5a7edc0911cd64f3b705ab5b6bd26fc0af7acc3d100a51ed7"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-BcJKCg/push/output/artifact.pptx",
+      "sha256": "34b1c3c05985498385fa7fd70cccfa0ae7010c910374b43ddbf8760c72f5d469"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-BcJKCg/none/output/artifact.pptx",
+      "sha256": "46fbfb90d57dc0397db5f24143aa7f85c6fef54139e1adfbdd4d475d0f84b935"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-BcJKCg/fade/consumer/artifact.pdf",
+      "sha256": "48f0d1f5b976696d0cf04926aeccd5a8d1400f47c1e62aa5271f1104c9bd74e3"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-BcJKCg/fade/consumer/slide1.png",
+      "sha256": "b1e74defe54f6956c879c63d36948178bd980a5fe8871c87049566cabad8b066"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-BcJKCg/push/consumer/artifact.pdf",
+      "sha256": "3cd217c5545648e935903f500f4ff928040ff00033dee4d8fc8797dba9133178"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-BcJKCg/push/consumer/slide1.png",
+      "sha256": "828eab95938ab9c080d638c28cdfabf5709575a66a27728e7e00f0f7d5b31a53"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-BcJKCg/none/consumer/artifact.pdf",
+      "sha256": "82e2f92275ba2e31942b210cb8e4a9619021baa32d681bd1e52c799db8a3844c"
+    },
+    {
+      "path": "/tmp/pptx-transition-consumer-BcJKCg/none/consumer/slide1.png",
+      "sha256": "b1e74defe54f6956c879c63d36948178bd980a5fe8871c87049566cabad8b066"
+    }
+  ]
+}
