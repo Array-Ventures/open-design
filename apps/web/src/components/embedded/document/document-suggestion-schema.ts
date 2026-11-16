@@ -1,3 +1,4 @@
+import { readDocumentDateElement } from './document-date-source';
 /** Source metadata describes a proposed change; it never grants editing authority. */
 export type DocumentSuggestion = { id: string; operation: 'insert' | 'delete' | 'replace'; kind: 'insert' | 'delete' };
 export const suggestionAttributes = ['data-eve-suggestion', 'data-eve-suggestion-id', 'data-eve-suggestion-operation'] as const;
@@ -19,7 +20,7 @@ export function validDocumentSuggestions(root: ParentNode): boolean {
     const value = readDocumentSuggestion(element);
     if (!value || !element.textContent || /[\r\n]/.test(element.textContent)
       || !element.closest('p,h1,h2,h3,h4,h5,h6,li')
-      || Array.from(element.querySelectorAll('*')).some(child => !inline.has(child.tagName))) return false;
+      || Array.from(element.querySelectorAll('*')).some(child => !inline.has(child.tagName) && !readDocumentDateElement(child))) return false;
     const group = groups.get(value.id) ?? [];
     group.push(element); groups.set(value.id, group);
   }

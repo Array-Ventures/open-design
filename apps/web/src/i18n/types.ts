@@ -30,6 +30,9 @@ export const LOCALE_LABEL: Record<Locale, string> = {
 // flat (not deeply nested) so missing-key TS errors point straight at the
 // offending string instead of a generic object mismatch.
 export interface Dict {
+  'documentDate.label': string;
+  'documentDate.choose': string;
+  'documentDate.blocked': string;
   'documentLayout.wide': string;
   'documentLayout.standardWidth': string;
   'documentSuggestions.modeAria': string;

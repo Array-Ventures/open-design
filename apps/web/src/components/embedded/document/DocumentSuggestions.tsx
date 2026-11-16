@@ -12,6 +12,7 @@ import { DOCUMENT_SUGGESTION_UPDATE_TAG, DocumentSuggestionInputError } from './
 import { attachDocumentSuggestionInput, type DocumentMode, type SuggestionNotice } from './document-suggestion-input';
 import { DOCUMENT_ICON_BUTTON } from './document-controls';
 import { useDocumentCommentPlacement } from './useDocumentCommentPlacement';
+import { captureDocumentControlFocus, restoreDocumentControlFocus, type DocumentControlFocus } from './document-control-focus';
 type Review = { id: string; inserted: string; deleted: string };
 const noticeKeys: Record<SuggestionNotice, keyof Dict> = {
   unsupported: 'documentSuggestions.unsupported', structure: 'documentSuggestions.structure',
@@ -26,6 +27,7 @@ export function DocumentSuggestions({ mode, suspended, onPending, onOpenChange, 
   const [changes, setChanges] = useState<Review[]>([]), [notice, setNotice] = useState<SuggestionNotice | null>(null);
   const [selected, setSelected] = useState<string | null>(null), [open, setOpen] = useState(true), [revision, setRevision] = useState(0);
   const trigger = useRef<HTMLButtonElement>(null), returnToTrigger = useRef(false), focusCard = useRef(false);
+  const reviewFocus = useRef<DocumentControlFocus>(null);
   const callbacks = useRef({ onPending, onOpenChange }); callbacks.current = { onPending, onOpenChange };
   const index = Math.max(0, changes.findIndex(change => change.id === selected)), current = changes[index];
   const active = Boolean(current && open && !suspended);
@@ -57,6 +59,10 @@ export function DocumentSuggestions({ mode, suspended, onPending, onOpenChange, 
     if (active && focusCard.current) { placement.card.current?.focus(); focusCard.current = false; }
     if (!active && returnToTrigger.current) { trigger.current?.focus(); returnToTrigger.current = false; }
   }, [active, placement.card]);
+  useLayoutEffect(() => {
+    const owner = reviewFocus.current; reviewFocus.current = null;
+    restoreDocumentControlFocus(editor, owner);
+  }, [changes, editor, mode]);
   useEffect(() => {
     const click = (event: MouseEvent) => {
       if (!(event.target instanceof Element)) return;
@@ -68,12 +74,13 @@ export function DocumentSuggestions({ mode, suspended, onPending, onOpenChange, 
     return editor.registerRootListener((root, previous) => { previous?.removeEventListener('click', click); root?.addEventListener('click', click); });
   }, [editor]);
   const close = () => { returnToTrigger.current = Boolean(placement.card.current?.contains(document.activeElement)); setOpen(false); };
-  const review = (accept: boolean) => {
+  const review = (accept: boolean, control: HTMLButtonElement) => {
     if (!current || currentMode.current === 'viewing' || !editor.isEditable()) return;
+    reviewFocus.current = captureDocumentControlFocus(editor, control);
     const id = current.id;
     editor.update(() => {
       try { $resolveDocumentSuggestion(id, accept); setNotice(null); }
-      catch { setNotice('stale'); if ($hasUpdateTag(DOCUMENT_SUGGESTION_UPDATE_TAG)) throw new DocumentSuggestionInputError('The incomplete review was rolled back.'); }
+      catch { reviewFocus.current = null; setNotice('stale'); if ($hasUpdateTag(DOCUMENT_SUGGESTION_UPDATE_TAG)) throw new DocumentSuggestionInputError('The incomplete review was rolled back.'); }
     }, { tag: HISTORY_PUSH_TAG });
   };
   return <>
@@ -91,8 +98,8 @@ export function DocumentSuggestions({ mode, suspended, onPending, onOpenChange, 
         {current.inserted ? <p><span className="text-text-secondary">{t('documentSuggestions.insert')} </span><ins>{current.inserted}</ins></p> : null}
       </div>
       <footer className="flex shrink-0 justify-end gap-1 px-3 py-2">
-        <Button variant="secondary" size="small" disabled={mode === 'viewing'} onClick={() => review(false)}>{t('documentSuggestions.reject')}</Button>
-        <Button variant="secondary" size="small" disabled={mode === 'viewing'} onClick={() => review(true)}>{t('documentSuggestions.accept')}</Button>
+        <Button variant="secondary" size="small" disabled={mode === 'viewing'} onClick={event => review(false, event.currentTarget)}>{t('documentSuggestions.reject')}</Button>
+        <Button variant="secondary" size="small" disabled={mode === 'viewing'} onClick={event => review(true, event.currentTarget)}>{t('documentSuggestions.accept')}</Button>
       </footer>
     </aside> : null}
   </>;

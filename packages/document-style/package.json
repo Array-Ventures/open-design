@@ -26,6 +26,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit && tsc -p tests/node-consumer/tsconfig.json",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@open-design/contracts": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "20.19.39",
     "@typescript/native": "npm:typescript@7.0.2",

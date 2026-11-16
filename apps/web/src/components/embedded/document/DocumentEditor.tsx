@@ -1,5 +1,7 @@
 'use client';
 
+import { DocumentDateNode } from './DocumentDateNode';
+
 import { useT } from '../../../i18n';
 import { cx } from '../boardui/cx';
 import { DocumentSuggestionInputError } from './document-suggestion-policy';
@@ -43,6 +45,7 @@ import { DOCUMENT_ICON_BUTTON } from './document-controls';
 import { DocumentImageNode, DocumentImageScope } from './DocumentImageNode';
 import { DocumentTextContrast } from './DocumentTextContrast';
 import { DocumentOutline } from './DocumentOutline';
+import { DocumentDates } from './DocumentDates';
 import { DocumentToolbar } from './DocumentToolbar';
 import styles from './DocumentEditor.module.css';
 import { Button } from '../boardui/button';
@@ -50,7 +53,7 @@ import { RiSaveLine, RiPencilLine, RiArrowDownSLine } from '@remixicon/react';
 import { ScrollFade, useScrollFade } from '../boardui/scroll-fade';
 import { Dropdown, DropdownTrigger, DropdownPopover, DropdownItem } from '../boardui/dropdown';
 
-export const documentNodes = [DocumentSuggestionNode, HeadingNode, QuoteNode, ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, LinkNode, CodeNode, CodeHighlightNode, DocumentImageNode, DocumentDividerNode, documentDividerReplacement];
+export const documentNodes = [DocumentDateNode, DocumentSuggestionNode, HeadingNode, QuoteNode, ListNode, ListItemNode, TableNode, TableRowNode, TableCellNode, LinkNode, CodeNode, CodeHighlightNode, DocumentImageNode, DocumentDividerNode, documentDividerReplacement];
 
 export function DocumentEditor({ feedback, onCommentDirtyChange, projectId, fileName, title, observed, onSaved, onDirtyChange, onWriteError }: {
   onCommentDirtyChange?(dirty: boolean): void; feedback?: ArtifactFeedbackProps; projectId: string; fileName: string; title: string; observed: DocumentFile; onSaved(saved: DocumentFile): void; onDirtyChange?(dirty: boolean, saving: boolean): void; onWriteError?(error: string | null): void;
@@ -145,7 +148,7 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
     return () => { clearTimeout(timer); normalize(); stop(); current.stop(); window.removeEventListener('beforeunload', unload); };
   }, [editor, fileName, observed, owners, projectId, title, rootAttributes]);
   const status = writeState.error ? 'Not saved' : writeState.saving ? 'Saving…' : writeState.dirty ? 'Unsaved changes' : 'Saved';
-  return <>
+  return <DocumentDates mode={mode}>
     <div className="flex shrink-0 items-center justify-end gap-2 px-3 py-2 text-caption-1-regular text-text-tertiary" >
       <DocumentOutline />
       <span role="status" className="min-w-0 truncate">{status}</span>
@@ -173,6 +176,6 @@ function DocumentBody({ feedback, onCommentDirtyChange, projectId, fileName, tit
     {feedback ? <DocumentComments onOpenChange={setCommentsOpen} onDirtyChange={onCommentDirtyChange} projectId={projectId} fileName={fileName} feedback={feedback} /> : null}
     <ScrollFade progress={fade.progress} surfaceClassName="from-background-primary-default" />
     </div>
-    {mode === 'editing' && !pendingSuggestions ? <DocumentToolbar pageWide={pageWidth.wide} onTogglePageWidth={pageWidth.toggle} commentsAvailable={Boolean(feedback)} hidden={commentsOpen} font={font} headingFont={headingFont} onImageStatus={setImageStatus} /> : null}
-  </>;
+    {mode !== 'viewing' ? <DocumentToolbar dateOnly={mode !== 'editing' || Boolean(pendingSuggestions)} pageWide={pageWidth.wide} onTogglePageWidth={pageWidth.toggle} commentsAvailable={Boolean(feedback)} hidden={commentsOpen} font={font} headingFont={headingFont} onImageStatus={setImageStatus} /> : null}
+  </DocumentDates>;
 }

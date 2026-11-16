@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const id: Dict = {
+  "documentDate.label": "Tanggal",
+  "documentDate.choose": "Pilih tanggal",
+  "documentDate.blocked": "Selesaikan saran ini atau pilih paragraf yang dapat diedit sebelum mengubah tanggalnya.",
+
   "documentLayout.wide": "Perlebar halaman",
   "documentLayout.standardWidth": "Gunakan lebar halaman standar",
   "documentSuggestions.modeAria": "Mode {mode}",

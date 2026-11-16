@@ -1,5 +1,6 @@
 import { documentDocxImageAssets } from './document-image-assets.js';
 import { projectDocumentDocxPage } from './document-docx-page.js';
+import { documentSourceDates } from './document-date-export.js';
 import { documentExportProfile, cssPxToTwips, wordFontSize } from './document-export-profile.js';
 import { documentDocxDividers, projectDocumentDocxDividers } from './document-docx-dividers.js';
 import { execFile } from 'node:child_process';
@@ -67,6 +68,7 @@ export async function prepareDocument(content: string, fileName: string, title: 
   const $ = load(html);
   if ($('html').attr('data-eve-document') !== '1') return null;
   assertResolvedDocumentSuggestions(html);
+  documentSourceDates($);
   $('ul.task-list input[type="checkbox"]').attr('disabled', '');
   $('li[aria-checked]').each((_index, item) => {
     const li = $(item); li.parent('ul').addClass('task-list');

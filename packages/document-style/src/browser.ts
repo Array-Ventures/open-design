@@ -1,6 +1,7 @@
 import { documentCodeBlockGeometry } from './code-block.js';
 import { documentFontSizePattern, validDocumentFontSize, validDocumentFontLineHeight, normalizeDocumentFontPoints, validDocumentHeadingLevel } from './presentation.js';
 import { compositeDocumentColor, documentContrast, opaqueDocumentColorHex, type DocumentColor } from './color.js';
+import { documentDateAttributes, readDocumentDate, type DocumentDate } from '@open-design/contracts/runtime/document-date';
 export type { DocumentColor } from './color.js';
 export { documentContrast } from './color.js';
 export type DocumentColorReader = (value: string) => DocumentColor | null;
@@ -89,13 +90,39 @@ function passiveDocumentMath(element: Element): boolean {
 }
 
 
-/** Unknown selectors/layout stay authored: adding wrappers must not restyle them. */
-export function documentColorLayoutQualified(document: Document, ownedStyles: readonly string[]): boolean {
+export type ValidatedDocumentDateAtoms = ReadonlySet<HTMLTimeElement>;
+const noDocumentDates: ValidatedDocumentDateAtoms = new Set();
+function canonicalDocumentDate(element: Element): DocumentDate | null {
+  if (element.namespaceURI !== htmlNamespace || element.tagName !== 'TIME'
+    || element.attributes.length !== documentDateAttributes.length
+    || Array.from(element.attributes).some(attribute => !(documentDateAttributes as readonly string[]).includes(attribute.name))
+    || element.getAttribute('data-eve-document-date') !== '1'
+    || Array.from(element.childNodes).some(child => child.nodeType !== 3)
+    || element.closest('pre,code') || !element.closest('p,h1,h2,h3,h4,h5,h6,li,td,th')) return null;
+  return readDocumentDate({ iso: element.getAttribute('datetime'), locale: element.getAttribute('data-eve-date-locale'), label: element.textContent });
+}
+/** The contained PDF adapter supplies its already-validated source vector.
+ * Source attributes alone do not opt a TIME into presentation qualification. */
+export function validatedDocumentDateAtoms(document: Document, expected: readonly DocumentDate[]): ValidatedDocumentDateAtoms {
+  const elements = Array.from(document.querySelectorAll('[data-eve-document-date],[data-eve-date-locale]'));
+  if (expected.length > 20000 || elements.length !== expected.length) throw Error('Document Date presentation changed.');
+  const atoms = new Set<HTMLTimeElement>();
+  for (let index = 0; index < elements.length; index++) {
+    const element = elements[index]!, actual = canonicalDocumentDate(element), source = readDocumentDate(expected[index]);
+    if (!actual || !source || actual.iso !== source.iso || actual.locale !== source.locale || actual.label !== source.label) throw Error('Document Date presentation changed.');
+    atoms.add(element as HTMLTimeElement);
+  }
+  return atoms;
+}
+/** Unknown selectors/layout stay authored. The optional exception is only for
+ * current, canonical Date TIME nodes explicitly bound to native source data. */
+export function documentColorLayoutQualified(document: Document, ownedStyles: readonly string[], validatedDateAtoms: ValidatedDocumentDateAtoms = noDocumentDates): boolean {
   if (document.documentElement.getAttribute('data-eve-document') !== '1' || document.querySelector('link[rel~="stylesheet"]')) return false;
   if (Array.from(document.querySelectorAll('style')).some(style => !ownedStyles.includes(style.textContent ?? ''))) return false;
+  for (const atom of validatedDateAtoms) if (!atom || atom.ownerDocument !== document || !document.documentElement.contains(atom) || !canonicalDocumentDate(atom)) return false;
   for (const element of [document.documentElement, document.body, ...Array.from(document.body.querySelectorAll('*'))]) {
     if (element.namespaceURI === mathNamespace) { if (!passiveDocumentMath(element)) return false; continue; }
-    if (element.namespaceURI !== htmlNamespace || element.parentElement?.namespaceURI === mathNamespace || !tags.has(element.tagName.toLowerCase())) return false;
+    if (element.namespaceURI !== htmlNamespace || element.parentElement?.namespaceURI === mathNamespace || !tags.has(element.tagName.toLowerCase()) && !validatedDateAtoms.has(element as HTMLTimeElement)) return false;
     if (element.tagName === 'HR') {
       if (Array.from(element.attributes).some(attribute => !['id','data-od-id','style'].includes(attribute.name) && !/^data-eve-docx-color-[a-f0-9]{16}$/.test(attribute.name))) return false;
       const rule = element as HTMLElement;
@@ -320,8 +347,8 @@ export function normalizeDocumentPresentationOwners(document: Document, requests
 /** Source compatibility alias; there is only one normalized presentation payload. */
 export const normalizeDocumentColorOwners = normalizeDocumentPresentationOwners;
 /** Transient print DOM only. Working HTML and authored foregrounds never change. */
-export function repairDocumentPrintInk(document: Document, ownedStyles: readonly string[], read: DocumentColorReader = documentColorReader(document)): { applied: number; qualified: boolean } {
-  if (!documentColorLayoutQualified(document, ownedStyles)) return { applied: 0, qualified: false };
+export function repairDocumentPrintInk(document: Document, ownedStyles: readonly string[], read: DocumentColorReader = documentColorReader(document), validatedDateAtoms: ValidatedDocumentDateAtoms = noDocumentDates): { applied: number; qualified: boolean } {
+  if (!documentColorLayoutQualified(document, ownedStyles, validatedDateAtoms)) return { applied: 0, qualified: false };
   const canvas = documentCanvasColor(document, read);
   if (!canvas || canvas[3] !== 1) return { applied: 0, qualified: false };
   const text: Text[] = [], walker = document.createTreeWalker(document.body, 4);

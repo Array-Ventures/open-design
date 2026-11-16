@@ -1,6 +1,10 @@
 import type { Dict } from '../types';
 
 export const ja: Dict = {
+  "documentDate.label": "日付",
+  "documentDate.choose": "日付を選択",
+  "documentDate.blocked": "日付を変更する前に、この提案を処理するか編集可能な段落を選択してください。",
+
   "documentLayout.wide": "ページ幅を広げる",
   "documentLayout.standardWidth": "標準のページ幅を使用",
   "documentSuggestions.modeAria": "{mode}モード",
