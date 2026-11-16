@@ -1,0 +1,191 @@
+{
+  "version": 1,
+  "sourceCommit": "ed417056e37e569a7c93e157500c1cc0e334a682",
+  "sourceScope": "Date Undo and last Review-control focus restoration; calendar glyph layout only",
+  "checks": {
+    "installExit": 0,
+    "focusedWeb": {
+      "exit": 0,
+      "files": 10,
+      "cases": 153
+    },
+    "workspaceTypesExit": 0,
+    "scriptsTypesExit": 0,
+    "guardExit": 0,
+    "independentSourceReview": "Approved; reviewer ran no tests"
+  },
+  "historyEvidence": {
+    "initialDateFocusRed": {
+      "failed": 1,
+      "passed": 11
+    },
+    "initialFixAttemptStillFailed": "jsdom hasFocus is Boolean(lastFocusedElement), so removing the focused DOM node marks the entire window inactive. Actual browser witness proves parent and child documents retain focus. Active-window fixtures model that property; a separate inactive-window refusal remains strict.",
+    "reviewRedWithActiveWindow": {
+      "failed": 2,
+      "passed": 12
+    },
+    "finalNewBehaviorCases": [
+      "Date Undo then immediate keyboard Redo",
+      "Last Accept then immediate keyboard Undo",
+      "Last Reject then immediate keyboard Undo",
+      "No focus takeover from another input",
+      "No focus takeover from an inactive window"
+    ]
+  },
+  "immutableBuild": {
+    "companionBuildId": "c4a95f5fbe05e17c0803ae0cf4ebf5ab34bc3f91cfb945cf2228dcd6f9ffeba6",
+    "rendererImageId": "sha256:d71cc1f319163a8eee669ae41db7a09d680afd5f562e0288ace935eea1a4f03a",
+    "threeBuilderChildrenExit": 0,
+    "strictVerifierExit": 0,
+    "allFiveRendererPayloadsEqualPreviousDate630": true,
+    "normalizedInputDelta": {
+      "added": 0,
+      "removed": 0,
+      "changed": 0
+    },
+    "actualFixedPairBrowserAcceptance": "Pending, separately owned fresh18821; no6261 activation"
+  },
+  "priorDate630ConsumerChecks": {
+    "nativeSource": "9cb824f066ee93e027a3f177cdacf1f4906a5517",
+    "dateSource": "630dcc7809cb059b257a8a661302a150c991dc43",
+    "wordDownloadStatus": 200,
+    "docxBytes": 10873,
+    "docxPackageParts": 18,
+    "realLibreOfficeConsumerExit": 0,
+    "realLibreOfficeOutputExists": true,
+    "pdfDownloadStatus": 200,
+    "pdfBytes": 14419,
+    "markdownDownloadStatus": 200,
+    "markdownBytes": 218,
+    "bothDateLabelsRetained": true,
+    "markdownSemanticDatesRetained": true,
+    "wordAndPdfVisualSpacingPassed": false,
+    "defect": "Adjacent Date labels and neighboring prose concatenate in actual Word/PDF output; editor chip margins are not projected. Separate source correction required.",
+    "pendingImportedProposal": [
+      "Word refused clearly",
+      "PDF refused clearly",
+      "Markdown refused clearly"
+    ],
+    "sourceReadbackUnchanged": true,
+    "capturePreparationFailure": "An exact DOM text lookup missed the download link; the dependent first read lacked a file. LibreOffice reported missing input but exit0. This is retained and not a successful consumer run. The actual later run had verified DOCX bytes and inspected generated PDF."
+  },
+  "limits": [
+    "No complete Date/export acceptance or entire-goal claim",
+    "No binary-image or presentation source integration in this frozen pair",
+    "No publication, installer pin or production change"
+  ],
+  "references": [
+    {
+      "path": "/tmp/date-history-focus-install.log",
+      "sha256": "02bf2d65f3a9d9e4f2d9a28e0c898289a4ba647fe521456763542afd273ce650"
+    },
+    {
+      "path": "/tmp/date-history-focus-red.log",
+      "sha256": "c5a1bb758432be67c490c37385885a858d3bbdc427e00bf6a7a5ce9f126903d9"
+    },
+    {
+      "path": "/tmp/date-history-focus-first-green.log",
+      "sha256": "a4f0066eba968c87962aba16f2f3d42638cf11072b0b7c2800b950f3ee01bd3f"
+    },
+    {
+      "path": "/tmp/date-review-history-focus-red.log",
+      "sha256": "06d950af0ad1bb14c3e940d6081b47ff9a440b74efc096acd47847beaa328526"
+    },
+    {
+      "path": "/tmp/date-history-focus-diagnostic.log",
+      "sha256": "7a605080acab2d6d2c0c7d754585a3f2f204d3343dfba9885df907e1b750e83e"
+    },
+    {
+      "path": "/tmp/date-review-history-focus-window-red.log",
+      "sha256": "c43705b9434da43a7451d3d180cee50c39d505706b6b632f6e8e8c9d796bec1e"
+    },
+    {
+      "path": "/tmp/date-history-focus-combined-green.log",
+      "sha256": "19672fd9b20091f369491621f6c3f4fbcbe82bb7df675dd8bb7cd6d8d1684257"
+    },
+    {
+      "path": "/tmp/date-history-focus-final-web.log",
+      "sha256": "9032d40fa8e28d7a6f54eb11a17ae4ecde23528a2adfaf046643810ac6dc7206"
+    },
+    {
+      "path": "/tmp/date-history-focus-types.log",
+      "sha256": "0286979af368496e72250e0531a57984430672b59c6513f046a003a2e20258c2"
+    },
+    {
+      "path": "/tmp/date-history-focus-guard.log",
+      "sha256": "832a9917eacd878dee4733aabda4514b9cfdd97f72d06e8ef5cbae07ddd2ccda"
+    },
+    {
+      "path": "/tmp/date-focus-ed417056-pair-receipt.json",
+      "sha256": "f061bbdae7b253a57df4129c8f3eb01f0418c40454bd8eb210516fa4e67bdcfe"
+    },
+    {
+      "path": "/tmp/date-focus-ed417056-qualification.json",
+      "sha256": "22889e513bf7e3c00490e635b522f589792a05cd3d8ad1b596e5c996d2184de4"
+    },
+    {
+      "path": "/tmp/date-wb-acceptance-ui/focus-case-after-undo.json",
+      "sha256": "02233df4d890f69b8d826289ebfb1bd2e2a095c491995e356080df3bf67b6809"
+    },
+    {
+      "path": "/tmp/date-root-docx-download.json",
+      "sha256": "a2dd156ca66ca4e4f14c1d14b7a271893fc6e70a551ed6e7ae56633112f413a1"
+    },
+    {
+      "path": "/tmp/date-root-pdf-download.json",
+      "sha256": "b421df00f9420aa4e06a4ff2eb173733e051a875a9253fdb37a308b7bf392e9b"
+    },
+    {
+      "path": "/tmp/date-root-markdown-download.json",
+      "sha256": "124688ed7aff45672c405342745fef66ce7c0ad25669af926bf9c56f8a8662d9"
+    },
+    {
+      "path": "/tmp/date-root-word-consumer-missing-input.log",
+      "sha256": "3087767fdee47844ec8c504836b5f568f8e2a8ea59535c7aa25faace1ca18da2"
+    },
+    {
+      "path": "/tmp/date-root-word-consumer.log",
+      "sha256": "c1b925bcb10783b4a48baf6298e881a81c0df0b4cec55804106194de006e7577"
+    },
+    {
+      "path": "/tmp/date-root-consumer/date-labels.docx",
+      "sha256": "43dcd3025b8ef2104e278a61e1bb1b8ca5e5e67b03c754e0b0afa564c7eeb281"
+    },
+    {
+      "path": "/tmp/date-root-consumer/date-labels.pdf",
+      "sha256": "ffd3a22a510ab94b508b21cedee98e6545b1ca37f05fc559f8ad4dadd2894054"
+    },
+    {
+      "path": "/tmp/date-root-consumer/native-date-labels.pdf",
+      "sha256": "7f8c6f79bf5503d34d4ddf88c5d0e8e6f1ef19568dcf31cad0999729c7a5ae1c"
+    },
+    {
+      "path": "/tmp/date-root-consumer/word-date-labels.png",
+      "sha256": "136cc834699a2c4ba7eceb25518adc67bfafc1d5d0bed4134f3083cbe92006f0"
+    },
+    {
+      "path": "/tmp/date-root-consumer/native-date-labels.png",
+      "sha256": "ed4c1e5682df63d26b84fd77674e3b532bac9b1274b97dba6d360efaf5ea0f1c"
+    },
+    {
+      "path": "/tmp/date-root-consumer/date-labels.md",
+      "sha256": "8b367ba5c74dcdf8cfbd8c492fa1d2a5f0e7cfe3cb812e96434fee511a787a15"
+    },
+    {
+      "path": "/tmp/date-root-export-source-readback.json",
+      "sha256": "d9abcec6f8430e2472dadedac8bd2e5cdeef2f0c3c89f1f1ee886091f7367b36"
+    },
+    {
+      "path": "/tmp/date-root-pending-word-result.txt",
+      "sha256": "e463acfb9b0b2da5604593ecf668135a5538830dcbe946ea256438adcb6a05cc"
+    },
+    {
+      "path": "/tmp/date-root-pending-pdf-settled.txt",
+      "sha256": "6d143ed2fb5ab83f69b7f6c297d1f09bfa173c6107cb9a6da25d075d8f668fbd"
+    },
+    {
+      "path": "/tmp/date-root-pending-markdown-result.txt",
+      "sha256": "a3d84fad0b87a76ff1dd91fec2d293b921bc6860d6b0bbedbced601f86fbac62"
+    }
+  ]
+}
