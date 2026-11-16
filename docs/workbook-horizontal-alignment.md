@@ -224,4 +224,58 @@ rollback compatibility or silent draft deletion is claimed.
 The fresh-kernel follow-up passed 79 affected cases across four files, web types
 and repository guard. Frozen install also exited 0. The first durable checkpoint's
 full workspace types/guard results remain separately scoped; this follow-up did
-not rerun unrelated daemon suites. Packaged recovery acceptance remains open.
+not rerun unrelated daemon suites. At that source checkpoint, packaged recovery acceptance remained open; the bounded later acceptance is recorded below.
+
+
+## Packaged 140 manual acceptance
+
+The later manual check used frozen fork source
+`e263e58036326b3429ff9e8e6de1a73b4b7b0988`, companion 140 build
+`0e4a6df1668c9aa9f5919de28bb9a7d8a1252efe35d00fd88c1d8f60b597a7f5`
+and renderer 83 image
+`sha256:5b09118f6152593188eefc6a7d9e2081ea406b595202ce54b43dd9a6864726d3`.
+The retained activation receipt records native
+`8b348a79ba09526ae5eca8efb7a93c15ad9dcbfc`; it is not a claim that the later
+native checkout was rebuilt or independently requalified at that revision.
+All three original builder children exited 0 with no signal. This documentation
+child changes no packaged source, payload, runtime selector or installer pin.
+
+A newly created disposable TEAM project, `WB140 recovery QA ccff307c`
+(`ccff307c-8c53-4836-87b2-04212337dc01`), used the existing native test recipe:
+`studio-rich.xlsx` with C1's imported alignment set to Fill. Manual trusted UI
+changed C1 to Automatic, saved and independently read back OOXML General.
+Native Undo created an actual committed IndexedDB recovery head for the exact
+viewer/project/file. Reload then normal Restore created a fresh grid; normal
+Save succeeded and restored OOXML Fill. No Worker termination or seeded draft
+was used. Fresh reopen showed a ready canvas, no recovery prompt and no Save.
+
+The independent ZIP/XML oracle matched ten original fields: alignment, XF
+attributes, formula, cache, font, fill, other cells, worksheet, other style data
+and unrelated package-part payload hashes. All five original style-table
+prefixes also matched. This does not promise identical ZIP-container bytes.
+At 390px in Dark, C1 Left was saved through the visible 32px Save button (center
+hit test passed); raw OOXML confirmed Left. Native Undo and another pointer
+Save restored Fill with the same oracle checks. Light/Dark desktop and 390px
+captures were personally inspected; the compact formatting dialog and Save
+were legible. This is one bounded Fill recovery path, not the full alignment,
+history, concurrency or workbook matrix.
+
+A transient `Worksheet controls changed. Try again.` warning was observed
+separately; these successful saves do not qualify every worksheet control.
+Earlier 140 recovery/formatting attempts remain failed evidence: a native
+host-readiness snapshot had Retry and no Studio iframe, a canvas wait failed,
+and timeout cleanup also reported a closed page. Their precise original cause
+was not established, and they are not rewritten as passing runs or proven
+alignment failures.
+
+The disposable project remains saved for inspection, with no active recovery
+or dirty Save at final reopen. The original page 8 URL, 1718×806 viewport and Dark
+theme were restored; the existing unsent chat draft and its two artifact contexts
+were retained. No message was sent. The shared browser context was neither
+signed out nor closed, and no new authentication session was created.
+
+`workbook140-acceptance-evidence.json` records 46 independently rehashed scratch
+references plus the original build/activation and failed-run receipts. It stores
+hashes and scope metadata, not unrelated chat text or private reference content.
+Source author checks above remain scoped to their original checkpoints; no
+unchanged suite was rerun for this documentation-only acceptance record.
