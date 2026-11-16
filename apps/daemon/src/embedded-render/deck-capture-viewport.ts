@@ -31,3 +31,17 @@ export const deckCaptureGeometry = (selector: string) => `(() => {
     };
   });
 })()`;
+
+/** Responsive layout can grow when its viewport grows. Verify the fixed point
+ * after each resize; refuse instead of allowing screenshot's implicit expansion. */
+export async function settleDeckCaptureViewport(
+  read: () => Promise<{ viewport: Viewport; stages: unknown }>,
+  resize: (viewport: Viewport) => Promise<void>,
+): Promise<void> {
+  for (let changes = 0; ; changes++) {
+    const { viewport, stages } = await read(), fitted = deckCaptureViewport(viewport, stages);
+    if (fitted.width === viewport.width && fitted.height === viewport.height) return;
+    if (changes === 4) throw Error('Deck capture layout did not settle within its bounded viewport.');
+    await resize(fitted);
+  }
+}

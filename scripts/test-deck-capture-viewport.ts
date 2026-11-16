@@ -64,6 +64,7 @@ try {
   await run('legacy', fixture(800, 450, '', false, true), 800, 450, { width: 800, height: 450 });
   await run('source-owned-image', fixture(800, 450, ''), 800, 450, { width: 800, height: 450 }, 'image', true);
   await run('unbounded-stage', fixture(800, 450, 'width="5000" height="450"'), 800, 450, { width: 800, height: 450 }, 'pptx', false, true);
+  await run('responsive-growth', fixture(800, 450, '').replace('width:800px;height:450px;box-sizing', 'width:200vw;height:450px;box-sizing'), 800, 450, { width: 800, height: 450 }, 'pptx', false, true);
   for (const [file, expected] of hashes) assert.equal(hash(await readFile(path.join(source, file))), expected);
   process.stdout.write(JSON.stringify({ ok: true, scratch, cases: receipts.length }) + '\n');
 } finally {
