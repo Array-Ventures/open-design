@@ -227,6 +227,9 @@ importers:
       saxes:
         specifier: 6.0.0
         version: 6.0.0
+      sharp:
+        specifier: 0.35.3
+        version: 0.35.3(@types/node@20.19.39)
       tar:
         specifier: 7.5.22
         version: 7.5.22

@@ -9,6 +9,8 @@ import { hyperFramesCompositionMetrics, injectHyperFramesFrameBridge } from '../
 import { prepareHyperFramesAudio, type HyperFramesAudioTrack } from '../media/hyperframes-audio.js';
 import { injectMotionSourcePlayer } from '@open-design/contracts/runtime/motion-source-player';
 import { isMediaExport, renderMedia } from './media.js';
+import { isImageSource } from '@open-design/contracts';
+import { renderImage } from './images.js';
 import { createServer } from 'node:http';
 import { readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -29,6 +31,10 @@ const realSlideSelector = `:is(${slideSelector}):not(.mini-slide *, .overview *,
 /** Runs ONLY in the host's disposable, network-disabled render container. */
 export async function renderSnapshot(source: string, output: string, value: unknown) {
   const input = RenderInput.parse(value);
+  if (isImageSource(input.fileName)) {
+    if (input.format !== 'image') throw new Error('Choose PNG/JPEG conversion or download the original image.');
+    return renderImage(source, output, input.fileName, input.imageFormat);
+  }
   if (isMediaExport(input.format)) return renderMedia(source, output, input.fileName, input.format);
   const root = await realpath(source);
   async function asset(name: string) {
