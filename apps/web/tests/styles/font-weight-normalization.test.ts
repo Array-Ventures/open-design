@@ -75,7 +75,7 @@ function isForbiddenWeight(weight: number): boolean {
 function ladderViolations(file: string): string[] {
   const violations: string[] = [];
   const css = withoutFontFaces(readFileSync(file, 'utf8'));
-  for (const match of css.matchAll(/font-weight\s*:\s*(\d+)\b/g)) {
+  for (const match of css.matchAll(/(?:^|[;{}])\s*font-weight\s*:\s*(\d+)\b/g)) {
     const weight = Number(match[1]);
     if (isForbiddenWeight(weight)) {
       violations.push(`${relative(repoRoot, file)}: ${weight}`);
@@ -140,6 +140,28 @@ describe('product UI font-weight normalization', () => {
   it('uses the consolidated weight ladder outside font metadata', () => {
     const violations = files.filter((file) => !isPending(file)).flatMap(ladderViolations);
     expect(violations).toEqual([]);
+  });
+
+  it('preserves the actual BoardUI composite token weights without treating metadata as declarations', () => {
+    const file = fileURLToPath(new URL('../../src/components/embedded/boardui/typography.css', import.meta.url));
+    const css = withoutFontFaces(readFileSync(file, 'utf8'));
+    const families = ['body', 'body-2', 'caption-1', 'caption-2', 'display-1', 'display-2', 'display-3', 'display-4', 'headline', 'large-title', 'title-1', 'title-2', 'title-3'];
+    const weights = { regular: 400, medium: 500, semibold: 600, bold: 700 };
+    const tokens = [...css.matchAll(/--text-([a-z0-9-]+)--font-weight:\s*(\d+)\b/g)]
+      .map(([, name, weight]) => [name!, Number(weight)] as const);
+    expect(new Map(tokens)).toEqual(new Map(families.flatMap(family => Object.entries(weights).map(([name, weight]) => [`${family}-${name}`, weight] as const))));
+    expect(tokens).toHaveLength(52);
+    expect(ladderViolations(file)).toEqual([]);
+  });
+
+  it('still refuses real forbidden declarations beside allowed custom-property metadata', () => {
+    const file = fileURLToPath(new URL('../fixtures/styles/font-weight-metadata.css', import.meta.url));
+    expect(ladderViolations(file)).toEqual([
+      'apps/web/tests/fixtures/styles/font-weight-metadata.css: 400',
+      'apps/web/tests/fixtures/styles/font-weight-metadata.css: 550',
+      'apps/web/tests/fixtures/styles/font-weight-metadata.css: 400',
+      'apps/web/tests/fixtures/styles/font-weight-metadata.css: font shorthand 400',
+    ]);
   });
 
   it('keeps the pending list limited to files that still need it', () => {
