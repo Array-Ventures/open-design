@@ -109,3 +109,25 @@ it('uses a fresh identity baseline after a clean protected kernel handoff instea
   expect(view.result.current.state).toMatchObject({ dirty: true, error: null });
   expect(view.result.current.checkpoint()!.acknowledged.custom).toEqual(second.custom);
 });
+
+it('keeps rejected ready provenance out of the exact Writer clean-resume handoff', async () => {
+  const qualified = { ...source, model: { ...model, worksheetMembershipEditable: true } };
+  const journal = { scope: { projectId, fileName: 'Current.xlsx', viewerId: 'alignment-viewer', draftId: crypto.randomUUID() }, isCurrent: () => true, save: vi.fn(async () => {}) };
+  const provenance = () => ({ data: { version: 1 as const, unitId: initial.id, rowPriority: false, styles: [] }, rowPriority: false, live: vi.fn(() => null), snapshot: vi.fn(() => () => 'general' as const), dispose: vi.fn() });
+  const accepted = provenance(), rejected = provenance();
+  const hook = renderHook(({ name }) => useWorkbookEditor(projectId, name, qualified, vi.fn(), undefined, journal), { initialProps: { name: 'Old.xlsx' } });
+  const staleReady = hook.result.current.ready;
+  hook.rerender({ name: 'Current.xlsx' });
+  await act(async () => { await hook.result.current.ready(initial, accepted); });
+  const lease = hook.result.current.membershipLease()!;
+  lease.bindCleanResume(async () => async () => {});
+  await act(async () => { await staleReady(initial, rejected); });
+  expect(hook.result.current.membershipLease()).toBe(lease);
+  const identity = { operationId: crypto.randomUUID(), projectId, fileName: 'Current.xlsx', sourceSha256: source.sourceSha256 };
+  await act(async () => { expect(await hook.result.current.pause(identity)).toBe(true); });
+  accepted.snapshot.mockClear(); rejected.snapshot.mockClear();
+  await act(async () => { await hook.result.current.resumeClean(false, { ...identity, outcome: 'cancelled' }); });
+  expect(accepted.snapshot).toHaveBeenCalled();
+  expect(rejected.snapshot).not.toHaveBeenCalled();
+  expect(hook.result.current.membershipLease()?.isOwned()).toBe(true);
+});

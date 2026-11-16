@@ -1,3 +1,5 @@
+import { writeWorkbookXml } from './xml.js';
+import { workbookAlignmentResolver, setWorkbookAlignment } from './alignment.js';
 import { workbookImportView } from './import-view.js';
 import { assertWorkbookSheetsSupported } from './sheet-patch.js';
 import { assertWorkbookStructureSupported } from './structure-patch.js';
@@ -94,7 +96,19 @@ async function readXlsx(bytes: Buffer): Promise<ReadWorkbook> {
     const root = xmlPart(parts, name).documentElement;
     if (root?.localName === 'worksheet' && MAIN_NAMESPACES.has(root.namespaceURI ?? '')) preflightWorksheet(root, budget);
   }
-  const importParts = workbookImportView(parts, [mainPart, ...[...links.values()].filter(link => !link.external && ['/worksheet', '/styles', '/sharedStrings'].some(kind => link.type.endsWith(kind))).map(link => link.target)]);
+  const importParts = new Map(workbookImportView(parts, [mainPart, ...[...links.values()].filter(link => !link.external && ['/worksheet', '/styles', '/sharedStrings'].some(kind => link.type.endsWith(kind))).map(link => link.target)]));
+  // Pinned ExcelJS ignores named-style alignment and applyAlignment=false.
+  // Resolve in its private import view, retaining the original ZIP/XFs verbatim.
+  const alignmentLink = [...links.values()].find(link => link.type.endsWith('/styles'));
+  if (alignmentLink && !alignmentLink.external) {
+    const document = xmlPart(importParts, alignmentLink.target), root = document.documentElement!;
+    const resolve = workbookAlignmentResolver(root), table = child(root, 'cellXfs');
+    if (table) for (const xf of children(table, 'xf')) {
+      const effective = resolve(xf);
+      if (effective !== child(xf, 'alignment')) setWorkbookAlignment(xf, effective);
+    }
+    importParts.set(alignmentLink.target, writeWorkbookXml(document));
+  }
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(Uint8Array.from(await writeWorkbookPackage(importParts)).buffer);
   // ExcelJS's cell reconciler deliberately skips styleId zero. Read that XF

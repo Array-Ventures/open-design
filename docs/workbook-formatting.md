@@ -9,7 +9,7 @@ never exports the grid snapshot as XLSX. Automatic text color and No fill
 commands use distinct valid renderer representations of black/transparent paint,
 which the sparse plan maps to OOXML automatic color / patternType=none. This
 also distinguishes no fill from an authored white fill. The header still excludes
-rich-text selections; rich run edits use the separate contract below. Whole-cell
+rich-text selections; rich run edits use the separate contract below. Horizontal alignment is covered by the [sparse alignment adapter](workbook-horizontal-alignment.md). Other whole-cell
 alignment, number formats, borders, font family/size, row/column styles and
 structural formatting remain unsupported edits and block saving rather than
 partially dropping them.

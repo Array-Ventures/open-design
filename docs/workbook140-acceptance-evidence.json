@@ -1,0 +1,310 @@
+{
+  "version": 1,
+  "qualification": "bounded manual workbook140 recovery",
+  "sourceCommit": "e263e58036326b3429ff9e8e6de1a73b4b7b0988",
+  "nativeActivationCommit": "8b348a79ba09526ae5eca8efb7a93c15ad9dcbfc",
+  "nativeIdentityScope": "Recorded package140 activation receipt; current checkout identity was not requalified as a new native build.",
+  "companion": {
+    "directory": "/tmp/od-artifact-package140",
+    "buildId": "0e4a6df1668c9aa9f5919de28bb9a7d8a1252efe35d00fd88c1d8f60b597a7f5"
+  },
+  "renderer": {
+    "directory": "/tmp/od-artifact-render83",
+    "imageId": "sha256:5b09118f6152593188eefc6a7d9e2081ea406b595202ce54b43dd9a6864726d3"
+  },
+  "builderChildren": {
+    "companion": {
+      "code": 0,
+      "signal": null
+    },
+    "renderer": {
+      "code": 0,
+      "signal": null
+    },
+    "image": {
+      "code": 0,
+      "signal": null
+    }
+  },
+  "fixture": {
+    "projectId": "ccff307c-8c53-4836-87b2-04212337dc01",
+    "name": "WB140 recovery QA ccff307c",
+    "sourceSha256": "392056bcc7701124c25283957bf64f58907cb4a8bddd9873018741abe5dce209",
+    "recipe": "Existing native fixture alignmentFixture(studio-rich.xlsx, C1 horizontal fill)",
+    "leftAtFinish": "Saved Fill after phone Left Save then native Undo Save; fresh reopen no Save or recovery prompt. Disposable project retained, not deleted."
+  },
+  "accepted": [
+    "Fill\u2192Automatic normalSave raw general",
+    "nativeUndo\u2192committed actualIDB recoveryhead",
+    "reload\u2192Restore\u2192freshgrid normalSave raw Fill",
+    "independent original/restored fields and original table-prefix equality",
+    "freshreopen no recovery prompt/no Save",
+    "Light and Dark desktop and390px personally viewed",
+    "390Dark C1Left pointerSave rawleft\u2192nativeUndo pointerSave rawFill",
+    "390Save32px center hit true",
+    "original1718x806/Dark restored, existingchatdraft+2contexts retained; originalpage8URL restored"
+  ],
+  "oracle": {
+    "equalFields": [
+      "alignment",
+      "xfAttributes",
+      "formula",
+      "cache",
+      "font",
+      "fill",
+      "otherCells",
+      "worksheet",
+      "styleOther",
+      "parts"
+    ],
+    "fieldCount": 10,
+    "originalTablePrefixCount": 5,
+    "allPassed": true
+  },
+  "limits": [
+    "Worksheet controls changed.Tryagain transient alert observed separately; no wholemanagement-controls pass",
+    "no forcedWorker crash injected",
+    "C1 Fill recovery bounded, not all alignments/history/concurrency matrix",
+    "ZIP container bytes may differ; unrelated file payload bytes verified via oracle",
+    "shared existingcontext not signed out or closed; no newauthsession created"
+  ],
+  "previousFailures": {
+    "recovery": "Retained180s timeout before completed recovery acceptance; cleanup page-closed error masks original wait. Native snapshot shows Could not reach the server/Retry and no Studio iframe.",
+    "formatting": "Retained30s canvas absence before formatting edit; not a proven renderer/alignment regression.",
+    "logs": [
+      {
+        "path": "/tmp/workbook-alignment-native-pair140-ui.log",
+        "sha256": "ecceae647c75c6a3399e787e6cb639a26141601c8d0ff0474a80529f597d4d19"
+      },
+      {
+        "path": "/tmp/workbook-format-native-pair140-ui.log",
+        "sha256": "2ee6040b890a66195b9f57e69071bdb1253eef3742bf6ccbac685c49731bf52b"
+      }
+    ]
+  },
+  "activationAndBuild": [
+    {
+      "path": "/tmp/artifact140-env-proof.json",
+      "sha256": "41c733d71dec54574cc020e02439a2650b0c95a93fd3fb4d4fa03eab2fc4d1a5"
+    },
+    {
+      "path": "/tmp/artifact140-root-pair-receipt.json",
+      "sha256": "8910f02a917c13c7e7771a083c542feee4487bad242b0ed6922f62cc54a5ec11"
+    }
+  ],
+  "manualReceipt": {
+    "path": "/tmp/workbook140-acceptance-ui/qualification.json",
+    "sha256": "629d80d5b90270b5e96358975c6b31f3640edf205db83b58da2cd1cf56510808"
+  },
+  "manualReferences": [
+    {
+      "path": "/tmp/workbook140-acceptance-ui/alignment.xlsx",
+      "sha256": "392056bcc7701124c25283957bf64f58907cb4a8bddd9873018741abe5dce209"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/dark-phone-dirty-save.png",
+      "sha256": "bc3b91c1e02695237befd1dfe2767a7c0f4c0b4d78588f2c7647316d36bb926a"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/dark-phone-format.png",
+      "sha256": "86a8dd3628db1bc5863d0146431ce5fd89246bc21ddaba6225a7d6789932b97e"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/dark-phone.txt",
+      "sha256": "2d7b75d6d41c86d4479ae7a7f149f833d884797e39314b8c381d49ad21687567"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/dirty-general.txt",
+      "sha256": "371b5e5f98b9246e86d3986226b7a6e2b45d0e8f1a2a44f485c44734579dc93c"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/dirty-head.json",
+      "sha256": "05be262b7d8617500ae9207f4a5633e12d04e0b4824cd7bfdda27eee79027c5b"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/final-oracle.json",
+      "sha256": "7875e13ae1805ded8fdfec890784cc8dc2f065b86a8bac627d6d874c425469ab"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/final-readback.json",
+      "sha256": "08924dcbc801ecaf29c9ab70e8b90cc5add04b98042a5904f070dd7969de2565"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/final-ui-state.json",
+      "sha256": "f92b9ad806568a42f409a6a2be8db4b845b376926f098ce6611f3b7315eff3bc"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/final.xlsx",
+      "sha256": "454580aca992173f091b99316b38dc00043e8b8a60f4e082cc3296466845d0c6"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/general-readback.json",
+      "sha256": "f583b008f21e3724be0fd2b1a6f43dfaa746f77a93965745e05b2e2772f01e96"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/general.xlsx",
+      "sha256": "72a6d9ddabe685c5e5dad481c33b379947b864ec49074f146a7b7f2c90b96a3f"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/initial-artifact.png",
+      "sha256": "f340eefc174af2f6de71fbe9986c993569888492fb6870129f02266e1e99050e"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/initial.txt",
+      "sha256": "e01436792434bb4b97078fb095a671d4def44c6f07b38c35d75bd2562aa36e26"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/light-phone-state.json",
+      "sha256": "a57a1e2ba199886eba1f382ee8b51b4107c67e40549c97ae9b2c31955520738e"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/light-phone.txt",
+      "sha256": "9a5ba008ef2bced06c46e2e09f0e2ea32dd59b22c349540e9f614279495d7431"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/light.txt",
+      "sha256": "513a9794444d749cb56551c31d1763ac32985ccb7c67b49cae6f6b272a37a629"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/loaded.txt",
+      "sha256": "c9db90ec793a62531549a46dd84698de665e0a70a38b391be291da8cf69b946b"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/phone-c1.txt",
+      "sha256": "669dc00fc3c283c71de9838f5d53dec0d251bd89a59642984b42dd151e76ca77"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/phone-dirty.txt",
+      "sha256": "8659b8ef4500f5aa4327bcb83f8ceb16c29c5c8d52e9f7dd63f1d59b6017c99a"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/phone-format.txt",
+      "sha256": "6d0ca4f6373a78be485b250544b8bceb94520229bacefa494a2d792f52c08544"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/phone-left-readback.json",
+      "sha256": "633a514908e435e451c6355b008048585c46b24093f061b3bcb9a4e586423713"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/phone-left.xlsx",
+      "sha256": "912fae8c18e0b99e0d7c36103c0faedab310e052b9b1244cefe174748d5cf620"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/phone-save-hit.json",
+      "sha256": "2a0b0955f99a18c5a0190dec71ab8a0589c865c1a13bbd144698ca1d716f4390"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/phone-undo.txt",
+      "sha256": "2ece2f6acee0466d3b78f83182f4d3811f3ce055efafc773a9204714ab086da1"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/phone.txt",
+      "sha256": "8f19394cc10944f2bb8af808128c63e63d7da1a4fbcc0c6fe3a6457b725a4bd3"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/project-created.json",
+      "sha256": "fe04f33eb67d2d082c762ca1de1e508b0cc695c1ccb3afcafb56a0c70f1adcb8"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/recovery-prompt.txt",
+      "sha256": "dfb15b36b50fae9125aff7cae79e4be5cffc11d27069ce8b049cba5de2e6f11f"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/reload.txt",
+      "sha256": "2a0b999a2129836d75490512ac4f2cf37b4745b41558e9178354d33319221c12"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/reopened-dark-desktop.png",
+      "sha256": "ebc2385d6ea62259537a320a047ce64a1918f6cfa592844b0b5c7faa985ecaa2"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/reopened-dark-phone.png",
+      "sha256": "f488b26584c2c8438bba3fe3b0a58e7dbb92dc884a70d47ae16ce7b0ce6144b1"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/reopened-light-desktop.png",
+      "sha256": "3f525dc623378e2c89a85007d97c7227635416963a6e1751b93785175e8d4806"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/reopened-light-phone.png",
+      "sha256": "c9bad3813e3a9fe7e2673cffc041ab5f6c2c72ef5f7132c9dcf7e1cb6676be7c"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/reopened.txt",
+      "sha256": "8d2446727f358fae8c5f5e8caa031bb0585ed888f522422395ebd2bed5a7011f"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/restored-oracle.json",
+      "sha256": "7875e13ae1805ded8fdfec890784cc8dc2f065b86a8bac627d6d874c425469ab"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/restored-readback.json",
+      "sha256": "9e452da9f7024a51a5fc06b349c07c37393019ab74efb5dbdf2b088b8b2a14a0"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/restored-ready.txt",
+      "sha256": "63167c8ab181c87a1c2f6022f7bed0fae87f36de3b435006bec47b9c0c366dfe"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/restored.txt",
+      "sha256": "a5fa0bee9915596dba9b8649ce4835329031de925bf2a13ad03a9fd1f574aa0b"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/restored.xlsx",
+      "sha256": "26120fcd0f50b9ab784032ce2a73db37566dab40e1b3959cc18c2a82582abab5"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/selected-c1.png",
+      "sha256": "4dcd6b27e45ff0658a6f0e1d3d5b71ffe537edc8101938b770249f261a421cba"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/selection.txt",
+      "sha256": "b71a74333c1310381d579eea0e72c812c0fdd31136e4b4007e909cf79049a659"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/settings-dark.txt",
+      "sha256": "f37058bc4db858aa552519cb8f9d6cf1ddcdc223fd8bdafd63a04fdeb519a287"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/settings-return.txt",
+      "sha256": "bc21db9ed8a568d75facd88ad7c261383232b9b63cb7cadbb89651af01c93dbe"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/settings-return2.txt",
+      "sha256": "b87e16a09531a8c3e550d0be8cb48c94e1a4ac4f2c7a7ef822793259e042e453"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/settings.txt",
+      "sha256": "87949a3dff423a0d9aae04affd82708916a51cbf9325f4e71b2e2e7065447e13"
+    },
+    {
+      "path": "/tmp/workbook140-acceptance-ui/upload.json",
+      "sha256": "c33018b4040cc5ab1b56d95e8def7883b23c5dbc93bd2f29448a3be2e2f41bdb"
+    }
+  ],
+  "finalSourceChecks": {
+    "source": "e263e58036326b3429ff9e8e6de1a73b4b7b0988",
+    "typecheckExitCode": 0,
+    "guardExitCode": 0,
+    "references": [
+      {
+        "path": "/tmp/workbook140-final-types.log",
+        "sha256": "3523a40fff735940494d6db0790492dd45ef1fbfa94f810929060211e48a4be8"
+      },
+      {
+        "path": "/tmp/workbook140-final-guard.log",
+        "sha256": "2a06ee3ad0aba8fbfd134ab2dfb78422e16d3620927a216792cf39dcf66b9a5c"
+      }
+    ]
+  },
+  "reviewImages": [
+    {
+      "path": "docs/assets/workbook140/entrypoint-dark.png",
+      "sha256": "f4c5d2e3e157d8daa27af21f74e78ec7b30b9801c4164552cff37dca09b6704a"
+    },
+    {
+      "path": "docs/assets/workbook140/formatting-dark.png",
+      "sha256": "8ca73463e3d9ed0475358b9b1b72f38e5fd8ec6b799697cb5539de86097bfc44"
+    }
+  ]
+}

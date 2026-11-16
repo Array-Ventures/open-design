@@ -1,3 +1,4 @@
+import { workbookAlignmentDataSchema, workbookAlignmentDataProjection } from './grid-horizontal-alignment';
 import { checkedWorkbookRemovalContexts } from './grid-sheet-projection';
 import { workbookSheetBirthStateSchema, checkedWorkbookSheetBirths } from './sheet-birth-context';
 import { matchesWorkbookSourceSnapshot, workbookSourceSnapshotBindingSchema } from './source-snapshot-binding';
@@ -14,6 +15,7 @@ const snapshot = workbookGridSnapshotSchema;
 const intent = z.object({ id: z.string().uuid(), preparationId: z.string().uuid(), previewId: z.string().uuid(), renderId: z.string().uuid().optional(), plan: workbookEditPlanSchema }).strict();
 const checkpoint = z.object({ version: z.literal(1), source: workbookPreviewSchema, acknowledged: snapshot, desired: snapshot,
   pending: z.object({ intent, snapshot, acknowledgement: workbookSaveAcknowledgementSchema.optional() }).strict().nullable(),
+  alignmentData: workbookAlignmentDataSchema.optional(),
   sourceAcknowledgement: workbookSaveAcknowledgementSchema.optional(),
   sheetDeletions: z.array(workbookSourceDeleteContextSchema).max(4096).optional(),
   sheetBirths: workbookSheetBirthStateSchema.optional(),
@@ -33,9 +35,12 @@ export function decodeWorkbookDraft(value: unknown, scope: WorkbookDraftScope): 
   // Univer snapshots contain extensible presentation fields. The bounded
   // structure is validated here; only a derived typed edit plan reaches OOXML.
   const state = parsed.checkpoint as unknown as WorkbookCheckpoint, gridId = `${scope.projectId}:${scope.fileName}`;
+  const alignment = state.alignmentData ? workbookAlignmentDataProjection(state.alignmentData) : undefined;
+  if (state.alignmentData && state.alignmentData.unitId !== gridId) throw Error('The alignment data belongs to another workbook.');
   if (/\.csv$/i.test(scope.fileName) !== (state.source.model.sourceFormat === 'csv')) throw new Error('The workbook draft source format is inconsistent.');
   if ([state.acknowledged, state.desired, ...(state.pending ? [state.pending.snapshot] : [])].some(sheet => sheet.id !== gridId)) throw new Error('The workbook draft identity is inconsistent.');
   for (const data of [state.acknowledged, state.desired, ...(state.pending ? [state.pending.snapshot] : [])]) {
+    alignment?.snapshot(data);
     if (new Set(data.sheetOrder).size !== data.sheetOrder.length || JSON.stringify([...data.sheetOrder].sort()) !== JSON.stringify(Object.keys(data.sheets).sort())) throw new Error('The workbook draft sheet structure is inconsistent.');
     for (const [id, sheet] of Object.entries(data.sheets)) {
       if (sheet.id !== id) throw new Error('The workbook draft sheet identity is inconsistent.');
@@ -58,7 +63,7 @@ export function decodeWorkbookDraft(value: unknown, scope: WorkbookDraftScope): 
     }
   }
   for (const snapshot of [state.acknowledged, state.desired, ...(state.pending ? [state.pending.snapshot] : [])]) {
-    checkedWorkbookRemovalContexts(snapshot, state.acknowledged, { scope, pending: state.pending, deletions: state.sheetDeletions, births: state.sheetBirths, sourceOwner: state.sourceAcknowledgement && state.sourceSnapshotBinding ? { scope, acknowledgement: state.sourceAcknowledgement, binding: state.sourceSnapshotBinding } : undefined }, state.source);
+    checkedWorkbookRemovalContexts(snapshot, state.acknowledged, { alignment, scope, pending: state.pending, deletions: state.sheetDeletions, births: state.sheetBirths, sourceOwner: state.sourceAcknowledgement && state.sourceSnapshotBinding ? { scope, acknowledgement: state.sourceAcknowledgement, binding: state.sourceSnapshotBinding } : undefined }, state.source);
   }
   const sheetIds = state.source.model.sheets.map(sheet => sheet.id);
   if (JSON.stringify(state.acknowledged.sheetOrder) !== JSON.stringify(sheetIds)) throw new Error('The workbook draft baseline is inconsistent.');
@@ -70,7 +75,7 @@ export function decodeWorkbookDraft(value: unknown, scope: WorkbookDraftScope): 
       : proof.targetSha256 !== state.source.sourceSha256)) throw Error('The protected workbook acknowledgement identity is inconsistent.');
   }
   if (state.pending) {
-    const derived = workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.pending.snapshot, { scope, pending: state.pending, deletions: state.sheetDeletions, births: state.sheetBirths, sourceOwner: state.sourceAcknowledgement && state.sourceSnapshotBinding ? { scope, acknowledgement: state.sourceAcknowledgement, binding: state.sourceSnapshotBinding } : undefined });
+    const derived = workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.pending.snapshot, { alignment, scope, pending: state.pending, deletions: state.sheetDeletions, births: state.sheetBirths, sourceOwner: state.sourceAcknowledgement && state.sourceSnapshotBinding ? { scope, acknowledgement: state.sourceAcknowledgement, binding: state.sourceSnapshotBinding } : undefined });
     if (JSON.stringify(derived) !== JSON.stringify(state.pending.intent.plan)) throw new Error('The pending workbook save does not match its protected snapshot.');
   }
   if (state.sourceSnapshotBinding && !matchesWorkbookSourceSnapshot(state, scope, state.source)) throw Error('The protected source snapshot binding is inconsistent.');
@@ -85,6 +90,6 @@ export function encodeWorkbookDraft(scope: WorkbookDraftScope, checkpoint: Workb
  * Unsupported desired state stays recoverable rather than being discarded. */
 export function workbookCheckpointNeedsRecovery(state: WorkbookCheckpoint, scope: WorkbookDraftScope, fresh: WorkbookCheckpoint['source'] | null | undefined): boolean {
   if (state.pending || state.sheetActionConflict) return true;
-  try { return workbookPlanHasChanges(workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.desired, { scope, pending: state.pending, deletions: state.sheetDeletions, births: state.sheetBirths, sourceOwner: state.sourceAcknowledgement && state.sourceSnapshotBinding ? { scope, acknowledgement: state.sourceAcknowledgement, binding: state.sourceSnapshotBinding } : undefined })) || !matchesWorkbookSourceSnapshot(state, scope, fresh); }
+  try { return workbookPlanHasChanges(workbookGridPlan(state.source.model, state.source.sourceSha256, state.acknowledged, state.desired, { alignment: state.alignmentData ? workbookAlignmentDataProjection(state.alignmentData) : undefined, scope, pending: state.pending, deletions: state.sheetDeletions, births: state.sheetBirths, sourceOwner: state.sourceAcknowledgement && state.sourceSnapshotBinding ? { scope, acknowledgement: state.sourceAcknowledgement, binding: state.sourceSnapshotBinding } : undefined })) || !matchesWorkbookSourceSnapshot(state, scope, fresh); }
   catch { return true; }
 }

@@ -21,7 +21,7 @@ import { attachWorkbookRichInput } from './rich-cell-input';
 import { attachCsvLiteralInput } from './csv-literal-input';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CommandType, IContextService, FUniver, LocaleType, Univer, type IRange, type IWorkbookData } from '@univerjs/presets';
+import { CommandType, IConfigService, IContextService, FUniver, LocaleType, Univer, type IRange, type IWorkbookData } from '@univerjs/presets';
 import English from '@univerjs/preset-sheets-core/locales/en-US';
 import '@univerjs/preset-sheets-core/lib/index.css';
 import type { WorkbookDocument } from '@open-design/contracts/runtime/workbook';
@@ -29,6 +29,7 @@ import { gridWorkbook, type WorkbookDisplayGap } from './grid-model';
 import { workbookGridTheme } from './grid-theme';
 import styles from './WorkbookGrid.module.css';
 import { cx } from '../boardui/cx';
+import { workbookAlignmentProvenance, type WorkbookAlignmentProvenance } from './grid-horizontal-alignment';
 import { workbookFormattingBridge, type WorkbookFormatScope } from './grid-format';
 import type { WorkbookCalculationState } from './calculation-state';
 import { ownWorkbookCalculationWorker } from './calculation-worker-owner';
@@ -54,7 +55,7 @@ export interface WorkbookGridProps {
   membershipLease?: () => WorkbookMembershipWriterLease | null;
   navigationBlocked?: boolean;
   onSnapshot?(snapshot: IWorkbookData): void;
-  onReady?(snapshot: IWorkbookData): void | Promise<void>;
+  onReady?(snapshot: IWorkbookData, alignment?: WorkbookAlignmentProvenance): void | Promise<void>;
   onDisplayGaps?(gaps: WorkbookDisplayGap[]): void;
 }
 
@@ -83,7 +84,7 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
   const visibilityRef = useRef<{ publish(): void } | null>(null);
   useEffect(() => { visibilityRef.current?.publish(); }, [formatScope?.blocked, formatScope?.saving]);
   const formattingRef = useRef<{ publish(): void } | null>(null);
-  useEffect(() => { formattingRef.current?.publish(); }, [formatScope?.blocked]);
+  useEffect(() => { formattingRef.current?.publish(); }, [formatScope?.blocked, formatScope?.saving]);
   const [error, setError] = useState<string | null>(null);
   const inputError = useRef<string | null>(null);
   const calculationState = useRef<WorkbookCalculationState | null>(null);
@@ -281,7 +282,12 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
       layer.own(() => navigation.dispose());
       // No mutations are accepted while the controller drains a previous
       // writer. An unmounted/revoked surface must never become editable later.
-      await callbacks.current.onReady?.(workbook.save());
+      // Capture the rendered kernel's configured priority once. SheetSkeleton
+      // applies this same configuration; later ACK style ordinals are unrelated.
+      const rowPriority = univer.__getInjector().get(IConfigService).getConfig<boolean>('isRowStylePrecedeColumnStyle') ?? false;
+      const alignment = workbookAlignmentProvenance(workbook, model, original.styles, () => active, !seed, rowPriority);
+      layer.own(() => alignment.dispose());
+      await callbacks.current.onReady?.(workbook.save(), alignment);
       if (!current()) return;
       const lease = callbacks.current.membershipLease?.();
       if (lease?.isOwned() && isIssuedWorkbookMembershipWriterLease(lease) && model.worksheetMembershipEditable === true && scalarCalculation && calculationOwner?.ready && sourceSha256) {
@@ -328,8 +334,8 @@ export function WorkbookGrid({ id, title, model, sourceSha256, kernelGeneration,
       if (literal || richInput) dispose = () => { try { literal?.dispose(); richInput?.dispose(); } finally { beforeLiteral(); } };
       const formatting = workbookFormattingBridge(univerAPI, () => {
         const scope = format.current;
-        return editable && model.sourceFormat !== 'csv' && scope ? { ...scope, blocked: scope.blocked || !readyForInput } : undefined;
-      }); formattingRef.current = formatting;
+        return current() && editable && model.sourceFormat !== 'csv' && scope ? { ...scope, blocked: scope.blocked || Boolean(scope.saving) || !readyForInput } : undefined;
+      }, alignment); formattingRef.current = formatting;
       const visibility = workbookVisibilityBridge(univer, univerAPI, () => model, () => {
         const scope = format.current;
         return current() && scope && sourceSha256 && model.sourceFormat !== 'csv' ? { ...scope, sourceSha256, blocked: scope.blocked || Boolean(scope.saving) || !editable || !readyForInput } : undefined;

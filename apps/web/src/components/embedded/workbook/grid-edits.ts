@@ -3,6 +3,7 @@ import { CellValueType, WorksheetHiddenState, type ICellData, type IWorkbookData
 import { workbookEditPlanSchema, type WorkbookCell, type WorkbookDimensionEdit, type WorkbookDocument, type WorkbookStyleEdit, type WorkbookVisibilityEdit } from '@open-design/contracts/runtime/workbook';
 
 import { workbookRichText } from './grid-rich-text';
+import { gridHorizontalAlignment, type WorkbookAlignmentProjection } from './grid-horizontal-alignment';
 import { gridDimensionEdits } from './grid-dimensions';
 
 export class WorkbookEditError extends Error {}
@@ -23,7 +24,7 @@ function formatting(cell: ICellData) {
   for (const key of ['v', 't', 'f', 'p', 's'] as const) delete other[key];
   return other;
 }
-function resolvedStyle(cell: ICellData, styles: IWorkbookData['styles'], inherited: unknown) {
+function resolvedStyle(cell: ICellData, styles: IWorkbookData['styles'], inherited: readonly unknown[]) {
   const resolve = (value: unknown): Record<string, unknown> => {
     if (typeof value === 'string' && !Object.hasOwn(styles, value)) return fail('This cell style is missing from the workbook.');
     const result = typeof value === 'string' ? styles[value] : value;
@@ -31,11 +32,23 @@ function resolvedStyle(cell: ICellData, styles: IWorkbookData['styles'], inherit
     if (typeof result !== 'object' || Array.isArray(result)) return fail('This cell style cannot be validated.');
     return result as Record<string, unknown>;
   };
-  return { ...resolve(inherited), ...resolve(cell.s) };
+  const result: Record<string, unknown> = {};
+  // Match the configured pinned composition field by field. A partial row
+  // style must not hide the default/column alignment when deriving a reset.
+  for (const owner of [...inherited, cell.s]) for (const [key, value] of Object.entries(resolve(owner))) {
+    if (value !== undefined) result[key] = value;
+  }
+  return result;
 }
-function styleDelta(a: Record<string, unknown>, b: Record<string, unknown>): Partial<WorkbookStyleEdit> {
+function styleDelta(a: Record<string, unknown>, b: Record<string, unknown>, beforeAlignment?: import('@open-design/contracts/runtime/workbook').WorkbookSourceHorizontalAlignment | null, afterAlignment?: import('@open-design/contracts/runtime/workbook').WorkbookSourceHorizontalAlignment | null): Partial<WorkbookStyleEdit> {
   const result: Partial<WorkbookStyleEdit> = {};
   const remainderA = { ...a }, remainderB = { ...b };
+  if (!same(a.ht, b.ht) || beforeAlignment != null && afterAlignment != null && beforeAlignment !== afterAlignment) {
+    const alignment = afterAlignment ?? gridHorizontalAlignment(b.ht);
+    if (alignment === null) return fail('This horizontal alignment cannot be saved.');
+    result.horizontalAlignment = alignment;
+  }
+  delete remainderA.ht; delete remainderB.ht;
   if (b.fs !== undefined && (typeof b.fs !== 'number' || !Number.isFinite(b.fs) || b.fs <= 0 || b.fs > 512)) return fail('This font size cannot be saved.');
   if (!same(a.fs, b.fs)) {
     if (typeof b.fs !== 'number') return fail('This font size cannot be saved.');
@@ -93,9 +106,10 @@ function scalar(cell: ICellData, original: WorkbookCell | undefined, row: number
  * never serialize Univer as XLSX. Unchanged formula caches/rich runs remain in
  * the source package. Unsupported mutations block the whole save, not just the
  * unsupported cells, so a successful save cannot silently discard an edit. */
-export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string, initial: IWorkbookData, current: IWorkbookData) {
+export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string, initial: IWorkbookData, current: IWorkbookData, alignment?: WorkbookAlignmentProjection) {
   const projected = gridStructuralBaseline(model, sourceSha256, initial, current);
   model = projected.model; initial = projected.before; current = projected.after;
+  const beforeAlignment = alignment?.snapshot(initial), afterAlignment = alignment?.snapshot(current);
   if (!same(initial.sheetOrder, current.sheetOrder) || !same(Object.keys(initial.sheets).sort(), Object.keys(current.sheets).sort())) fail('Sheet structure changed. Keep this workbook open; these changes cannot be saved yet.');
   if (!unchangedStyles(initial.styles, current.styles) || initial.dateSystem !== current.dateSystem) fail('Workbook formatting changed. Keep this workbook open; these changes cannot be saved yet.');
   const edits: { sheetId: string; cell: WorkbookCell }[] = [];
@@ -125,8 +139,8 @@ export function workbookGridEdits(model: WorkbookDocument, sourceSha256: string,
       // original style. Any positive new style change needs its own writer.
       if (!same(aFormatting, bFormatting) && !(Object.keys(b).length === 0)) fail('Cell metadata changed. Keep this workbook open; these changes cannot be saved yet.');
       if (Object.keys(b).length !== 0) {
-        const inherited = before.rowData?.[row]?.s ?? before.columnData?.[column]?.s ?? before.defaultStyle;
-        const delta = styleDelta(resolvedStyle(a, initial.styles, inherited), resolvedStyle(b, current.styles, inherited));
+        const inherited = [before.defaultStyle, ...(alignment?.rowPriority ? [before.columnData?.[column]?.s, before.rowData?.[row]?.s] : [before.rowData?.[row]?.s, before.columnData?.[column]?.s])];
+        const delta = styleDelta(resolvedStyle(a, initial.styles, inherited), resolvedStyle(b, current.styles, inherited), beforeAlignment?.(sheet.id, row, column), afterAlignment?.(sheet.id, row, column));
         if (Object.keys(delta).length) {
           if (ap || bp) fail('Rich text formatting changes cannot be saved yet. Keep this workbook open.');
           styles.push({ sheetId: sheet.id, row, column, ...delta });
