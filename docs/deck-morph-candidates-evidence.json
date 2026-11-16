@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "qualifiedSource": "12dd8150283d9d33d3d157cfffdc0432189c0777",
+  "base": "574b1a855ef2948f2839513b191e92e4b29823cb",
+  "scope": "Shared existing browser Magic Move candidate semantics only; no native Morph mapping, metadata, admission or playback enabled.",
+  "checks": {
+    "contracts": {
+      "cases": 22,
+      "files": 4,
+      "exit": 0
+    },
+    "webSerializedRuntime": {
+      "cases": 34,
+      "files": 2,
+      "exit": 0
+    },
+    "sourceParityAndCapture": {
+      "cases": 15,
+      "files": 2,
+      "exit": 0
+    },
+    "frozenOfflineInstall": 0,
+    "dependencyBuild": 0,
+    "workspaceAndScriptsTypes": 0,
+    "guard": 0
+  },
+  "retainedAuthoringFailures": [
+    "First source selector command named one nonexistent extra file; actual six tests/one file only. Corrected final source selection runs15/two.",
+    "Initial web fixture inferred HTMLElement for a mixed Element tree; corrected explicit Element type.",
+    "Next daemon fixture imported unavailable DOM declarations; corrected a typed local JSDOM observation surface without adding DOM types to daemon production."
+  ],
+  "sourceFiles": [
+    {
+      "path": "apps/daemon/tests/deck-morph-source-parity.test.ts",
+      "sha256": "f073239ba76aaa7281ab477641e71e7c8d3943cd807d015ab9d2477fb5b22a5f"
+    },
+    {
+      "path": "apps/web/tests/runtime/deck-morph-candidates.test.ts",
+      "sha256": "e363190dda0101fadb91ecc56e9f7cba117f1d6a588fcb356b1344f363286fdc"
+    },
+    {
+      "path": "packages/contracts/esbuild.config.mjs",
+      "sha256": "1bbfa0ed3cb1460e489a1e328f877b669e0aa0edbfe2bcae2ed4da7bc8b329ee"
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "sha256": "756e74185cbc7a667327e6ff49befb2a637d7048218f7fc2aba4dcca8ba36e9d"
+    },
+    {
+      "path": "packages/contracts/src/runtime/deck-morph.ts",
+      "sha256": "c2e95e73d6a5a450090dcb50f6e86b26c20e49914ad3577f5cdd1f8eda83e512"
+    },
+    {
+      "path": "packages/contracts/src/runtime/deck-transitions.ts",
+      "sha256": "4276111648e083b543407b6c877b57bc10a2cc3c6e6829b7f554cdc6c41f7467"
+    },
+    {
+      "path": "packages/contracts/tests/deck-morph.test.ts",
+      "sha256": "ca44bcebf09d3b74a081c762666567e4346bb8513ac9b9be19f477adeaa9a5fa"
+    }
+  ],
+  "references": [
+    {
+      "path": "/tmp/morph-candidates-contracts.log",
+      "sha256": "81d827d7571c563893077dc479980d5740a1e4f93a9535be45a579312179c476"
+    },
+    {
+      "path": "/tmp/morph-candidates-dependencies.log",
+      "sha256": "3e8136568b095a51363beef2e9a94f948cce2c16b7bbcd519ca41c812f3b3631"
+    },
+    {
+      "path": "/tmp/morph-candidates-guard-final.log",
+      "sha256": "38e1730628fbe194f36c0633cc3afc230956d9c121b623e9df37a89d1ea21e89"
+    },
+    {
+      "path": "/tmp/morph-candidates-guard.log",
+      "sha256": "38e1730628fbe194f36c0633cc3afc230956d9c121b623e9df37a89d1ea21e89"
+    },
+    {
+      "path": "/tmp/morph-candidates-install.log",
+      "sha256": "71d35a89722069b0f945477dae875158a7a67fa65dacb80a2f6bba301c7cd950"
+    },
+    {
+      "path": "/tmp/morph-candidates-source-corrected.log",
+      "sha256": "e546054f684aef1dbe52b8817b4fafc320332b6d36eb6b95770d1598c58e44e5"
+    },
+    {
+      "path": "/tmp/morph-candidates-source-final.log",
+      "sha256": "013e4dfc617a8d496f44c4db350580a7e81e0be65d27bfb64bbe6e3e01ee612e"
+    },
+    {
+      "path": "/tmp/morph-candidates-source.log",
+      "sha256": "ce92485d9c55f6e38acd2644aac96421a5b3867a8ac09d8d84ed514ba3e16a04"
+    },
+    {
+      "path": "/tmp/morph-candidates-types-corrected.log",
+      "sha256": "f3a1780147f37c728af4a745b2c4b358c28a68be1c08e3e516b186803fb300d6"
+    },
+    {
+      "path": "/tmp/morph-candidates-types-final.log",
+      "sha256": "adff6753f15af5911397b9b8c93102fd91a7555de44248226a75543d944b4497"
+    },
+    {
+      "path": "/tmp/morph-candidates-types.log",
+      "sha256": "96236374e7943c5b52064adba76fa966c9d16b3eb860cb9194408baaf5a094fe"
+    },
+    {
+      "path": "/tmp/morph-candidates-web-final.log",
+      "sha256": "5cd429997bc9aa4e5158d00e512ac2eb339f251e5e068f41d73ba5a7cccd624e"
+    },
+    {
+      "path": "/tmp/morph-candidates-web.log",
+      "sha256": "e2022dfcfb23413a99087634ea6555e0bd37ea9ea3d2bf8dcaef4139414f32b9"
+    }
+  ],
+  "canonicalSha256": "29869c03f1437f5fdc1659d5ba0b796ce32d6cfef8c43cd012ba4d83c9bce2c3"
+}

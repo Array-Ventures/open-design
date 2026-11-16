@@ -145,6 +145,10 @@
     "./runtime/workbook-sheet-baseline": {
       "types": "./dist/runtime/workbook-sheet-baseline.d.ts",
       "default": "./dist/runtime/workbook-sheet-baseline.mjs"
+    },
+    "./runtime/deck-morph": {
+      "types": "./dist/runtime/deck-morph.d.ts",
+      "default": "./dist/runtime/deck-morph.mjs"
     }
   },
   "scripts": {
